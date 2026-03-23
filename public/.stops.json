@@ -1,0 +1,345 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0001",
+        "id": "SEM:0001",
+        "code": "SEM:0001",
+        "city": "Grenoble",
+        "name": "Gare SNCF",
+        "clusterGtfsId": "GARESNCF",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7271, 45.1869]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0002",
+        "id": "SEM:0002",
+        "code": "SEM:0002",
+        "city": "Grenoble",
+        "name": "Chavant",
+        "clusterGtfsId": "CHAVANT",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7195, 45.1885]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0003",
+        "id": "SEM:0003",
+        "code": "SEM:0003",
+        "city": "Grenoble",
+        "name": "Hubert Dubedout",
+        "clusterGtfsId": "DUBEDOUT",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7285, 45.1920]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0004",
+        "id": "SEM:0004",
+        "code": "SEM:0004",
+        "city": "Grenoble",
+        "name": "Place de la Gare",
+        "clusterGtfsId": "PLACEGARE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7265, 45.1875]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0005",
+        "id": "SEM:0005",
+        "code": "SEM:0005",
+        "city": "Grenoble",
+        "name": "Échirolles",
+        "clusterGtfsId": "ECHIROLLES",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7150, 45.1675]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0006",
+        "id": "SEM:0006",
+        "code": "SEM:0006",
+        "city": "Grenoble",
+        "name": "Fontaine",
+        "clusterGtfsId": "FONTAINE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.6900, 45.1950]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0007",
+        "id": "SEM:0007",
+        "code": "SEM:0007",
+        "city": "Grenoble",
+        "name": "Jardin de Ville",
+        "clusterGtfsId": "JARDVILLE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7350, 45.1880]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0008",
+        "id": "SEM:0008",
+        "code": "SEM:0008",
+        "city": "Grenoble",
+        "name": "Estacade",
+        "clusterGtfsId": "ESTACADE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7310, 45.1950]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0009",
+        "id": "SEM:0009",
+        "code": "SEM:0009",
+        "city": "Saint-Martin-d'Hères",
+        "name": "Bibliothèque Universitaire",
+        "clusterGtfsId": "BIBLIO",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7710, 45.1920]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0010",
+        "id": "SEM:0010",
+        "code": "SEM:0010",
+        "city": "Saint-Martin-d'Hères",
+        "name": "Université",
+        "clusterGtfsId": "UNIVERSITE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7700, 45.1950]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0011",
+        "id": "SEM:0011",
+        "code": "SEM:0011",
+        "city": "Sassenage",
+        "name": "Les Engenières",
+        "clusterGtfsId": "ENGENIER",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.66053, 45.2199]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0012",
+        "id": "SEM:0012",
+        "code": "SEM:0012",
+        "city": "Sassenage",
+        "name": "Centre",
+        "clusterGtfsId": "SASSCENTRE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.6680, 45.2150]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0013",
+        "id": "SEM:0013",
+        "code": "SEM:0013",
+        "city": "Saint-Égrève",
+        "name": "St-Égrève",
+        "clusterGtfsId": "STEGREVE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7450, 45.2450]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0014",
+        "id": "SEM:0014",
+        "code": "SEM:0014",
+        "city": "Meylan",
+        "name": "Meylan Centre",
+        "clusterGtfsId": "MEYLAN",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7850, 45.2050]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0015",
+        "id": "SEM:0015",
+        "code": "SEM:0015",
+        "city": "Seyssins",
+        "name": "Seyssins",
+        "clusterGtfsId": "SEYSSINS",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7500, 45.1550]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0016",
+        "id": "SEM:0016",
+        "code": "SEM:0016",
+        "city": "Vizille",
+        "name": "Vizille",
+        "clusterGtfsId": "VIZILLE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7800, 45.0850]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0017",
+        "id": "SEM:0017",
+        "code": "SEM:0017",
+        "city": "Grenoble",
+        "name": "Ile Verte",
+        "clusterGtfsId": "ILEVERTE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7200, 45.1750]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0018",
+        "id": "SEM:0018",
+        "code": "SEM:0018",
+        "city": "Grenoble",
+        "name": "Alsace-Lorraine",
+        "clusterGtfsId": "ALSACELORRAINE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7100, 45.1920]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0019",
+        "id": "SEM:0019",
+        "code": "SEM:0019",
+        "city": "Les Géants",
+        "name": "Vallée de la Romanche",
+        "clusterGtfsId": "VALLEEROMANCHE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.8150, 45.1150]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "stops",
+        "gtfsId": "SEM:0020",
+        "id": "SEM:0020",
+        "code": "SEM:0020",
+        "city": "Grenoble",
+        "name": "Centre-Ville",
+        "clusterGtfsId": "CENTREVILLE",
+        "epci": "LaMetro"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5.7300, 45.1900]
+      }
+    }
+  ]
+}
