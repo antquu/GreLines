@@ -98,6 +98,8 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [hasAppliedInitialLines, setHasAppliedInitialLines] = useState(false);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const wasScrollingRef = useRef(false);
 
   useEffect(() => {
     setCurrentStopDetail(stop);
@@ -234,10 +236,25 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
         drag="y"
         dragConstraints={{ top: 0, bottom: window.innerHeight }}
         dragElastic={0.1}
-        onDragStart={() => setIsDragging(true)}
+        onDragStart={(_, info) => {
+          setIsDragging(true);
+          // Check if this is a vertical scroll (more vertical movement than horizontal)
+          const isVerticalScroll = Math.abs(info.delta.y) > Math.abs(info.delta.x) * 2;
+          const scrolling = isVerticalScroll && sidebarState === 'open';
+          setIsScrolling(scrolling);
+          wasScrollingRef.current = scrolling;
+        }}
         onClick={(e) => e.stopPropagation()}
         onDragEnd={(_, info) => {
         setIsDragging(false);
+        setIsScrolling(false);
+        
+        // If we were scrolling, don't apply drag logic
+        if (wasScrollingRef.current) {
+          wasScrollingRef.current = false;
+          return;
+        }
+        
         const threshold = window.innerHeight * 0.3;
         const openThreshold = window.innerHeight * 0.25; // 75% visibility threshold
         
@@ -256,7 +273,9 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
         }
       }}
       onDrag={(_, info) => {
-        setDragOffset((info.offset.y / window.innerHeight) * 100);
+        if (!isScrolling) {
+          setDragOffset((info.offset.y / window.innerHeight) * 100);
+        }
       }}
       initial={{ y: '100%', opacity: 0 }}
       animate={{ 
@@ -273,7 +292,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
       }}
       className="fixed inset-x-0 bottom-0 z-50 h-[100vh] max-h-[calc(100vh-5px)] overflow-y-auto rounded-t-3xl shadow-2xl bg-white dark:bg-gray-900"
       style={{ 
-        touchAction: 'none' // Prevent scrolling while dragging
+        touchAction: isScrolling ? 'auto' : 'none' // Allow touch when scrolling, prevent when dragging
       }}
     >
       {isOpen && currentStopDetail && (
