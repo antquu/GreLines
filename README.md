@@ -22,7 +22,7 @@
 
 ### Vue mobile
 ![Vue mobile](.screenshots/mobile-view-main.png)
-*Design responsive avec sidebar superposée sur mobile.*
+
 
 ## ✨ Fonctionnalités
 
