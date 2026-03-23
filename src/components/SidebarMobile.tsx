@@ -98,8 +98,6 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [hasAppliedInitialLines, setHasAppliedInitialLines] = useState(false);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const wasScrollingRef = useRef(false);
 
   useEffect(() => {
     setCurrentStopDetail(stop);
@@ -233,67 +231,47 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
       )}
 
       <motion.div
-        drag="y"
+        drag={sidebarState === 'open' ? false : 'y'}
         dragConstraints={{ top: 0, bottom: window.innerHeight }}
         dragElastic={0.1}
-        onDragStart={(_, info) => {
-          setIsDragging(true);
-          // Check if this is a vertical scroll (more vertical movement than horizontal)
-          const isVerticalScroll = Math.abs(info.delta.y) > Math.abs(info.delta.x) * 2;
-          const scrolling = isVerticalScroll && sidebarState === 'open';
-          setIsScrolling(scrolling);
-          wasScrollingRef.current = scrolling;
-        }}
+        onDragStart={() => setIsDragging(true)}
         onClick={(e) => e.stopPropagation()}
         onDragEnd={(_, info) => {
-        setIsDragging(false);
-        setIsScrolling(false);
-        
-        // If we were scrolling, don't apply drag logic
-        if (wasScrollingRef.current) {
-          wasScrollingRef.current = false;
-          return;
-        }
-        
-        const threshold = window.innerHeight * 0.3;
-        const openThreshold = window.innerHeight * 0.25; // 75% visibility threshold
-        
-        if (info.offset.y > threshold) {
-          // Dragged down significantly, close
-          onClose();
-        } else if (info.offset.y < -openThreshold) {
-          // Dragged up past 75% threshold, open fully
-          onOpen();
-        } else if (sidebarState === 'peek' && info.offset.y < -threshold) {
-          // Dragged up from peek, open fully
-          onOpen();
-        } else {
-          // Snap back to current state
-          setDragOffset(0);
-        }
-      }}
-      onDrag={(_, info) => {
-        if (!isScrolling) {
+          setIsDragging(false);
+
+          const threshold = window.innerHeight * 0.3;
+          const openThreshold = window.innerHeight * 0.25;
+
+          if (info.offset.y > threshold) {
+            onClose();
+          } else if (info.offset.y < -openThreshold && sidebarState !== 'open') {
+            onOpen();
+          } else if (sidebarState === 'peek' && info.offset.y < -threshold) {
+            onOpen();
+          } else {
+            setDragOffset(0);
+          }
+        }}
+        onDrag={(_, info) => {
           setDragOffset((info.offset.y / window.innerHeight) * 100);
-        }
-      }}
-      initial={{ y: '100%', opacity: 0 }}
-      animate={{ 
-        y: getYPosition(), 
-        opacity: isOpen ? 1 : 0 
-      }}
-      exit={{ y: '100%', opacity: 0 }}
-      transition={{ 
-        duration: isDragging ? 0 : 0.3, 
-        ease: 'easeOut',
-        type: isDragging ? 'tween' : 'spring',
-        damping: 25,
-        stiffness: 300
-      }}
-      className="fixed inset-x-0 bottom-0 z-50 h-[100vh] max-h-[calc(100vh-5px)] overflow-y-auto rounded-t-3xl shadow-2xl bg-white dark:bg-gray-900"
-      style={{ 
-        touchAction: isScrolling ? 'auto' : 'none' // Allow touch when scrolling, prevent when dragging
-      }}
+        }}
+        initial={{ y: '100%', opacity: 0 }}
+        animate={{
+          y: getYPosition(),
+          opacity: isOpen ? 1 : 0,
+        }}
+        exit={{ y: '100%', opacity: 0 }}
+        transition={{
+          duration: isDragging ? 0 : 0.3,
+          ease: 'easeOut',
+          type: isDragging ? 'tween' : 'spring',
+          damping: 25,
+          stiffness: 300,
+        }}
+        className="fixed inset-x-0 bottom-0 z-50 h-[100vh] max-h-[calc(100vh-5px)] overflow-y-auto rounded-t-3xl shadow-2xl bg-white dark:bg-gray-900"
+        style={{
+          touchAction: sidebarState === 'open' ? 'auto' : 'none',
+        }}
     >
       {isOpen && currentStopDetail && (
         <div 
