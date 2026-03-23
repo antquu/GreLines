@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, useDragControls } from 'framer-motion';
 import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { MdTram, MdDirectionsBus } from 'react-icons/md';
 import type { StopDetail, Departure } from '../types';
@@ -97,6 +97,8 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
   const exportButtonRef = useRef<HTMLButtonElement>(null);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [isHandleDragging, setIsHandleDragging] = useState(false);
+  const dragControls = useDragControls();
   const [hasAppliedInitialLines, setHasAppliedInitialLines] = useState(false);
 
   useEffect(() => {
@@ -214,7 +216,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
     if (!isOpen) return '100%';
 
     const basePosition = sidebarState === 'peek' ? '70%' : '1%'; // 30% visible in peek, 99% open
-    if (isDragging) {
+    if (isDragging || isHandleDragging) {
       const dragY = Math.max(0, Math.min(100, dragOffset));
       return `${dragY}%`;
     }
@@ -231,13 +233,21 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
       )}
 
       <motion.div
-        drag={sidebarState === 'open' ? false : 'y'}
+        drag="y"
+        dragControls={sidebarState === 'open' ? dragControls : undefined}
+        dragListener={sidebarState === 'open' ? false : true}
         dragConstraints={{ top: 0, bottom: window.innerHeight }}
         dragElastic={0.1}
-        onDragStart={() => setIsDragging(true)}
+        onDragStart={() => {
+          setIsDragging(true);
+          if (sidebarState === 'open') {
+            setIsHandleDragging(true);
+          }
+        }}
         onClick={(e) => e.stopPropagation()}
         onDragEnd={(_, info) => {
           setIsDragging(false);
+          setIsHandleDragging(false);
 
           const threshold = window.innerHeight * 0.3;
           const openThreshold = window.innerHeight * 0.25;
@@ -279,9 +289,18 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
           onClick={sidebarState === 'peek' ? onOpen : undefined}
           style={{ cursor: sidebarState === 'peek' ? 'pointer' : 'default' }}
         >
-          {/* Drag indicator */}
-          <div className="flex justify-center mb-4">
-            <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
+          {/* Drag handle - size closer to original and not too large visually */}
+          <div
+            className="flex justify-center items-center mb-4 cursor-grab h-8"
+            onPointerDown={(event) => {
+              if (sidebarState === 'open') {
+                setIsHandleDragging(true);
+                dragControls.start(event);
+              }
+            }}
+            style={{ touchAction: 'none' }}
+          >
+            <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full" />
           </div>
           {/* Close button */}
           <div className="flex items-center justify-between mb-4">
