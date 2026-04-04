@@ -107,7 +107,6 @@ export function SetupOverlay({ isVisible, onComplete }: SetupOverlayProps) {
             onClick={() => {
               setSetupLanguage(option.id as 'fr' | 'en');
               setSetupIntroLanguage(option.id as 'fr' | 'en');
-              setSetupStage(2); // Skip theme selection, go directly to final step
             }}
             className={`group rounded-3xl border p-4 sm:p-6 text-left transition-all duration-300 ${setupLanguage === option.id ? 'border-blue-400 bg-white/10 shadow-[0_30px_80px_rgba(13,93,236,0.12)]' : 'border-white/15 bg-white/5 hover:border-blue-300 hover:bg-white/10'} text-white`}
           >
