@@ -7,13 +7,10 @@ interface SetupOverlayProps {
 }
 
 export function SetupOverlay({ isVisible, onComplete }: SetupOverlayProps) {
-  const [setupStage, setSetupStage] = useState<0 | 1 | 2 | 3>(0);
+  const [setupStage, setSetupStage] = useState<0 | 1 | 2>(0);
   const [setupLanguage, setSetupLanguage] = useState<'fr' | 'en'>(() => {
     const saved = localStorage.getItem('greLines_language');
     return saved === 'en' ? 'en' : 'fr';
-  });
-  const [setupTheme, setSetupTheme] = useState<'dark'>(() => {
-    return 'dark';
   });
   const [setupIntroLanguage, setSetupIntroLanguage] = useState<'fr' | 'en'>(() => {
     const saved = localStorage.getItem('greLines_language');
@@ -28,23 +25,15 @@ export function SetupOverlay({ isVisible, onComplete }: SetupOverlayProps) {
       stepLabel: "Étape",
       step1Heading: "Choisissez votre langue",
       step1Description: "S\u00e9lectionnez la langue de l'interface",
-      step2Heading: "Personnalisez votre apparence",
-      step2Description: "Choisissez le th\u00e8me de l'application",
-      step3Heading: "Pr\u00eat \u00e0 partir",
-      step3Description: "V\u00e9rifiez votre s\u00e9lection et lancez GreLines.",
+      step2Heading: "Pr\u00eat \u00e0 partir",
+      step2Description: "V\u00e9rifiez votre s\u00e9lection et lancez GreLines.",
       languageCardFr: "Français",
       languageCardEn: "English",
       languageCardSubtitle: "Langue",
       languageCardExtra: "R\u00e9gion France",
-      themeCardAuto: "Automatique",
-      themeCardDark: "Sombre",
-      themeCardSubtitle: "Mode",
       summaryLabelLanguage: "Langue",
-      summaryLabelTheme: "Mode",
       summaryLanguageFr: "Vous verrez le site en fran\u00e7ais",
       summaryLanguageEn: "You will see the site in English",
-      summaryThemeAuto: "S'adapte selon votre syst\u00e8me",
-      summaryThemeDark: "Toujours en th\u00e8me sombre",
       summaryReadyLabel: "Pr\u00eat",
       summaryReady: "Vous \u00eates pr\u00eat \u00e0 lancer GreLines",
       summaryReadyDesc: "Cliquez sur le bouton ci-dessous pour ouvrir l'application.",
@@ -59,23 +48,15 @@ export function SetupOverlay({ isVisible, onComplete }: SetupOverlayProps) {
       stepLabel: 'Step',
       step1Heading: 'Choose your language',
       step1Description: 'Select the interface language',
-      step2Heading: 'Customize your appearance',
-      step2Description: 'Choose the application theme',
-      step3Heading: 'Ready to go',
-      step3Description: 'Review your selection and launch GreLines.',
+      step2Heading: 'Ready to go',
+      step2Description: 'Review your selection and launch GreLines.',
       languageCardFr: 'Français',
       languageCardEn: 'English',
       languageCardSubtitle: 'Language',
       languageCardExtra: 'France region',
-      themeCardAuto: 'Automatic',
-      themeCardDark: 'Dark',
-      themeCardSubtitle: 'Mode',
       summaryLabelLanguage: 'Language',
-      summaryLabelTheme: 'Theme',
       summaryLanguageFr: 'You will see the site in French',
       summaryLanguageEn: 'You will see the site in English',
-      summaryThemeAuto: 'Adapts to your system',
-      summaryThemeDark: 'Always in dark theme',
       summaryReadyLabel: 'Ready',
       summaryReady: 'You are ready to open GreLines',
       summaryReadyDesc: 'Click the button below to open the app.',
@@ -126,6 +107,7 @@ export function SetupOverlay({ isVisible, onComplete }: SetupOverlayProps) {
             onClick={() => {
               setSetupLanguage(option.id as 'fr' | 'en');
               setSetupIntroLanguage(option.id as 'fr' | 'en');
+              setSetupStage(2); // Skip theme selection, go directly to final step
             }}
             className={`group rounded-3xl border p-4 sm:p-6 text-left transition-all duration-300 ${setupLanguage === option.id ? 'border-blue-400 bg-white/10 shadow-[0_30px_80px_rgba(13,93,236,0.12)]' : 'border-white/15 bg-white/5 hover:border-blue-300 hover:bg-white/10'} text-white`}
           >
@@ -134,39 +116,13 @@ export function SetupOverlay({ isVisible, onComplete }: SetupOverlayProps) {
             <div className="mt-4 sm:mt-6 border-t border-white/10 pt-3 sm:pt-4 text-xs sm:text-sm text-slate-300">{option.extra}</div>
           </button>
         ))
-      ) : setupStage === 2 ? (
-        [
-          {
-            id: 'dark',
-            title: currentSetupText.themeCardDark,
-            subtitle: currentSetupText.themeCardSubtitle,
-          },
-        ].map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => setSetupTheme(option.id as 'dark')}
-            className={`group rounded-3xl border p-4 sm:p-6 text-left transition-all duration-300 ${setupTheme === option.id ? 'border-blue-400 bg-white/10 shadow-[0_30px_80px_rgba(13,93,236,0.12)]' : 'border-white/15 bg-white/5 hover:border-blue-300 hover:bg-white/10'} text-white`}
-          >
-            <div className="text-xs uppercase tracking-[0.2em] text-slate-300 mb-2 sm:mb-3">{option.subtitle}</div>
-            <div className="text-2xl sm:text-3xl md:text-4xl font-semibold leading-tight">{option.title}</div>
-            <div className="mt-4 sm:mt-6 border-t border-white/10 pt-3 sm:pt-4 text-xs sm:text-sm text-slate-300">{currentSetupText.step2Description}</div>
-          </button>
-        ))
       ) : (
         <div className="space-y-4 sm:col-span-2 w-full max-w-2xl">
-          <div className="grid gap-4 sm:grid-cols-2 w-full">
+          <div className="grid gap-4 sm:grid-cols-1 w-full">
             <div className="rounded-3xl border border-white/15 bg-white/5 p-4 sm:p-6 text-white">
               <div className="text-xs uppercase tracking-[0.2em] text-slate-300 mb-2 sm:mb-3">{currentSetupText.summaryLabelLanguage}</div>
               <div className="text-xl sm:text-2xl md:text-3xl font-semibold">{setupLanguage === 'fr' ? currentSetupText.languageCardFr : currentSetupText.languageCardEn}</div>
               <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-slate-300">{setupLanguage === 'fr' ? currentSetupText.summaryLanguageFr : currentSetupText.summaryLanguageEn}</p>
-            </div>
-            <div className="rounded-3xl border border-white/15 bg-white/5 p-4 sm:p-6 text-white">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-300 mb-2 sm:mb-3">{currentSetupText.summaryLabelTheme}</div>
-              <div className="text-xl sm:text-2xl md:text-3xl font-semibold">{setupTheme === 'dark' ? currentSetupText.themeCardDark : currentSetupText.themeCardAuto}</div>
-              <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-slate-300">
-                {setupTheme === 'dark' ? currentSetupText.summaryThemeDark : currentSetupText.summaryThemeAuto}
-              </p>
             </div>
           </div>
           <div className="rounded-3xl border border-white/15 bg-white/5 p-4 sm:p-6 text-white">
@@ -248,7 +204,7 @@ export function SetupOverlay({ isVisible, onComplete }: SetupOverlayProps) {
                     <button
                       type="button"
                       onClick={() => setSetupStage(1)}
-                      className="inline-flex min-w-[180px] sm:min-w-[220px] items-center justify-center rounded-full bg-white px-5 sm:px-6 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+                      className="inline-flex min-w-[180px] sm:min-w-[220px] items-center justify-center rounded-full bg-slate-800 text-white px-5 sm:px-6 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-slate-950 transition hover:bg-slate-700"
                     >
                       {setupTexts[setupIntroLanguage].introButton}
                     </button>
@@ -263,12 +219,12 @@ export function SetupOverlay({ isVisible, onComplete }: SetupOverlayProps) {
                     className="flex flex-col items-center justify-center md:items-start space-y-6 md:space-y-10 w-full"
                   >
                     <div className="max-w-3xl text-center md:text-left">
-                      <span className="text-xs uppercase tracking-[0.35em] text-sky-300/80">{currentSetupText.stepLabel} {setupStage} / 3</span>
+                      <span className="text-xs uppercase tracking-[0.35em] text-sky-300/80">{currentSetupText.stepLabel} {setupStage} / 2</span>
                       <h1 className="mt-4 text-2xl font-semibold text-white font-canaro sm:text-3xl md:text-4xl lg:text-5xl md:mx-0 mx-auto">
-                        {setupStage === 1 ? currentSetupText.step1Heading : setupStage === 2 ? currentSetupText.step2Heading : currentSetupText.step3Heading}
+                        {setupStage === 1 ? currentSetupText.step1Heading : currentSetupText.step2Heading}
                       </h1>
                       <p className="mt-4 max-w-2xl text-xs sm:text-sm leading-6 sm:leading-7 text-slate-300 md:mx-0 mx-auto">
-                        {setupStage === 1 ? currentSetupText.step1Description : setupStage === 2 ? currentSetupText.step2Description : currentSetupText.step3Description}
+                        {setupStage === 1 ? currentSetupText.step1Description : currentSetupText.step2Description}
                       </p>
                     </div>
 
@@ -288,10 +244,10 @@ export function SetupOverlay({ isVisible, onComplete }: SetupOverlayProps) {
 
                       <button
                         type="button"
-                        onClick={setupStage === 3 ? handleComplete : () => setSetupStage((prev) => (prev === 2 ? 3 : prev === 1 ? 2 : 3))}
+                        onClick={setupStage === 2 ? handleComplete : () => setSetupStage(2)}
                         className="w-auto inline-flex items-center justify-center rounded-full bg-sky-400 px-5 sm:px-6 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-slate-950 transition hover:bg-sky-300"
                       >
-                        {setupStage === 3 ? currentSetupText.launchButton : currentSetupText.continueButton}
+                        {setupStage === 2 ? currentSetupText.launchButton : currentSetupText.continueButton}
                       </button>
                     </div>
                   </motion.div>

@@ -1,4 +1,4 @@
-import { motion, useDragControls } from 'framer-motion';
+﻿import { motion, useDragControls } from 'framer-motion';
 import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { MdTram, MdDirectionsBus } from 'react-icons/md';
 import type { StopDetail, Departure } from '../types';
@@ -159,7 +159,7 @@ const OccupancyDisplay = ({ occupancy, showError = false }: { occupancy?: string
   if (level === 0) {
     if (showError) {
       return (
-        <div className="text-xs text-red-500 dark:text-red-400 font-medium">
+        <div className="text-xs text-red-400 font-medium">
           No data
         </div>
       );
@@ -174,8 +174,8 @@ const OccupancyDisplay = ({ occupancy, showError = false }: { occupancy?: string
           key={i}
           className={`w-4 h-4 ${
             i < level
-              ? 'text-gray-600 dark:text-gray-300'
-              : 'text-gray-300 dark:text-gray-600'
+              ? 'text-gray-300'
+              : 'text-gray-300'
           }`}
         />
       ))}
@@ -436,7 +436,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
           damping: 25,
           stiffness: 300,
         }}
-        className="fixed inset-x-0 bottom-0 z-50 h-[100vh] max-h-[calc(100vh-5px)] overflow-y-auto rounded-t-3xl shadow-2xl app-panel bg-white dark:bg-gray-900"
+        className="fixed inset-x-0 bottom-0 z-50 h-[100vh] max-h-[calc(100vh-5px)] overflow-y-auto rounded-t-3xl shadow-2xl app-panel bg-gray-900"
         style={{
           touchAction: sidebarState === 'open' ? 'auto' : 'none',
         }}
@@ -458,11 +458,11 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
             }}
             style={{ touchAction: 'none' }}
           >
-            <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full" />
+            <div className="w-12 h-1.5 bg-gray-600 rounded-full" />
           </div>
           {/* Close button */}
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white flex-1">
+            <h2 className="text-3xl font-extrabold text-white flex-1">
               {currentStopDetail.name}
             </h2>
             <button
@@ -470,7 +470,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                 e.stopPropagation();
                 onClose();
               }}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition flex-shrink-0"
+              className="p-2 hover:bg-gray-800 rounded-full transition flex-shrink-0"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -479,7 +479,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
           </div>
 
           {currentStopDetail.city && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            <p className="text-sm text-gray-400 mb-4">
               {currentStopDetail.city}
             </p>
           )}
@@ -487,7 +487,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
           {/* Lines section */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+              <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
                 {text.lines}
               </h3>
               <button
@@ -508,10 +508,10 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                   setExportUrl(window.location.origin + url);
                   setIsExportModalOpen(true);
                 }}
-                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition"
+                className="p-1 hover:bg-gray-200 hover:bg-gray-700 rounded transition"
                 title={text.exportConfiguration}
               >
-                <EllipsisVerticalIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                <EllipsisVerticalIcon className="w-4 h-4 text-gray-400" />
               </button>
             </div>
 
@@ -554,7 +554,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
 
             <button
               onClick={() => setSelectedLines(new Set())}
-              className="text-xs px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+              className="text-xs px-3 py-1 bg-gray-200 bg-gray-700 rounded-md hover:bg-gray-300 hover:bg-gray-600"
             >
               {text.showAll}
             </button>
@@ -566,19 +566,19 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="mb-6 bg-gray-50 dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700"
+              className="mb-6 bg-gray-800 rounded-lg p-3 border border-gray-700"
             >
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{text.exportedConfiguration}</h3>
+                <h3 className="text-sm font-semibold text-white">{text.exportedConfiguration}</h3>
                 <button
                   onClick={() => setIsExportModalOpen(false)}
-                  className="p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition"
+                  className="p-0.5 hover:bg-gray-700 rounded transition"
                 >
-                  <XMarkIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <XMarkIcon className="w-4 h-4 text-gray-400" />
                 </button>
               </div>
 
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label className="block text-xs font-medium text-gray-300 mb-1">
                 {text.shareLink}
               </label>
               <div className="flex gap-1.5">
@@ -586,7 +586,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                   type="text"
                   value={exportUrl}
                   readOnly
-                  className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white text-xs font-mono bg-white dark:bg-gray-700"
+                  className="flex-1 px-2 py-1 border border-gray-600 rounded text-white text-xs font-mono bg-gray-700"
                 />
                 <button
                   onClick={() => {
@@ -612,7 +612,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
 
           {/* Next departures */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3 uppercase tracking-wider">
+            <h3 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wider">
               {text.nextDepartures}
             </h3>
             <div className="space-y-3">
@@ -636,7 +636,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.05 }}
-                        className="border-2 border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-gray-50 dark:bg-gray-800 shadow-md"
+                        className="border-2 border-gray-600 rounded-lg overflow-hidden bg-gray-800 shadow-md"
                       >
                         <motion.button
                           onClick={() => {
@@ -650,7 +650,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                               return next;
                             });
                           }}
-                          className="w-full p-4 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-left"
+                          className="w-full p-4 hover:bg-gray-700 transition text-left"
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -661,12 +661,12 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                                 {departure.lineShortName || departure.lineId}
                               </div>
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                <p className="text-sm font-medium text-white truncate">
                                   {departure.destination.length > 20
                                     ? `${departure.destination.slice(0, 17)}...`
                                     : departure.destination}
                                 </p>
-                                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                <div className="flex items-center gap-2 text-xs text-gray-300">
                                   <MdTram className="w-4 h-4" />
                                   <span>{text.tramway}</span>
                                   {departure.realtime && <span>• {text.live}</span>}
@@ -675,13 +675,13 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                               <div className="text-right">
-                                <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{renderDepartureTime(displayTime)}</p>
+                                <p className="text-lg font-bold text-gray-100">{renderDepartureTime(displayTime)}</p>
                                 <OccupancyDisplay occupancy={departure.occupancy} />
                               </div>
                               {isExpanded ? (
-                                <ChevronUpIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                                <ChevronUpIcon className="w-5 h-5 text-gray-400" />
                               ) : (
-                                <ChevronDownIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                                <ChevronDownIcon className="w-5 h-5 text-gray-400" />
                               )}
                             </div>
                           </div>
@@ -693,12 +693,12 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
                             transition={{ duration: 0.3 }}
-                            className="border-t border-blue-300 dark:border-blue-600 p-4 bg-gray-100 dark:bg-gray-700"
+                            className="border-t border-blue-600 p-4 bg-gray-700"
                           >
-                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-3">
+                            <p className="text-xs font-semibold text-gray-300 uppercase mb-3">
                               {text.nextDeparture}
                             </p>
-                            <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border-2 border-gray-400 dark:border-gray-600 space-y-2">
+                            <div className="bg-gray-800 rounded-lg p-3 border-2 border-gray-600 space-y-2">
                               <div className="flex items-center gap-3">
                                 <div
                                   className={`${getLineColor(second.lineId)} text-white font-bold ${getBadgeShapeClass(isRoundLine(second.lineId))} w-10 h-10 flex items-center justify-center text-sm flex-shrink-0 overflow-hidden`}
@@ -707,12 +707,12 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                                   {second.lineShortName || second.lineId}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                  <p className="text-sm font-medium text-white truncate">
                                     {second.destination.length > 20
                                       ? `${second.destination.slice(0, 17)}...`
                                       : second.destination}
                                   </p>
-                                  <div className="text-xs text-gray-600 dark:text-gray-300">
+                                  <div className="text-xs text-gray-300">
                                     <MdTram className="w-4 h-4 inline mr-1" />
                                     {text.tramway} {second.realtime && `• ${text.live}`}
                                   </div>
@@ -720,17 +720,17 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                               </div>
 
                               <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg p-3">
-                                  <p className="text-xs text-gray-600 dark:text-gray-300 font-semibold mb-1">
+                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 from-gray-700 to-gray-600 rounded-lg p-3">
+                                  <p className="text-xs text-gray-300 font-semibold mb-1">
                                     {text.time}
                                   </p>
-                                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                                  <p className="text-2xl font-bold text-gray-100">
                                     {renderDepartureTime(getDepartureDisplay(second, language))}
                                   </p>
                                 </div>
 
-                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg p-3">
-                                  <p className="text-xs text-gray-600 dark:text-gray-300 font-semibold mb-2">
+                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 from-gray-700 to-gray-600 rounded-lg p-3">
+                                  <p className="text-xs text-gray-300 font-semibold mb-2">
                                     {text.occupancy}
                                   </p>
                                   <div className="flex items-center justify-center gap-1">
@@ -740,7 +740,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                               </div>
 
                               {second.realtime && (
-                                <p className="text-xs text-green-600 dark:text-green-400 font-semibold mt-3 flex items-center gap-1">
+                                <p className="text-xs text-green-400 font-semibold mt-3 flex items-center gap-1">
                                   ● {text.realTimeData}
                                 </p>
                               )}
@@ -752,16 +752,16 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
 
                               const detail = lineInfo.trafficDetails?.[0];
                               return (
-                                <div className="relative border-2 border-yellow-500 bg-yellow-100 dark:bg-yellow-900 dark:bg-opacity-70 rounded-lg p-3 text-yellow-900 dark:text-yellow-100 pt-6">
+                                <div className="relative border-2 border-yellow-500 bg-yellow-900 bg-opacity-70 rounded-lg p-3 text-yellow-100 pt-6">
                                   <ExclamationTriangleIcon className="absolute -top-3 -left-3 w-6 h-6 text-yellow-500" />
                                   <div>
                                     <p className="text-sm font-semibold">{text.disruptedTraffic} {lineInfo.shortName || lineInfo.id}</p>
-                                    <p className="text-xs text-yellow-900/90 dark:text-yellow-200/80">{detail?.titre || text.ongoingDisruption}</p>
+                                    <p className="text-xs text-yellow-900/90 text-yellow-200/80">{detail?.titre || text.ongoingDisruption}</p>
                                     {detail?.description && (
-                                      <p className="text-[10px] text-yellow-900/80 dark:text-yellow-200/80 mt-1">{detail.description}</p>
+                                      <p className="text-[10px] text-yellow-900/80 text-yellow-200/80 mt-1">{detail.description}</p>
                                     )}
                                     {detail?.dateFin && (
-                                      <p className="text-[10px] text-yellow-900/70 dark:text-yellow-200/70 mt-1">{text.estimatedEnd} {detail.dateFin}</p>
+                                      <p className="text-[10px] text-yellow-900/70 text-yellow-200/70 mt-1">{text.estimatedEnd} {detail.dateFin}</p>
                                     )}
                                   </div>
                                 </div>
@@ -781,7 +781,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.05 }}
-                        className="border-2 border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800 shadow-md hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                        className="border-2 border-gray-600 rounded-lg p-4 bg-gray-800 shadow-md hover:bg-gray-700 transition"
                       >
                         <div className="flex items-center justify-between gap-3 mb-2">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -792,12 +792,12 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                               {departure.lineShortName || departure.lineId}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                              <p className="text-sm font-medium text-white truncate">
                                 {departure.destination.length > 20
                                   ? `${departure.destination.slice(0, 17)}...`
                                   : departure.destination}
                               </p>
-                              <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                              <div className="flex items-center gap-2 text-xs text-gray-300">
                                 <MdDirectionsBus className="w-4 h-4" />
                                 <span>{text.bus}</span>
                                 {departure.realtime && <span>• {text.live}</span>}
@@ -805,12 +805,12 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{renderDepartureTime(displayTime)}</p>
+                            <p className="text-lg font-bold text-gray-100">{renderDepartureTime(displayTime)}</p>
                           </div>
                         </div>
 
                         {/* Second departure in smaller text */}
-                        <div className="flex items-center justify-end gap-2 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-600 pt-2">
+                        <div className="flex items-center justify-end gap-2 text-sm text-gray-400 border-t border-gray-600 pt-2">
                           <span>{text.nextLabel}:</span>
                           <span className="font-semibold">{renderDepartureTime(getDepartureDisplay(second, language))}</span>
                         </div>
@@ -825,7 +825,7 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="border-2 border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800 shadow-md hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                      className="border-2 border-gray-600 rounded-lg p-4 bg-gray-800 shadow-md hover:bg-gray-700 transition"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -836,12 +836,12 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                             {departure.lineShortName || departure.lineId}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            <p className="text-sm font-medium text-white truncate">
                               {departure.destination.length > 20
                                 ? `${departure.destination.slice(0, 17)}...`
                                 : departure.destination}
                             </p>
-                            <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                            <div className="flex items-center gap-2 text-xs text-gray-300">
                               <MdDirectionsBus className="w-4 h-4" />
                               <span>{text.bus}</span>
                               {departure.realtime && <span>• {text.live}</span>}
@@ -849,21 +849,21 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{renderDepartureTime(displayTime)}</p>
+                          <p className="text-lg font-bold text-gray-100">{renderDepartureTime(displayTime)}</p>
                         </div>
                       </div>
                     </motion.div>
                   );
                 })
               ) : (
-                <p className="text-center text-gray-500 dark:text-gray-400 py-8">{text.noDeparturesAvailable}</p>
+                <p className="text-center text-gray-400 py-8">{text.noDeparturesAvailable}</p>
               )}
             </div>
           </div>
           
           {/* Séparateur avec logo GreGo */}
-          <div className="border-t border-gray-200 dark:border-gray-600 mt-6 pt-4">
-            <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer">
+          <div className="border-t border-gray-600 mt-6 pt-4">
+            <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors cursor-pointer">
               <span>{text.calculateItineraryWith}</span>
               <img 
                 src="/assets/GreGoLOGO.png" 

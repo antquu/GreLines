@@ -1,4 +1,4 @@
-import { XMarkIcon } from '@heroicons/react/24/solid';
+﻿import { XMarkIcon } from '@heroicons/react/24/solid';
 import { motion } from 'framer-motion';
 import type { TrafficDetail } from '../types';
 
@@ -57,7 +57,7 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language }: T
 
         <div className="p-4">
           {trafficInfo.size === 0 ? (
-            <div className="text-sm text-amber-200 text-center py-8">
+            <div className="text-sm text-amber-200 py-8">
               {text.noIncidents}
             </div>
           ) : (

@@ -38,7 +38,7 @@ function App() {
   const [searchHistoryItems, setSearchHistoryItems] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('greLines_searchHistoryItems');
-      return saved ? (JSON.parse(saved) as string[]) : [];
+      return saved ? (JSON.parse(saved) as string[]).slice(0, 4) : [];
     } catch {
       return [];
     }
@@ -626,16 +626,16 @@ function App() {
       >
         <div className="min-h-screen bg-black/60 flex flex-col items-center justify-center p-4 gap-4">
           {loginError && (
-            <div className={`w-full max-w-md rounded-lg bg-red-100 border border-red-300 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-400 transition-all duration-300 ease-out ${loginError ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
+            <div className={`w-full max-w-md rounded-lg bg-red-900/20 border border-red-700 px-4 py-3 text-sm text-red-400 transition-all duration-300 ease-out ${loginError ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
               {loginError}
             </div>
           )}
-          <div className="relative w-full max-w-md rounded-2xl border border-gray-200 bg-white/95 p-8 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-white mb-4">{text.login.title}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-300 mb-10">{text.login.subtitle}</p>
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900/95 p-8 shadow-2xl">
+            <h1 className="text-3xl font-bold text-white mb-4">{text.login.title}</h1>
+            <p className="text-sm text-slate-300 mb-10">{text.login.subtitle}</p>
             <form className="space-y-4" onSubmit={handleLoginSubmit}>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">{text.login.email}</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">{text.login.email}</label>
                 <div className="relative">
                   <input 
                     type="email" 
@@ -645,10 +645,10 @@ function App() {
                       setLoginError('');
                     }}
                     placeholder="user@example.com"
-                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 dark:bg-slate-800 dark:text-white dark:placeholder-slate-400 pr-10 ${
+                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-slate-800 text-white placeholder-slate-400 pr-10 ${
                       loginEmail && !isValidEmail(loginEmail)
-                        ? 'border-red-400 focus:ring-red-500 dark:border-red-600'
-                        : 'border-gray-300 focus:ring-blue-500 dark:border-slate-600'
+                        ? 'border-red-600 focus:ring-red-500'
+                        : 'border-slate-600 focus:ring-blue-500'
                     }`}
                   />
                   {loginEmail && !isValidEmail(loginEmail) && (
@@ -664,7 +664,7 @@ function App() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">{text.login.password}</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">{text.login.password}</label>
                 <div className="relative">
                   <input 
                     type={loginShowPassword ? "text" : "password"} 
@@ -674,12 +674,12 @@ function App() {
                       setLoginError('');
                       setLoginShowPassword(false);
                     }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white pr-10"
+                    className="w-full rounded-lg border border-slate-600 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-800 text-white pr-10"
                   />
                   <button
                     type="button"
                     onClick={() => setLoginShowPassword(!loginShowPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
                   >
                     {loginShowPassword ? (
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
@@ -706,7 +706,7 @@ function App() {
 
           <button
             onClick={() => window.location.pathname = '/'}
-            className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 flex items-center justify-center gap-2"
+            className="w-full max-w-md rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 transition flex items-center justify-center gap-2"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -716,12 +716,12 @@ function App() {
 
           <div className="fixed bottom-4 right-4 z-50">
             <div
-              className="absolute bottom-14 right-0 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 transition-all duration-300"
+              className="absolute bottom-14 right-0 overflow-hidden rounded-lg border border-slate-600 bg-slate-800 shadow-lg transition-all duration-300"
               style={{ width: '180px', maxHeight: loginLangMenuOpen ? '100px' : '0', opacity: loginLangMenuOpen ? 1 : 0, transform: loginLangMenuOpen ? 'translateY(0)' : 'translateY(10px)' }}
             >
               <button
                 onClick={() => { setLanguage('fr'); setLoginLangMenuOpen(false); }}
-                className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 ${language === 'fr' ? 'font-bold text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-gray-200'}`}
+                className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-700 ${language === 'fr' ? 'font-bold text-blue-400' : 'text-gray-200'}`}
               >
                 <div className="flex items-center gap-2">
                   {language === 'fr' ? (
@@ -736,7 +736,7 @@ function App() {
               </button>
               <button
                 onClick={() => { setLanguage('en'); setLoginLangMenuOpen(false); }}
-                className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 ${language === 'en' ? 'font-bold text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-gray-200'}`}
+                className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-700 ${language === 'en' ? 'font-bold text-blue-400' : 'text-gray-200'}`}
               >
                 <div className="flex items-center gap-2">
                   {language === 'en' ? (
@@ -752,7 +752,7 @@ function App() {
             </div>
             <button
               onClick={() => setLoginLangMenuOpen(prev => !prev)}
-              className="relative flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all duration-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              className="relative flex items-center gap-2 rounded-full border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-semibold shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all duration-200 text-white"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM12 3v3m0 12v3m9-9h-3M6 12H3m13.657-6.657l-2.121 2.121M8.464 15.536l-2.121 2.121m12.02 0l-2.121-2.121M8.464 8.464L6.343 6.343" />
@@ -841,7 +841,7 @@ function App() {
       if (searchHistory) {
         setSearchHistoryItems(prev => {
           const next = [stop.name, ...prev.filter(item => item !== stop.name)];
-          return next.slice(0, 10);
+          return next.slice(0, 4);
         });
       }
 
@@ -975,7 +975,7 @@ function App() {
   }, [stops, selectedStop, currentLocation, handleStopClick]);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-white dark:bg-gray-950">
+    <div className="relative h-screen w-screen overflow-hidden bg-gray-950">
       {/* Full-screen Map */}
       <div className="absolute inset-0 z-0">
         {isLoadingOverlayVisible ? (
@@ -999,7 +999,7 @@ function App() {
             </div>
           </div>
         ) : !isSetupVisible && error ? (
-          <div className="h-full flex items-center justify-center bg-red-50 dark:bg-red-950">
+          <div className="h-full flex items-center justify-center bg-red-950">
             <div className="text-center">
               <svg
                 className="h-12 w-12 text-red-600 mx-auto mb-4"
@@ -1014,7 +1014,7 @@ function App() {
                   d="M12 9v2m0 4v2m0 0v2m0-6v-2m0 0V7a2 2 0 012-2h2.586a1 1 0 00.707-.293l-2.414-2.414a1 1 0 00-1.414 1.414L10.586 7H8a2 2 0 00-2 2v2m0 0H4m0 0v2a2 2 0 002 2h2v2m0 0v2a2 2 0 002 2h2m0 0h2a2 2 0 002-2v-2m0 0V9"
                 />
               </svg>
-              <p className="text-red-600 dark:text-red-400">{error}</p>
+              <p className="text-red-400">{error}</p>
             </div>
           </div>
         ) : (
@@ -1052,10 +1052,10 @@ function App() {
                 }}
                 exit={{ y: '100%', opacity: 0 }}
                 transition={{ duration: 0.35, ease: 'easeOut' }}
-                className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl border-t border-gray-200 dark:border-slate-600 overflow-hidden flex flex-col"
+                className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900 rounded-t-2xl shadow-2xl border-t border-slate-600 overflow-hidden flex flex-col"
               >
                 {/* Header with tabs */}
-                <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-600 flex items-center justify-between px-4 py-3 flex-shrink-0">
+                <div className="sticky top-0 bg-slate-900 border-b border-slate-600 flex items-center justify-between px-4 py-3 flex-shrink-0">
                   <div className="flex space-x-1 overflow-x-auto scrollbar-hide relative" style={{ scrollBehavior: 'smooth' }}>
                     {[
                       { key: 'general', label: text.settings.general },
@@ -1068,22 +1068,22 @@ function App() {
                         onClick={() => setActiveSettingsTab(tab.key)}
                         className={`px-3 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition flex-shrink-0 ${
                           activeSettingsTab === tab.key
-                            ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700'
+                            ? 'bg-blue-900 text-blue-300'
+                            : 'text-gray-400 hover:hover:bg-slate-700'
                         }`}
                       >
                         {tab.label}
                       </button>
                     ))}
                     {/* Scroll indicator */}
-                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white dark:from-slate-900 to-transparent pointer-events-none opacity-60" />
+                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900 to-transparent pointer-events-none opacity-60" />
                   </div>
                   <button
                     onClick={() => setSettingsState('closed')}
-                    className="p-1 hover:bg-gray-100 dark:hover:bg-slate-700 rounded transition ml-2 flex-shrink-0"
+                    className="p-1 hover:bg-slate-700 rounded transition ml-2 flex-shrink-0"
                     aria-label="Close settings"
                   >
-                    <XMarkIcon className="w-4 h-4" />
+                    <XMarkIcon className="w-4 h-4 text-white" />
                   </button>
                 </div>
 
@@ -1094,18 +1094,18 @@ function App() {
                 >
                   {activeSettingsTab === 'general' && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{text.settings.general}</h3>
+                      <h3 className="text-lg font-semibold text-gray-100 mb-4">{text.settings.general}</h3>
                       <div className="space-y-4">
                         {/* Language */}
                         <div className="flex items-center justify-between py-2">
-                          <label htmlFor="language-select-mobile" className="text-sm text-gray-700 dark:text-gray-300">
+                          <label htmlFor="language-select-mobile" className="text-sm text-gray-300">
                             {text.labels.language}
                           </label>
                           <select
                             id="language-select-mobile"
                             value={language}
                             onChange={(e) => setLanguage(e.target.value as 'fr' | 'en')}
-                            className="settings-select w-32 px-3 py-1.5 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm text-gray-900 dark:text-gray-100"
+                            className="settings-select w-32 px-3 py-1.5 border border-slate-600 rounded-lg bg-slate-800 text-sm text-gray-100"
                           >
                             <option value="fr">Français</option>
                             <option value="en">English</option>
@@ -1114,14 +1114,14 @@ function App() {
 
                         {/* Refresh Interval */}
                         <div className="flex items-center justify-between py-2">
-                          <label htmlFor="refresh-select-mobile" className="text-sm text-gray-700 dark:text-gray-300">
+                          <label htmlFor="refresh-select-mobile" className="text-sm text-gray-300">
                             {text.labels.refreshInterval}
                           </label>
                           <select
                             id="refresh-select-mobile"
                             value={refreshInterval}
                             onChange={(e) => setRefreshInterval(e.target.value as any)}
-                            className="settings-select w-40 px-3 py-1.5 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm text-gray-900 dark:text-gray-100"
+                            className="settings-select w-40 px-3 py-1.5 border border-slate-600 rounded-lg bg-slate-800 text-sm text-gray-100"
                           >
                             <option value="15s">{text.options.refreshInterval[0]}</option>
                             <option value="30s">{text.options.refreshInterval[1]}</option>
@@ -1132,12 +1132,10 @@ function App() {
 
                         {/* Auto Location */}
                         <div className="flex items-center justify-between py-2">
-                          <label className="text-sm text-gray-700 dark:text-gray-300">{text.labels.autoLocation}</label>
+                          <label className="text-sm text-gray-300">{text.labels.autoLocation}</label>
                           <button
                             onClick={() => setAutoLocation(!autoLocation)}
-                            className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                              autoLocation ? '' : 'bg-gray-300 dark:bg-gray-600'
-                            }`}
+                            className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 bg-gray-600`}
                             style={autoLocation ? { backgroundColor: accentColors[accentColor] } : undefined}
                           >
                             <div className={`w-5 h-5 bg-white rounded-full transition-transform ml-0.5 mt-0.5 ${
@@ -1148,12 +1146,10 @@ function App() {
 
                         {/* Search History */}
                         <div className="flex items-center justify-between py-2">
-                          <label className="text-sm text-gray-700 dark:text-gray-300">{text.labels.searchHistory}</label>
+                          <label className="text-sm text-gray-300">{text.labels.searchHistory}</label>
                           <button
                             onClick={() => setSearchHistory(!searchHistory)}
-                            className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                              searchHistory ? '' : 'bg-gray-300 dark:bg-gray-600'
-                            }`}
+                            className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 bg-gray-600`}
                             style={searchHistory ? { backgroundColor: accentColors[accentColor] } : undefined}
                           >
                             <div className={`w-5 h-5 bg-white rounded-full transition-transform ml-0.5 mt-0.5 ${
@@ -1166,12 +1162,12 @@ function App() {
                   )}
                   {activeSettingsTab === 'display' && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{text.settings.display}</h3>
+                      <h3 className="text-lg font-semibold text-gray-100 mb-4">{text.settings.display}</h3>
                       <div className="space-y-4">
                         {/* Theme */}
                         <div className="py-2">
                           <div className="flex items-center justify-between mb-3">
-                            <span className="text-sm text-gray-700 dark:text-gray-300">
+                            <span className="text-sm text-gray-300">
                               {text.labels.theme}
                             </span>
                           </div>
@@ -1193,7 +1189,7 @@ function App() {
                                     alt={labels[option]}
                                     className="h-16 w-16 object-contain"
                                   />
-                                  <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 text-center">
+                                  <span className="text-xs font-semibold text-gray-200 text-center">
                                     {labels[option]}
                                   </span>
                                 </button>
@@ -1207,14 +1203,14 @@ function App() {
 
                         {/* Font Size */}
                         <div className="flex items-center justify-between py-2">
-                          <label htmlFor="font-size-select-mobile" className="text-sm text-gray-700 dark:text-gray-300">
+                          <label htmlFor="font-size-select-mobile" className="text-sm text-gray-300">
                             {text.labels.fontSize}
                           </label>
                           <select
                             id="font-size-select-mobile"
                             value={fontSize}
                             onChange={(e) => setFontSize(e.target.value as any)}
-                            className="settings-select w-32 px-3 py-1.5 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm text-gray-900 dark:text-gray-100"
+                            className="settings-select w-32 px-3 py-1.5 border border-slate-600 rounded-lg bg-slate-800 text-sm text-gray-100"
                           >
                             <option value="small">{text.options.fontSize[0]}</option>
                             <option value="normal">{text.options.fontSize[1]}</option>
@@ -1224,11 +1220,11 @@ function App() {
 
                         {/* Compact Mode */}
                         <div className="flex items-center justify-between py-2">
-                          <label className="text-sm text-gray-700 dark:text-gray-300">{text.labels.compactMode}</label>
+                          <label className="text-sm text-gray-300">{text.labels.compactMode}</label>
                           <button
                             onClick={() => setCompactMode(!compactMode)}
                             className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                              compactMode ? '' : 'bg-gray-300 dark:bg-gray-600'
+                              compactMode ? '' : 'bg-gray-600'
                             }`}
                             style={compactMode ? { backgroundColor: accentColors[accentColor] } : undefined}
                           >
@@ -1242,15 +1238,15 @@ function App() {
                   )}
                   {activeSettingsTab === 'data' && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{text.settings.data}</h3>
+                      <h3 className="text-lg font-semibold text-gray-100 mb-4">{text.settings.data}</h3>
                       <div className="space-y-4">
                         {/* Auto Sync */}
                         <div className="flex items-center justify-between py-2">
-                          <label className="text-sm text-gray-700 dark:text-gray-300">{text.labels.autoSync}</label>
+                          <label className="text-sm text-gray-300">{text.labels.autoSync}</label>
                           <button
                             onClick={() => setAutoSync(!autoSync)}
                             className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                              autoSync ? '' : 'bg-gray-300 dark:bg-gray-600'
+                              autoSync ? '' : 'bg-gray-600'
                             }`}
                             style={autoSync ? { backgroundColor: accentColors[accentColor] } : undefined}
                           >
@@ -1261,25 +1257,25 @@ function App() {
                         </div>
 
                         {/* Clear Cache */}
-                        <div className="pt-4 border-t border-gray-200 dark:border-slate-600">
+                        <div className="pt-4 border-t border-slate-600">
                           <button
                             onClick={() => {
                               localStorage.clear();
                               alert(`${text.buttons.clearCache}. ${text.misc.pleaseReload}`);
                               window.location.reload();
                             }}
-                            className="px-4 py-2 bg-red-500 hover:bg-red-600 dark:bg-red-700 dark:hover:bg-red-800 text-white text-sm rounded-lg transition font-medium w-full"
+                            className="px-4 py-2 bg-red-500 hover:bg-red-600 bg-red-700 hover:bg-red-800 text-white text-sm rounded-lg transition font-medium w-full"
                           >
                             {text.buttons.clearCache}
                           </button>
                         </div>
 
                         {/* Storage Info */}
-                        <div className="pt-4 border-t border-gray-200 dark:border-slate-600">
-                          <p className="text-xs text-gray-600 dark:text-gray-300 mb-2">
+                        <div className="pt-4 border-t border-slate-600">
+                          <p className="text-xs text-gray-300 mb-2">
                             <strong>{text.misc.localStorageTitle}</strong> {text.labels.localStorageInfo}
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                          <p className="text-xs text-gray-400">
                             {text.labels.localStorageInfo}
                           </p>
                         </div>
@@ -1289,14 +1285,14 @@ function App() {
                   {activeSettingsTab === 'about' && (
                     <div className="flex flex-col min-h-full">
                       <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{text.settings.about}</h3>
+                        <h3 className="text-lg font-semibold text-gray-100 mb-4">{text.settings.about}</h3>
                         <div className="space-y-4">
                           <div className="flex items-center justify-center mb-4">
                             <img src="/assets/GreLinesAssoLOGO.png" alt="GreLines" className="h-24 w-auto" />
                           </div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{text.misc.aboutDescription1}</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{text.misc.aboutDescription2}</p>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1 pt-2">
+                          <p className="text-sm text-gray-400">{text.misc.aboutDescription1}</p>
+                          <p className="text-sm text-gray-400">{text.misc.aboutDescription2}</p>
+                          <div className="text-xs text-gray-400 space-y-1 pt-2">
                             <p><strong>{text.misc.versionLabel}</strong> {appData?.version || '1.0.0'}</p>
                             <p><strong>{text.misc.dataSourceLabel}</strong> MTAG API (Grenoble)</p>
                             {appData?.credits?.map((credit, index) => (
@@ -1307,7 +1303,7 @@ function App() {
                                     href={credit.link}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                                    className="text-blue-400 hover:underline"
                                   >
                                     {credit.name}
                                   </a>
@@ -1319,12 +1315,12 @@ function App() {
                           </div>
                         </div>
                       </div>
-                      <div className="border-t border-gray-200 dark:border-slate-600 mt-6 pt-4">
+                      <div className="border-t border-slate-600 mt-6 pt-4">
                         <div className="flex items-center justify-center gap-2 w-full">
-                          <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex-1 h-12 flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
+                          <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex-1 h-12 flex items-center justify-center gap-2 bg-slate-800 border border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
                             <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-7 w-auto" />
                           </a>
-                          <a href="https://github.com/antquu/GreLines" target="_blank" rel="noopener noreferrer" className="flex-1 h-12 flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
+                          <a href="https://github.com/antquu/GreLines" target="_blank" rel="noopener noreferrer" className="flex-1 h-12 flex items-center justify-center gap-2 bg-slate-800 border border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
                             <img src="/assets/GitHubLOGO.png" alt="GitHub" className="h-7 w-auto" />
                             <span className="text-white text-xs">Project</span>
                           </a>
@@ -1343,15 +1339,15 @@ function App() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -20 }}
                 transition={{ duration: 0.25, ease: 'easeOut' }}
-                className="relative bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-2xl max-w-3xl w-[85vw] max-h-[86vh] overflow-hidden backdrop-blur-sm"
+                className="relative bg-slate-900/90 border border-slate-700 rounded-3xl shadow-2xl max-w-3xl w-[85vw] max-h-[86vh] overflow-hidden backdrop-blur-sm"
               >
                 <div className="flex h-[80vh] md:h-[70vh]">
                   {/* Mini Sidebar */}
-                  <div className="w-44 bg-gray-50 dark:bg-slate-700 border-r border-gray-200 dark:border-slate-600">
+                  <div className="w-44 bg-slate-700 border-r border-slate-600">
                     <div className="flex items-start justify-start p-3">
                       <button
                         onClick={() => setSettingsState('closed')}
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white bg-white/90 dark:bg-slate-800/90 border border-gray-300 dark:border-slate-600 shadow-sm"
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-gray-300 hover:text-white bg-slate-800/90 border border-slate-600 shadow-sm"
                       >
                         <XMarkIcon className="w-4 h-4" />
                       </button>
@@ -1361,8 +1357,8 @@ function App() {
                         onClick={() => setActiveSettingsTab('general')}
                         className={`w-full text-left px-3 py-2 text-sm rounded-lg transition ${
                           activeSettingsTab === 'general'
-                            ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-600'
+                            ? 'bg-blue-900 text-blue-300'
+                            : 'text-gray-400 hover:hover:bg-slate-600'
                         }`}
                       >
                         {text.settings.general}
@@ -1371,8 +1367,8 @@ function App() {
                         onClick={() => setActiveSettingsTab('display')}
                         className={`w-full text-left px-3 py-2 text-sm rounded-lg transition ${
                           activeSettingsTab === 'display'
-                            ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-600'
+                            ? 'bg-blue-900 text-blue-300'
+                            : 'text-gray-400 hover:hover:bg-slate-600'
                         }`}
                       >
                         {text.settings.display}
@@ -1381,8 +1377,8 @@ function App() {
                         onClick={() => setActiveSettingsTab('data')}
                         className={`w-full text-left px-3 py-2 text-sm rounded-lg transition ${
                           activeSettingsTab === 'data'
-                            ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-600'
+                            ? 'bg-blue-900 text-blue-300'
+                            : 'text-gray-400 hover:hover:bg-slate-600'
                         }`}
                       >
                         {text.settings.data}
@@ -1391,8 +1387,8 @@ function App() {
                         onClick={() => setActiveSettingsTab('about')}
                         className={`w-full text-left px-3 py-2 text-sm rounded-lg transition ${
                           activeSettingsTab === 'about'
-                            ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-600'
+                            ? 'bg-blue-900 text-blue-300'
+                            : 'text-gray-400 hover:hover:bg-slate-600'
                         }`}
                       >
                         {text.settings.about}
@@ -1404,18 +1400,18 @@ function App() {
                   <div className="flex-1 p-4 flex flex-col overflow-hidden">
                     {activeSettingsTab === 'general' && (
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{text.settings.general}</h3>
+                        <h3 className="text-lg font-semibold text-gray-100 mb-4">{text.settings.general}</h3>
                         <div className="space-y-3">
                           {/* Language */}
                           <div className="flex items-center justify-between py-2">
-                            <label htmlFor="language-select" className="text-sm text-gray-700 dark:text-gray-300">
+                            <label htmlFor="language-select" className="text-sm text-gray-300">
                               {text.labels.language}
                             </label>
                             <select
                               id="language-select"
                               value={language}
                               onChange={(e) => setLanguage(e.target.value as 'fr' | 'en')}
-                              className="settings-select w-32 px-3 py-1.5 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm text-gray-900 dark:text-gray-100"
+                              className="settings-select w-32 px-3 py-1.5 border border-slate-600 rounded-lg bg-slate-800 text-sm text-gray-100"
                             >
                               <option value="fr">Français</option>
                               <option value="en">English</option>
@@ -1424,14 +1420,14 @@ function App() {
 
                           {/* Refresh Interval */}
                           <div className="flex items-center justify-between py-2">
-                            <label htmlFor="refresh-select" className="text-sm text-gray-700 dark:text-gray-300">
+                            <label htmlFor="refresh-select" className="text-sm text-gray-300">
                               {text.labels.refreshInterval}
                             </label>
                             <select
                               id="refresh-select"
                               value={refreshInterval}
                               onChange={(e) => setRefreshInterval(e.target.value as any)}
-                              className="settings-select w-40 px-3 py-1.5 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm text-gray-900 dark:text-gray-100"
+                              className="settings-select w-40 px-3 py-1.5 border border-slate-600 rounded-lg bg-slate-800 text-sm text-gray-100"
                             >
                               <option value="15s">{text.options.refreshInterval[0]}</option>
                               <option value="30s">{text.options.refreshInterval[1]}</option>
@@ -1442,11 +1438,11 @@ function App() {
 
                           {/* Search History */}
                           <div className="flex items-center justify-between py-2">
-                            <label className="text-sm text-gray-700 dark:text-gray-300">{text.labels.searchHistory}</label>
+                            <label className="text-sm text-gray-300">{text.labels.searchHistory}</label>
                             <button
                               onClick={() => setSearchHistory(!searchHistory)}
                               className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                                searchHistory ? '' : 'bg-gray-300 dark:bg-gray-600'
+                                searchHistory ? '' : 'bg-gray-600'
                               }`}
                               style={searchHistory ? { backgroundColor: accentColors[accentColor] } : undefined}
                             >
@@ -1460,12 +1456,12 @@ function App() {
                     )}
                     {activeSettingsTab === 'display' && (
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{text.settings.display}</h3>
+                        <h3 className="text-lg font-semibold text-gray-100 mb-4">{text.settings.display}</h3>
                         <div className="space-y-3">
                           {/* Theme */}
                           <div className="py-2">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-700 dark:text-gray-300">
+                              <span className="text-sm text-gray-300">
                                 {text.labels.theme}
                               </span>
                             </div>
@@ -1487,7 +1483,7 @@ function App() {
                                       alt={labels[option]}
                                       className="h-20 w-20 object-contain"
                                     />
-                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 text-center">
+                                    <span className="text-xs font-semibold text-gray-200 text-center">
                                       {labels[option]}
                                     </span>
                                   </button>
@@ -1498,14 +1494,14 @@ function App() {
 
                           {/* Font Size */}
                           <div className="flex items-center justify-between py-2">
-                            <label htmlFor="font-size-select" className="text-sm text-gray-700 dark:text-gray-300">
+                            <label htmlFor="font-size-select" className="text-sm text-gray-300">
                               {text.labels.fontSize}
                             </label>
                             <select
                               id="font-size-select"
                               value={fontSize}
                               onChange={(e) => setFontSize(e.target.value as any)}
-                              className="settings-select w-32 px-3 py-1.5 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm text-gray-900 dark:text-gray-100"
+                              className="settings-select w-32 px-3 py-1.5 border border-slate-600 rounded-lg bg-slate-800 text-sm text-gray-100"
                             >
                               <option value="small">{text.options.fontSize[0]}</option>
                               <option value="normal">{text.options.fontSize[1]}</option>
@@ -1515,11 +1511,11 @@ function App() {
 
                           {/* Compact Mode */}
                           <div className="flex items-center justify-between py-2">
-                            <label className="text-sm text-gray-700 dark:text-gray-300">{text.labels.compactMode}</label>
+                            <label className="text-sm text-gray-300">{text.labels.compactMode}</label>
                             <button
                               onClick={() => setCompactMode(!compactMode)}
                               className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                                compactMode ? '' : 'bg-gray-300 dark:bg-gray-600'
+                                compactMode ? '' : 'bg-gray-600'
                               }`}
                               style={compactMode ? { backgroundColor: accentColors[accentColor] } : undefined}
                             >
@@ -1533,15 +1529,15 @@ function App() {
                     )}
                     {activeSettingsTab === 'data' && (
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{text.settings.data}</h3>
+                        <h3 className="text-lg font-semibold text-gray-100 mb-4">{text.settings.data}</h3>
                         <div className="space-y-3">
                           {/* Auto Sync */}
                           <div className="flex items-center justify-between py-2">
-                            <label className="text-sm text-gray-700 dark:text-gray-300">{text.labels.autoSync}</label>
+                            <label className="text-sm text-gray-300">{text.labels.autoSync}</label>
                             <button
                               onClick={() => setAutoSync(!autoSync)}
                               className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                                autoSync ? '' : 'bg-gray-300 dark:bg-gray-600'
+                                autoSync ? '' : 'bg-gray-600'
                               }`}
                               style={autoSync ? { backgroundColor: accentColors[accentColor] } : undefined}
                             >
@@ -1552,25 +1548,25 @@ function App() {
                           </div>
 
                           {/* Clear Cache */}
-                          <div className="pt-3 border-t border-gray-200 dark:border-slate-600 mt-4">
+                          <div className="pt-3 border-t border-slate-600 mt-4">
                             <button
                               onClick={() => {
                                 localStorage.clear();
                                 alert(`${text.buttons.clearCache}. ${text.misc.pleaseReload}`);
                                 window.location.reload();
                               }}
-                              className="px-4 py-2 bg-red-500 hover:bg-red-600 dark:bg-red-700 dark:hover:bg-red-800 text-white text-sm rounded-lg transition font-medium"
+                              className="px-4 py-2 bg-red-500 hover:bg-red-600 bg-red-700 hover:bg-red-800 text-white text-sm rounded-lg transition font-medium"
                             >
                               {text.buttons.clearCache}
                             </button>
                           </div>
 
                           {/* Storage Info */}
-                          <div className="pt-4 border-t border-gray-200 dark:border-slate-600">
-                            <p className="text-xs text-gray-600 dark:text-gray-300 mb-2">
+                          <div className="pt-4 border-t border-slate-600">
+                            <p className="text-xs text-gray-300 mb-2">
                               <strong>{text.misc.localStorageTitle}</strong> {text.labels.localStorageInfo}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                            <p className="text-xs text-gray-400">
                               {text.labels.localStorageInfo}
                             </p>
                           </div>
@@ -1580,14 +1576,14 @@ function App() {
                     {activeSettingsTab === 'about' && (
                       <div className="flex flex-col h-full">
                         <div className="flex-1 overflow-auto pr-2">
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{text.settings.about}</h3>
+                          <h3 className="text-lg font-semibold text-gray-100 mb-4">{text.settings.about}</h3>
                           <div className="space-y-3">
                             <div className="flex items-center justify-center mb-4">
                               <img src="/assets/GreLinesAssoLOGO.png" alt="GreLines" className="h-28 w-auto" />
                             </div>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">{text.misc.aboutDescription1}</p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">{text.misc.aboutDescription2}</p>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1 pt-2">
+                            <p className="text-sm text-gray-400">{text.misc.aboutDescription1}</p>
+                            <p className="text-sm text-gray-400">{text.misc.aboutDescription2}</p>
+                            <div className="text-xs text-gray-400 space-y-1 pt-2">
                               <p><strong>{text.misc.versionLabel}</strong> {appData?.version || '1.0.0'}</p>
                               <p><strong>{text.misc.dataSourceLabel}</strong> MTAG API (Grenoble)</p>
                               {appData?.credits?.map((credit, index) => (
@@ -1598,7 +1594,7 @@ function App() {
                                       href={credit.link}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-blue-600 dark:text-blue-400 hover:underline"
+                                      className="text-blue-400 hover:underline"
                                     >
                                       {credit.name}
                                     </a>
@@ -1610,17 +1606,17 @@ function App() {
                             </div>
                           </div>
                         </div>
-                        <div className="border-t border-gray-200 dark:border-slate-600 mt-4 pt-3">
+                        <div className="border-t border-slate-600 mt-4 pt-3">
                           <div className="flex items-center justify-center gap-2 w-full max-w-full" style={{ minHeight: '76px' }}>
-                            <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex-1 h-12 flex items-center justify-center gap-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
+                            <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex-1 h-12 flex items-center justify-center gap-3 bg-slate-800 border border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
                               <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-8 w-auto" />
                             </a>
-                            <a href="https://github.com/antquu/GreLines" target="_blank" rel="noopener noreferrer" className="flex-1 h-12 flex items-center justify-center gap-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
+                            <a href="https://github.com/antquu/GreLines" target="_blank" rel="noopener noreferrer" className="flex-1 h-12 flex items-center justify-center gap-3 bg-slate-800 border border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
                               <img src="/assets/GitHubLOGO.png" alt="GitHub" className="h-8 w-auto" />
                               <span className="text-white">Project</span>
                             </a>
-                            <a href="/login" target="_blank" rel="noopener noreferrer" className="h-12 w-12 flex items-center justify-center bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
-                              <KeyIcon className="h-5 w-5 text-gray-700 dark:text-gray-200" />
+                            <a href="/login" target="_blank" rel="noopener noreferrer" className="h-12 w-12 flex items-center justify-center bg-slate-800 border border-slate-600 rounded-lg shadow-sm hover:shadow-md transition">
+                              <KeyIcon className="h-5 w-5 text-gray-200" />
                             </a>
                           </div>
                         </div>
@@ -1642,9 +1638,9 @@ function App() {
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
               matchedStops={matchedStops}
+              stops={stops}
               searchHistoryItems={searchHistory ? searchHistoryItems : []}
               searchPlaceholder={text.searchPlaceholder}
-              recentSearchLabel={text.recentSearch}
               unknownCityLabel={text.unknownCity}
               onStopClick={(stop) => {
                 handleStopClick(stop);
@@ -1659,7 +1655,7 @@ function App() {
           {isMobile && !hidePageControls && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
             <motion.button
                 onClick={() => setSettingsState('peek')}
-                className="fixed z-60 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer border-2 border-gray-300 dark:border-gray-700 bg-white/85 dark:bg-slate-900/85 hover:bg-white dark:hover:bg-slate-900 transition-all duration-300 ease-out shadow-lg"
+                className="fixed z-60 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer border-2 border-gray-700 bg-slate-900/85 hover:bg-slate-900 transition-all duration-300 ease-out shadow-lg"
                 animate={{
                   top: '60px',
                   left: '16px',
@@ -1673,14 +1669,14 @@ function App() {
                 }}
                 title={text.misc.settings}
               >
-                <Cog6ToothIcon className="w-5 h-5 text-black dark:text-white" />
+                <Cog6ToothIcon className="w-5 h-5 text-white" />
               </motion.button>
           )}
 
           {isMobile && !hidePageControls && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
             <motion.button
                 onClick={handleLocationClick}
-                className="fixed z-60 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer border-2 border-gray-300 dark:border-gray-700 bg-white/85 dark:bg-slate-900/85 hover:bg-white dark:hover:bg-slate-900 transition-all duration-300 ease-out shadow-lg"
+                className="fixed z-60 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer border-2 border-gray-700 bg-slate-900/85 hover:bg-slate-900 transition-all duration-300 ease-out shadow-lg"
                 animate={{
                   top: '104px',
                   left: '16px',
@@ -1694,7 +1690,7 @@ function App() {
                 }}
                 title={text.misc.centerLocation}
               >
-                <MapPinIcon className="w-5 h-5 text-black dark:text-white" />
+                <MapPinIcon className="w-5 h-5 text-white" />
               </motion.button>
           )}
 
@@ -1724,20 +1720,20 @@ function App() {
               {/* Settings Button */}
               <button
                 onClick={() => setSettingsState('open')}
-                className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer bg-white/85 dark:bg-slate-900/85 hover:bg-white dark:hover:bg-slate-900 transition-all duration-300 ease-out shadow-lg"
+                className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer bg-slate-900/85 hover:bg-slate-900 transition-all duration-300 ease-out shadow-lg"
                 title={text.misc.settings}
               >
-                <Cog6ToothIcon className="w-5 h-5 text-black dark:text-white" />
+                <Cog6ToothIcon className="w-5 h-5 text-white" />
               </button>
 
               <div
                 onMouseEnter={() => setIsSearchHovered(true)}
-                onMouseLeave={() => setIsSearchHovered(false)}
+                onMouseLeave={() => !isSearchFocused && setIsSearchHovered(false)}
                 className={`relative h-10 transition-[width] duration-300 ease-out ${
                   isSearchFocused || isSearchHovered ? 'w-96' : 'w-10'
                 } group`}
               >
-                <div className="absolute inset-0 bg-white/85 dark:bg-slate-900/85 border border-gray-300 dark:border-gray-700 shadow-lg rounded-full transition-all duration-300" />
+                <div className="absolute inset-0 bg-slate-900/85 border border-gray-700 shadow-lg rounded-full transition-all duration-300" />
 
                 <div className="relative h-full flex items-center pr-2">
                   <div
@@ -1747,15 +1743,18 @@ function App() {
                         : 'left-1/2 -translate-x-1/2'
                     }`}
                   >
-                    <MagnifyingGlassIcon className="w-5 h-5 text-black dark:text-white" />
+                    <MagnifyingGlassIcon className="w-5 h-5 text-white" />
                   </div>
                   <input
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => setIsSearchFocused(false)}
+                    onBlur={() => {
+                      setIsSearchFocused(false);
+                      setIsSearchHovered(false);
+                    }}
                     placeholder={text.searchPlaceholder}
-                    className="h-full pl-10 pr-4 bg-transparent border-none outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 transition-all duration-300 ease-out opacity-0 w-0 group-hover:opacity-100 group-hover:w-[calc(100%-48px)] focus:opacity-100 focus:w-[calc(100%-48px)]"
+                    className="h-full pl-10 pr-4 bg-transparent border-none outline-none text-sm text-gray-100 placeholder-gray-400 transition-all duration-300 ease-out opacity-0 w-0 group-hover:opacity-100 group-hover:w-[calc(100%-48px)] focus:opacity-100 focus:w-[calc(100%-48px)]"
                     autoComplete="off"
                   />
                   {searchQuery && (isSearchFocused || isSearchHovered) && (
@@ -1771,7 +1770,19 @@ function App() {
 
                 {/* Zone de recherche dropdown */}
                 {(isSearchFocused || isSearchHovered) && (
-                  <div className="absolute left-0 top-12 mt-1 w-full max-h-72 overflow-auto bg-white/95 dark:bg-slate-900/95 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl">
+                  <>
+                    {/* Invisible hover bridge */}
+                    <div
+                      onMouseEnter={() => setIsSearchHovered(true)}
+                      onMouseLeave={() => setIsSearchHovered(false)}
+                      className="absolute left-0 top-10 w-96 h-2 pointer-events-auto"
+                    />
+                    
+                    <div
+                      onMouseEnter={() => setIsSearchHovered(true)}
+                      onMouseLeave={() => setIsSearchHovered(false)}
+                    className="absolute left-0 top-12 w-full max-h-72 overflow-auto bg-slate-900/95 border border-gray-700 rounded-2xl shadow-xl"
+                  >
                     {/* Résultats de recherche */}
                     {searchQuery.trim() !== '' && matchedStops.length > 0 && (
                       <>
@@ -1782,10 +1793,10 @@ function App() {
                               handleStopClick(stop);
                               mapRef.current?.centerOnStop(stop);
                             }}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
+                            className="w-full text-left px-3 py-2 hover:hover:bg-slate-800 transition"
                           >
-                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{stop.name}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">{stop.city || text.unknownCity}</div>
+                            <div className="text-sm font-medium text-gray-100">{stop.name}</div>
+                            <div className="text-xs text-gray-400">{stop.city || text.unknownCity}</div>
                           </button>
                         ))}
                       </>
@@ -1794,27 +1805,35 @@ function App() {
                     {/* Historique de recherche */}
                     {searchQuery.trim() === '' && searchHistory && searchHistoryItems.length > 0 && (
                       <>
-                        <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
+                        <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-600">
                           Recherches récentes
                         </div>
-                        {searchHistoryItems.map((historyItem, index) => (
-                          <button
-                            key={`${historyItem}-${index}`}
-                            onClick={() => setSearchQuery(historyItem)}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 transition flex items-center gap-2"
-                          >
-                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="text-sm text-gray-900 dark:text-gray-100">{historyItem}</span>
-                          </button>
-                        ))}
+                        {searchHistoryItems.map((historyItem, index) => {
+                          const historyStop = stops.find(stop => stop.name === historyItem);
+                          return (
+                            <button
+                              key={`${historyItem}-${index}`}
+                              onClick={() => {
+                                if (historyStop) {
+                                  handleStopClick(historyStop);
+                                  mapRef.current?.centerOnStop(historyStop);
+                                  setSearchQuery('');
+                                  setIsSearchFocused(false);
+                                }
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800 transition border-b border-slate-800"
+                            >
+                              <div className="text-sm font-medium text-gray-100">{historyItem}</div>
+                              <div className="text-xs text-gray-400">{historyStop?.city || text.unknownCity}</div>
+                            </button>
+                          );
+                        })}
                       </>
                     )}
 
                     {/* Séparateur avec logo GreGo - toujours visible */}
-                    <div className="border-t border-gray-200 dark:border-gray-600 px-3 py-3">
-                      <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer">
+                    <div className="border-t border-gray-600 px-3 py-3">
+                      <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors cursor-pointer">
                         <span>{text.misc.calculateItineraryWith}</span>
                         <img
                           src="/assets/GreGoLOGO.png"
@@ -1823,7 +1842,8 @@ function App() {
                         />
                       </a>
                     </div>
-                  </div>
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -1953,9 +1973,9 @@ function App() {
 
       {/* Footer - Live Time / Network Closed */}
       {!hidePageControls && (
-        <div className="fixed bottom-0 left-0 right-0 h-10 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 z-50 shadow-lg">
+        <div className="fixed bottom-0 left-0 right-0 h-10 bg-gray-900 border-t border-gray-800 z-50 shadow-lg">
         {isNetworkClosed(currentTime) ? (
-          <div className="w-full h-full flex items-center justify-center text-sm font-bold text-red-600 dark:text-red-300">
+          <div className="w-full h-full flex items-center justify-center text-sm font-bold text-red-300">
             {text.misc.networkClosed}
           </div>
         ) : (
@@ -1965,7 +1985,7 @@ function App() {
               href="https://github.com/antquu"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-900 dark:text-white text-xs font-medium hover:text-blue-600 dark:hover:text-blue-400 transition cursor-pointer"
+              className="text-white text-xs font-medium hover:text-blue-600 dark:hover:text-blue-400 transition cursor-pointer"
             >
               By Antquu
             </a>
@@ -1976,10 +1996,10 @@ function App() {
                 className={`w-4 h-4 transition-colors duration-300 ${
                   signalColor
                     ? 'text-blue-600'
-                    : 'text-gray-900 dark:text-white'
+                    : 'text-white'
                 }`}
               />
-              <p className="text-gray-900 dark:text-white font-mono font-medium text-xs">
+              <p className="text-white font-mono font-medium text-xs">
                 {currentTime.toLocaleTimeString('fr-FR')}
               </p>
             </div>
