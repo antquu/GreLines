@@ -1,0 +1,30 @@
+{
+  "version": "2.0.1",
+
+  "credits": [
+    {
+      "role": "Development and Design",
+      "name": "antquu",
+      "link": "https://github.com/antquu"
+    },
+    {
+      "role": "Development",
+      "name": "Palmine",
+      "link": "https://github.com/Palmine38/"
+    },
+    {
+      "role": "Thanks to MReso for providing us with the data free of charge! / Merci a MReso de nous fournir les données gratuitement!",
+      "name": null,
+      "link": null
+    }
+  ],
+
+  "admin": {
+    "identifiers": [
+      {
+        "user": "ant.adam468@gmail.com",
+        "password": "password"
+      }
+    ]
+  }
+}
