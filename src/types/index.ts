@@ -16,6 +16,7 @@ export interface TrafficDetail {
 
 export interface Line {
   id: string;
+  routeId?: string;
   name: string;
   type: 'BUS' | 'TRAM' | 'OTHER';
   shortName?: string;

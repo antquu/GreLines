@@ -6,9 +6,24 @@ interface TrafficPanelMobileProps {
   isOpen: boolean;
   onClose: () => void;
   trafficInfo: Map<string, TrafficDetail[]>;
+  language: 'fr' | 'en';
 }
 
-export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo }: TrafficPanelMobileProps) => {
+const getTrafficPanelText = (language: 'fr' | 'en') => {
+  const isFr = language === 'fr';
+  return {
+    liveTrafficInfo: isFr ? 'Infos trafic en direct' : 'Live traffic info',
+    noIncidents: isFr ? 'Aucun incident connu pour le moment.' : 'No known incidents at the moment.',
+    linePrefix: isFr ? 'Ligne' : 'Line',
+    incidentSingular: isFr ? 'incident' : 'incident',
+    incidentPlural: isFr ? 'incidents' : 'incidents',
+    endPrefix: isFr ? 'Fin :' : 'End :',
+  };
+};
+
+export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language }: TrafficPanelMobileProps) => {
+  const text = getTrafficPanelText(language);
+
   return (
     <>
       {/* Full-screen overlay when open */}
@@ -31,7 +46,7 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo }: TrafficPane
         className="fixed bottom-0 left-0 right-0 z-50 bg-[#5c3d04] rounded-t-2xl shadow-2xl border-t border-amber-600 max-h-[80vh] overflow-y-auto"
       >
         <div className="p-4 sticky top-0 bg-[#5c3d04] border-b border-amber-600 flex items-center justify-between">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-amber-200">Live traffic info</h3>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-amber-200">{text.liveTrafficInfo}</h3>
           <button
             onClick={onClose}
             className="p-1 hover:bg-amber-700 rounded transition"
@@ -43,7 +58,7 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo }: TrafficPane
         <div className="p-4">
           {trafficInfo.size === 0 ? (
             <div className="text-sm text-amber-200 text-center py-8">
-              No known incidents at the moment.
+              {text.noIncidents}
             </div>
           ) : (
             <div className="space-y-3">
@@ -73,15 +88,15 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo }: TrafficPane
                       className="rounded-md bg-amber-700/30 p-3 border border-amber-600/50"
                     >
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-sm font-bold text-amber-100">Line {line}</span>
-                        <span className="text-xs text-amber-200">{sortedDetails.length} incident{sortedDetails.length > 1 ? 's' : ''}</span>
+                        <span className="text-sm font-bold text-amber-100">{text.linePrefix} {line}</span>
+                        <span className="text-xs text-amber-200">{sortedDetails.length} {sortedDetails.length > 1 ? text.incidentPlural : text.incidentSingular}</span>
                       </div>
                       <div className="space-y-2">
                         {sortedDetails.map((detail, index) => (
                           <div key={`${line}-${index}`} className="text-xs text-amber-100 bg-amber-800/20 p-2 rounded border border-amber-600/30">
                             <div className="font-semibold text-amber-50">{detail.titre}</div>
                             <div className="mt-1 text-amber-100">{detail.description}</div>
-                            <div className="text-[11px] text-amber-200 mt-1">End: {detail.dateFin || 'N/A'}</div>
+                            <div className="text-[11px] text-amber-200 mt-1">{text.endPrefix} {detail.dateFin || 'N/A'}</div>
                           </div>
                         ))}
                       </div>

@@ -33,6 +33,42 @@ function getTramOccupancy(lineId: string, destination: string): 'EMPTY' | 'LIGHT
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 2 * 60 * 1000; // 2 min (plus court pour avoir des données plus fraîches)
 
+const NETWORK_PREFIXES = ['SEM'] as const;
+
+function hasNetworkPrefix(value: string): boolean {
+  return value.startsWith('SEM:') || value.startsWith('SEM_');
+}
+
+function normalizeRouteCode(value: string): string {
+  const raw = String(value);
+  if (raw.startsWith('SEM:') || raw.startsWith('SEM_')) {
+    return raw.substring(4);
+  }
+  return raw;
+}
+
+function formatRouteId(value: string): string {
+  const raw = String(value);
+  if (raw.startsWith('SEM:') || raw.startsWith('SEM_')) return raw;
+  return `SEM:${raw}`;
+}
+
+function formatClusterId(stopId: string): string {
+  const raw = String(stopId);
+
+  if (raw.startsWith('SEM:GEN')) return raw;
+  if (raw.startsWith('SEM:')) return `SEM:GEN${raw.substring(4)}`;
+  return `SEM:GEN${raw}`;
+}
+
+function getClusterIdsForStopId(stopId: string): string[] {
+  const entry = stopsWithClusterCache.get(stopId);
+  if (entry?.clusterIds?.length) {
+    return Array.from(new Set(entry.clusterIds));
+  }
+  return [formatClusterId(stopId)];
+}
+
 function getFromCache<T>(key: string): T | null {
   const entry = cache.get(key);
   if (entry && Date.now() - entry.timestamp < CACHE_DURATION) {
@@ -46,6 +82,17 @@ function setCache(key: string, data: any) {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
+function normalizeStopName(value: string | undefined | null): string {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+}
+
+function getStopGroupKey(stop: Stop): string {
+  return `${normalizeStopName(stop.name)}|${normalizeStopName(stop.city)}`;
+}
+
 /**
  * Récupère les lignes sous impact trafic à partir de l'API de trafic
  */
@@ -57,7 +104,7 @@ export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
     const trafficMap = new Map<string, TrafficDetail[]>();
 
     const addDetail = (lineCode: string, info: any) => {
-      const line = lineCode.replace(/^SEM_/, '').replace(/^SEM:/, '');
+      const line = normalizeRouteCode(String(lineCode));
       if (!line) return;
       const details: TrafficDetail = {
         titre: String(info.titre || ''),
@@ -122,12 +169,14 @@ async function loadRoutes(): Promise<Line[]> {
     const trafficLines = await getTrafficLines();
 
     const lines = routes
-      .filter((r: any) => r?.id?.startsWith('SEM:'))
+      .filter((r: any) => hasNetworkPrefix(String(r?.id || '')))
       .map((route: any) => {
-        const id = route.id.substring(4);
+        const routeId = String(route.id);
+        const id = normalizeRouteCode(routeId);
         const details = trafficLines.get(id) || [];
         return {
           id,
+          routeId,
           name: route.longName || route.shortName || id,
           shortName: route.shortName || id,
           type: route.type || 'BUS',
@@ -145,69 +194,115 @@ async function loadRoutes(): Promise<Line[]> {
     return [];
   }
 }
+function lineMatchesPrefixes(line: Line, prefixes: string[]): boolean {
+  if (!line.routeId) return false;
+  return prefixes.some(prefix => line.routeId?.startsWith(`${prefix}:`) || line.routeId?.startsWith(`${prefix}_`));
+}
 
-// Cache global : stopId → { stop, clusterId }
-type StopWithCluster = { stop: Stop; clusterId: string };
+async function buildStopsFromLines(lines: Line[]): Promise<Stop[]> {
+  const stopsMap = new Map<string, Stop>();
+  stopsWithClusterCache.clear();
+
+  for (const line of lines) {
+    try {
+      const routeRef = line.routeId ?? formatRouteId(line.id);
+      const url = `${TAG_API_BASE}/index/routes/${routeRef}/clusters`;
+      const res = await axios.get(url, { headers: TAG_HEADERS });
+      const clusters = res.data || [];
+
+      for (const c of clusters) {
+        const stopId = c.id;
+        const clusterId = formatClusterId(stopId);
+
+        if (!stopId || stopsMap.has(stopId)) continue;
+
+        const stop: Stop = {
+          id: stopId,
+          name: c.name || 'Sans nom',
+          lat: c.lat ?? 0,
+          lon: c.lon ?? 0,
+          city: c.city || 'Grenoble',
+          clusterGtfsId: clusterId,
+        };
+
+        stopsMap.set(stopId, stop);
+        stopsWithClusterCache.set(stopId, { stop, clusterIds: [clusterId] } as any);
+      }
+    } catch (err) {
+      console.warn(`  ⚠️ Ligne ${line.id} clusters échouée`, err);
+    }
+  }
+
+  const stopGroups = new Map<string, { stopIds: string[]; clusterIds: Set<string> }>();
+  for (const stop of stopsMap.values()) {
+    const key = getStopGroupKey(stop);
+    const group = stopGroups.get(key) || { stopIds: [], clusterIds: new Set<string>() };
+    group.stopIds.push(stop.id);
+    if (stop.clusterGtfsId) {
+      group.clusterIds.add(stop.clusterGtfsId);
+    }
+    stopGroups.set(key, group);
+  }
+
+  const mergedStops: Stop[] = [];
+  const newCache = new Map<string, StopWithCluster>();
+
+  for (const group of stopGroups.values()) {
+    const canonicalStop = stopsMap.get(group.stopIds[0])!;
+    const mergedClusterIds = Array.from(group.clusterIds).filter(Boolean);
+
+    if (group.stopIds.length > 1) {
+      // Combine similar stops into one without extra console noise
+    }
+
+    if (mergedClusterIds.length > 0) {
+      canonicalStop.clusterGtfsId = mergedClusterIds[0];
+    }
+
+    mergedStops.push(canonicalStop);
+
+    const entry: StopWithCluster = {
+      stop: canonicalStop,
+      clusterIds: mergedClusterIds.length > 0 ? mergedClusterIds : [canonicalStop.clusterGtfsId || canonicalStop.id],
+    } as any;
+
+    for (const stopId of group.stopIds) {
+      newCache.set(stopId, entry);
+    }
+  }
+
+  stopsWithClusterCache = newCache;
+  return mergedStops;
+}
+
+export async function getStopsByPrefixes(prefixes: string[]): Promise<Stop[]> {
+  const lines = await loadRoutes();
+  const filtered = lines.filter((line) => lineMatchesPrefixes(line, prefixes));
+  return await buildStopsFromLines(filtered);
+}
+// Cache global : stopId → { stop, clusterIds }
+type StopWithCluster = { stop: Stop; clusterIds: string[] };
 let stopsWithClusterCache = new Map<string, StopWithCluster>();
 
 /**
  * Charge tous les arrêts + leur clusterId réel
  * → c'est ici qu'on corrige le principal problème
  */
-export async function getAllStops(): Promise<Stop[]> {
-  const cacheKey = 'all_stops';
+export async function getAllStops(prefixes: string[] = [...NETWORK_PREFIXES]): Promise<Stop[]> {
+  const sortedPrefixes = [...prefixes].sort();
+  const cacheKey = `all_stops_${sortedPrefixes.join(',')}`;
   const cached = getFromCache<Stop[]>(cacheKey);
   if (cached) {
-    console.log(`💾 ${cached.length} arrêts depuis cache`);
+    console.log(`💾 ${cached.length} arrêts depuis cache (${sortedPrefixes.join(',')})`);
     return cached;
   }
 
   try {
-    console.log(`📡 Chargement arrêts (via clusters des lignes)...`);
-    const lines = await loadRoutes();
-    const stopsMap = new Map<string, Stop>();
-    stopsWithClusterCache.clear();
-
-    for (const line of lines) {
-      try {
-        const url = `${TAG_API_BASE}/index/routes/SEM:${line.id}/clusters`;
-        const res = await axios.get(url, { headers: TAG_HEADERS });
-        const clusters = res.data || [];
-
-        for (const c of clusters) {
-          const stopId = c.id;                 // souvent SEM:XXXXXX
-          // Formater le clusterId comme SEM:GEN(clusterId)
-          const clusterId = c.id.startsWith('SEM:') 
-            ? `SEM:GEN${c.id.substring(4)}`  // Si déjà SEM:XXXXX → SEM:GENXXXXX
-            : `SEM:GEN${c.id}`;              // Sinon → SEM:GENXXXXX
-
-          if (!stopId || stopsMap.has(stopId)) continue;
-
-          const stop: Stop = {
-            id: stopId,
-            name: c.name || 'Sans nom',
-            lat: c.lat ?? 0,
-            lon: c.lon ?? 0,
-            city: c.city || 'Grenoble',
-            clusterGtfsId: clusterId, // on garde pour compat
-          };
-
-          stopsMap.set(stopId, stop);
-          stopsWithClusterCache.set(stopId, { stop, clusterId });
-
-          // Debug utile au début
-          // console.log(`  ${line.shortName.padEnd(5)} → ${c.name.padEnd(30)} ${clusterId}`);
-        }
-      } catch (err) {
-        console.warn(`  ⚠️ Ligne ${line.id} clusters échouée`);
-      }
-    }
-
-    const allStops = Array.from(stopsMap.values());
-    setCache(cacheKey, allStops);
-    console.log(`✓ ${allStops.length} arrêts uniques chargés`);
-
-    return allStops;
+    console.log(`📡 Chargement arrêts (via clusters des lignes)... ${sortedPrefixes.join(', ')}`);
+    const stops = await getStopsByPrefixes(sortedPrefixes);
+    setCache(cacheKey, stops);
+    console.log(`✓ ${stops.length} arrêts uniques chargés`);
+    return stops;
   } catch (err) {
     console.error('❌ Erreur getAllStops:', err);
     return [];
@@ -232,88 +327,87 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
   }
 
   try {
-    // Étape critique : trouver le BON cluster ID
-    let clusterId = stopId;
+    // Étape critique : trouver les BONNES cluster IDs
+    let clusterIds = [stopId];
 
     if (stopsWithClusterCache.has(stopId)) {
-      clusterId = stopsWithClusterCache.get(stopId)!.clusterId;
+      clusterIds = getClusterIdsForStopId(stopId);
     } else {
       // fallback : on recharge tout (pas idéal mais évite plantage)
       await getAllStops();
       if (stopsWithClusterCache.has(stopId)) {
-        clusterId = stopsWithClusterCache.get(stopId)!.clusterId;
+        clusterIds = getClusterIdsForStopId(stopId);
+      } else {
+        clusterIds = [formatClusterId(stopId)];
       }
     }
 
-    console.log(`📡 Départs → cluster : ${clusterId}`);
+    console.log(`📡 Départs → clusterIds : ${clusterIds.join(', ')}`);
 
-    let url = `${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes`;
-    console.log(`📡 getDepartures URL: ${url}`);
-    const res = await axios.get(url, { headers: TAG_HEADERS });
-
-    const data = res.data;
-    console.log(`Raw API response for ${clusterId}:`, JSON.stringify(data, null, 2));
-    
-    if (!Array.isArray(data)) {
-      console.warn(`Réponse stoptimes non-array pour ${clusterId}`, data);
-      return [];
-    }
-
-    const now = Date.now() / 1000;
     const departures: Departure[] = [];
+    const seen = new Set<string>();
 
-    for (const patternGroup of data) {
-      const pattern = patternGroup.pattern ?? {};
-      const times = patternGroup.times ?? patternGroup.stoptimes ?? [];
+    for (const clusterId of clusterIds) {
+      let url = `${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes`;
+      console.log(`📡 getDepartures URL: ${url}`);
+      const res = await axios.get(url, { headers: TAG_HEADERS });
+      const data = res.data;
 
-      if (!Array.isArray(times)) continue;
-
-      // Ligne: utiliser routeId si fourni, sinon pattern.id (ex. SEM:B:0:...) -> B
-      let lineId = '??';
-      if (pattern.routeId) {
-        lineId = pattern.routeId.replace(/^SEM:/, '');
-      } else if (typeof pattern.id === 'string') {
-        const parts = pattern.id.split(':');
-        if (parts.length > 1) lineId = parts[1];
+      if (!Array.isArray(data)) {
+        console.warn(`Réponse stoptimes non-array pour ${clusterId}`, data);
+        continue;
       }
 
-      // Destination: preference headsign -> lastStopName -> name -> unknown
-      const destination = pattern.headsign || pattern.lastStopName || pattern.name || 'Direction inconnue';
+      const now = Date.now() / 1000;
 
-      console.log(`Pattern ${lineId} -> ${destination}, ${times.length} times (pattern.id=${pattern.id})`);
+      for (const patternGroup of data) {
+        const pattern = patternGroup.pattern ?? {};
+        const times = patternGroup.times ?? patternGroup.stoptimes ?? [];
 
-      for (const t of times) {
-        const serviceDay = t.serviceDay ?? 0;
-        const scheduled = t.scheduledDeparture ?? 0;
-        const realtime = t.realtimeDeparture ?? scheduled;
+        if (!Array.isArray(times)) continue;
 
-        const depUnix = serviceDay + realtime;
-        const minutes = Math.round((depUnix - now) / 60);
-
-        console.log(`  Time: serviceDay=${serviceDay}, scheduled=${scheduled}, realtime=${realtime}, depUnix=${depUnix}, now=${now}, minutes=${minutes}`);
-
-        if (depUnix < now - 300) {
-          console.log(`  Skipping past departure: ${minutes} min ago`);
-          continue; // déjà parti depuis >5min
+        let lineId = '??';
+        if (pattern.routeId) {
+          lineId = normalizeRouteCode(String(pattern.routeId));
+        } else if (typeof pattern.id === 'string') {
+          const parts = pattern.id.split(':');
+          if (parts.length > 1) lineId = parts[1];
         }
 
-        departures.push({
-          lineId,
-          lineName: pattern.longName ?? pattern.name ?? '',
-          lineShortName: pattern.shortName ?? lineId,
-          destination,
-          departureTime: minutes,
-          realtime: t.realtimeArrival !== undefined || t.realtimeDeparture !== undefined,
-          type: pattern.mode === 'TRAM' ? 'TRAM' : 'BUS',
-          occupancy: getTramOccupancy(lineId, destination), // Occupancy fixe par tram
-        });
+        const destination = pattern.headsign || pattern.lastStopName || pattern.name || 'Direction inconnue';
+
+        for (const t of times) {
+          const serviceDay = t.serviceDay ?? 0;
+          const scheduled = t.scheduledDeparture ?? 0;
+          const realtime = t.realtimeDeparture ?? scheduled;
+
+          const depUnix = serviceDay + realtime;
+          const minutes = Math.round((depUnix - now) / 60);
+
+          if (depUnix < now - 300) continue;
+
+          const key = `${clusterId}|${lineId}|${destination}|${depUnix}|${pattern.mode}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+
+          departures.push({
+            lineId,
+            lineName: pattern.longName ?? pattern.name ?? '',
+            lineShortName: pattern.shortName ?? lineId,
+            destination,
+            departureTime: minutes,
+            realtime: t.realtimeArrival !== undefined || t.realtimeDeparture !== undefined,
+            type: pattern.mode === 'TRAM' ? 'TRAM' : 'BUS',
+            occupancy: getTramOccupancy(lineId, destination),
+          });
+        }
       }
     }
 
     departures.sort((a, b) => a.departureTime - b.departureTime);
 
     setCache(cacheKey, departures);
-    console.log(`→ ${departures.length} départs trouvés pour ${stopId} (${clusterId})`);
+    console.log(`→ ${departures.length} départs trouvés pour ${stopId}`);
 
     return departures;
   } catch (err: any) {
@@ -325,36 +419,42 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
 /**
  * Get all lines serving a specific stop
  */
-async function getStopRoutes(stopId: string): Promise<Line[]> {
+export async function getStopLines(stopId: string): Promise<Line[]> {
   try {
-    // Formater le stopId comme SEM:GEN(stopId)
-    const cleanStopId = stopId.startsWith('SEM:') ? stopId.substring(4) : stopId;
-    const fullStopId = `SEM:GEN${cleanStopId}`;
-    
-    console.log(`📡 Récupération lignes pour: ${fullStopId}`);
-    
-    const response = await axios.get(
-      `${TAG_API_BASE}/index/clusters/${fullStopId}/routes`,
-      { headers: TAG_HEADERS }
-    );
-    const routes = response.data || [];
-
+    const clusterIds = getClusterIdsForStopId(stopId);
     const trafficLines = await getTrafficLines();
+    const routeMap = new Map<string, Line>();
 
-    const lines: Line[] = routes.map((route: any) => {
-      const lineId = route.id.startsWith('SEM:') ? route.id.substring(4) : route.id;
-      const details = trafficLines.get(lineId) || [];
-      return {
-        id: lineId,
-        name: route.longName || route.shortName || lineId,
-        shortName: route.shortName || lineId,
-        type: route.type || 'BUS',
-        color: route.color || '#666666',
-        hasTraffic: details.length > 0,
-        trafficDetails: details,
-      } satisfies Line;
-    });
+    for (const clusterId of clusterIds) {
+      try {
+        console.log(`📡 Récupération lignes pour: ${clusterId}`);
+        const response = await axios.get(
+          `${TAG_API_BASE}/index/clusters/${clusterId}/routes`,
+          { headers: TAG_HEADERS }
+        );
+        const routes = response.data || [];
 
+        for (const route of routes) {
+          const lineId = normalizeRouteCode(String(route.id));
+          if (routeMap.has(lineId)) continue;
+
+          const details = trafficLines.get(lineId) || [];
+          routeMap.set(lineId, {
+            id: lineId,
+            name: route.longName || route.shortName || lineId,
+            shortName: route.shortName || lineId,
+            type: route.type || 'BUS',
+            color: route.color || '#666666',
+            hasTraffic: details.length > 0,
+            trafficDetails: details,
+          } satisfies Line);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Erreur chargement lignes pour ${clusterId}:`, error);
+      }
+    }
+
+    const lines = Array.from(routeMap.values());
     console.log(`✓ ${lines.length} lignes pour ${stopId}`);
     return lines;
   } catch (error) {
@@ -363,17 +463,25 @@ async function getStopRoutes(stopId: string): Promise<Line[]> {
   }
 }
 
-export async function getStopDetail(stopId: string): Promise<StopDetail | null> {
+export async function getStopDetail(stopId: string, prefixes: string[] = [...NETWORK_PREFIXES]): Promise<StopDetail | null> {
   try {
-    const stops = await getAllStops();
+    const stops = await getAllStops(prefixes);
     let stop = stops.find(s => s.id === stopId);
     if (!stop) {
-      // tentative avec prefix
-      stop = stops.find(s => s.id === `SEM:${stopId}` || s.clusterGtfsId === stopId);
+      const candidates = new Set<string>([stopId]);
+      for (const prefix of NETWORK_PREFIXES) {
+        if (!stopId.startsWith(`${prefix}:`)) {
+          candidates.add(`${prefix}:${stopId}`);
+        }
+      }
+      stop = stops.find(s => candidates.has(s.id) || s.clusterGtfsId === stopId);
+    }
+    if (!stop && stopsWithClusterCache.has(stopId)) {
+      stop = stopsWithClusterCache.get(stopId)!.stop;
     }
     if (!stop) return null;
 
-    const lines = await getStopRoutes(stop.id);
+    const lines = await getStopLines(stop.id);
     console.log(`✓ Chargement ${lines.length} lignes pour arrêt ${stop.name}:`, lines.map(l => l.id).join(', '));
 
     // Requête unique au cluster pour récupérer TOUS les bus (sans filtrer par ligne)
@@ -442,13 +550,13 @@ export async function searchStops(query: string): Promise<Stop[]> {
 /**
  * Format departure time for display
  */
-export function formatDepartureTime(departure: Departure): string {
+export function formatDepartureTime(departure: Departure, locale: 'fr' | 'en' = 'en'): string {
   const minutes = departure.departureTime;
 
   if (minutes < 0) {
-    return 'Passed';
+    return locale === 'fr' ? 'Passé' : 'Passed';
   } else if (minutes === 0) {
-    return 'Now';
+    return locale === 'fr' ? 'ARR' : 'Now';
   } else if (minutes < 60) {
     return `${minutes}m`;
   } else {
