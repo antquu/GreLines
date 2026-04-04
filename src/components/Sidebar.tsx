@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+﻿import { motion } from 'framer-motion';
 import type { StopDetail, Departure } from '../types';
 import { formatDepartureTime, refreshStopDepartures } from '../services/api';
 import { useEffect, useState, useRef } from 'react';
@@ -10,6 +10,10 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   initialSelectedLines?: Set<string>;
+  compactMode: boolean;
+  autoSync: boolean;
+  refreshIntervalMs: number;
+  language: 'fr' | 'en';
 }
 
 const getMinutesUntilDeparture = (departure: Departure): number => {
@@ -17,17 +21,121 @@ const getMinutesUntilDeparture = (departure: Departure): number => {
   return departure.departureTime;
 };
 
-const getDepartureDisplay = (departure: Departure): string => {
-  return formatDepartureTime(departure);
+const getDepartureDisplay = (departure: Departure, language: 'fr' | 'en'): string => {
+  if (departure.departureTime > 35) {
+    const arrival = new Date(Date.now() + departure.departureTime * 60000);
+    const hours = arrival.getHours().toString().padStart(2, '0');
+    const minutes = arrival.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+
+  return formatDepartureTime(departure, language);
 };
 
-// Déterminer si c'est un tramway (lignes A, B, C, D, E)
+const getSidebarText = (language: 'fr' | 'en') => {
+  const isFr = language === 'fr';
+  return {
+    lines: isFr ? 'Lignes' : 'Lines',
+    filter: isFr ? 'Filtrer :' : 'Filter:',
+    showAll: isFr ? 'Afficher tout' : 'Show all',
+    exportConfiguration: isFr ? 'Exporter la configuration' : 'Export configuration',
+    exportedConfiguration: isFr ? 'Configuration exportée' : 'Exported configuration',
+    shareLink: isFr ? 'Lien de partage' : 'Share link',
+    copy: isFr ? 'Copier' : 'Copy',
+    nextDepartures: isFr ? 'Prochains départs' : 'Next departures',
+    tramway: isFr ? 'Tramway' : 'Tramway',
+    bus: 'Bus',
+    live: isFr ? 'Direct' : 'Live',
+    nextDeparture: isFr ? 'Prochain départ' : 'Next departure',
+    time: isFr ? 'Heure' : 'TIME',
+    occupancy: isFr ? 'Affluence' : 'OCCUPANCY',
+    realTimeData: isFr ? 'Données en temps réel' : 'Real-time data',
+    disruptedTraffic: isFr ? 'Trafic perturbé sur la ligne' : 'Disrupted traffic on line',
+    noDeparturesAvailable: isFr ? 'Aucun départ disponible' : 'No departures available',
+    detailsUnavailable: isFr ? 'Détails non disponibles' : 'Details unavailable',
+    ongoingDisruption: isFr ? 'Perturbation en cours' : 'Ongoing disruption',
+    estimatedEnd: isFr ? 'Fin estimée :' : 'Estimated end:',
+    nextLabel: isFr ? 'PROCHAIN' : 'NEXT',
+    moreDepartures: (count: number) => isFr ? `+${count} départs supplémentaires disponibles` : `+${count} more departures available`,
+    calculateItineraryWith: isFr ? 'Calculez votre itinéraire avec' : 'Calculate your itinerary with',
+  };
+};
+
+const normalizeHexColor = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  const hex = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+  return /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : undefined;
+};
+
+const getContrastTextColor = (background?: string, textColor?: string): string => {
+  const normalizedTextColor = normalizeHexColor(textColor);
+  if (normalizedTextColor) return normalizedTextColor;
+  const bg = normalizeHexColor(background);
+  if (!bg) return '#FFFFFF';
+  const r = parseInt(bg.slice(1, 3), 16);
+  const g = parseInt(bg.slice(3, 5), 16);
+  const b = parseInt(bg.slice(5, 7), 16);
+  return (r * 0.299 + g * 0.587 + b * 0.114) > 186 ? '#000000' : '#FFFFFF';
+};
+
+const getLineStyle = (color?: string, textColor?: string) => {
+  const backgroundColor = normalizeHexColor(color);
+  if (!backgroundColor) return {};
+  return {
+    backgroundColor,
+    color: getContrastTextColor(backgroundColor, textColor),
+  };
+};
+
+// DÃ©terminer si c'est un tramway (lignes A, B, C, D, E)
 const isTramway = (lineId: string): boolean => {
   const id = lineId.toUpperCase().trim();
   return ['A', 'B', 'C', 'D', 'E'].includes(id);
 };
 
-// Afficher les icônes d'occupancy
+const isRoundLine = (lineId: string): boolean => {
+  const id = lineId.toUpperCase().trim();
+  const code = id.includes('_') ? id.split('_').pop() || id : id;
+  if (['A', 'B', 'C', 'D', 'E'].includes(code)) return true;
+  const cMatch = /^C(\d+)$/.exec(code);
+  return !!cMatch && parseInt(cMatch[1], 10) >= 1 && parseInt(cMatch[1], 10) <= 14;
+};
+
+const getBadgeShapeClass = (isRound: boolean): string => {
+  return isRound ? 'rounded-full' : 'rounded-2xl';
+};
+
+const getLineSortKey = (lineShortName?: string | null, lineId?: string): [number, string] => {
+  const code = (lineShortName || lineId || '').toUpperCase().trim();
+  if (code === 'A') return [0, ''];
+  if (code === 'B') return [1, ''];
+  if (code === 'C') return [2, ''];
+  if (code === 'D') return [3, ''];
+  if (code === 'E') return [4, ''];
+  const cMatch = /^C(\d+)$/.exec(code);
+  if (cMatch) {
+    const n = parseInt(cMatch[1], 10);
+    if (n >= 1 && n <= 14) return [5, n.toString().padStart(3, '0')];
+    return [8, code];
+  }
+  const nMatch = /^(\d+)$/.exec(code);
+  if (nMatch) {
+    const n = parseInt(nMatch[1], 10);
+    if (n >= 15 && n <= 92) return [6, n.toString().padStart(3, '0')];
+    return [7, n.toString().padStart(3, '0')];
+  }
+  return [9, code];
+};
+
+const sortLinesByPriority = (a: { shortName?: string | null; id: string }, b: { shortName?: string | null; id: string }) => {
+  const [wa, ka] = getLineSortKey(a.shortName, a.id);
+  const [wb, kb] = getLineSortKey(b.shortName, b.id);
+  if (wa !== wb) return wa - wb;
+  return ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' });
+};
+
+// Afficher les icÃ´nes d'occupancy
 const OccupancyDisplay = ({ occupancy, showError = false }: { occupancy?: string | null, showError?: boolean }) => {
   const getFrequencyLevel = (occupancy?: string | null): { level: number; label: string } => {
     switch (occupancy) {
@@ -74,13 +182,28 @@ const OccupancyDisplay = ({ occupancy, showError = false }: { occupancy?: string
   );
 };
 
-const getDepartureDisplay2 = (departure: Departure): string => {
-  return formatDepartureTime(departure);
+const getDepartureDisplay2 = (departure: Departure, language: 'fr' | 'en'): string => {
+  return getDepartureDisplay(departure, language);
+};
+
+const renderDepartureTime = (timeString: string) => {
+  const match = timeString.match(/^(\d+)(m)$/);
+  if (match) {
+    return (
+      <>
+        <span className="font-bold">{match[1]}</span>
+        <span className="font-normal">{match[2]}</span>
+      </>
+    );
+  }
+  return timeString;
 };
 
 // Composant Modal pour l'export de configuration
-const ExportModal = ({ isOpen, onClose, exportUrl, position }: { isOpen: boolean; onClose: () => void; exportUrl: string; position?: { x: number; y: number } | null }) => {
+const ExportModal = ({ isOpen, onClose, exportUrl, position, language }: { isOpen: boolean; onClose: () => void; exportUrl: string; position?: { x: number; y: number } | null; language: 'fr' | 'en' }) => {
   if (!isOpen || !position) return null;
+
+  const text = getSidebarText(language);
 
   // Ensure modal stays within viewport
   const modalWidth = 288; // w-72 = 18rem = 288px
@@ -109,11 +232,11 @@ const ExportModal = ({ isOpen, onClose, exportUrl, position }: { isOpen: boolean
         top: `${top}px`,
         zIndex: 60,
       }}
-      className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-xl border border-gray-200 dark:border-gray-700 w-72"
+      className="app-panel app-border bg-white dark:bg-gray-800 rounded-lg p-3 shadow-xl border border-gray-200 dark:border-gray-700 w-72"
     >
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-          Exported configuration
+          {text.exportedConfiguration}
         </h3>
         <button
           onClick={onClose}
@@ -126,7 +249,7 @@ const ExportModal = ({ isOpen, onClose, exportUrl, position }: { isOpen: boolean
       <div className="space-y-2">
         <div>
           <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Share link
+            {text.shareLink}
           </label>
           <div className="flex gap-1.5">
             <input
@@ -151,7 +274,7 @@ const ExportModal = ({ isOpen, onClose, exportUrl, position }: { isOpen: boolean
               }}
               className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition text-xs font-medium"
             >
-              Copy
+              {text.copy}
             </button>
           </div>
         </div>
@@ -161,7 +284,7 @@ const ExportModal = ({ isOpen, onClose, exportUrl, position }: { isOpen: boolean
 };
 
 const getLineColor = (lineId: string): string => {
-  // Couleurs inspirées du style transit Grenoble
+  // Couleurs inspirÃ©es du style transit Grenoble
   const colors: Record<string, { bg: string; text: string }> = {
     '1': { bg: 'bg-red-500', text: 'text-white' },
     '2': { bg: 'bg-green-500', text: 'text-white' },
@@ -177,7 +300,7 @@ const getLineColor = (lineId: string): string => {
   return colors[lineId]?.bg || 'bg-gray-500';
 };
 
-export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: SidebarProps) => {
+export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines, compactMode, autoSync, refreshIntervalMs, language }: SidebarProps) => {
   const [currentStopDetail, setCurrentStopDetail] = useState<StopDetail | null>(null);
   const [departures, setDepartures] = useState<Departure[]>([]);
   const [selectedLines, setSelectedLines] = useState<Set<string>>(initialSelectedLines || new Set());
@@ -190,66 +313,101 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
   const [exportModalPos, setExportModalPos] = useState<{ x: number; y: number } | null>(null);
   const exportButtonRef = useRef<HTMLButtonElement>(null);
   const [hasAppliedInitialLines, setHasAppliedInitialLines] = useState(false);
+  const text = getSidebarText(language);
 
   // Synchroniser le stopDetail quand la prop change
   useEffect(() => {
-    setCurrentStopDetail(stop);
-    setCurrentStopId(stop?.id || null);
+    const stopId = stop?.id || null;
+    setCurrentStopId(stopId);
+
+    if (!stop) {
+      setCurrentStopDetail(null);
+      return;
+    }
+
+    setCurrentStopDetail(prev => {
+      if (
+        prev?.id === stop.id &&
+        prev.lines?.length > 0 &&
+        (!stop.lines || stop.lines.length === 0)
+      ) {
+        return {
+          ...stop,
+          lines: prev.lines,
+          departures: stop.departures.length > 0 ? stop.departures : prev.departures,
+          lastUpdate: stop.lastUpdate || prev.lastUpdate,
+        };
+      }
+
+      return stop;
+    });
   }, [stop]);
 
   // Fonction pour mettre à jour les départs
   const updateDepartures = async () => {
-    if (!currentStopDetail || !isOpen) return;
+    if (!currentStopDetail || !isOpen || currentStopDetail.lines.length === 0) return;
 
     try {
       const updatedStopDetail = await refreshStopDepartures(currentStopDetail);
-      setCurrentStopDetail(updatedStopDetail);
+      setCurrentStopDetail(prev => {
+        if (!prev) return updatedStopDetail;
+        return {
+          ...prev,
+          ...updatedStopDetail,
+          lines: prev.lines.length > 0 ? prev.lines : updatedStopDetail.lines,
+        };
+      });
     } catch (error) {
       console.error('Failed to update departures:', error);
     }
   };
 
-  // Mise à jour périodique des départs toutes les 30 secondes
+  // Mise à jour périodique des départs
   useEffect(() => {
-    if (!isOpen || !currentStopDetail) return;
+    if (!isOpen || !currentStopDetail || currentStopDetail.lines.length === 0) return;
 
-    // Mise à jour immédiate
+    // Mise Ã  jour immÃ©diate
     updateDepartures();
 
-    // Puis toutes les 30 secondes (stable et efficace)
-    const interval = setInterval(updateDepartures, 30000);
+    if (!autoSync) return;
+
+    const interval = setInterval(updateDepartures, refreshIntervalMs);
 
     return () => clearInterval(interval);
-  }, [isOpen, currentStopDetail?.id]);
+  }, [isOpen, currentStopDetail?.id, currentStopDetail?.lines.length, autoSync, refreshIntervalMs]);
 
   const getDeparturePriority = (dep: Departure): number => {
     const id = dep.lineId.toUpperCase().trim();
     const name = dep.lineName.toUpperCase();
 
-    // Tramways A-E en priorité absolue (ordre: A > B > C > D > E)
-    if (id === 'A') return 100;
-    if (id === 'B') return 99;
-    if (id === 'C') return 98;
-    if (id === 'D') return 97;
-    if (id === 'E') return 96;
+    if (id === 'A') return 1000;
+    if (id === 'B') return 900;
+    if (id === 'C') return 800;
+    if (id === 'D') return 700;
+    if (id === 'E') return 600;
 
-    // C1-14 (numérotation avec C1,...)
-    if (/^C\d+$/.test(id)) return 50;
+    const cMatch = /^C(\d+)$/.exec(id);
+    if (cMatch) {
+      const n = parseInt(cMatch[1], 10);
+      if (n >= 1 && n <= 14) {
+        return 500 + (15 - n);
+      }
+    }
 
-    // Bus Chrono
-    if (name.includes('CHRONO') || id.startsWith('C')) return 9;
+    const nMatch = /^(\d+)$/.exec(id);
+    if (nMatch) {
+      const n = parseInt(nMatch[1], 10);
+      if (n >= 15 && n <= 92) {
+        return 400 + (93 - n);
+      }
+    }
 
-    // Bus Proximo
-    if (name.includes('PROXIMO') || id.includes('PR')) return 8;
+    if (name.includes('CHRONO') || id.startsWith('C')) return 50;
+    if (name.includes('PROXIMO') || id.includes('PR')) return 40;
+    if (name.includes('FLEXO') || id.includes('FL')) return 30;
+    if (dep.type === 'TRAM' || id.startsWith('T') || name.includes('TRAM')) return 20;
 
-    // Bus Flexo
-    if (name.includes('FLEXO') || id.includes('FL')) return 7;
-
-    // Autres trams
-    if (dep.type === 'TRAM' || id.startsWith('T') || name.includes('TRAM')) return 10;
-
-    // Reste
-    return 1;
+    return 10;
   };
 
   useEffect(() => {
@@ -286,13 +444,13 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
   }, [currentStopId, initialSelectedLines]);
 
   const displayedDepartures = (() => {
-    // TOUJOURS trier par priorité (trams en haut)
+    // TOUJOURS trier par prioritÃ© (trams en haut)
     const sorted = [...departures].sort((a, b) => {
       const pa = getDeparturePriority(a);
       const pb = getDeparturePriority(b);
-      if (pa !== pb) return pb - pa; // Priorité décroissante
+      if (pa !== pb) return pb - pa; // PrioritÃ© dÃ©croissante
 
-      // À même priorité, trier par temps d'arrivée
+      // Ã€ mÃªme prioritÃ©, trier par temps d'arrivÃ©e
       return a.departureTime - b.departureTime;
     });
 
@@ -321,13 +479,13 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
       }
     });
 
-    // Trier les groupes par priorité (trams toujours en haut)
+    // Trier les groupes par prioritÃ© (trams toujours en haut)
     return Array.from(groups.values()).sort((a, b) => {
       const pa = getDeparturePriority(a.first);
       const pb = getDeparturePriority(b.first);
       if (pa !== pb) return pb - pa;
       
-      // À même priorité, trier par temps d'arrivée du premier passage
+      // Ã€ mÃªme prioritÃ©, trier par temps d'arrivÃ©e du premier passage
       return a.first.departureTime - b.first.departureTime;
     });
   })();
@@ -341,7 +499,7 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
       className="fixed left-0 top-0 h-screen w-96 bg-white dark:bg-gray-900 shadow-2xl z-60 overflow-y-auto border-r border-gray-200 dark:border-gray-800"
     >
       {isOpen && currentStopDetail && (
-        <div className="p-6">
+        <div className={`${compactMode ? 'p-4' : 'p-6'}`}>
           {/* Close button */}
           <button
             onClick={onClose}
@@ -354,10 +512,10 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
 
           {/* Stop header */}
           <div className="mb-6">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            <h2 className="text-4xl font-extrabold text-gray-900 dark:text-white mb-2">
               {currentStopDetail.name}
             </h2>
-            {currentStopDetail.city && (
+            {!compactMode && currentStopDetail.city && (
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {currentStopDetail.city}
               </p>
@@ -367,29 +525,29 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
           {/* Lines serving this stop */}
           <div className="mb-6">
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3 uppercase tracking-wider">
-              Lines
+              {text.lines}
             </h3>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Filter:</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{text.filter}</span>
                 <button
                   onClick={() => setSelectedLines(new Set())}
                   className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
                 >
-                  Show all
+                  {text.showAll}
                 </button>
               </div>
               <button
                 ref={exportButtonRef}
                 onClick={() => {
-                  // Générer l'URL d'export
+                  // GÃ©nÃ©rer l'URL d'export
                   let url: string;
                   
                   if (selectedLines.size === 0) {
-                    // Aucune ligne sélectionnée: afficher toutes les lignes
+                    // Aucune ligne sÃ©lectionnÃ©e: afficher toutes les lignes
                     url = `/app?T1=ALL_${currentStopDetail.id}`;
                   } else {
-                    // Lignes sélectionnées
+                    // Lignes sÃ©lectionnÃ©es
                     const selectedLinesArray = Array.from(selectedLines).sort();
                     const params = selectedLinesArray.map((lineId, index) => 
                       `T${index + 1}=${lineId}_${currentStopDetail.id}`
@@ -408,15 +566,16 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                   setIsExportModalOpen(true);
                 }}
                 className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition"
-                title="Export configuration"
+                title={text.exportConfiguration}
               >
                 <EllipsisVerticalIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
-              {currentStopDetail.lines.map(line => {
+              {[...currentStopDetail.lines].sort(sortLinesByPriority).map(line => {
                 const isSelected = selectedLines.size === 0 || selectedLines.has(line.id);
                 const isActive = selectedLines.has(line.id);
+                const lineStyle = getLineStyle(line.color, line.textColor);
                 return (
                   <div key={line.id} className="relative">
                     <button
@@ -431,11 +590,14 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                           return next;
                         });
                       }}
-                      className={`rounded-full w-12 h-12 flex items-center justify-center text-sm font-bold transition ${
+                      className={`${getBadgeShapeClass(isRoundLine(line.shortName || line.id))} flex items-center justify-center text-sm font-bold transition ${
+                        compactMode ? 'w-10 h-10 text-xs' : 'w-12 h-12'
+                      } ${
                         isActive
-                          ? 'ring-2 ring-blue-500 ring-offset-1 text-white'
-                          : 'text-white'
-                      } ${isSelected ? '' : 'opacity-30'} ${getLineColor(line.id)}`}
+                          ? 'ring-2 ring-blue-500 ring-offset-1'
+                          : ''
+                      } ${isSelected ? '' : 'opacity-30'} ${!lineStyle.backgroundColor ? getLineColor(line.id) : ''}`}
+                      style={lineStyle}
                       title={line.name}
                     >
                       {line.shortName || line.id}
@@ -484,15 +646,15 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                   style={{ left, top, width: baseWidth }}
                   className="fixed z-[55] pointer-events-none bg-black/90 text-white text-xs p-3 rounded-md shadow-xl"
                 >
-                  <p className="font-semibold">Disrupted traffic • Line {line.shortName || line.id}</p>
+                  <p className="font-semibold">{text.disruptedTraffic} {line.shortName || line.id}</p>
                   {line.trafficDetails?.length ? (
                     <>
                       <p className="truncate mt-1 text-[11px]">{line.trafficDetails[0].titre || 'Message indisponible'}</p>
                       <p className="mt-1 text-[10px] text-gray-200">{line.trafficDetails[0].description || '...'}</p>
-                      <p className="mt-1 text-[10px] text-gray-300">Fin: {line.trafficDetails[0].dateFin || 'N/A'}</p>
+                      <p className="mt-1 text-[10px] text-gray-300">{text.estimatedEnd} {line.trafficDetails[0].dateFin || 'N/A'}</p>
                     </>
                   ) : (
-                    <p>Détails non disponibles</p>
+                    <p>{text.detailsUnavailable}</p>
                   )}
                 </div>
               );
@@ -502,7 +664,7 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
           {/* Next departures */}
           <div>
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3 uppercase tracking-wider">
-              Next departures
+              {text.nextDepartures}
             </h3>
             <div className="space-y-3">
               {groupedDepartures.length > 0 ? (
@@ -510,11 +672,15 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                   const departure = group.first;
                   const second = group.second;
                   const minutesUntil = getMinutesUntilDeparture(departure);
-                  const displayTime = getDepartureDisplay(departure);
+                  const displayTime = getDepartureDisplay(departure, language);
                   const isNow = minutesUntil <= 2;
                   const isTram = isTramway(departure.lineId);
                   const tramKey = `${departure.lineId}::${departure.destination}`;
                   const isExpanded = expandedTrams.has(tramKey);
+                  const departureLine = currentStopDetail.lines.find(l => l.id === departure.lineId || l.shortName === departure.lineShortName || l.shortName === departure.lineId);
+                  const secondLine = second ? currentStopDetail.lines.find(l => l.id === second.lineId || l.shortName === second.lineShortName || l.shortName === second.lineId) : undefined;
+                  const departureStyle = getLineStyle(departureLine?.color, departureLine?.textColor);
+                  const secondStyle = secondLine ? getLineStyle(secondLine.color, secondLine.textColor) : undefined;
 
                   if (isTram && second) {
                     return (
@@ -538,12 +704,13 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                               return next;
                             });
                           }}
-                          className="w-full p-4 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-left"
+                          className={`w-full ${compactMode ? 'p-3' : 'p-4'} hover:bg-gray-100 dark:hover:bg-gray-700 transition text-left`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 flex-1">
                               <div
-                                className={`${getLineColor(departure.lineId)} text-white font-bold rounded-full w-10 h-10 flex items-center justify-center text-sm shadow-md flex-shrink-0`}
+                                className={`${getLineColor(departure.lineId)} text-white font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-10 h-10 flex items-center justify-center text-sm shadow-md flex-shrink-0 overflow-hidden`}
+                                style={departureStyle}
                               >
                                 {departure.lineShortName || departure.lineId}
                               </div>
@@ -555,17 +722,17 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                                 </p>
                                 <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                                   <MdTram className="w-4 h-4" />
-                                  <span>Tramway</span>
-                                  {departure.realtime && <span>• Live</span>}
+                                  <span>{text.tramway}</span>
+                                  {departure.realtime && <span>• {text.live}</span>}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-3 flex-shrink-0 ml-2">
                               <div className="text-right">
                                 <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                                  {displayTime}
+                                  {renderDepartureTime(displayTime)}
                                 </p>
-                                <OccupancyDisplay occupancy={departure.occupancy} />
+                                {!compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
                               </div>
                               {isExpanded ? (
                                 <ChevronUpIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
@@ -589,7 +756,7 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                           <div className="p-4 bg-gray-100 dark:bg-gray-700 space-y-3">
                             <div className="flex items-start justify-between gap-2">
                               <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
-                                Next departure
+                                {text.nextDeparture}
                               </p>
                               <button
                                 onClick={() => {
@@ -614,7 +781,8 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                               <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-3 flex-1">
                                   <div
-                                    className={`${getLineColor(second.lineId)} text-white font-bold rounded-full w-12 h-12 flex items-center justify-center text-sm shadow-md flex-shrink-0`}
+                                    className={`${getLineColor(second.lineId)} text-white font-bold ${getBadgeShapeClass(isRoundLine(second.lineId))} w-12 h-12 flex items-center justify-center text-sm shadow-md flex-shrink-0 overflow-hidden`}
+                                    style={secondStyle}
                                   >
                                     {second.lineShortName || second.lineId}
                                   </div>
@@ -629,35 +797,35 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                               </div>
 
                               <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg p-3">
+                                <div className={`bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg ${compactMode ? 'p-2.5' : 'p-3'}`}>
                                   <p className="text-xs text-gray-600 dark:text-gray-300 font-semibold mb-1">
-                                    TIME
+                                    {text.time}
                                   </p>
                                   <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                                    {getDepartureDisplay2(second)}
+                                    {renderDepartureTime(getDepartureDisplay2(second, language))}
                                   </p>
                                 </div>
 
-                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg p-3">
+                                <div className={`bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg ${compactMode ? 'p-2.5' : 'p-3'}`}>
                                   <p className="text-xs text-gray-600 dark:text-gray-300 font-semibold mb-2">
-                                    OCCUPANCY
+                                    {text.occupancy}
                                   </p>
                                   <div className="flex items-center justify-center gap-1">
-                                    <OccupancyDisplay occupancy={second.occupancy} showError={true} />
+                                    {!compactMode && <OccupancyDisplay occupancy={second.occupancy} showError={true} />}
                                   </div>
                                 </div>
                               </div>
 
                               {second.realtime && (
                                 <p className="text-xs text-green-600 dark:text-green-400 font-semibold mt-3 flex items-center gap-1">
-                                  ● Real-time data
+                                  • {text.realTimeData}
                                 </p>
                               )}
                             </motion.div>
 
                             {group.count > 2 && (
                               <div className="text-xs text-gray-700 dark:text-gray-200 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded mb-2">
-                                +{group.count - 2} more departures available
+                                {text.moreDepartures(group.count - 2)}
                               </div>
                             )}
 
@@ -670,13 +838,13 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                                 <div className="relative border-2 border-yellow-500 bg-yellow-100 dark:bg-yellow-900 dark:bg-opacity-70 rounded-lg p-3 text-yellow-900 dark:text-yellow-100 pt-6">
                                   <ExclamationTriangleIcon className="absolute -top-3 -left-3 w-6 h-6 text-yellow-500" />
                                   <div>
-                                    <p className="text-sm font-semibold">Disrupted traffic on line {lineInfo.shortName || lineInfo.id}</p>
-                                    <p className="text-xs text-yellow-900/90 dark:text-yellow-200/80">{detail?.titre || 'Perturbation en cours'}</p>
+                                    <p className="text-sm font-semibold">{text.disruptedTraffic} {lineInfo.shortName || lineInfo.id}</p>
+                                    <p className="text-xs text-yellow-900/90 dark:text-yellow-200/80">{detail?.titre || text.ongoingDisruption}</p>
                                     {detail?.description && (
                                       <p className="text-[10px] text-yellow-900/80 dark:text-yellow-200/80 mt-1">{detail.description}</p>
                                     )}
                                     {detail?.dateFin && (
-                                      <p className="text-[10px] text-yellow-900/70 dark:text-yellow-200/70 mt-1">Fin estimée : {detail.dateFin}</p>
+                                      <p className="text-[10px] text-yellow-900/70 dark:text-yellow-200/70 mt-1">{text.estimatedEnd} {detail.dateFin}</p>
                                     )}
                                   </div>
                                 </div>
@@ -698,7 +866,8 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                       >
                         <div className="flex items-center gap-3 flex-1">
                           <div
-                            className={`${getLineColor(departure.lineId)} text-white font-bold rounded-full w-10 h-10 flex items-center justify-center text-xs shadow-md flex-shrink-0`}
+                            className={`${getLineColor(departure.lineId)} text-white font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-10 h-10 flex items-center justify-center text-xs shadow-md flex-shrink-0`}
+                            style={departureStyle}
                           >
                             {departure.lineShortName || departure.lineId}
                           </div>
@@ -708,16 +877,16 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                             </p>
                             <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                               <MdTram className="w-3 h-3" />
-                              Tram
-                              {departure.realtime && ' • Live'}
+                              {text.tramway}
+                              {departure.realtime && ` • ${text.live}`}
                             </p>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0 ml-2">
                           <p className={`text-lg font-bold text-gray-900 dark:text-white`}>
-                            {displayTime}
+                            {renderDepartureTime(displayTime)}
                           </p>
-                          <OccupancyDisplay occupancy={departure.occupancy} />
+                          {!compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
                         </div>
                       </motion.div>
                     );
@@ -738,7 +907,8 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                       >
                         <div className="flex items-center gap-3 flex-1">
                           <div
-                            className={`${getLineColor(departure.lineId)} text-white font-bold rounded-full w-10 h-10 flex items-center justify-center text-xs shadow-md flex-shrink-0`}
+                            className={`${getLineColor(departure.lineId)} text-white font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-10 h-10 flex items-center justify-center text-xs shadow-md flex-shrink-0`}
+                            style={departureStyle}
                           >
                             {departure.lineShortName || departure.lineId}
                           </div>
@@ -752,22 +922,22 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                               {departure.type === 'BUS' ? (
                                 <>
                                   <MdDirectionsBus className="w-3 h-3" />
-                                  Bus
+                                  {text.bus}
                                 </>
                               ) : (
                                 <>
                                   <MdTram className="w-3 h-3" />
-                                  Tram
+                                  {text.tramway}
                                 </>
                               )}
-                              {departure.realtime && ' • Live'}
+                              {departure.realtime && ` • ${text.live}`}
                             </p>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0 ml-2">
                           {index === 0 && (
                             <div className="text-xs text-green-600 dark:text-green-400 font-semibold mb-1">
-                              NEXT
+                              {text.nextLabel}
                             </div>
                           )}
                           <p
@@ -779,11 +949,11 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                                 : 'text-gray-900 dark:text-white'
                             }`}
                           >
-                            {displayTime}
+                            {renderDepartureTime(displayTime)}
                           </p>
                           {second ? (
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {getDepartureDisplay(second)}
+                              {renderDepartureTime(getDepartureDisplay(second, language))}
                             </p>
                           ) : minutesUntil < 30 && minutesUntil > 0 ? (
                             <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -797,10 +967,22 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
                 })
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400 py-4">
-                  No departures available
+                  {text.noDeparturesAvailable}
                 </p>
               )}
             </div>
+          </div>
+          
+          {/* Séparateur avec logo GreGo */}
+          <div className="border-t border-gray-200 dark:border-gray-600 mt-6 pt-4">
+            <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer">
+              <span>{text.calculateItineraryWith}</span>
+              <img 
+                src="/assets/GreGoLOGO.png" 
+                alt="GreGo" 
+                className="h-4 w-auto"
+              />
+            </a>
           </div>
         </div>
       )}
@@ -811,6 +993,7 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines }: Sidebar
         onClose={() => setIsExportModalOpen(false)}
         exportUrl={exportUrl}
         position={exportModalPos}
+        language={language}
       />
     </motion.div>
   );

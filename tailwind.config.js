@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,7 +8,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['system-ui', 'Helvetica', 'Arial', 'sans-serif'],
+        sans: ['Inter', 'Helvetica Neue', 'system-ui', 'sans-serif'],
       },
       animation: {
         'slide-in': 'slideIn 0.3s ease-out',

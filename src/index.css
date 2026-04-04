@@ -16,23 +16,85 @@
 }
 
 @font-face {
-  font-family: 'Inter';
-  src: url('/fonts/Inter-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Inter';
-  src: url('/fonts/Inter-Medium.woff2') format('woff2');
+  font-family: 'Canaro Medium';
+  src: url('/fonts/Canaro W00 Medium.ttf') format('truetype');
   font-weight: 500;
   font-display: swap;
 }
 
+.font-canaro {
+  font-family: 'Canaro Medium', 'Inter', 'Helvetica Neue', sans-serif;
+}
+
 @font-face {
   font-family: 'Inter';
-  src: url('/fonts/Inter-Bold.woff2') format('woff2');
+  src: url('/fonts/Inter-Thin.woff2') format('woff2'), url('/fonts/Inter-Thin.woff') format('woff');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-ExtraLight.woff2') format('woff2'), url('/fonts/Inter-ExtraLight.woff') format('woff');
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Light.woff2') format('woff2'), url('/fonts/Inter-Light.woff') format('woff');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Regular.woff2') format('woff2'), url('/fonts/Inter-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Medium.woff2') format('woff2'), url('/fonts/Inter-Medium.woff') format('woff');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-SemiBold.woff2') format('woff2'), url('/fonts/Inter-SemiBold.woff') format('woff');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Bold.woff2') format('woff2'), url('/fonts/Inter-Bold.woff') format('woff');
   font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-ExtraBold.woff2') format('woff2'), url('/fonts/Inter-ExtraBold.woff') format('woff');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Black.woff2') format('woff2'), url('/fonts/Inter-Black.woff') format('woff');
+  font-weight: 900;
+  font-style: normal;
   font-display: swap;
 }
 
@@ -42,7 +104,8 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --accent: #3b82f6;
 }
 
 /* Mapbox GL customization */
@@ -144,4 +207,99 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+}
+
+/* Custom Select Styling */
+.settings-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%233b82f6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='4 6 8 10 12 6'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+  background-color: rgba(59, 130, 246, 0.05);
+  padding: 8px 32px 8px 12px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.dark .settings-select {
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2360a5fa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='4 6 8 10 12 6'%3e%3c/polyline%3e%3c/svg%3e");
+  background-color: rgba(96, 165, 250, 0.08);
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.settings-select:hover {
+  border-color: #60a5fa;
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.dark .settings-select:hover {
+  border-color: #93c5fd;
+  background-color: rgba(96, 165, 250, 0.12);
+}
+
+.settings-select:focus {
+  border-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.12);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+}
+
+.dark .settings-select:focus {
+  border-color: #60a5fa;
+  background-color: rgba(96, 165, 250, 0.15);
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.15);
+}
+
+.settings-select option {
+  background-color: white;
+  color: #1f2937;
+  padding: 8px;
+}
+
+.dark .settings-select option {
+  background-color: #1e293b;
+  color: #e2e8f0;
+}
+
+/* Font size classes */
+.text-size-small {
+  font-size: 13px;
+}
+
+.text-size-small h3 {
+  font-size: 15px;
+}
+
+.text-size-small label,
+.text-size-small p {
+  font-size: 12px;
+}
+
+.text-size-large {
+  font-size: 16px;
+}
+
+.text-size-large h3 {
+  font-size: 20px;
+}
+
+.text-size-large label,
+.text-size-large p {
+  font-size: 15px;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
