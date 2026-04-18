@@ -841,7 +841,7 @@ export const Sidebar = ({ stop, isOpen, onClose, initialSelectedLines, compactMo
                                     <p className="text-sm font-semibold">{text.disruptedTraffic} {lineInfo.shortName || lineInfo.id}</p>
                                     <p className="text-xs text-yellow-900/90 text-yellow-200/80">{detail?.titre || text.ongoingDisruption}</p>
                                     {detail?.description && (
-                                      <p className="text-[10px] text-yellow-900/80 text-yellow-200/80 mt-1">{detail.description}</p>
+                                      <p className="text-[10px] text-yellow-900/90 text-yellow-200/80 mt-1">{detail.description}</p>
                                     )}
                                     {detail?.dateFin && (
                                       <p className="text-[10px] text-yellow-900/70 text-yellow-200/70 mt-1">{text.estimatedEnd} {detail.dateFin}</p>
