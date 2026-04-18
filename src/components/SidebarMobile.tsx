@@ -756,12 +756,12 @@ export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, ini
                                   <ExclamationTriangleIcon className="absolute -top-3 -left-3 w-6 h-6 text-yellow-500" />
                                   <div>
                                     <p className="text-sm font-semibold">{text.disruptedTraffic} {lineInfo.shortName || lineInfo.id}</p>
-                                    <p className="text-xs text-yellow-900/90 text-yellow-200/80">{detail?.titre || text.ongoingDisruption}</p>
+                                    <p className="text-xs text-yellow-100">{detail?.titre || text.ongoingDisruption}</p>
                                     {detail?.description && (
-                                      <p className="text-[10px] text-yellow-900/80 text-yellow-200/80 mt-1">{detail.description}</p>
+                                      <p className="text-[10px] text-yellow-100 mt-1">{detail.description}</p>
                                     )}
                                     {detail?.dateFin && (
-                                      <p className="text-[10px] text-yellow-900/70 text-yellow-200/70 mt-1">{text.estimatedEnd} {detail.dateFin}</p>
+                                      <p className="text-[10px] text-yellow-100 mt-1">{text.estimatedEnd} {detail.dateFin}</p>
                                     )}
                                   </div>
                                 </div>
