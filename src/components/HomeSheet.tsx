@@ -7,9 +7,6 @@ import {
   ExclamationTriangleIcon,
   Cog6ToothIcon,
   EllipsisHorizontalIcon,
-  HomeIcon,
-  BriefcaseIcon,
-  PlusIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/solid';
 import type { Stop, Line } from '../types';
@@ -195,6 +192,7 @@ const NearbyStopCard = ({
 };
 
 
+/* Note: QuickCircle component is defined but not currently used
 const QuickCircle = ({
   Icon,
   label,
@@ -219,6 +217,7 @@ const QuickCircle = ({
     {subtitle && <div className="truncate text-xs font-semibold text-slate-500">{subtitle}</div>}
   </button>
 );
+*/
 
 export const HomeSheet = ({
   isOpen,
@@ -232,7 +231,6 @@ export const HomeSheet = ({
   onSheetProgress,
   snapToMiniSignal,
   openToMidSignal,
-  onPlanRoute,
   language,
 }: HomeSheetProps) => {
   const text = getText(language);

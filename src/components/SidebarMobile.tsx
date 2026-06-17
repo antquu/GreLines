@@ -1,6 +1,6 @@
 ﻿import { motion } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
-import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon, CheckIcon, StarIcon } from '@heroicons/react/24/solid';
 import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
 import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
 import { AddFavoriteModal } from './AddFavoriteModal';
@@ -30,7 +30,7 @@ interface SidebarMobileProps {
   autoSync: boolean;
   refreshIntervalMs: number;
   language: 'fr' | 'en';
-  onPlanRouteFromStop?: (stop: StopDetail) => void;
+  onPlanRouteFromStop?: never;
 }
 
 const getMinutesUntilDeparture = (departure: Departure): number => departure.departureTime;
@@ -238,7 +238,7 @@ const CopyButton = ({ value, copyLabel, copiedLabel }: { value: string; copyLabe
   );
 };
 
-export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, selectedLines: controlledSelectedLines, onSelectedLinesChange, compactMode, autoSync, refreshIntervalMs, language, onPlanRouteFromStop }: SidebarMobileProps) => {
+export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, selectedLines: controlledSelectedLines, onSelectedLinesChange, compactMode, autoSync, refreshIntervalMs, language }: SidebarMobileProps) => {
   const [currentStopDetail, setCurrentStopDetail] = useState<StopDetail | null>(null);
   const [departures, setDepartures] = useState<Departure[]>([]);
   const [internalSelectedLines, setInternalSelectedLines] = useState<Set<string>>(initialSelectedLines || new Set());
@@ -307,7 +307,7 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
         if (!prev) return updatedStopDetail;
         return { ...prev, ...updatedStopDetail, lines: prev.lines.length > 0 ? prev.lines : updatedStopDetail.lines };
       });
-    } catch (error) { void 0 && console.error('Failed to update departures:', error); }
+    } catch (error) {}
   };
 
   useEffect(() => {

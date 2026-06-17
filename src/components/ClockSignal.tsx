@@ -7,10 +7,8 @@ const isNetworkClosed = (date: Date) => {
 };
 
 export function ClockSignal({
-  language,
   closedLabel,
 }: {
-  language: 'fr' | 'en';
   closedLabel: string;
 }) {
   const [now, setNow] = useState(new Date());

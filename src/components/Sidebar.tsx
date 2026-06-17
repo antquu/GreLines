@@ -275,7 +275,7 @@ export const Sidebar = ({
         if (!prev) return updatedStopDetail;
         return { ...prev, ...updatedStopDetail, lines: prev.lines.length > 0 ? prev.lines : updatedStopDetail.lines };
       });
-    } catch (error) { void 0 && console.error('Failed to update departures:', error); }
+    } catch (error) {}
   };
 
   useEffect(() => {

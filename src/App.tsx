@@ -530,7 +530,7 @@ function App() {
             setSidebarState('open');
             mapRef.current?.centerOnStop(targetStop);
           }
-        } catch (err) { void 0 && console.error('Failed to load stop from URL:', err); }
+        } catch (err) {}
       }
     }
   };
@@ -613,7 +613,7 @@ function App() {
       try {
         const data = await getTrafficLines();
         setTrafficInfo(data);
-      } catch (err) { void 0 && console.error('Failed to load traffic info:', err); }
+      } catch (err) {}
     };
     fetchTraffic();
   }, []);
@@ -632,7 +632,7 @@ function App() {
       setSelectedStop(prev => prev ? { ...prev, lines } : { ...placeholder, lines });
       const departures = await getDepartures(stop.id);
       setSelectedStop(prev => prev ? { ...prev, departures, lastUpdate: new Date() } : { ...placeholder, departures, lines });
-    } catch (err) { void 0 && console.error('Failed to fetch stop details:', err); }
+    } catch (err) {}
   }, [searchHistory]);
 
   /**
@@ -694,12 +694,12 @@ function App() {
           ({ coords }) => {
             setCurrentLocation({ lat: coords.latitude, lon: coords.longitude });
           },
-          err => {          },
+          () => {},
           { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
         );
         setLocationWatchId(watchId);
       },
-      err => {        let message = 'Erreur de géolocalisation';
+      () => {        let message = 'Erreur de géolocalisation';
         if (err.code === 1) {
           message = 'Accès géolocalisation refusé. Vérifiez les permissions du navigateur.';
         } else if (err.code === 2) {

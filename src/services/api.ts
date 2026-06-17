@@ -462,9 +462,7 @@ export async function getAllStops(prefixes: string[] = [...NETWORK_PREFIXES]): P
     return cached;
   }
 
-  try {
-    void 0 && console.log(`📡 Chargement arrêts (via clusters des lignes)... ${sortedPrefixes.join(', ')}`);
-    const stops = await getStopsByPrefixes(sortedPrefixes);
+  try {const stops = await getStopsByPrefixes(sortedPrefixes);
     setCache(cacheKey, stops);    return stops;
   } catch (err) {    return [];
   }
@@ -497,11 +495,7 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
       } else {
         clusterIds = [formatClusterId(stopId)];
       }
-    }
-
-    void 0 && console.log(`📡 Départs → clusterIds : ${clusterIds.join(', ')}`);
-
-    const departures: Departure[] = [];
+    }const departures: Departure[] = [];
     const seen = new Set<string>();
 
     for (const clusterId of clusterIds) {
@@ -560,9 +554,7 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
     departures.sort((a, b) => a.departureTime - b.departureTime);
 
     setCache(cacheKey, departures);    return departures;
-  } catch (err: any) {
-    void 0 && console.error(`❌ getDepartures(${stopId}) failed:`, err?.message ?? err);
-    return [];
+  } catch (err: any) {return [];
   }
 }
 
@@ -624,10 +616,7 @@ export async function getStopDetail(stopId: string, prefixes: string[] = [...NET
     }
     if (!stop) return null;
 
-    const lines = await getStopLines(stop.id);
-    void 0 && console.log(`✓ Chargement ${lines.length} lignes pour arrêt ${stop.name}:`, lines.map(l => l.id).join(', '));
-
-    // Requête unique au cluster pour récupérer TOUS les bus (sans filtrer par ligne)
+    const lines = await getStopLines(stop.id);// Requête unique au cluster pour récupérer TOUS les bus (sans filtrer par ligne)
     const departures = await getDepartures(stop.id);    return {
       ...stop,
       lines,
