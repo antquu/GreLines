@@ -699,7 +699,7 @@ function App() {
         );
         setLocationWatchId(watchId);
       },
-      () => {        let message = 'Erreur de géolocalisation';
+      (err) => {        let message = 'Erreur de géolocalisation';
         if (err.code === 1) {
           message = 'Accès géolocalisation refusé. Vérifiez les permissions du navigateur.';
         } else if (err.code === 2) {
@@ -1752,7 +1752,7 @@ function App() {
 
       {/* Bottom bar with clock and signal — desktop only */}
       {!hidePageControls && !isMobile && (
-        <ClockSignal language={language} closedLabel={text.misc.networkClosed} />
+        <ClockSignal closedLabel={text.misc.networkClosed} />
       )}
     </div>
   );
