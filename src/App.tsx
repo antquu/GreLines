@@ -573,7 +573,8 @@ function App() {
     fetch('/grelines.json')
       .then(r => r.json())
       .then(data => setAppData(data))
-      .catch(err => }, []);
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let active = true;
