@@ -573,8 +573,7 @@ function App() {
     fetch('/grelines.json')
       .then(r => r.json())
       .then(data => setAppData(data))
-      .catch(err => void 0 && console.error('Failed to load app data:', err));
-  }, []);
+      .catch(err => }, []);
 
   useEffect(() => {
     let active = true;

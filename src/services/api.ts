@@ -320,7 +320,6 @@ export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
       }
     }
 
-    void 0 && console.log(`⚠️ Trafic : lignes concernées = ${Array.from(trafficMap.keys()).join(', ')}`);
     return trafficMap;
   } catch (err) {    return new Map();
   }
@@ -458,7 +457,6 @@ export async function getAllStops(prefixes: string[] = [...NETWORK_PREFIXES]): P
   const cacheKey = `all_stops_${sortedPrefixes.join(',')}`;
   const cached = getFromCache<Stop[]>(cacheKey);
   if (cached) {
-    void 0 && console.log(`💾 ${cached.length} arrêts depuis cache (${sortedPrefixes.join(',')})`);
     return cached;
   }
 
