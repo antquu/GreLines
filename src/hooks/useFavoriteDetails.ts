@@ -47,9 +47,7 @@ export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = tru
         try {
           const detail = await getStopDetail(fav.stopId);
           return { favorite: fav, detail, loading: false };
-        } catch (err) {
-          void 0 && console.warn(`Failed to load favorite ${fav.stopId}:`, err);
-          return { favorite: fav, detail: null, loading: false };
+        } catch (err) {          return { favorite: fav, detail: null, loading: false };
         }
       })
     ).then(loaded => {

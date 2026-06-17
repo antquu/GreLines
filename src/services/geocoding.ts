@@ -99,9 +99,7 @@ export const searchAddresses = async (
       };
     });
   } catch (err) {
-    if ((err as { name?: string }).name === 'AbortError') return [];
-    void 0 && console.error('Address geocoding failed:', err);
-    return [];
+    if ((err as { name?: string }).name === 'AbortError') return [];    return [];
   }
 };
 
@@ -137,8 +135,6 @@ export const reverseGeocode = async (
       score: props.score ?? 1,
       id: props.id || `reverse-${rLat}-${rLon}`,
     };
-  } catch (err) {
-    void 0 && console.error('Reverse geocoding failed:', err);
-    return null;
+  } catch (err) {    return null;
   }
 };

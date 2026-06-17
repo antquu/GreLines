@@ -46,9 +46,7 @@ function read(): Favorite[] {
 function write(favorites: Favorite[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(favorites));
-  } catch (err) {
-    void 0 && console.warn('Failed to persist favorites:', err);
-  }
+  } catch (err) {  }
 }
 
 export function getFavorites(): Favorite[] {

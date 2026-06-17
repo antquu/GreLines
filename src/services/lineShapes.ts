@@ -86,9 +86,7 @@ export async function getLineGeometry(
       resultCache.set(semCode, result);
       return result;
     } catch (err) {
-      if ((err as { name?: string }).name !== 'AbortError') {
-        void 0 && console.error(`Failed to fetch line geometry for ${semCode}:`, err);
-      }
+      if ((err as { name?: string }).name !== 'AbortError') {      }
       return null;
     } finally {
       inflightCache.delete(semCode);
@@ -267,9 +265,7 @@ export async function getLineGeometryViaPlan(
       planGeometryCache.set(key, result);
       return result;
     } catch (err) {
-      if ((err as { name?: string }).name !== 'AbortError') {
-        void 0 && console.error(`Failed to fetch plan geometry for ${key}:`, err);
-      }
+      if ((err as { name?: string }).name !== 'AbortError') {      }
       return null;
     } finally {
       planGeometryInflight.delete(key);
@@ -434,9 +430,7 @@ export async function getStopsServedByLine(
       stopsResultCache.set(routeId, points);
       return points;
     } catch (err) {
-      if ((err as { name?: string }).name !== 'AbortError') {
-        void 0 && console.error(`Failed to fetch stops for ${routeId}:`, err);
-      }
+      if ((err as { name?: string }).name !== 'AbortError') {      }
       return null;
     } finally {
       stopsInflightCache.delete(routeId);

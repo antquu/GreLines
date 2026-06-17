@@ -76,9 +76,7 @@ export async function getAllSemLines(): Promise<AllLinesLine[]> {
         .filter(l => l.shortName);
       cache = lines;
       return lines;
-    } catch (err) {
-      void 0 && console.error('Failed to fetch all SEM lines:', err);
-      return [];
+    } catch (err) {      return [];
     } finally {
       inflight = null;
     }

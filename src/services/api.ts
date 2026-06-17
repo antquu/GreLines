@@ -179,9 +179,7 @@ export async function planItineraries(options: {
     const data = response.data;
     const itineraries = Array.isArray(data?.plan?.itineraries) ? data.plan.itineraries : [];
     return itineraries.map((it: any) => parseOtpItinerary(it, options.fromName, options.toName));
-  } catch (error) {
-    void 0 && console.error('planItineraries error:', error);
-    return [];
+  } catch (error) {    return [];
   }
 }
 
@@ -324,9 +322,7 @@ export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
 
     void 0 && console.log(`⚠️ Trafic : lignes concernées = ${Array.from(trafficMap.keys()).join(', ')}`);
     return trafficMap;
-  } catch (err) {
-    void 0 && console.warn('⚠️ Impossibles de charger le trafic:', err);
-    return new Map();
+  } catch (err) {    return new Map();
   }
 }
 
@@ -338,9 +334,7 @@ async function loadRoutes(): Promise<Line[]> {
   const cached = getFromCache<Line[]>(cacheKey);
   if (cached) return cached;
 
-  try {
-    void 0 && console.log(`📡 Chargement des lignes...`);
-    const res = await axios.get(`${TAG_API_BASE}/index/routes`, { headers: TAG_HEADERS });
+  try {    const res = await axios.get(`${TAG_API_BASE}/index/routes`, { headers: TAG_HEADERS });
     const routes = res.data || [];
 
     const trafficLines = await getTrafficLines();
@@ -363,12 +357,8 @@ async function loadRoutes(): Promise<Line[]> {
         } satisfies Line;
       });
 
-    setCache(cacheKey, lines);
-    void 0 && console.log(`✓ ${lines.length} lignes chargées`);
-    return lines;
-  } catch (err) {
-    void 0 && console.error('❌ Erreur loadRoutes:', err);
-    return [];
+    setCache(cacheKey, lines);    return lines;
+  } catch (err) {    return [];
   }
 }
 function lineMatchesPrefixes(line: Line, prefixes: string[]): boolean {
@@ -405,9 +395,7 @@ async function buildStopsFromLines(lines: Line[]): Promise<Stop[]> {
         stopsMap.set(stopId, stop);
         stopsWithClusterCache.set(stopId, { stop, clusterIds: [clusterId] } as any);
       }
-    } catch (err) {
-      void 0 && console.warn(`  ⚠️ Ligne ${line.id} clusters échouée`, err);
-    }
+    } catch (err) {    }
   }
 
   const stopGroups = new Map<string, { stopIds: string[]; clusterIds: Set<string> }>();
@@ -477,12 +465,8 @@ export async function getAllStops(prefixes: string[] = [...NETWORK_PREFIXES]): P
   try {
     void 0 && console.log(`📡 Chargement arrêts (via clusters des lignes)... ${sortedPrefixes.join(', ')}`);
     const stops = await getStopsByPrefixes(sortedPrefixes);
-    setCache(cacheKey, stops);
-    void 0 && console.log(`✓ ${stops.length} arrêts uniques chargés`);
-    return stops;
-  } catch (err) {
-    void 0 && console.error('❌ Erreur getAllStops:', err);
-    return [];
+    setCache(cacheKey, stops);    return stops;
+  } catch (err) {    return [];
   }
 }
 
@@ -495,13 +479,9 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
   
   if (!skipCache) {
     const cached = getFromCache<Departure[]>(cacheKey);
-    if (cached) {
-      void 0 && console.log(`💾 Départs cache pour ${stopId}`);
-      return cached;
+    if (cached) {      return cached;
     }
-  } else {
-    void 0 && console.log(`🔄 Bypassing cache pour ${stopId}`);
-  }
+  } else {  }
 
   try {
     // Étape critique : trouver les BONNES cluster IDs
@@ -525,14 +505,10 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
     const seen = new Set<string>();
 
     for (const clusterId of clusterIds) {
-      let url = `${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes`;
-      void 0 && console.log(`📡 getDepartures URL: ${url}`);
-      const res = await axios.get(url, { headers: TAG_HEADERS });
+      let url = `${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes`;      const res = await axios.get(url, { headers: TAG_HEADERS });
       const data = res.data;
 
-      if (!Array.isArray(data)) {
-        void 0 && console.warn(`Réponse stoptimes non-array pour ${clusterId}`, data);
-        continue;
+      if (!Array.isArray(data)) {        continue;
       }
 
       const now = Date.now() / 1000;
@@ -583,10 +559,7 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
 
     departures.sort((a, b) => a.departureTime - b.departureTime);
 
-    setCache(cacheKey, departures);
-    void 0 && console.log(`→ ${departures.length} départs trouvés pour ${stopId}`);
-
-    return departures;
+    setCache(cacheKey, departures);    return departures;
   } catch (err: any) {
     void 0 && console.error(`❌ getDepartures(${stopId}) failed:`, err?.message ?? err);
     return [];
@@ -604,9 +577,7 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
     const routeMap = new Map<string, Line>();
 
     for (const clusterId of clusterIds) {
-      try {
-        void 0 && console.log(`📡 Récupération lignes pour: ${clusterId}`);
-        const response = await axios.get(
+      try {        const response = await axios.get(
           `${TAG_API_BASE}/index/clusters/${clusterId}/routes`,
           { headers: TAG_HEADERS }
         );
@@ -627,17 +598,11 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
             trafficDetails: details,
           } satisfies Line);
         }
-      } catch (error) {
-        void 0 && console.warn(`⚠️ Erreur chargement lignes pour ${clusterId}:`, error);
-      }
+      } catch (error) {      }
     }
 
-    const lines = Array.from(routeMap.values());
-    void 0 && console.log(`✓ ${lines.length} lignes pour ${stopId}`);
-    return lines;
-  } catch (error) {
-    void 0 && console.warn(`⚠️ Erreur chargement lignes pour ${stopId}:`, error);
-    return [];
+    const lines = Array.from(routeMap.values());    return lines;
+  } catch (error) {    return [];
   }
 }
 
@@ -663,18 +628,13 @@ export async function getStopDetail(stopId: string, prefixes: string[] = [...NET
     void 0 && console.log(`✓ Chargement ${lines.length} lignes pour arrêt ${stop.name}:`, lines.map(l => l.id).join(', '));
 
     // Requête unique au cluster pour récupérer TOUS les bus (sans filtrer par ligne)
-    const departures = await getDepartures(stop.id);
-    void 0 && console.log(`✓ ${departures.length} départs chargés pour ${stop.name}`);
-
-    return {
+    const departures = await getDepartures(stop.id);    return {
       ...stop,
       lines,
       departures,
       lastUpdate: new Date(),
     };
-  } catch (err) {
-    void 0 && console.error('getStopDetail error:', err);
-    return null;
+  } catch (err) {    return null;
   }
 }
 
@@ -683,10 +643,7 @@ export async function getStopDetail(stopId: string, prefixes: string[] = [...NET
  * (sans recharger les routes) - utilisé pour la mise à jour périodique
  */
 export async function refreshStopDepartures(stopDetail: StopDetail): Promise<StopDetail> {
-  try {
-    void 0 && console.log(`🔄 Refresh départs pour ${stopDetail.name}`);
-
-    // Bypass le cache pour avoir les données fraiches
+  try {    // Bypass le cache pour avoir les données fraiches
     const departures = await getDepartures(stopDetail.id, true);
 
     // L'occupancy est déjà fixée dans getDepartures, pas besoin de la régénérer
@@ -696,9 +653,7 @@ export async function refreshStopDepartures(stopDetail: StopDetail): Promise<Sto
       departures,
       lastUpdate: new Date(),
     };
-  } catch (err) {
-    void 0 && console.error('refreshStopDepartures error:', err);
-    return stopDetail;
+  } catch (err) {    return stopDetail;
   }
 }
 
@@ -719,9 +674,7 @@ export async function searchStops(query: string): Promise<Stop[]> {
         stop.name.toLowerCase().includes(lowerQuery) ||
         (stop.city?.toLowerCase().includes(lowerQuery) ?? false)
     );
-  } catch (error) {
-    void 0 && console.error('❌ Erreur recherche arrêts:', error);
-    return [];
+  } catch (error) {    return [];
   }
 }
 

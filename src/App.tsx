@@ -587,9 +587,7 @@ function App() {
         setError(null);
       } catch (err) {
         if (!active) return;
-        setError('Failed to load stops');
-        void 0 && console.error(err);
-      } finally {
+        setError('Failed to load stops');      } finally {
         if (active) setIsLoading(false);
       }
     };
@@ -696,17 +694,12 @@ function App() {
           ({ coords }) => {
             setCurrentLocation({ lat: coords.latitude, lon: coords.longitude });
           },
-          err => {
-            void 0 && console.warn('[Geoloc] watchPosition error:', err.code, err.message);
-          },
+          err => {          },
           { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
         );
         setLocationWatchId(watchId);
       },
-      err => {
-        void 0 && console.warn('[Geoloc] getCurrentPosition failed:', err.code, err.message);
-        
-        let message = 'Erreur de géolocalisation';
+      err => {        let message = 'Erreur de géolocalisation';
         if (err.code === 1) {
           message = 'Accès géolocalisation refusé. Vérifiez les permissions du navigateur.';
         } else if (err.code === 2) {
