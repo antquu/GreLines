@@ -1,9 +1,16 @@
-﻿import { motion, useDragControls } from 'framer-motion';
-import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
+﻿import { motion } from 'framer-motion';
+import { Sheet, type SheetRef } from 'react-modal-sheet';
+import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon } from '@heroicons/react/24/solid';
+import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
+import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
+import { AddFavoriteModal } from './AddFavoriteModal';
+import { BetaNotice } from './BetaNotice';
 import { MdTram, MdDirectionsBus } from 'react-icons/md';
-import type { StopDetail, Departure } from '../types';
+import type { StopDetail, Departure, Line } from '../types';
 import { formatDepartureTime, refreshStopDepartures } from '../services/api';
-import { useEffect, useState, useRef } from 'react';
+import { resolveLineStyle } from '../utils/lineColors';
+import { useEffect, useState, useRef, useMemo } from 'react';
+import { getStopTrafficAlerts } from '../utils/stopTrafficMatcher';
 
 interface SidebarMobileProps {
   stop: StopDetail | null;
@@ -12,25 +19,27 @@ interface SidebarMobileProps {
   onClose: () => void;
   onOpen: () => void;
   initialSelectedLines?: Set<string>;
+  /**
+   * Controlled mode: if provided, the sidebar uses these and notifies the
+   * parent via `onSelectedLinesChange`. If both are omitted, the sidebar
+   * falls back to internal state (legacy behavior).
+   */
+  selectedLines?: Set<string>;
+  onSelectedLinesChange?: (lines: Set<string>) => void;
   compactMode: boolean;
   autoSync: boolean;
   refreshIntervalMs: number;
   language: 'fr' | 'en';
+  onPlanRouteFromStop?: (stop: StopDetail) => void;
 }
 
-const getMinutesUntilDeparture = (departure: Departure): number => {
-  return departure.departureTime;
-};
-
-const getDepartureDisplay = (departure: Departure, language: 'fr' | 'en'): string => {
-  return formatDepartureTime(departure, language);
-};
+const getMinutesUntilDeparture = (departure: Departure): number => departure.departureTime;
+const getDepartureDisplay = (departure: Departure, language: 'fr' | 'en'): string => formatDepartureTime(departure, language);
 
 const getSidebarText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
     lines: isFr ? 'Lignes' : 'Lines',
-    filter: isFr ? 'Filtrer :' : 'Filter:',
     showAll: isFr ? 'Afficher tout' : 'Show all',
     exportConfiguration: isFr ? 'Exporter la configuration' : 'Export configuration',
     exportedConfiguration: isFr ? 'Configuration exportée' : 'Exported configuration',
@@ -51,85 +60,44 @@ const getSidebarText = (language: 'fr' | 'en') => {
     calculateItineraryWith: isFr ? 'Calculez votre itinéraire avec' : 'Calculate your itinerary with',
     nextLabel: isFr ? 'PROCHAIN' : 'NEXT',
     noDeparturesAvailable: isFr ? 'Aucun départ disponible' : 'No departures available',
+    stopAlerts: isFr ? 'Infos trafic' : 'Traffic alerts',
+    affecting: isFr ? 'Concerne :' : 'Affects:',
+    planRouteFromStop: isFr ? 'Planifier un trajet depuis cet arrêt' : 'Plan a trip from this stop',
   };
 };
 
 const renderDepartureTime = (timeString: string) => {
   const match = timeString.match(/^(\d+)(m)$/);
-  if (match) {
-    return (
-      <>
-        <span className="font-bold">{match[1]}</span>
-        <span className="font-normal">{match[2]}</span>
-      </>
-    );
-  }
+  if (match) return <><span className="font-bold">{match[1]}</span><span className="font-normal">{match[2]}</span></>;
   return timeString;
 };
 
-const normalizeHexColor = (value?: string): string | undefined => {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  const hex = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
-  return /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : undefined;
-};
+// Line style resolution handled by `resolveLineStyle` in utils.
 
-const getContrastTextColor = (background?: string, textColor?: string): string => {
-  const normalizedTextColor = normalizeHexColor(textColor);
-  if (normalizedTextColor) return normalizedTextColor;
-  const bg = normalizeHexColor(background);
-  if (!bg) return '#FFFFFF';
-  const r = parseInt(bg.slice(1, 3), 16);
-  const g = parseInt(bg.slice(3, 5), 16);
-  const b = parseInt(bg.slice(5, 7), 16);
-  return (r * 0.299 + g * 0.587 + b * 0.114) > 186 ? '#000000' : '#FFFFFF';
-};
+const isTramway = (lineId: string): boolean => ['A','B','C','D','E'].includes(lineId.toUpperCase().trim());
 
-const getLineStyle = (color?: string, textColor?: string) => {
-  const backgroundColor = normalizeHexColor(color);
-  if (!backgroundColor) return {};
-  return {
-    backgroundColor,
-    color: getContrastTextColor(backgroundColor, textColor),
-  };
-};
-
-const isTramway = (lineId: string): boolean => {
-  const id = lineId.toUpperCase().trim();
-  return ['A', 'B', 'C', 'D', 'E'].includes(id);
+const isChronoLine = (lineId: string): boolean => {
+  const m = /^C(\d+)$/.exec(lineId.toUpperCase().trim());
+  return !!m && parseInt(m[1], 10) >= 1 && parseInt(m[1], 10) <= 14;
 };
 
 const isRoundLine = (lineId: string): boolean => {
-  const id = lineId.toUpperCase().trim();
-  const code = id.includes('_') ? id.split('_').pop() || id : id;
-  if (['A', 'B', 'C', 'D', 'E'].includes(code)) return true;
+  const code = lineId.toUpperCase().trim().includes('_') ? lineId.toUpperCase().trim().split('_').pop() || lineId.toUpperCase().trim() : lineId.toUpperCase().trim();
+  if (['A','B','C','D','E'].includes(code)) return true;
   const match = /^C(\d+)$/.exec(code);
   return !!match && parseInt(match[1], 10) >= 1 && parseInt(match[1], 10) <= 14;
 };
 
-const getBadgeShapeClass = (isRound: boolean): string => {
-  return isRound ? 'rounded-full' : 'rounded-2xl';
-};
+const getBadgeShapeClass = (isRound: boolean): string => isRound ? 'rounded-full' : 'rounded-2xl';
 
 const getLineSortKey = (lineShortName?: string | null, lineId?: string): [number, string] => {
   const code = (lineShortName || lineId || '').toUpperCase().trim();
-  if (code === 'A') return [0, ''];
-  if (code === 'B') return [1, ''];
-  if (code === 'C') return [2, ''];
-  if (code === 'D') return [3, ''];
-  if (code === 'E') return [4, ''];
+  if (code === 'A') return [0, '']; if (code === 'B') return [1, '']; if (code === 'C') return [2, ''];
+  if (code === 'D') return [3, '']; if (code === 'E') return [4, ''];
   const cMatch = /^C(\d+)$/.exec(code);
-  if (cMatch) {
-    const n = parseInt(cMatch[1], 10);
-    if (n >= 1 && n <= 14) return [5, n.toString().padStart(3, '0')];
-    return [8, code];
-  }
+  if (cMatch) { const n = parseInt(cMatch[1], 10); return n >= 1 && n <= 14 ? [5, n.toString().padStart(3,'0')] : [8, code]; }
   const nMatch = /^(\d+)$/.exec(code);
-  if (nMatch) {
-    const n = parseInt(nMatch[1], 10);
-    if (n >= 15 && n <= 92) return [6, n.toString().padStart(3, '0')];
-    return [7, n.toString().padStart(3, '0')];
-  }
+  if (nMatch) { const n = parseInt(nMatch[1], 10); return n >= 15 && n <= 92 ? [6, n.toString().padStart(3,'0')] : [7, n.toString().padStart(3,'0')]; }
   return [9, code];
 };
 
@@ -141,740 +109,627 @@ const sortLinesByPriority = (a: { shortName?: string | null; id: string }, b: { 
 };
 
 const OccupancyDisplay = ({ occupancy, showError = false }: { occupancy?: string | null; showError?: boolean }) => {
-  const getFrequencyLevel = (occupancy?: string | null): { level: number; label: string } => {
-    switch (occupancy) {
-      case 'LIGHT':
-        return { level: 1, label: 'low' };
-      case 'MODERATE':
-        return { level: 2, label: 'moderate' };
-      case 'CROWDED':
-        return { level: 3, label: 'high' };
-      default:
-        return { level: 0, label: 'unknown' };
-    }
-  };
-
-  const { level, label } = getFrequencyLevel(occupancy);
-
-  if (level === 0) {
-    if (showError) {
-      return (
-        <div className="text-xs text-red-400 font-medium">
-          No data
-        </div>
-      );
-    }
-    return null;
-  }
-
+  const level = occupancy === 'LIGHT' ? 1 : occupancy === 'MODERATE' ? 2 : occupancy === 'CROWDED' ? 3 : 0;
+  if (level === 0) return showError ? <div className="text-xs text-slate-500">–</div> : null;
   return (
-    <div className="flex items-center gap-0.5" title={`Frequency: ${label}`}>
+    <div className="flex items-center gap-0.5">
       {Array.from({ length: 3 }).map((_, i) => (
-        <UserIcon
-          key={i}
-          className={`w-4 h-4 ${
-            i < level
-              ? 'text-gray-300'
-              : 'text-gray-300'
-          }`}
-        />
+        <UserIcon key={i} className="w-4 h-4 text-slate-300" style={{ opacity: i < level ? 1 : 0.3 }} />
       ))}
     </div>
   );
 };
 
 const getLineColor = (lineId: string): string => {
-  const colors: Record<string, { bg: string; text: string }> = {
-    '1': { bg: 'bg-red-500', text: 'text-white' },
-    '2': { bg: 'bg-green-500', text: 'text-white' },
-    '3': { bg: 'bg-blue-500', text: 'text-white' },
-    '4': { bg: 'bg-pink-500', text: 'text-white' },
-    '5': { bg: 'bg-yellow-400', text: 'text-gray-900' },
-    '6': { bg: 'bg-purple-500', text: 'text-white' },
-    '7': { bg: 'bg-orange-500', text: 'text-white' },
-    '8': { bg: 'bg-indigo-500', text: 'text-white' },
-    '9': { bg: 'bg-teal-500', text: 'text-white' },
-    '10': { bg: 'bg-rose-500', text: 'text-white' },
+  const colors: Record<string, string> = {
+    '1': 'bg-red-500', '2': 'bg-green-500', '3': 'bg-blue-500', '4': 'bg-pink-500',
+    '5': 'bg-yellow-400', '6': 'bg-purple-500', '7': 'bg-orange-500', '8': 'bg-indigo-500',
+    '9': 'bg-teal-500', '10': 'bg-rose-500',
   };
-  return colors[lineId]?.bg || 'bg-gray-500';
+  return colors[lineId] || 'bg-slate-500';
 };
 
-export const SidebarMobile = ({ stop, isOpen, sidebarState, onClose, onOpen, initialSelectedLines, compactMode, autoSync, refreshIntervalMs, language }: SidebarMobileProps) => {
+/**
+ * Stop-level traffic alerts block — same sober style as inline traffic alerts
+ * inside expanded line departures: bg-amber-950 border border-amber-700 rounded-2xl p-3.
+ */
+interface StopTrafficAlertsProps {
+  stop: Pick<StopDetail, 'id' | 'name' | 'lines'>;
+  language: 'fr' | 'en';
+}
+
+const StopTrafficAlerts = ({ stop, language }: StopTrafficAlertsProps) => {
+  const text = getSidebarText(language);
+  const alerts = useMemo(
+    () => getStopTrafficAlerts({ name: stop.name }, stop.lines),
+    [stop.id, stop.name, stop.lines]
+  );
+
+  if (alerts.length === 0) return null;
+
+  return (
+    <div className="px-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+        {text.stopAlerts}
+      </h3>
+      <div className="space-y-2.5">
+        {alerts.map((alert, idx) => {
+          const lines: Line[] = [...alert.matchedLines].sort(sortLinesByPriority);
+          const headerLabel =
+            lines.length === 1
+              ? `${text.disruptedTraffic} ${lines[0].shortName || lines[0].id}`
+              : text.ongoingDisruption;
+          return (
+            <motion.div
+              key={`${alert.detail.titre}-${idx}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.04 }}
+              className="bg-amber-950 border border-amber-700 rounded-2xl p-3"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <ExclamationTriangleIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <p className="text-xs font-semibold text-amber-300">{headerLabel}</p>
+              </div>
+              <p className="text-xs text-amber-200">{alert.detail.titre}</p>
+              {alert.detail.description && (
+                <p className="text-xs text-amber-300/70 mt-1 whitespace-pre-line">
+                  {alert.detail.description}
+                </p>
+              )}
+              {alert.detail.dateFin && (
+                <p className="text-xs text-amber-400/60 mt-1">
+                  {text.estimatedEnd} {alert.detail.dateFin}
+                </p>
+              )}
+              {lines.length > 1 && (
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-xs text-amber-300/60">{text.affecting}</span>
+                  {lines.map(line => {
+                    const lineStyle = resolveLineStyle(line.id, line.color, line.textColor);
+                    return (
+                      <span
+                        key={line.id}
+                        className={`${getBadgeShapeClass(isRoundLine(line.shortName || line.id))} w-6 h-6 flex items-center justify-center text-[10px] font-bold ${!lineStyle.backgroundColor ? getLineColor(line.id) + ' text-white' : ''}`}
+                        style={lineStyle}
+                        title={line.name}
+                      >
+                        {line.shortName || line.id}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Copy-to-clipboard button with a small success state. Animates the bg colour
+ * to emerald and swaps the label/icon for ~1.5s after a successful copy.
+ */
+const CopyButton = ({ value, copyLabel, copiedLabel }: { value: string; copyLabel: string; copiedLabel: string }) => {
+  const [copied, setCopied] = useState(false);
+  const handle = async () => {
+    try { await navigator.clipboard.writeText(value); } catch { /* fallback below */ }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <motion.button
+      onClick={handle}
+      animate={{ backgroundColor: copied ? '#10b981' /* emerald-500 */ : '#2563eb' /* blue-600 */ }}
+      transition={{ duration: 0.2 }}
+      className="px-3 py-2 text-white rounded-xl text-xs font-semibold flex-shrink-0 flex items-center justify-center gap-1.5 min-w-[72px]"
+    >
+      {copied ? (
+        <>
+          <CheckIcon className="w-3.5 h-3.5" />
+          <span>{copiedLabel}</span>
+        </>
+      ) : (
+        <span>{copyLabel}</span>
+      )}
+    </motion.button>
+  );
+};
+
+export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, selectedLines: controlledSelectedLines, onSelectedLinesChange, compactMode, autoSync, refreshIntervalMs, language, onPlanRouteFromStop }: SidebarMobileProps) => {
   const [currentStopDetail, setCurrentStopDetail] = useState<StopDetail | null>(null);
   const [departures, setDepartures] = useState<Departure[]>([]);
-  const [selectedLines, setSelectedLines] = useState<Set<string>>(initialSelectedLines || new Set());
+  const [internalSelectedLines, setInternalSelectedLines] = useState<Set<string>>(initialSelectedLines || new Set());
+  const isControlled = controlledSelectedLines !== undefined;
+  const selectedLines = isControlled ? controlledSelectedLines! : internalSelectedLines;
+  const setSelectedLines = (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (isControlled) {
+      const next = typeof updater === 'function' ? updater(selectedLines) : updater;
+      onSelectedLinesChange?.(next);
+    } else {
+      setInternalSelectedLines(updater);
+    }
+  };
   const [currentStopId, setCurrentStopId] = useState<string | null>(null);
-  const [expandedTrams, setExpandedTrams] = useState<Set<string>>(new Set());
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isFavoriteModalOpen, setIsFavoriteModalOpen] = useState(false);
+  const [isFav, setIsFav] = useState(false);
+  useEffect(() => {
+    if (!currentStopDetail) { setIsFav(false); return; }
+    const sync = () => setIsFav(isFavorite(currentStopDetail.id));
+    sync();
+    return subscribeFavorites(sync);
+  }, [currentStopDetail?.id]);
   const [exportUrl, setExportUrl] = useState('');
   const exportButtonRef = useRef<HTMLButtonElement>(null);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isHandleDragging, setIsHandleDragging] = useState(false);
-  const dragControls = useDragControls();
   const [hasAppliedInitialLines, setHasAppliedInitialLines] = useState(false);
   const text = getSidebarText(language);
 
+  /**
+   * Bottom-sheet snap control. The snap-points array changes shape depending
+   * on whether a line filter is active:
+   *   no filter         → [0, 0.6, 1]         (closed, peek 60%, full)
+   *   filter active     → [0, 0.25, 0.6, 1]   (closed, mini 25%, peek 60%, full)
+   * The mini snap lets the user push the sheet down to glance at the map
+   * (with the line trace) without losing the open stop. We also track the
+   * current snap index so we can know when to hide the backdrop / let the
+   * map receive pointer events.
+   */
+  const sheetRef = useRef<SheetRef>(null);
+  const hasFilter = selectedLines.size > 0;
+  const snapPoints = hasFilter ? [0, 0.25, 0.6, 1] : [0, 0.6, 1];
+  // Index of "peek" (~60%) and "mini" (~25%) within the chosen array — used
+  // by the snap-on-filter-change effect below.
+  const peekIndex = hasFilter ? 2 : 1;
+  const miniIndex = hasFilter ? 1 : -1; // -1 = no mini snap available
+  const fullIndex = snapPoints.length - 1; // always the last one
+  const [snapIdx, setSnapIdx] = useState<number>(fullIndex);
+
   useEffect(() => {
-    const stopId = stop?.id || null;
-    setCurrentStopId(stopId);
-
-    if (!stop) {
-      setCurrentStopDetail(null);
-      return;
-    }
-
+    setCurrentStopId(stop?.id || null);
+    if (!stop) { setCurrentStopDetail(null); return; }
     setCurrentStopDetail(prev => {
-      if (
-        prev?.id === stop.id &&
-        prev.lines?.length > 0 &&
-        (!stop.lines || stop.lines.length === 0)
-      ) {
-        return {
-          ...stop,
-          lines: prev.lines,
-          departures: stop.departures.length > 0 ? stop.departures : prev.departures,
-          lastUpdate: stop.lastUpdate || prev.lastUpdate,
-        };
+      if (prev?.id === stop.id && prev.lines?.length > 0 && (!stop.lines || stop.lines.length === 0)) {
+        return { ...stop, lines: prev.lines, departures: stop.departures.length > 0 ? stop.departures : prev.departures, lastUpdate: stop.lastUpdate || prev.lastUpdate };
       }
-
       return stop;
     });
   }, [stop]);
 
   const updateDepartures = async () => {
     if (!currentStopDetail || !isOpen || currentStopDetail.lines.length === 0) return;
-
     try {
       const updatedStopDetail = await refreshStopDepartures(currentStopDetail);
       setCurrentStopDetail(prev => {
         if (!prev) return updatedStopDetail;
-        return {
-          ...prev,
-          ...updatedStopDetail,
-          lines: prev.lines.length > 0 ? prev.lines : updatedStopDetail.lines,
-        };
+        return { ...prev, ...updatedStopDetail, lines: prev.lines.length > 0 ? prev.lines : updatedStopDetail.lines };
       });
-    } catch (error) {
-      console.error('Failed to update departures:', error);
-    }
+    } catch (error) { void 0 && console.error('Failed to update departures:', error); }
   };
 
   useEffect(() => {
     if (!isOpen || !currentStopDetail || currentStopDetail.lines.length === 0) return;
-
     updateDepartures();
-
     if (!autoSync) return;
-
     const interval = setInterval(updateDepartures, refreshIntervalMs);
-
     return () => clearInterval(interval);
   }, [isOpen, currentStopDetail?.id, currentStopDetail?.lines.length, autoSync, refreshIntervalMs]);
 
   const getDeparturePriority = (dep: Departure): number => {
     const id = dep.lineId.toUpperCase().trim();
-    const name = dep.lineName.toUpperCase();
-
-    if (id === 'A') return 1000;
-    if (id === 'B') return 900;
-    if (id === 'C') return 800;
-    if (id === 'D') return 700;
-    if (id === 'E') return 600;
-
+    if (id === 'A') return 1000; if (id === 'B') return 900; if (id === 'C') return 800; if (id === 'D') return 700; if (id === 'E') return 600;
     const cMatch = /^C(\d+)$/.exec(id);
-    if (cMatch) {
-      const n = parseInt(cMatch[1], 10);
-      if (n >= 1 && n <= 14) {
-        return 500 + (15 - n);
-      }
-    }
-
+    if (cMatch) { const n = parseInt(cMatch[1], 10); if (n >= 1 && n <= 14) return 500 + (15 - n); }
     const nMatch = /^(\d+)$/.exec(id);
-    if (nMatch) {
-      const n = parseInt(nMatch[1], 10);
-      if (n >= 15 && n <= 92) {
-        return 400 + (93 - n);
-      }
-    }
-
-    if (name.includes('CHRONO') || id.startsWith('C')) return 50;
-    if (name.includes('PROXIMO') || id.includes('PR')) return 40;
-    if (name.includes('FLEXO') || id.includes('FL')) return 30;
-    if (dep.type === 'TRAM' || id.startsWith('T') || name.includes('TRAM')) return 20;
-
+    if (nMatch) { const n = parseInt(nMatch[1], 10); if (n >= 15 && n <= 92) return 400 + (93 - n); }
     return 10;
   };
 
   useEffect(() => {
-    if (!currentStopDetail) {
-      setDepartures([]);
-      return;
-    }
-
-    const futureDepartures = currentStopDetail.departures.filter(dep => getMinutesUntilDeparture(dep) >= 0);
-
-    setDepartures(futureDepartures);
+    if (!currentStopDetail) { setDepartures([]); return; }
+    setDepartures(currentStopDetail.departures.filter(dep => getMinutesUntilDeparture(dep) >= 0));
   }, [currentStopDetail]);
 
   useEffect(() => {
+    // In controlled mode, the parent owns selectedLines — don't fight it.
+    if (isControlled) return;
     if (initialSelectedLines && initialSelectedLines.size > 0 && !hasAppliedInitialLines) {
-      setSelectedLines(new Set(initialSelectedLines));
+      setInternalSelectedLines(new Set(initialSelectedLines));
       setHasAppliedInitialLines(true);
     } else if (!initialSelectedLines || initialSelectedLines.size === 0) {
-      setSelectedLines(new Set());
+      setInternalSelectedLines(new Set());
       setHasAppliedInitialLines(false);
     }
-  }, [currentStopId, initialSelectedLines]);
+  }, [currentStopId, initialSelectedLines, isControlled]);
 
   const displayedDepartures = (() => {
     const sorted = [...departures].sort((a, b) => {
-      const pa = getDeparturePriority(a);
-      const pb = getDeparturePriority(b);
+      const pa = getDeparturePriority(a), pb = getDeparturePriority(b);
       if (pa !== pb) return pb - pa;
-
       return a.departureTime - b.departureTime;
     });
-
-    if (selectedLines.size === 0) {
-      return sorted;
-    }
-
-    return sorted.filter(dep => selectedLines.has(dep.lineId));
+    return selectedLines.size === 0 ? sorted : sorted.filter(dep => selectedLines.has(dep.lineId));
   })();
 
   const groupedDepartures = (() => {
     type Group = { first: Departure; second?: Departure; count: number };
     const groups = new Map<string, Group>();
-
     displayedDepartures.forEach(dep => {
       const key = `${dep.lineId}::${dep.destination}`;
       const existing = groups.get(key);
-      if (!existing) {
-        groups.set(key, { first: dep, count: 1 });
-      } else {
-        existing.count += 1;
-        if (!existing.second) {
-          existing.second = dep;
-        }
-      }
+      if (!existing) groups.set(key, { first: dep, count: 1 });
+      else { existing.count += 1; if (!existing.second) existing.second = dep; }
     });
-
     return Array.from(groups.values()).sort((a, b) => {
-      const pa = getDeparturePriority(a.first);
-      const pb = getDeparturePriority(b.first);
+      const pa = getDeparturePriority(a.first), pb = getDeparturePriority(b.first);
       if (pa !== pb) return pb - pa;
-
       return a.first.departureTime - b.first.departureTime;
     });
   })();
 
-  // Calculate the y position based on sidebar state and drag
-  const getYPosition = () => {
-    if (!isOpen) return '100%';
-
-    const basePosition = sidebarState === 'peek' ? '70%' : '1%'; // 30% visible in peek, 99% open
-    if (isDragging || isHandleDragging) {
-      const dragY = Math.max(0, Math.min(100, dragOffset));
-      return `${dragY}%`;
+  /**
+   * Auto-snap on filter change. When the user toggles a line on, we slide the
+   * sheet down to the mini (~25%) snap so they can see the trace on the map
+   * without closing the stop. When they clear the filter, we restore to peek.
+   * We track the previous filter count to only react on the *transition*.
+   */
+  const prevFilterCountRef = useRef<number>(selectedLines.size);
+  useEffect(() => {
+    const prev = prevFilterCountRef.current;
+    const next = selectedLines.size;
+    prevFilterCountRef.current = next;
+    if (!isOpen) return;
+    // Going from no filter → has filter: snap down to mini.
+    if (prev === 0 && next > 0 && miniIndex >= 0) {
+      sheetRef.current?.snapTo(miniIndex);
     }
-    return basePosition;
+    // Going from has filter → no filter: snap up to peek (so the user sees
+    // the full stop info again, not stuck at the now-defunct 25% snap).
+    else if (prev > 0 && next === 0) {
+      sheetRef.current?.snapTo(peekIndex);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLines.size, isOpen]);
+
+  const toggleExpanded = (key: string) => {
+    setExpandedItems(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
   };
 
   return (
     <>
-      {isOpen && (
-        <div
-          className={`fixed inset-0 z-40 ${sidebarState === 'open' ? 'bg-black/20 backdrop-blur-sm' : 'bg-transparent'}`}
-          onClick={onClose}
-        />
-      )}
-
-      <motion.div
-        drag="y"
-        dragControls={sidebarState === 'open' ? dragControls : undefined}
-        dragListener={sidebarState === 'open' ? false : true}
-        dragConstraints={{ top: 0, bottom: window.innerHeight }}
-        dragElastic={0.1}
-        onDragStart={() => {
-          setIsDragging(true);
-          if (sidebarState === 'open') {
-            setIsHandleDragging(true);
-          }
-        }}
-        onClick={(e) => e.stopPropagation()}
-        onDragEnd={(_, info) => {
-          setIsDragging(false);
-          setIsHandleDragging(false);
-
-          const threshold = window.innerHeight * 0.3;
-          const openThreshold = window.innerHeight * 0.25;
-
-          if (info.offset.y > threshold) {
-            onClose();
-          } else if (info.offset.y < -openThreshold && sidebarState !== 'open') {
-            onOpen();
-          } else if (sidebarState === 'peek' && info.offset.y < -threshold) {
-            onOpen();
-          } else {
-            setDragOffset(0);
-          }
-        }}
-        onDrag={(_, info) => {
-          setDragOffset((info.offset.y / window.innerHeight) * 100);
-        }}
-        initial={{ y: '100%', opacity: 0 }}
-        animate={{
-          y: getYPosition(),
-          opacity: isOpen ? 1 : 0,
-        }}
-        exit={{ y: '100%', opacity: 0 }}
-        transition={{
-          duration: isDragging ? 0 : 0.3,
-          ease: 'easeOut',
-          type: isDragging ? 'tween' : 'spring',
-          damping: 25,
-          stiffness: 300,
-        }}
-        className="fixed inset-x-0 bottom-0 z-50 h-[100vh] max-h-[calc(100vh-5px)] overflow-y-auto rounded-t-3xl shadow-2xl app-panel bg-gray-900"
-        style={{
-          touchAction: sidebarState === 'open' ? 'auto' : 'none',
-        }}
+    <Sheet
+      ref={sheetRef}
+      style={{ zIndex: 100 }}
+      isOpen={isOpen}
+      onClose={onClose}
+      snapPoints={snapPoints}
+      initialSnap={fullIndex}
+      onSnap={setSnapIdx}
     >
-      {isOpen && currentStopDetail && (
-        <div 
-          className="p-4 pb-20"
-          onClick={sidebarState === 'peek' ? onOpen : undefined}
-          style={{ cursor: sidebarState === 'peek' ? 'pointer' : 'default' }}
-        >
-          {/* Drag handle - size closer to original and not too large visually */}
-          <div
-            className="flex justify-center items-center mb-4 cursor-grab h-8"
-            onPointerDown={(event) => {
-              if (sidebarState === 'open') {
-                setIsHandleDragging(true);
-                dragControls.start(event);
-              }
-            }}
-            style={{ touchAction: 'none' }}
-          >
-            <div className="w-12 h-1.5 bg-gray-600 rounded-full" />
-          </div>
-          {/* Close button */}
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-3xl font-extrabold text-white flex-1">
-              {currentStopDetail.name}
-            </h2>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-              }}
-              className="p-2 hover:bg-gray-800 rounded-full transition flex-shrink-0"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+      <Sheet.Container style={{ borderRadius: '24px 24px 0 0', backgroundColor: '#0f172a', zIndex: 100 }}>
+        <Sheet.Header />
+        <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
+          {currentStopDetail && (
+          <div className="overflow-y-auto flex-1 pb-24">
+            {/* Header */}
+            <div className="flex items-start justify-between px-5 pt-2 pb-4">
+              <div className="flex-1 min-w-0 pr-3">
+                <h2 className="text-2xl font-extrabold text-white leading-tight">{currentStopDetail.name}</h2>
+                {currentStopDetail.city && <p className="text-sm text-slate-400 mt-0.5">{currentStopDetail.city}</p>}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                <button
+                  onClick={() => {
+                    if (isFav) removeFavoriteAndNotify(currentStopDetail.id);
+                    else setIsFavoriteModalOpen(true);
+                  }}
+                  className={`w-9 h-9 flex items-center justify-center border rounded-full transition ${
+                    isFav
+                      ? 'bg-amber-500/20 border-amber-500/40'
+                      : 'bg-slate-800 border-slate-700 hover:bg-slate-700'
+                  }`}
+                  aria-label={isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                >
+                  {isFav
+                    ? <StarIcon className="w-4 h-4 text-amber-400" />
+                    : <StarOutlineIcon className="w-4 h-4 text-white" />}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-9 h-9 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-full hover:bg-slate-700 transition"
+                >
+                  <XMarkIcon className="w-4 h-4 text-white" />
+                </button>
+              </div>
+            </div>
 
-          {currentStopDetail.city && (
-            <p className="text-sm text-gray-400 mb-4">
-              {currentStopDetail.city}
-            </p>
-          )}
+            {/* Lines */}
+            <div className="px-5 mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{text.lines}</h3>
+                <button
+                  ref={exportButtonRef}
+                  onClick={() => {
+                    // Build the URL using the user's current path so shared
+                    // links land on the same route they were copied from.
+                    const path = window.location.pathname;
+                    const qs = selectedLines.size === 0
+                      ? `T1=ALL_${currentStopDetail.id}`
+                      : Array.from(selectedLines).sort().map((id, i) => `T${i+1}=${id}_${currentStopDetail.id}`).join('&');
+                    setExportUrl(`${window.location.origin}${path}?${qs}`);
+                    setIsExportModalOpen(true);
+                  }}
+                  className="w-7 h-7 flex items-center justify-center hover:bg-slate-800 rounded-lg transition"
+                  title={text.exportConfiguration}
+                >
+                  <EllipsisVerticalIcon className="w-4 h-4 text-slate-400" />
+                </button>
+              </div>
 
-          {/* Lines section */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-                {text.lines}
-              </h3>
+              <div className="flex flex-wrap gap-2.5 mb-3">
+                {[...currentStopDetail.lines].sort(sortLinesByPriority).map(line => {
+                  const isActive = selectedLines.has(line.id);
+                  const isSelected = selectedLines.size === 0 || isActive;
+                  const lineStyle = resolveLineStyle(line.id, line.color, line.textColor);
+                  return (
+                    <div key={line.id} className="relative">
+                      <button
+                        onClick={() => setSelectedLines(prev => { const next = new Set(prev); next.has(line.id) ? next.delete(line.id) : next.add(line.id); return next; })}
+                        className={`${getBadgeShapeClass(isRoundLine(line.shortName || line.id))} w-12 h-12 flex items-center justify-center text-sm font-bold transition-all ${isActive ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-900' : ''} ${isSelected ? 'opacity-100' : 'opacity-25'} ${!lineStyle.backgroundColor ? getLineColor(line.id) + ' text-white' : ''}`}
+                        style={lineStyle}
+                        title={line.name}
+                      >
+                        {line.shortName || line.id}
+                      </button>
+                      {line.hasTraffic && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center">
+                          <ExclamationTriangleIcon className="w-2.5 h-2.5 text-amber-900" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
               <button
-                ref={exportButtonRef}
-                onClick={() => {
-                  let url: string;
-
-                  if (selectedLines.size === 0) {
-                    url = `/app?T1=ALL_${currentStopDetail.id}`;
-                  } else {
-                    const selectedLinesArray = Array.from(selectedLines).sort();
-                    const params = selectedLinesArray
-                      .map((lineId, index) => `T${index + 1}=${lineId}_${currentStopDetail.id}`)
-                      .join('&');
-                    url = `/app?${params}`;
-                  }
-
-                  setExportUrl(window.location.origin + url);
-                  setIsExportModalOpen(true);
-                }}
-                className="p-1 hover:bg-gray-200 hover:bg-gray-700 rounded transition"
-                title={text.exportConfiguration}
+                onClick={() => setSelectedLines(new Set())}
+                className="text-xs px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 hover:bg-slate-700 transition"
               >
-                <EllipsisVerticalIcon className="w-4 h-4 text-gray-400" />
+                {text.showAll}
               </button>
             </div>
 
-            <div className="flex flex-wrap gap-2 mb-3">
-              {[...currentStopDetail.lines].sort(sortLinesByPriority).map(line => {
-                const isSelected = selectedLines.size === 0 || selectedLines.has(line.id);
-                const isActive = selectedLines.has(line.id);
-                const lineStyle = getLineStyle(line.color, line.textColor);
-                return (
-                  <div key={line.id} className="relative">
-                    <button
-                      onClick={() => {
-                        setSelectedLines(prev => {
-                          const next = new Set(prev);
-                          if (next.has(line.id)) {
-                            next.delete(line.id);
-                          } else {
-                            next.add(line.id);
-                          }
-                          return next;
-                        });
-                      }}
-                      className={`${getBadgeShapeClass(isRoundLine(line.shortName || line.id))} w-12 h-12 flex items-center justify-center text-sm font-bold transition ${
-                        isActive ? 'ring-2 ring-blue-500 ring-offset-1' : ''
-                      } ${isSelected ? '' : 'opacity-30'} ${!lineStyle.backgroundColor ? getLineColor(line.id) : ''}`}
-                      style={lineStyle}
-                      title={line.name}
-                    >
-                      {line.shortName || line.id}
-                    </button>
-                    {line.hasTraffic && (
-                      <div className="absolute -top-1 -right-1">
-                        <ExclamationTriangleIcon className="w-4 h-4 text-yellow-400" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            {/* Export modal */}
+            {isExportModalOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mx-5 mb-5 bg-slate-800 rounded-2xl p-4 border border-slate-700"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-white">{text.exportedConfiguration}</h3>
+                  <button onClick={() => setIsExportModalOpen(false)} className="w-6 h-6 flex items-center justify-center hover:bg-slate-700 rounded-lg transition">
+                    <XMarkIcon className="w-4 h-4 text-slate-400" />
+                  </button>
+                </div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">{text.shareLink}</label>
+                <div className="flex gap-2">
+                  <input type="text" value={exportUrl} readOnly
+                    className="flex-1 px-3 py-2 border border-slate-600 rounded-xl text-white text-xs font-mono bg-slate-700" />
+                  <CopyButton value={exportUrl} copyLabel={text.copy} copiedLabel={text.copied} />
+                </div>
+              </motion.div>
+            )}
 
-            <button
-              onClick={() => setSelectedLines(new Set())}
-              className="text-xs px-3 py-1 bg-gray-200 bg-gray-700 rounded-md hover:bg-gray-300 hover:bg-gray-600"
-            >
-              {text.showAll}
-            </button>
-          </div>
+            {/* Stop-level traffic alerts (above departures) */}
+            <StopTrafficAlerts stop={currentStopDetail} language={language} />
 
-          {/* Export Modal */}
-          {isExportModalOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="mb-6 bg-gray-800 rounded-lg p-3 border border-gray-700"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-white">{text.exportedConfiguration}</h3>
-                <button
-                  onClick={() => setIsExportModalOpen(false)}
-                  className="p-0.5 hover:bg-gray-700 rounded transition"
-                >
-                  <XMarkIcon className="w-4 h-4 text-gray-400" />
-                </button>
-              </div>
-
-              <label className="block text-xs font-medium text-gray-300 mb-1">
-                {text.shareLink}
-              </label>
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={exportUrl}
-                  readOnly
-                  className="flex-1 px-2 py-1 border border-gray-600 rounded text-white text-xs font-mono bg-gray-700"
-                />
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(exportUrl);
-                    const btn = document.activeElement as HTMLButtonElement;
-                    if (btn) {
-                      const originalText = btn.textContent;
-                      btn.textContent = text.copied;
-                      btn.classList.add('bg-green-500', 'text-white');
-                      setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.classList.remove('bg-green-500', 'text-white');
-                      }, 2000);
-                    }
-                  }}
-                  className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition text-xs font-medium flex-shrink-0"
-                >
-                  {text.copy}
-                </button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Next departures */}
-          <div>
-            <h3 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wider">
-              {text.nextDepartures}
-            </h3>
-            <div className="space-y-3">
-              {groupedDepartures.length > 0 ? (
-                groupedDepartures.map((group, index) => {
+            {/* Departures */}
+            <div className="px-5">
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">{text.nextDepartures}</h3>
+              <div className="space-y-3">
+                {groupedDepartures.length > 0 ? groupedDepartures.map((group, index) => {
                   const departure = group.first;
                   const second = group.second;
                   const displayTime = getDepartureDisplay(departure, language);
+                  const isTram = isTramway(departure.lineId);
+                  const isChrono = isChronoLine(departure.lineId);
+                  const itemKey = `${departure.lineId}::${departure.destination}`;
+                  const isExpanded = expandedItems.has(itemKey);
                   const departureLine = currentStopDetail.lines.find(l => l.id === departure.lineId || l.shortName === departure.lineShortName || l.shortName === departure.lineId);
                   const secondLine = second ? currentStopDetail.lines.find(l => l.id === second.lineId || l.shortName === second.lineShortName || l.shortName === second.lineId) : undefined;
-                  const departureStyle = getLineStyle(departureLine?.color, departureLine?.textColor);
-                  const secondStyle = secondLine ? getLineStyle(secondLine.color, secondLine.textColor) : undefined;
-                  const isTram = isTramway(departure.lineId);
-                  const tramKey = `${departure.lineId}::${departure.destination}`;
-                  const isExpanded = expandedTrams.has(tramKey);
+                  const departureStyle: any = departureLine ? resolveLineStyle(departureLine.id, departureLine.color, departureLine.textColor) : {} as any;
+                  const secondStyle: any = secondLine ? resolveLineStyle(secondLine.id, secondLine.color, secondLine.textColor) : {} as any;
+                  const hasTrafficAlert = !!(departureLine?.hasTraffic && departureLine?.trafficDetails?.length);
 
-                  if (isTram && second) {
+                  // Tram, Chrono ou ligne avec trafic + second → expandable
+                  if ((isTram || isChrono || hasTrafficAlert) && second) {
                     return (
-                      <motion.div
-                        key={tramKey}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="border-2 border-gray-600 rounded-lg overflow-hidden bg-gray-800 shadow-md"
-                      >
+                      <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
+                        className="border border-slate-700 rounded-2xl overflow-hidden bg-slate-800 shadow-sm">
                         <motion.button
-                          onClick={() => {
-                            setExpandedTrams(prev => {
-                              const next = new Set(prev);
-                              if (next.has(tramKey)) {
-                                next.delete(tramKey);
-                              } else {
-                                next.add(tramKey);
-                              }
-                              return next;
-                            });
-                          }}
-                          className="w-full p-4 hover:bg-gray-700 transition text-left"
-                        >
+                          onClick={() => toggleExpanded(itemKey)}
+                          className="w-full p-4 hover:bg-slate-750 transition text-left active:bg-slate-700">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <div
-                                className={`${getLineColor(departure.lineId)} text-white font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-10 h-10 flex items-center justify-center text-sm shadow-md flex-shrink-0 overflow-hidden`}
-                                style={departureStyle}
-                              >
+                              <div className={`font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-11 h-11 flex items-center justify-center text-sm shadow-sm flex-shrink-0 ${!departureStyle.backgroundColor ? getLineColor(departure.lineId) + ' text-white' : ''}`} style={departureStyle}>
                                 {departure.lineShortName || departure.lineId}
                               </div>
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-white truncate">
-                                  {departure.destination.length > 20
-                                    ? `${departure.destination.slice(0, 17)}...`
-                                    : departure.destination}
-                                </p>
-                                <div className="flex items-center gap-2 text-xs text-gray-300">
-                                  <MdTram className="w-4 h-4" />
-                                  <span>{text.tramway}</span>
-                                  {departure.realtime && <span>• {text.live}</span>}
+                                <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                                <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
+                                  {isTram ? <MdTram className="w-3.5 h-3.5" /> : <MdDirectionsBus className="w-3.5 h-3.5" />}
+                                  <span>{isTram ? text.tramway : text.bus}</span>
+                                  {departure.realtime && <span className="text-green-400">• {text.live}</span>}
+                                  {hasTrafficAlert && <span className="text-amber-400">• ⚠</span>}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                               <div className="text-right">
-                                <p className="text-lg font-bold text-gray-100">{renderDepartureTime(displayTime)}</p>
-                                <OccupancyDisplay occupancy={departure.occupancy} />
+                                <p className="text-xl font-bold text-white">{renderDepartureTime(displayTime)}</p>
+                                {(isTram || isChrono) && !compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
                               </div>
-                              {isExpanded ? (
-                                <ChevronUpIcon className="w-5 h-5 text-gray-400" />
-                              ) : (
-                                <ChevronDownIcon className="w-5 h-5 text-gray-400" />
-                              )}
+                              {isExpanded ? <ChevronUpIcon className="w-4 h-4 text-slate-400" /> : <ChevronDownIcon className="w-4 h-4 text-slate-400" />}
                             </div>
                           </div>
                         </motion.button>
 
-                        {isExpanded && second && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.3 }}
-                            className="border-t border-blue-600 p-4 bg-gray-700"
-                          >
-                            <p className="text-xs font-semibold text-gray-300 uppercase mb-3">
-                              {text.nextDeparture}
-                            </p>
-                            <div className="bg-gray-800 rounded-lg p-3 border-2 border-gray-600 space-y-2">
+                        {isExpanded && (
+                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }}
+                            className="border-t border-slate-700 p-4 bg-slate-800/50 space-y-3">
+                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{text.nextDeparture}</p>
+                            <div className="bg-slate-900 rounded-2xl p-3 border border-slate-700 space-y-3">
                               <div className="flex items-center gap-3">
-                                <div
-                                  className={`${getLineColor(second.lineId)} text-white font-bold ${getBadgeShapeClass(isRoundLine(second.lineId))} w-10 h-10 flex items-center justify-center text-sm flex-shrink-0 overflow-hidden`}
-                                  style={secondStyle}
-                                >
+                                <div className={`font-bold ${getBadgeShapeClass(isRoundLine(second.lineId))} w-10 h-10 flex items-center justify-center text-sm flex-shrink-0 ${!secondStyle?.backgroundColor ? getLineColor(second.lineId) + ' text-white' : ''}`} style={secondStyle}>
                                   {second.lineShortName || second.lineId}
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-white truncate">
-                                    {second.destination.length > 20
-                                      ? `${second.destination.slice(0, 17)}...`
-                                      : second.destination}
-                                  </p>
-                                  <div className="text-xs text-gray-300">
-                                    <MdTram className="w-4 h-4 inline mr-1" />
-                                    {text.tramway} {second.realtime && `• ${text.live}`}
-                                  </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-white">{second.destination}</p>
+                                  {second.realtime && <span className="text-xs text-green-400">• {text.live}</span>}
                                 </div>
                               </div>
-
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 from-gray-700 to-gray-600 rounded-lg p-3">
-                                  <p className="text-xs text-gray-300 font-semibold mb-1">
-                                    {text.time}
-                                  </p>
-                                  <p className="text-2xl font-bold text-gray-100">
-                                    {renderDepartureTime(getDepartureDisplay(second, language))}
-                                  </p>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-800 rounded-xl p-3">
+                                  <p className="text-xs text-slate-400 font-medium mb-1">{text.time}</p>
+                                  <p className="text-2xl font-bold text-white">{renderDepartureTime(getDepartureDisplay(second, language))}</p>
                                 </div>
-
-                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 from-gray-700 to-gray-600 rounded-lg p-3">
-                                  <p className="text-xs text-gray-300 font-semibold mb-2">
-                                    {text.occupancy}
-                                  </p>
-                                  <div className="flex items-center justify-center gap-1">
-                                    {!compactMode && <OccupancyDisplay occupancy={second.occupancy} showError={true} />}
+                                {(isTram || isChrono) && (
+                                  <div className="bg-slate-800 rounded-xl p-3">
+                                    <p className="text-xs text-slate-400 font-medium mb-2">{text.occupancy}</p>
+                                    {!compactMode && <OccupancyDisplay occupancy={second.occupancy} showError />}
                                   </div>
-                                </div>
+                                )}
                               </div>
-
-                              {second.realtime && (
-                                <p className="text-xs text-green-400 font-semibold mt-3 flex items-center gap-1">
-                                  ● {text.realTimeData}
-                                </p>
-                              )}
+                              {second.realtime && <p className="text-xs text-green-400 font-semibold flex items-center gap-1">● {text.realTimeData}</p>}
                             </div>
-
-                            {group.count > 2 && (() => {
-                              const lineInfo = currentStopDetail.lines.find(l => l.id === departure.lineId);
-                              if (!lineInfo || !lineInfo.hasTraffic) return null;
-
-                              const detail = lineInfo.trafficDetails?.[0];
-                              return (
-                                <div className="relative border-2 border-yellow-500 bg-yellow-900 bg-opacity-70 rounded-lg p-3 text-yellow-100 pt-6">
-                                  <ExclamationTriangleIcon className="absolute -top-3 -left-3 w-6 h-6 text-yellow-500" />
-                                  <div>
-                                    <p className="text-sm font-semibold">{text.disruptedTraffic} {lineInfo.shortName || lineInfo.id}</p>
-                                    <p className="text-xs text-yellow-100">{detail?.titre || text.ongoingDisruption}</p>
-                                    {detail?.description && (
-                                      <p className="text-[10px] text-yellow-100 mt-1">{detail.description}</p>
-                                    )}
-                                    {detail?.dateFin && (
-                                      <p className="text-[10px] text-yellow-100 mt-1">{text.estimatedEnd} {detail.dateFin}</p>
-                                    )}
-                                  </div>
+                            {hasTrafficAlert && departureLine?.trafficDetails?.[0] && (
+                              <div className="bg-amber-950 border border-amber-700 rounded-2xl p-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <ExclamationTriangleIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                                  <p className="text-xs font-semibold text-amber-300">{text.disruptedTraffic} {departureLine.shortName || departureLine.id}</p>
                                 </div>
-                              );
-                            })()}
+                                <p className="text-xs text-amber-200">{departureLine.trafficDetails[0].titre}</p>
+                                {departureLine.trafficDetails[0].description && (
+                                  <p className="text-xs text-amber-300/70 mt-1">{departureLine.trafficDetails[0].description}</p>
+                                )}
+                                <p className="text-xs text-amber-400/60 mt-1">{text.estimatedEnd} {departureLine.trafficDetails[0].dateFin || 'N/A'}</p>
+                              </div>
+                            )}
                           </motion.div>
                         )}
                       </motion.div>
                     );
                   }
 
-                  // Regular bus departure - show first and second departures
-                  if (second) {
+                  // Single tram sans second
+                  if (isTram) {
                     return (
-                      <motion.div
-                        key={tramKey}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="border-2 border-gray-600 rounded-lg p-4 bg-gray-800 shadow-md hover:bg-gray-700 transition"
-                      >
-                        <div className="flex items-center justify-between gap-3 mb-2">
+                      <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
+                        className="border border-slate-700 rounded-2xl p-4 bg-slate-800 shadow-sm">
+                        <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div
-                              className={`${getLineColor(departure.lineId)} text-white font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-10 h-10 flex items-center justify-center text-sm shadow-md flex-shrink-0 overflow-hidden`}
-                              style={departureStyle}
-                            >
+                            <div className={`font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-11 h-11 flex items-center justify-center text-sm shadow-sm flex-shrink-0 ${!departureStyle.backgroundColor ? getLineColor(departure.lineId) + ' text-white' : ''}`} style={departureStyle}>
                               {departure.lineShortName || departure.lineId}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-white truncate">
-                                {departure.destination.length > 20
-                                  ? `${departure.destination.slice(0, 17)}...`
-                                  : departure.destination}
-                              </p>
-                              <div className="flex items-center gap-2 text-xs text-gray-300">
-                                <MdDirectionsBus className="w-4 h-4" />
-                                <span>{text.bus}</span>
-                                {departure.realtime && <span>• {text.live}</span>}
+                              <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                              <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
+                                <MdTram className="w-3.5 h-3.5" /><span>{text.tramway}</span>
+                                {departure.realtime && <span className="text-green-400">• {text.live}</span>}
                               </div>
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="text-lg font-bold text-gray-100">{renderDepartureTime(displayTime)}</p>
+                            <p className="text-xl font-bold text-white">{renderDepartureTime(displayTime)}</p>
+                            {!compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
                           </div>
-                        </div>
-
-                        {/* Second departure in smaller text */}
-                        <div className="flex items-center justify-end gap-2 text-sm text-gray-400 border-t border-gray-600 pt-2">
-                          <span>{text.nextLabel}:</span>
-                          <span className="font-semibold">{renderDepartureTime(getDepartureDisplay(second, language))}</span>
                         </div>
                       </motion.div>
                     );
                   }
 
-                  // Single bus departure
+                  // Bus avec second départ
+                  if (second) {
+                    return (
+                      <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
+                        className="border border-slate-700 rounded-2xl p-4 bg-slate-800 shadow-sm active:bg-slate-700 transition">
+                        <div className="flex items-center justify-between gap-3 mb-2.5">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className={`font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-11 h-11 flex items-center justify-center text-sm shadow-sm flex-shrink-0 ${!departureStyle.backgroundColor ? getLineColor(departure.lineId) + ' text-white' : ''}`} style={departureStyle}>
+                              {departure.lineShortName || departure.lineId}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                              <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
+                                <MdDirectionsBus className="w-3.5 h-3.5" /><span>{text.bus}</span>
+                                {departure.realtime && <span className="text-green-400">• {text.live}</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <p className="text-xl font-bold text-white flex-shrink-0">{renderDepartureTime(displayTime)}</p>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 text-sm text-slate-400 border-t border-slate-700 pt-2.5">
+                          <span className="text-xs">{text.nextLabel}</span>
+                          <span className="font-semibold text-slate-300">{renderDepartureTime(getDepartureDisplay(second, language))}</span>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+
+                  // Bus simple
                   return (
-                    <motion.div
-                      key={tramKey}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className="border-2 border-gray-600 rounded-lg p-4 bg-gray-800 shadow-md hover:bg-gray-700 transition"
-                    >
+                    <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
+                      className="border border-slate-700 rounded-2xl p-4 bg-slate-800 shadow-sm active:bg-slate-700 transition">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div
-                            className={`${getLineColor(departure.lineId)} text-white font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-10 h-10 flex items-center justify-center text-sm shadow-md flex-shrink-0 overflow-hidden`}
-                            style={departureStyle}
-                          >
+                          <div className={`font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-11 h-11 flex items-center justify-center text-sm shadow-sm flex-shrink-0 ${!departureStyle.backgroundColor ? getLineColor(departure.lineId) + ' text-white' : ''}`} style={departureStyle}>
                             {departure.lineShortName || departure.lineId}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-white truncate">
-                              {departure.destination.length > 20
-                                ? `${departure.destination.slice(0, 17)}...`
-                                : departure.destination}
-                            </p>
-                            <div className="flex items-center gap-2 text-xs text-gray-300">
-                              <MdDirectionsBus className="w-4 h-4" />
-                              <span>{text.bus}</span>
-                              {departure.realtime && <span>• {text.live}</span>}
+                            <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                            <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
+                              <MdDirectionsBus className="w-3.5 h-3.5" /><span>{text.bus}</span>
+                              {departure.realtime && <span className="text-green-400">• {text.live}</span>}
                             </div>
                           </div>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-lg font-bold text-gray-100">{renderDepartureTime(displayTime)}</p>
-                        </div>
+                        <p className="text-xl font-bold text-white flex-shrink-0">{renderDepartureTime(displayTime)}</p>
                       </div>
                     </motion.div>
                   );
-                })
-              ) : (
-                <p className="text-center text-gray-400 py-8">{text.noDeparturesAvailable}</p>
-              )}
+                }) : (
+                  <p className="text-center text-slate-500 py-10 text-sm">{text.noDeparturesAvailable}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mx-5 mt-6 border-t border-slate-800 pt-4">
+              <div className="mt-3">
+                <BetaNotice compact />
+              </div>
             </div>
           </div>
-          
-          {/* Séparateur avec logo GreGo */}
-          <div className="border-t border-gray-600 mt-6 pt-4">
-            <a href="https://web-tag-express.vercel.app" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors cursor-pointer">
-              <span>{text.calculateItineraryWith}</span>
-              <img 
-                src="/assets/GreGoLOGO.png" 
-                alt="GreGo" 
-                className="h-4 w-auto"
-              />
-            </a>
-          </div>
-        </div>
+          )}
+        </Sheet.Content>
+      </Sheet.Container>
+      {/* Backdrop. We hide it entirely when the sheet is at the mini (25%)
+          snap so the user can freely pan/zoom the map underneath without the
+          backdrop swallowing taps or closing the sheet. At peek and full we
+          render the normal backdrop (tap-to-close). */}
+      {!(hasFilter && snapIdx === miniIndex) && (
+        <Sheet.Backdrop onTap={onClose} style={{ zIndex: 99 }} />
       )}
-    </motion.div>
+    </Sheet>
+    <AddFavoriteModal
+      isOpen={isFavoriteModalOpen}
+      onClose={() => setIsFavoriteModalOpen(false)}
+      stop={currentStopDetail}
+      language={language}
+    />
     </>
   );
 };

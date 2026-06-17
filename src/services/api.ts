@@ -8,6 +8,183 @@ const TAG_HEADERS = {
   // origin: 'mon_appli',           // maintenant géré par le proxy
 };
 
+export interface RouteLocation {
+  id: string;
+  label: string;
+  lat: number;
+  lon: number;
+  kind: 'stop' | 'address';
+  raw?: any;
+}
+
+export interface RouteItinerary {
+  dep: string;
+  arr: string;
+  depName: string;
+  arrName: string;
+  dur: string;
+  direction: string;
+  lineKeys: string[];
+  legs: Array<{
+    mode: string;
+    routeShortName?: string;
+    route?: string;
+    routeId?: string;
+    from?: { name?: string };
+    to?: { name?: string };
+    duration?: number;
+  }>;
+  allLegs: any[];
+  routePath: Array<[number, number]>;
+  rawDep?: string;
+  rawArr?: string;
+}
+
+function decodePolyline(encoded: string): Array<[number, number]> {
+  const coordinates: Array<[number, number]> = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    const deltaLat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lat += deltaLat;
+
+    result = 0;
+    shift = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    const deltaLng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lng += deltaLng;
+
+    coordinates.push([lng / 1e5, lat / 1e5]);
+  }
+
+  return coordinates;
+}
+
+async function buildOtpParams(
+  fromLatitude: number,
+  fromLongitude: number,
+  toLatitude: number,
+  toLongitude: number,
+  options?: {
+    arriveBy?: boolean;
+    date?: string;
+    time?: string;
+    walkReluctance?: number;
+    walkSpeed?: number;
+  },
+): Promise<URLSearchParams> {
+  const queryTime = new Date();
+  const params = new URLSearchParams({
+    fromPlace: `${fromLatitude},${fromLongitude}`,
+    toPlace: `${toLatitude},${toLongitude}`,
+    arriveBy: options?.arriveBy ? 'true' : 'false',
+    time: options?.time || queryTime.toTimeString().slice(0, 5),
+    date: options?.date || queryTime.toISOString().slice(0, 10),
+    routerId: 'default',
+    optimize: 'QUICK',
+    walkReluctance: String(options?.walkReluctance ?? 5),
+    locale: 'fr',
+    mode: 'WALK,TRANSIT',
+    showIntermediateStops: 'true',
+    minTransferTime: '20',
+    transferPenalty: '60',
+    walkBoardCost: '300',
+    bannedAgencies: 'MCO:MC',
+    walkSpeed: String(options?.walkSpeed ?? 1.4),
+    numItineraries: '4',
+    wheelchair: 'false',
+  });
+  return params;
+}
+
+function parseOtpItinerary(it: any, depName: string, arrName: string): RouteItinerary {
+  const depTime = new Date(it.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const arrTime = new Date(it.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const duration = Math.round((it.duration ?? 0) / 60);
+  const transitLegs = Array.isArray(it.legs) ? it.legs.filter((leg: any) => leg.mode !== 'WALK') : [];
+  const lineKeys = transitLegs.map((leg: any) => {
+    const routeShortName = String(leg.routeShortName || leg.route || leg.routeId || '').replace(/^SEM:/, '').toUpperCase();
+    return routeShortName || '?';
+  });
+
+  const routePath: Array<[number, number]> = [];
+  if (Array.isArray(it.legs)) {
+    for (const leg of it.legs) {
+      const points = leg?.legGeometry?.points;
+      if (typeof points === 'string' && points.length > 0) {
+        const decoded = decodePolyline(points);
+        routePath.push(...decoded);
+      }
+    }
+  }
+
+  return {
+    dep: depTime,
+    arr: arrTime,
+    depName,
+    arrName,
+    dur: duration > 0 ? `${duration} min` : '0 min',
+    direction: transitLegs.length > 0 ? transitLegs[transitLegs.length - 1]?.to?.name || '?' : '?',
+    lineKeys,
+    legs: transitLegs,
+    allLegs: Array.isArray(it.legs) ? it.legs : [],
+    routePath,
+  };
+}
+
+export async function planItineraries(options: {
+  fromLatitude: number;
+  fromLongitude: number;
+  toLatitude: number;
+  toLongitude: number;
+  fromName: string;
+  toName: string;
+  arriveBy?: boolean;
+  date?: string;
+  time?: string;
+  walkReluctance?: number;
+  walkSpeed?: number;
+}): Promise<RouteItinerary[]> {
+  const params = await buildOtpParams(
+    options.fromLatitude,
+    options.fromLongitude,
+    options.toLatitude,
+    options.toLongitude,
+    {
+      arriveBy: options.arriveBy,
+      date: options.date,
+      time: options.time,
+      walkReluctance: options.walkReluctance,
+      walkSpeed: options.walkSpeed,
+    },
+  );
+
+  try {
+    const url = `${TAG_API_BASE}/plan?${params.toString()}`;
+    const response = await axios.get(url, { headers: TAG_HEADERS });
+    const data = response.data;
+    const itineraries = Array.isArray(data?.plan?.itineraries) ? data.plan.itineraries : [];
+    return itineraries.map((it: any) => parseOtpItinerary(it, options.fromName, options.toName));
+  } catch (error) {
+    void 0 && console.error('planItineraries error:', error);
+    return [];
+  }
+}
+
 // Cache pour stocker l'occupancy par tram (ligne + destination)
 const occupancyCache = new Map<string, 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED'>();
 
@@ -145,10 +322,10 @@ export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
       }
     }
 
-    console.log(`⚠️ Trafic : lignes concernées = ${Array.from(trafficMap.keys()).join(', ')}`);
+    void 0 && console.log(`⚠️ Trafic : lignes concernées = ${Array.from(trafficMap.keys()).join(', ')}`);
     return trafficMap;
   } catch (err) {
-    console.warn('⚠️ Impossibles de charger le trafic:', err);
+    void 0 && console.warn('⚠️ Impossibles de charger le trafic:', err);
     return new Map();
   }
 }
@@ -162,7 +339,7 @@ async function loadRoutes(): Promise<Line[]> {
   if (cached) return cached;
 
   try {
-    console.log(`📡 Chargement des lignes...`);
+    void 0 && console.log(`📡 Chargement des lignes...`);
     const res = await axios.get(`${TAG_API_BASE}/index/routes`, { headers: TAG_HEADERS });
     const routes = res.data || [];
 
@@ -187,10 +364,10 @@ async function loadRoutes(): Promise<Line[]> {
       });
 
     setCache(cacheKey, lines);
-    console.log(`✓ ${lines.length} lignes chargées`);
+    void 0 && console.log(`✓ ${lines.length} lignes chargées`);
     return lines;
   } catch (err) {
-    console.error('❌ Erreur loadRoutes:', err);
+    void 0 && console.error('❌ Erreur loadRoutes:', err);
     return [];
   }
 }
@@ -229,7 +406,7 @@ async function buildStopsFromLines(lines: Line[]): Promise<Stop[]> {
         stopsWithClusterCache.set(stopId, { stop, clusterIds: [clusterId] } as any);
       }
     } catch (err) {
-      console.warn(`  ⚠️ Ligne ${line.id} clusters échouée`, err);
+      void 0 && console.warn(`  ⚠️ Ligne ${line.id} clusters échouée`, err);
     }
   }
 
@@ -293,18 +470,18 @@ export async function getAllStops(prefixes: string[] = [...NETWORK_PREFIXES]): P
   const cacheKey = `all_stops_${sortedPrefixes.join(',')}`;
   const cached = getFromCache<Stop[]>(cacheKey);
   if (cached) {
-    console.log(`💾 ${cached.length} arrêts depuis cache (${sortedPrefixes.join(',')})`);
+    void 0 && console.log(`💾 ${cached.length} arrêts depuis cache (${sortedPrefixes.join(',')})`);
     return cached;
   }
 
   try {
-    console.log(`📡 Chargement arrêts (via clusters des lignes)... ${sortedPrefixes.join(', ')}`);
+    void 0 && console.log(`📡 Chargement arrêts (via clusters des lignes)... ${sortedPrefixes.join(', ')}`);
     const stops = await getStopsByPrefixes(sortedPrefixes);
     setCache(cacheKey, stops);
-    console.log(`✓ ${stops.length} arrêts uniques chargés`);
+    void 0 && console.log(`✓ ${stops.length} arrêts uniques chargés`);
     return stops;
   } catch (err) {
-    console.error('❌ Erreur getAllStops:', err);
+    void 0 && console.error('❌ Erreur getAllStops:', err);
     return [];
   }
 }
@@ -319,11 +496,11 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
   if (!skipCache) {
     const cached = getFromCache<Departure[]>(cacheKey);
     if (cached) {
-      console.log(`💾 Départs cache pour ${stopId}`);
+      void 0 && console.log(`💾 Départs cache pour ${stopId}`);
       return cached;
     }
   } else {
-    console.log(`🔄 Bypassing cache pour ${stopId}`);
+    void 0 && console.log(`🔄 Bypassing cache pour ${stopId}`);
   }
 
   try {
@@ -342,19 +519,19 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
       }
     }
 
-    console.log(`📡 Départs → clusterIds : ${clusterIds.join(', ')}`);
+    void 0 && console.log(`📡 Départs → clusterIds : ${clusterIds.join(', ')}`);
 
     const departures: Departure[] = [];
     const seen = new Set<string>();
 
     for (const clusterId of clusterIds) {
       let url = `${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes`;
-      console.log(`📡 getDepartures URL: ${url}`);
+      void 0 && console.log(`📡 getDepartures URL: ${url}`);
       const res = await axios.get(url, { headers: TAG_HEADERS });
       const data = res.data;
 
       if (!Array.isArray(data)) {
-        console.warn(`Réponse stoptimes non-array pour ${clusterId}`, data);
+        void 0 && console.warn(`Réponse stoptimes non-array pour ${clusterId}`, data);
         continue;
       }
 
@@ -407,14 +584,15 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
     departures.sort((a, b) => a.departureTime - b.departureTime);
 
     setCache(cacheKey, departures);
-    console.log(`→ ${departures.length} départs trouvés pour ${stopId}`);
+    void 0 && console.log(`→ ${departures.length} départs trouvés pour ${stopId}`);
 
     return departures;
   } catch (err: any) {
-    console.error(`❌ getDepartures(${stopId}) failed:`, err?.message ?? err);
+    void 0 && console.error(`❌ getDepartures(${stopId}) failed:`, err?.message ?? err);
     return [];
   }
 }
+
 
 /**
  * Get all lines serving a specific stop
@@ -427,7 +605,7 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
 
     for (const clusterId of clusterIds) {
       try {
-        console.log(`📡 Récupération lignes pour: ${clusterId}`);
+        void 0 && console.log(`📡 Récupération lignes pour: ${clusterId}`);
         const response = await axios.get(
           `${TAG_API_BASE}/index/clusters/${clusterId}/routes`,
           { headers: TAG_HEADERS }
@@ -450,15 +628,15 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
           } satisfies Line);
         }
       } catch (error) {
-        console.warn(`⚠️ Erreur chargement lignes pour ${clusterId}:`, error);
+        void 0 && console.warn(`⚠️ Erreur chargement lignes pour ${clusterId}:`, error);
       }
     }
 
     const lines = Array.from(routeMap.values());
-    console.log(`✓ ${lines.length} lignes pour ${stopId}`);
+    void 0 && console.log(`✓ ${lines.length} lignes pour ${stopId}`);
     return lines;
   } catch (error) {
-    console.warn(`⚠️ Erreur chargement lignes pour ${stopId}:`, error);
+    void 0 && console.warn(`⚠️ Erreur chargement lignes pour ${stopId}:`, error);
     return [];
   }
 }
@@ -482,11 +660,11 @@ export async function getStopDetail(stopId: string, prefixes: string[] = [...NET
     if (!stop) return null;
 
     const lines = await getStopLines(stop.id);
-    console.log(`✓ Chargement ${lines.length} lignes pour arrêt ${stop.name}:`, lines.map(l => l.id).join(', '));
+    void 0 && console.log(`✓ Chargement ${lines.length} lignes pour arrêt ${stop.name}:`, lines.map(l => l.id).join(', '));
 
     // Requête unique au cluster pour récupérer TOUS les bus (sans filtrer par ligne)
     const departures = await getDepartures(stop.id);
-    console.log(`✓ ${departures.length} départs chargés pour ${stop.name}`);
+    void 0 && console.log(`✓ ${departures.length} départs chargés pour ${stop.name}`);
 
     return {
       ...stop,
@@ -495,7 +673,7 @@ export async function getStopDetail(stopId: string, prefixes: string[] = [...NET
       lastUpdate: new Date(),
     };
   } catch (err) {
-    console.error('getStopDetail error:', err);
+    void 0 && console.error('getStopDetail error:', err);
     return null;
   }
 }
@@ -506,7 +684,7 @@ export async function getStopDetail(stopId: string, prefixes: string[] = [...NET
  */
 export async function refreshStopDepartures(stopDetail: StopDetail): Promise<StopDetail> {
   try {
-    console.log(`🔄 Refresh départs pour ${stopDetail.name}`);
+    void 0 && console.log(`🔄 Refresh départs pour ${stopDetail.name}`);
 
     // Bypass le cache pour avoir les données fraiches
     const departures = await getDepartures(stopDetail.id, true);
@@ -519,7 +697,7 @@ export async function refreshStopDepartures(stopDetail: StopDetail): Promise<Sto
       lastUpdate: new Date(),
     };
   } catch (err) {
-    console.error('refreshStopDepartures error:', err);
+    void 0 && console.error('refreshStopDepartures error:', err);
     return stopDetail;
   }
 }
@@ -542,7 +720,7 @@ export async function searchStops(query: string): Promise<Stop[]> {
         (stop.city?.toLowerCase().includes(lowerQuery) ?? false)
     );
   } catch (error) {
-    console.error('❌ Erreur recherche arrêts:', error);
+    void 0 && console.error('❌ Erreur recherche arrêts:', error);
     return [];
   }
 }

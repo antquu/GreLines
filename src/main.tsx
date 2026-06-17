@@ -4,6 +4,16 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import './index.css'
 import App from './App.tsx'
 
+console.log(`_
+  __ _ _ __ | |_ __ _ _ _
+ / _\` | '_ \\| __/ _\` | | | |
+| (_| | | | | || (_| | |_| |
+ \\__,_|_| |_|\\__\\__, |\\__,_|
+                   |_|
+                   
+       made by antqu • github.com/antquu`
+)
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

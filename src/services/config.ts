@@ -39,7 +39,7 @@ export function loadConfig(): GreLinesConfig {
       }
     };
   } catch (error) {
-    console.error('Error loading configuration:', error);
+    void 0 && console.error('Error loading configuration:', error);
     // Return default config if parsing fails
     return {
       version: '2.0.1',

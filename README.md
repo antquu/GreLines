@@ -179,3 +179,205 @@ Pour les problèmes ou questions concernant Leaflet ou MapTiler, consultez :
 - [Documentation MapTiler](https://docs.maptiler.com/)
 - [Documentation API MTAG](https://data.mobilites-m.fr/donnees)
 ```
+
+```
+
+
+```
+```
+GreLines
+├─ .screenshots
+│  ├─ main-interface.png
+│  ├─ mobile-view-main.png
+│  └─ sidebar-details.png
+├─ README.md
+├─ eslint.config.js
+├─ grego
+│  ├─ .screenshots
+│  │  ├─ img1.png
+│  │  ├─ img2.png
+│  │  ├─ img3.png
+│  │  └─ img4.png
+│  ├─ README.md
+│  ├─ eslint.config.js
+│  ├─ index.html
+│  ├─ localStorage-example.json
+│  ├─ package-lock.json
+│  ├─ package.json
+│  ├─ postcss.config.js
+│  ├─ public
+│  │  ├─ apple-touch-icon.png
+│  │  ├─ bygrelines.png
+│  │  ├─ favicon-16x16.png
+│  │  ├─ favicon-32x32.png
+│  │  ├─ favicon.ico
+│  │  ├─ favicon.png
+│  │  ├─ favicon.svg
+│  │  ├─ grelines.png
+│  │  ├─ icons.svg
+│  │  ├─ journey.svg
+│  │  ├─ logos
+│  │  │  ├─ apple-touch-icon-dark.png
+│  │  │  ├─ dark_no_bg_banner.png
+│  │  │  └─ light_no_bg_banner.png
+│  │  ├─ manifest.json
+│  │  ├─ nomobile.png
+│  │  ├─ robots.txt
+│  │  ├─ sitemap.xml
+│  │  └─ walk.svg
+│  ├─ src
+│  │  ├─ App.css
+│  │  ├─ App.jsx
+│  │  ├─ assets
+│  │  │  ├─ hero.png
+│  │  │  ├─ react.svg
+│  │  │  └─ vite.svg
+│  │  ├─ components
+│  │  │  ├─ DisruptionItem.jsx
+│  │  │  ├─ JourneyCard.jsx
+│  │  │  ├─ JourneyDetailsSheet.jsx
+│  │  │  ├─ JourneyMapModal.jsx
+│  │  │  ├─ JourneyResultsHeader.jsx
+│  │  │  ├─ JourneyTimeline.jsx
+│  │  │  ├─ LineInfoSheet.jsx
+│  │  │  ├─ MapSheet.jsx
+│  │  │  ├─ SearchSheet.jsx
+│  │  │  ├─ StopPickerMap.jsx
+│  │  │  ├─ TrajetTabBar.jsx
+│  │  │  ├─ WalkRouteSheet.jsx
+│  │  │  ├─ lines-icons.jsx
+│  │  │  └─ nearestStops.jsx
+│  │  ├─ fast-research.jsx
+│  │  ├─ hooks
+│  │  │  ├─ useCurrentTime.js
+│  │  │  ├─ useDisruptions.js
+│  │  │  ├─ useLineColors.js
+│  │  │  ├─ useSettings.js
+│  │  │  └─ useStops.js
+│  │  ├─ index.css
+│  │  ├─ lines-icons.jsx
+│  │  ├─ main.jsx
+│  │  ├─ mes-trajets.jsx
+│  │  ├─ navbar.jsx
+│  │  ├─ nomobile.jsx
+│  │  ├─ old
+│  │  │  ├─ fast-research.jsx
+│  │  │  ├─ lines-icons.jsx
+│  │  │  ├─ mes-trajets-test.jsx
+│  │  │  ├─ mestrajets-test.jsx
+│  │  │  ├─ mestrajets.jsx
+│  │  │  ├─ navbar.jsx
+│  │  │  ├─ nomobile.jsx
+│  │  │  └─ settings.jsx
+│  │  ├─ settings.jsx
+│  │  └─ utils
+│  │     └─ journey.js
+│  ├─ tailwind.config.js
+│  ├─ vercel.json
+│  └─ vite.config.js
+├─ index.html
+├─ package-lock.json
+├─ package.json
+├─ postcss.config.js
+├─ public
+│  ├─ .stops.json
+│  ├─ assets
+│  │  ├─ GitHubLOGO.png
+│  │  ├─ GreGoLOGO.png
+│  │  ├─ GreLinesAssoLOGO.png
+│  │  ├─ GreLinesLOGO.png
+│  │  ├─ Gresivaudan-selectioned.png
+│  │  ├─ Gresivaudan.png
+│  │  ├─ M-Reso.png
+│  │  ├─ Metropole-selectioned.png
+│  │  ├─ Metropole.png
+│  │  ├─ Region-selectioned.png
+│  │  ├─ Region.png
+│  │  ├─ Voironnais-selected.png
+│  │  ├─ Voironnais.png
+│  │  ├─ auto-selectioned.svg
+│  │  ├─ auto.svg
+│  │  ├─ dark-selectioned.svg
+│  │  ├─ dark.svg
+│  │  ├─ icons.txt
+│  │  ├─ light-selectioned.svg
+│  │  └─ light.svg
+│  ├─ flavicon.png
+│  ├─ fonts
+│  │  ├─ Canaro W00 Medium.ttf
+│  │  ├─ Helvetica Neue Bold.ttf
+│  │  ├─ Helvetica Neue Medium.ttf
+│  │  ├─ Inter-Black.woff
+│  │  ├─ Inter-Black.woff2
+│  │  ├─ Inter-Bold.woff
+│  │  ├─ Inter-Bold.woff2
+│  │  ├─ Inter-ExtraBold.woff
+│  │  ├─ Inter-ExtraBold.woff2
+│  │  ├─ Inter-ExtraLight.woff
+│  │  ├─ Inter-ExtraLight.woff2
+│  │  ├─ Inter-Light.woff
+│  │  ├─ Inter-Light.woff2
+│  │  ├─ Inter-Medium.woff
+│  │  ├─ Inter-Medium.woff2
+│  │  ├─ Inter-Regular.woff
+│  │  ├─ Inter-Regular.woff2
+│  │  ├─ Inter-SemiBold.woff
+│  │  ├─ Inter-SemiBold.woff2
+│  │  ├─ Inter-Thin.woff
+│  │  └─ Inter-Thin.woff2
+│  ├─ grelines.json
+│  └─ icons.svg
+├─ src
+│  ├─ App.css
+│  ├─ App.tsx
+│  ├─ assets
+│  │  ├─ hero.png
+│  │  ├─ react.svg
+│  │  └─ vite.svg
+│  ├─ components
+│  │  ├─ AddFavoriteModal.tsx
+│  │  ├─ AddressSidebar.tsx
+│  │  ├─ FavoriteCard.tsx
+│  │  ├─ HomeSheet.tsx
+│  │  ├─ ItinerarySteps.tsx
+│  │  ├─ JourneyDetailsPreview.tsx
+│  │  ├─ JourneyTimeline.tsx
+│  │  ├─ LineBadge.tsx
+│  │  ├─ Map.tsx
+│  │  ├─ RouteSidebar.tsx
+│  │  ├─ SearchBarMobile.tsx
+│  │  ├─ SettingsPanel.tsx
+│  │  ├─ Sidebar.tsx
+│  │  ├─ SidebarMobile.tsx
+│  │  ├─ TrafficPanelMobile.tsx
+│  │  └─ index.ts
+│  ├─ hooks
+│  │  ├─ useDebouncedValue.ts
+│  │  ├─ useFavoriteDetails.ts
+│  │  ├─ useFavorites.ts
+│  │  └─ useStopUrlSync.ts
+│  ├─ index.css
+│  ├─ main.tsx
+│  ├─ services
+│  │  ├─ allLines.ts
+│  │  ├─ api.ts
+│  │  ├─ config.ts
+│  │  ├─ favorites.ts
+│  │  ├─ geocoding.ts
+│  │  ├─ index.ts
+│  │  └─ lineShapes.ts
+│  ├─ types
+│  │  └─ index.ts
+│  └─ utils
+│     ├─ geo.ts
+│     ├─ lineColors.ts
+│     ├─ stopTrafficMatcher.ts
+│     └─ stripHtml.ts
+├─ tailwind.config.js
+├─ tsconfig.app.json
+├─ tsconfig.json
+├─ tsconfig.node.json
+├─ vercel.json
+└─ vite.config.ts
+
+```

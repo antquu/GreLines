@@ -4,7 +4,7 @@ export interface Stop {
   lat: number;
   lon: number;
   city?: string;
-  clusterGtfsId?: string; // e.g., "ENGENIER" for API calls
+  clusterGtfsId?: string;
 }
 
 export interface TrafficDetail {
@@ -31,14 +31,24 @@ export interface Departure {
   lineName: string;
   lineShortName?: string;
   destination: string;
-  departureTime: number; // Minutes until departure
+  departureTime: number;
   realtime: boolean;
   type: 'BUS' | 'TRAM' | 'OTHER';
-  occupancy?: 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED'; // Occupancy level (LIGHT=1 icon, MODERATE=2, CROWDED=3)
+  occupancy?: 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED';
 }
 
 export interface StopDetail extends Stop {
   lines: Line[];
   departures: Departure[];
   lastUpdate?: Date;
+}
+
+export interface NearbyStop extends Stop {
+  distanceMeters: number;
+}
+
+export interface AddressResult {
+  label: string;
+  lat: number;
+  lon: number;
 }
