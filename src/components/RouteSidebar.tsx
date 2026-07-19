@@ -6,7 +6,6 @@ import { ArrowUpOnSquareIcon } from '@heroicons/react/24/outline';
 import { FaBus, FaTrain, FaWalking } from 'react-icons/fa';
 import { LineBadge } from './LineBadge';
 import { JourneyDetailsPreview } from './JourneyDetailsPreview';
-import { BetaNotice } from './BetaNotice';
 import { searchAddresses } from '../services/geocoding';
 import { planItineraries, type RouteItinerary, type RouteLocation } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
@@ -1402,9 +1401,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           <span>{text.madeBy}</span>
           <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
         </a>
-        <div className="mt-3">
-          <BetaNotice compact />
-        </div>
       </div>
     </div>
   );

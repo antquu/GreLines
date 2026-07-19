@@ -4,7 +4,6 @@ import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIc
 import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
 import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
 import { AddFavoriteModal } from './AddFavoriteModal';
-import { BetaNotice } from './BetaNotice';
 import { MdTram, MdDirectionsBus } from 'react-icons/md';
 import type { StopDetail, Departure, Line } from '../types';
 import { formatDepartureTime, refreshStopDepartures } from '../services/api';
@@ -704,12 +703,6 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                 }) : (
                   <p className="text-center text-slate-500 py-10 text-sm">{text.noDeparturesAvailable}</p>
                 )}
-              </div>
-            </div>
-
-            <div className="mx-5 mt-6 border-t border-slate-800 pt-4">
-              <div className="mt-3">
-                <BetaNotice compact />
               </div>
             </div>
           </div>

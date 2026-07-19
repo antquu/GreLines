@@ -209,6 +209,7 @@ const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 2 * 60 * 1000; // 2 min (plus court pour avoir des données plus fraîches)
 
 const NETWORK_PREFIXES = ['SEM'] as const;
+const HIDDEN_TRAFFIC_LINES = new Set(['C38']);
 
 function hasNetworkPrefix(value: string): boolean {
   return value.startsWith('SEM:') || value.startsWith('SEM_');
@@ -279,8 +280,9 @@ export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
     const trafficMap = new Map<string, TrafficDetail[]>();
 
     const addDetail = (lineCode: string, info: any) => {
-      const line = normalizeRouteCode(String(lineCode));
+      const line = normalizeRouteCode(String(lineCode)).trim().toUpperCase();
       if (!line) return;
+      if (HIDDEN_TRAFFIC_LINES.has(line)) return;
       const details: TrafficDetail = {
         titre: String(info.titre || ''),
         description: String(info.description || ''),

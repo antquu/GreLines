@@ -1,7 +1,0 @@
-{
-  "enabled": true,
-  "title": "Version bêta développeur",
-  "description": "Vous utilisez une version bêta développeur de GreLines. Certaines fonctionnalités peuvent comporter des bugs.",
-  "ctaLabel": "Signaler un bug",
-  "ctaUrl": "https://grelines-feedback-website.vercel.app/"
-}

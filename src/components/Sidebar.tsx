@@ -7,7 +7,6 @@ import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
 import { resolveLineStyle } from '../utils/lineColors';
 import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
 import { AddFavoriteModal } from './AddFavoriteModal';
-import { BetaNotice } from './BetaNotice';
 import { MdTram, MdDirectionsBus } from 'react-icons/md';
 import { getStopTrafficAlerts } from '../utils/stopTrafficMatcher';
 
@@ -757,9 +756,6 @@ export const Sidebar = ({
               <span>{text.calculateItineraryWith}</span>
               <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
             </button>
-            <div className="mt-3">
-              <BetaNotice compact />
-            </div>
           </div>
         </div>
       )}
