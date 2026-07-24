@@ -1214,7 +1214,7 @@ function App() {
 
       {!isLoading && (
         <>
-          {isMobile && !hidePageControls && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
+          {isMobile && !hidePageControls && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && !isRouteSidebarOpen && (
             <motion.div
               style={{ opacity: searchBarOpacity }}
               className="pointer-events-none"
@@ -1688,6 +1688,10 @@ function App() {
             setSnapHomeToMiniSignal(s => s + 1);
             setSettingsState('open');
           }}
+          onOpenItinerary={() => {
+            setSnapHomeToMiniSignal(s => s + 1);
+            setIsRouteSidebarOpen(true);
+          }}
           language={language}
         />
       )}
@@ -1731,7 +1735,7 @@ function App() {
           autoSync={autoSync}
           refreshIntervalMs={parseRefreshInterval(refreshInterval)}
           language={language}
-          
+          onPlanRouteFromStop={openRouteFromStop}
         />
       )}
 

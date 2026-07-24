@@ -90,7 +90,10 @@ function FavoriteCardComponent({
   }, [detail, lineFilter]);
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-slate-700/70 bg-slate-950/95 shadow-[0_24px_60px_rgba(15,23,42,0.35)]">
+    <div
+      data-home-sheet-expand
+      className="overflow-hidden rounded-[28px] border border-slate-700/70 bg-slate-950/95 shadow-[0_24px_60px_rgba(15,23,42,0.35)]"
+    >
       <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
         <div
           role="button"

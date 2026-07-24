@@ -1,4 +1,4 @@
-﻿import { MagnifyingGlassIcon, XMarkIcon, ClockIcon, MapPinIcon, StopCircleIcon, MicrophoneIcon } from '@heroicons/react/24/solid';
+﻿import { MagnifyingGlassIcon, XMarkIcon, ClockIcon, MapPinIcon, StopCircleIcon } from '@heroicons/react/24/solid';
 import { useRef } from 'react';
 import type { Stop } from '../types';
 import type { AddressResult } from '../services/geocoding';
@@ -109,9 +109,6 @@ export const SearchBarMobile = ({
             >
               <XMarkIcon className="w-4 h-4 text-slate-300" />
             </button>
-          )}
-          {!searchQuery && (
-            <MicrophoneIcon className="h-6 w-6 flex-shrink-0 text-slate-300" />
           )}
         </div>
 

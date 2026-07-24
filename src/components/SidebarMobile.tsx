@@ -1,6 +1,6 @@
 ﻿import { motion } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
-import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon, CheckIcon, StarIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon } from '@heroicons/react/24/solid';
 import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
 import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
 import { AddFavoriteModal } from './AddFavoriteModal';
@@ -29,7 +29,7 @@ interface SidebarMobileProps {
   autoSync: boolean;
   refreshIntervalMs: number;
   language: 'fr' | 'en';
-  onPlanRouteFromStop?: never;
+  onPlanRouteFromStop?: (stop: StopDetail) => void;
 }
 
 const getMinutesUntilDeparture = (departure: Departure): number => departure.departureTime;
@@ -237,7 +237,7 @@ const CopyButton = ({ value, copyLabel, copiedLabel }: { value: string; copyLabe
   );
 };
 
-export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, selectedLines: controlledSelectedLines, onSelectedLinesChange, compactMode, autoSync, refreshIntervalMs, language }: SidebarMobileProps) => {
+export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, selectedLines: controlledSelectedLines, onSelectedLinesChange, compactMode, autoSync, refreshIntervalMs, language, onPlanRouteFromStop }: SidebarMobileProps) => {
   const [currentStopDetail, setCurrentStopDetail] = useState<StopDetail | null>(null);
   const [departures, setDepartures] = useState<Departure[]>([]);
   const [internalSelectedLines, setInternalSelectedLines] = useState<Set<string>>(initialSelectedLines || new Set());
@@ -420,6 +420,14 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                 {currentStopDetail.city && <p className="text-sm text-slate-400 mt-0.5">{currentStopDetail.city}</p>}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                <button
+                  onClick={() => onPlanRouteFromStop?.(currentStopDetail)}
+                  className="w-9 h-9 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-full hover:bg-slate-700 transition"
+                  aria-label={text.planRouteFromStop}
+                  title={text.planRouteFromStop}
+                >
+                  <MapIcon className="w-4 h-4 text-white" />
+                </button>
                 <button
                   onClick={() => {
                     if (isFav) removeFavoriteAndNotify(currentStopDetail.id);

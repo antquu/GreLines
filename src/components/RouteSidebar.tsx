@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sheet } from 'react-modal-sheet';
+import { Sheet, type SheetRef } from 'react-modal-sheet';
 import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon } from '@heroicons/react/24/solid';
 import { ArrowUpOnSquareIcon } from '@heroicons/react/24/outline';
 import { FaBus, FaTrain, FaWalking } from 'react-icons/fa';
@@ -175,6 +175,14 @@ const formatDurationLabel = (value: string) => {
 export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, lineLookup, trafficInfo, pickMode, onRequestPickLocation, sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute }: RouteSidebarProps) => {
   const text = getText(language);
   const initialDate = useMemo(() => new Date(), []);
+  const sheetRef = useRef<SheetRef>(null);
+  const snapPoints = [0, 0.25, 0.6, 1];
+  const miniIndex = 1;
+  const fullIndex = snapPoints.length - 1;
+  const [snapIdx, setSnapIdx] = useState<number>(fullIndex);
+  const headerSurfaceClass = isMobile
+    ? 'border-b border-slate-800/80 bg-slate-900/95 backdrop-blur'
+    : 'border-b border-slate-800 bg-slate-950';
   const [fromQuery, setFromQuery] = useState('');
   const [toQuery, setToQuery] = useState('');
   const [fromSuggestions, setFromSuggestions] = useState<RouteLocation[]>([]);
@@ -293,6 +301,14 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     setScheduleIsNow(draftScheduleIsNow);
     closeScheduleMenu();
   };
+
+  useEffect(() => {
+    if (!isMobile || !isOpen || !_selectedItinerary) return;
+    const timeout = window.setTimeout(() => {
+      sheetRef.current?.snapTo(miniIndex);
+    }, 80);
+    return () => window.clearTimeout(timeout);
+  }, [isMobile, isOpen, _selectedItinerary?.dep, _selectedItinerary?.arr, _selectedItinerary?.dur]);
 
   useEffect(() => {
     if (!routeFrom) {
@@ -424,6 +440,9 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     setFromQuery(location.label);
     setFromSuggestions([]);
     onLocationSelected?.(location, 'from');
+    if (isMobile) {
+      sheetRef.current?.snapTo(miniIndex);
+    }
   };
 
   const handleSelectTo = (location: RouteLocation) => {
@@ -431,6 +450,9 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     setToQuery(location.label);
     setToSuggestions([]);
     onLocationSelected?.(location, 'to');
+    if (isMobile) {
+      sheetRef.current?.snapTo(miniIndex);
+    }
   };
 
   const canSearch = !!fromSelection && !!toSelection;
@@ -866,7 +888,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   }, [isOpen]);
 
   const routeSidebarContent = (
-      <div className={`w-full max-w-md bg-slate-950 ${isMobile ? 'border border-slate-800' : 'border-l border-slate-800'} shadow-2xl overflow-y-auto pb-24`} style={{ minHeight: '100vh' }}>
+      <div className={isMobile ? 'w-full min-h-full bg-transparent px-0 pb-24' : `w-full max-w-md bg-slate-950 border-l border-slate-800 shadow-2xl overflow-y-auto pb-24`} style={{ minHeight: isMobile ? 'auto' : '100vh' }}>
 
       {shareToastVisible && (
         <div className="pointer-events-none fixed left-1/2 top-4 z-[90] -translate-x-1/2 rounded-full border border-blue-500/40 bg-slate-900/95 px-4 py-2 text-sm font-semibold text-white shadow-2xl shadow-blue-950/40">
@@ -897,7 +919,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         </div>
       )}
       {/* Header - with back arrow when showing details */}
-      <div className="flex items-center justify-between px-4 py-4 border-b border-slate-800">
+      <div className={`flex items-center justify-between px-4 py-3 ${headerSurfaceClass}`}>
         {sharedRouteExpired ? (
           <>
             <div>
@@ -912,7 +934,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           <>
             <button
               onClick={() => _onItinerarySelected?.(null)}
-              className="rounded-full p-2 bg-slate-900 text-slate-300 hover:bg-slate-800 transition"
+              className={`rounded-full ${isMobile ? 'p-2.5 bg-slate-900/90' : 'p-2 bg-slate-900'} text-slate-300 hover:bg-slate-800 transition`}
             >
               <ArrowLeftIcon className="w-5 h-5" />
             </button>
@@ -922,7 +944,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             <button
               type="button"
               onClick={copyShareUrl}
-              className="flex h-10 w-10 items-center justify-center text-slate-300 transition hover:text-blue-300"
+              className={`flex ${isMobile ? 'h-11 w-11' : 'h-10 w-10'} items-center justify-center text-slate-300 transition hover:text-blue-300`}
               aria-label={text.shareJourney}
               title={text.shareJourney}
             >
@@ -935,7 +957,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
               <div className="text-sm font-semibold text-slate-200">{text.title}</div>
               <div className="text-xs text-slate-500">{text.choosePoint}</div>
             </div>
-            <button onClick={onClose} className="rounded-full p-2 bg-slate-900 text-slate-300 hover:bg-slate-800">
+            <button onClick={onClose} className={`rounded-full ${isMobile ? 'p-2.5 bg-slate-900/90' : 'p-2 bg-slate-900'} text-slate-300 hover:bg-slate-800`}>
               <XMarkIcon className="w-5 h-5" />
             </button>
           </>
@@ -1033,11 +1055,11 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         )}
 
         <div className="flex flex-col gap-2">
-          <div className="relative flex items-center gap-2">
+          <div className={`relative flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-2'}`}>
             <button
               type="button"
               onClick={openScheduleMenu}
-              className="inline-flex h-10 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm font-semibold text-slate-100 transition hover:bg-slate-800"
+              className={`inline-flex h-10 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 ${isMobile ? 'max-w-full' : ''}`}
             >
               <span>{schedulePillLabel}</span>
               <ChevronDownIcon className="h-4 w-4 text-slate-400" />
@@ -1045,7 +1067,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             <button
               type="button"
               onClick={() => setActiveScheduleMenu(activeScheduleMenu === 'mode' ? null : 'mode')}
-              className="inline-flex h-10 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm font-semibold text-slate-100 transition hover:bg-slate-800"
+              className={`inline-flex h-10 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 ${isMobile ? 'max-w-full' : ''}`}
               aria-label={`${text.prefer}: ${preferenceLabel}`}
             >
               <span>{text.prefer}</span>
@@ -1053,8 +1075,8 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             </button>
 
             {activeScheduleMenu === 'time' && (
-              <div className="absolute left-0 top-full z-20 mt-2 rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl"
-            style={{ width: 'min(330px, calc(100vw - 2rem))' }}>
+              <div className={`rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl ${isMobile ? 'fixed left-4 right-4 top-24 z-[60] max-h-[70vh] overflow-y-auto' : 'absolute left-0 top-full z-20 mt-2'}`}
+            style={{ width: isMobile ? 'calc(100vw - 2rem)' : 'min(330px, calc(100vw - 2rem))' }}>
                   <div className="flex items-center justify-between">
                     <button
                       type="button"
@@ -1239,7 +1261,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             )}
 
             {activeScheduleMenu === 'mode' && (
-              <div className="absolute left-28 top-full z-20 mt-2 w-64 rounded-2xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl">
+              <div className={`rounded-2xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl ${isMobile ? 'fixed left-4 right-4 top-24 z-[60] max-h-[70vh] overflow-y-auto' : 'absolute left-28 top-full z-20 mt-2 w-64'}`}>
                 {([
                   ['balanced', text.walkBalanced],
                   ['walk', text.preferWalk],
@@ -1408,19 +1430,45 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   if (isMobile) {
     return (
       <Sheet
+        ref={sheetRef}
         isOpen={isOpen}
         onClose={onClose}
-        snapPoints={[0.95, 0.6, 0.3]}
-        initialSnap={0}
+        snapPoints={snapPoints}
+        initialSnap={fullIndex}
+        onSnap={setSnapIdx}
         style={{ zIndex: 1000 }}
       >
-        <Sheet.Container style={{ borderRadius: '24px 24px 0 0', backgroundColor: '#0f172a', zIndex: 1000 }}>
-          <Sheet.Header />
-          <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
-            <div className="h-full overflow-y-auto pb-24">{routeSidebarContent}</div>
-          </Sheet.Content>
+        <Sheet.Container
+          style={{
+            borderRadius: '28px 28px 0 0',
+            background: 'linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,1))',
+            border: '1px solid rgba(148,163,184,0.18)',
+            boxShadow: '0 -16px 40px rgba(2,6,23,0.55)',
+            zIndex: 1000,
+            pointerEvents: _selectedItinerary && snapIdx === miniIndex ? 'none' : 'auto',
+          }}
+        >
+          <div style={{ pointerEvents: 'auto' }}>
+            <Sheet.Header>
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="h-1.5 w-16 rounded-full bg-white/25" />
+              </div>
+            </Sheet.Header>
+            <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
+              <div className="h-full overflow-y-auto pb-24">{routeSidebarContent}</div>
+            </Sheet.Content>
+          </div>
         </Sheet.Container>
-        <Sheet.Backdrop onTap={onClose} style={{ zIndex: 999 }} />
+        {!(_selectedItinerary && snapIdx === miniIndex) && (
+          <Sheet.Backdrop
+            onTap={() => {
+              if (!_selectedItinerary) {
+                onClose();
+              }
+            }}
+            style={{ zIndex: 999 }}
+          />
+        )}
       </Sheet>
     );
   }

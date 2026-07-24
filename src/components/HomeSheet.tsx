@@ -8,6 +8,7 @@ import {
   Cog6ToothIcon,
   EllipsisHorizontalIcon,
   ChevronRightIcon,
+  MapIcon,
 } from '@heroicons/react/24/solid';
 import type { Stop, Line } from '../types';
 import { findClosestStops, formatDistance } from '../utils/geo';
@@ -25,6 +26,7 @@ interface HomeSheetProps {
   onStopClick: (stop: Stop, lineFilter?: string[]) => void;
   onOpenTraffic: () => void;
   onOpenSettings: () => void;
+  onOpenItinerary: () => void;
   onSnapChange?: (snapIdx: number) => void;
   onSheetProgress?: (progress: number) => void;
   /**
@@ -82,6 +84,7 @@ const getText = (language: 'fr' | 'en') => ({
   addLabel: language === 'fr' ? 'Ajouter' : 'Add',
   nearbyLabel: language === 'fr' ? 'Autour de moi' : 'Nearby',
   trafficLabel: language === 'fr' ? 'Infotrafic' : 'Traffic info',
+  itineraryLabel: language === 'fr' ? 'Itinéraire' : 'Itinerary',
   settingsLabel: language === 'fr' ? 'Réglages' : 'Settings',
   remove: language === 'fr' ? 'Retirer' : 'Remove',
   direction: language === 'fr' ? 'Direction' : 'To',
@@ -227,6 +230,7 @@ export const HomeSheet = ({
   onStopClick,
   onOpenTraffic,
   onOpenSettings,
+  onOpenItinerary,
   onSnapChange,
   onSheetProgress,
   snapToMiniSignal,
@@ -447,6 +451,10 @@ export const HomeSheet = ({
 	                  <button onClick={onOpenSettings} className="rounded-[24px] border border-white/10 bg-white/5 p-4 text-left transition active:scale-[0.98]">
 	                    <Cog6ToothIcon className="mb-3 h-7 w-7 text-blue-300" />
 	                    <span className="text-sm font-bold text-white">{text.settingsLabel}</span>
+	                  </button>
+	                  <button onClick={onOpenItinerary} className="col-span-2 rounded-[24px] border border-emerald-400/20 bg-emerald-500/10 p-4 text-left transition active:scale-[0.98]">
+	                    <MapIcon className="mb-3 h-7 w-7 text-emerald-300" />
+	                    <span className="text-sm font-bold text-white">{text.itineraryLabel}</span>
 	                  </button>
 	                </div>
 	              </section>
