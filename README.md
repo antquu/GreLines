@@ -170,7 +170,7 @@ Cela permet à la carte d'être toujours visible pendant que les détails glisse
 
 ## 📄 Licence
 
-Licence MIT - libre d'utilisation pour vos projets
+Ce projet est sous la licence GNU GPL v3. 
 
 ## 🆘 Support
 
