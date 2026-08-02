@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon } from '@heroicons/react/24/solid';
-import { resolveLineBackgroundColor } from './utils/lineColors';
+import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
 import { useFavoriteDetails } from './hooks/useFavoriteDetails';
 import { removeFavoriteAndNotify } from './services/favorites';
@@ -17,6 +17,18 @@ import { HomeSheet } from './components/HomeSheet';
 import { SettingsPanel } from './components/SettingsPanel';
 import { AddressSidebar } from './components/AddressSidebar';
 import { ClockSignal } from './components/ClockSignal';
+import { PopupOverlay } from './components/PopupOverlay';
+import { NavigationMode } from './components/NavigationMode';
+import { TripSurvey } from './components/TripSurvey';
+import {
+  getActivePopups,
+  getFooterConfig,
+  getStopOverrides,
+  getLineOverrides,
+  subscribeToCmsChanges,
+  type CmsPopup,
+  type FooterConfig,
+} from './services/cms';
 import { getStopDetail, getStopLines, getStopsByPrefixes, getTrafficLines, getDepartures, type RouteLocation, type RouteItinerary } from './services/api';
 import { searchAddresses, reverseGeocode, type AddressResult } from './services/geocoding';
 import { getLinesGeometryPrecise, getStopsServedByLines, type LineGeometry, type ServedStopPoint } from './services/lineShapes';
@@ -26,6 +38,17 @@ import { useStopUrlSync } from './hooks/useStopUrlSync';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import type { LineFamily } from './services/allLines';
 import { stripHtml } from './utils/stripHtml';
+
+interface PredictedVehicle {
+  id: string;
+  lineId: string;
+  lineShortName?: string;
+  destination: string;
+  lat: number;
+  lon: number;
+  color: string;
+  minutesUntil: number;
+}
 
 function App() {
   const [stops, setStops] = useState<Stop[]>([]);
@@ -115,6 +138,23 @@ function App() {
   const settingsPanelRef = useRef<HTMLDivElement>(null);
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
   const [appData, setAppData] = useState<{version: string; credits: Array<{role: string; name: string; link?: string}>} | null>(null);
+  const [activePopups, setActivePopups] = useState<CmsPopup[]>([]);
+  const [footerConfig, setFooterConfig] = useState<FooterConfig>({ message: null, color: '#fbbf24', showClock: true });
+  /**
+   * Incrémenté à chaque modification faite dans le CRM : force le rechargement
+   * des données qui en dépendent (arrêts et lignes surchargés).
+   */
+  const [cmsRevision, setCmsRevision] = useState(0);
+  /** Mode guidage GPS plein écran (mobile), lancé depuis un itinéraire sélectionné. */
+  const [isNavigationOpen, setIsNavigationOpen] = useState(false);
+  /**
+   * Contexte de l'enquête qualité : renseigné quand l'usager monte à bord d'un
+   * véhicule pendant le guidage (moment où il est assis et disponible), pas
+   * pendant qu'il marche.
+   */
+  const [surveyContext, setSurveyContext] = useState<
+    { lineId: string; boardingStop: string | null; boardingTime: string } | null
+  >(null);
 
   const [language, setLanguage] = useState<'fr' | 'en'>(() => {
     const saved = localStorage.getItem('greLines_language');
@@ -140,6 +180,7 @@ function App() {
   const [addressResults, setAddressResults] = useState<AddressResult[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<AddressResult | null>(null);
   const [lineGeometries, setLineGeometries] = useState<LineGeometry[]>([]);
+  const [predictedVehicles, setPredictedVehicles] = useState<PredictedVehicle[]>([]);
   /**
    * When a line filter is active inside the open stop, this holds the lat/lon
    * positions of every stop served by those lines. The map then matches local
@@ -243,8 +284,43 @@ function App() {
   // Used by route previews, itinerary vectors and traffic panels.
   const [allLines, setAllLines] = useState<AllLinesLine[]>([]);
   useEffect(() => {
-    getAllSemLines().then(setAllLines);
-  }, []);
+    // Les surcharges de lignes du CRM (code, nom, couleurs, masquage) sont
+    // appliquées par-dessus le catalogue officiel MTAG.
+    Promise.all([getAllSemLines(), getLineOverrides()]).then(([lines, overrides]) => {
+      // Alimente le résolveur de couleurs : toutes les couleurs de ligne de
+      // l'app (badges d'arrêt, départs, itinéraires, tracés) en dépendent.
+      setLineColorOverrides(
+        Array.from(overrides.values()).map(o => ({
+          lineId: o.line_id,
+          color: o.color,
+          textColor: o.text_color,
+        }))
+      );
+
+      if (overrides.size === 0) {
+        setAllLines(lines);
+        return;
+      }
+
+      setAllLines(
+        lines
+          .map(line => {
+            const override =
+              overrides.get(line.id.toUpperCase().trim()) ||
+              overrides.get(line.shortName.toUpperCase().trim());
+            if (!override) return line;
+            return {
+              ...line,
+              shortName: override.short_name || line.shortName,
+              color: override.color || line.color,
+              textColor: override.text_color || line.textColor,
+              hidden: override.hidden,
+            };
+          })
+          .filter(line => !(line as AllLinesLine & { hidden?: boolean }).hidden)
+      );
+    });
+  }, [cmsRevision]);
   const allLinesLookup = useMemo(() => buildLineLookup(allLines), [allLines]);
 
   // Line geometries — when the user filters by line(s) inside an open stop,
@@ -253,11 +329,18 @@ function App() {
   // no filter (selectedLines empty = "all"), we don't show any polyline and
   // we keep all stops visible.
   useEffect(() => {
-    if (!selectedStop || selectedLines.size === 0) {
+    if (!selectedStop) {
       setLineGeometries([]);
       setServedStopPoints(null);
       return;
     }
+
+    if (selectedLines.size === 0) {
+      setLineGeometries([]);
+      setServedStopPoints(null);
+      return;
+    }
+
     const linesToFetch = selectedStop.lines?.filter(l => selectedLines.has(l.id)) || [];
     if (linesToFetch.length === 0) {
       setLineGeometries([]);
@@ -299,6 +382,54 @@ function App() {
     });
     return () => { active = false; };
   }, [selectedStop?.id, selectedStop?.lines, selectedLines, allLinesLookup]);
+
+  useEffect(() => {
+    if (!selectedStop) {
+      setPredictedVehicles([]);
+      return;
+    }
+
+    const upcomingDepartures = [...selectedStop.departures]
+      .filter(dep => dep.departureTime >= 0 && dep.departureTime <= 20)
+      .sort((a, b) => a.departureTime - b.departureTime)
+      .slice(0, 8);
+
+    if (upcomingDepartures.length === 0) {
+      setPredictedVehicles([]);
+      return;
+    }
+
+    const nextVehicles = upcomingDepartures.map((departure, index) => {
+      const line = (selectedStop.lines || []).find(candidate => {
+        const candidates = [candidate.id, candidate.shortName].filter(Boolean).map(value => String(value).toUpperCase());
+        return candidates.includes(String(departure.lineId).toUpperCase()) ||
+          candidates.includes(String(departure.lineShortName || '').toUpperCase());
+      });
+
+      const color = line?.color
+        ? resolveLineBackgroundColor(line.color, line.shortName || line.id)
+        : '#f59e0b';
+
+      const direction = index % 2 === 0 ? 1 : -1;
+      const stride = 0.00004 + (index % 3) * 0.000015;
+      const latOffset = direction * stride;
+      const lonOffset = direction * (stride + 0.00002);
+      const minutesUntil = Math.max(1, Math.min(20, departure.departureTime));
+
+      return {
+        id: `${selectedStop.id}-${departure.lineId}-${departure.destination}-${index}`,
+        lineId: departure.lineId,
+        lineShortName: departure.lineShortName,
+        destination: departure.destination,
+        lat: selectedStop.lat + latOffset,
+        lon: selectedStop.lon + lonOffset,
+        color,
+        minutesUntil,
+      };
+    });
+
+    setPredictedVehicles(nextVehicles);
+  }, [selectedStop?.id, selectedStop?.departures, selectedStop?.lines, selectedStop?.lastUpdate]);
 
   useLayoutEffect(() => {
     localStorage.setItem('greLines_theme', theme);
@@ -577,13 +708,51 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const loadCmsContent = () => {
+      getActivePopups().then(setActivePopups);
+      getFooterConfig().then(setFooterConfig);
+    };
+
+    loadCmsContent();
+    // Les changements faits depuis le CRM se répercutent immédiatement, sans
+    // rechargement de page (temps réel Supabase). `cmsRevision` propage aussi
+    // le signal aux données dérivées (arrêts et lignes surchargés).
+    return subscribeToCmsChanges(() => {
+      loadCmsContent();
+      setCmsRevision(revision => revision + 1);
+    });
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const fetchStops = async () => {
       try {
         setIsLoading(true);
-        const data = await getStopsByPrefixes(['SEM']);
+        // Les surcharges définies dans le CRM (renommage, repositionnement,
+        // masquage) sont appliquées par-dessus la donnée officielle MTAG.
+        const [data, overrides] = await Promise.all([
+          getStopsByPrefixes(['SEM']),
+          getStopOverrides(),
+        ]);
         if (!active) return;
-        setStops(data);
+
+        const merged = overrides.size === 0
+          ? data
+          : data
+              .map(stop => {
+                const override = overrides.get(stop.id);
+                if (!override) return stop;
+                return {
+                  ...stop,
+                  name: override.name || stop.name,
+                  lat: override.lat ?? stop.lat,
+                  lon: override.lon ?? stop.lon,
+                  hidden: override.hidden,
+                };
+              })
+              .filter(stop => !(stop as Stop & { hidden?: boolean }).hidden);
+
+        setStops(merged);
         setError(null);
       } catch (err) {
         if (!active) return;
@@ -593,7 +762,7 @@ function App() {
     };
     fetchStops();
     return () => { active = false; };
-  }, []);
+  }, [cmsRevision]);
 
   useEffect(() => { localStorage.setItem('greLines_language', language); }, [language]);
   useEffect(() => { localStorage.setItem('greLines_fontSize', fontSize); const root = document.documentElement; root.classList.remove('text-size-small', 'text-size-large'); if (fontSize === 'small') root.classList.add('text-size-small'); else if (fontSize === 'large') root.classList.add('text-size-large'); }, [fontSize]);
@@ -1045,6 +1214,7 @@ function App() {
       routeEnd={routeTo ? { id: routeTo.id, lat: routeTo.lat, lon: routeTo.lon, label: routeTo.label, kind: routeTo.kind } : undefined}
       routeLine={routeLineGeoJSON}
       lineGeometries={lineGeometries}
+      predictedVehicles={predictedVehicles}
       pickMode={mapPickTarget}
       onMapClick={async (lat: number, lon: number) => {
         // Try reverse geocoding first, fall back to coordinate label
@@ -1071,7 +1241,7 @@ function App() {
         (selectedRouteItinerary.routePath || []).map(([lon, lat]) => ({ lat, lon }))
       ) : servedStopPoints}
     />
-  ), [stops, selectedStop, currentLocation, handleStopClick, selectedAddress, lineGeometries, servedStopPoints, routeFrom, routeTo, routeLineGeoJSON, selectedRouteItinerary, mapPickTarget]);
+  ), [stops, selectedStop, currentLocation, handleStopClick, selectedAddress, lineGeometries, predictedVehicles, servedStopPoints, routeFrom, routeTo, routeLineGeoJSON, selectedRouteItinerary, mapPickTarget]);
 
   useEffect(() => {
     if (!selectedRouteItinerary || !routeLineGeoJSON) return;
@@ -1118,6 +1288,36 @@ function App() {
           mapElement
         )}
       </div>
+
+      {!isLoadingOverlayVisible && <PopupOverlay popups={activePopups} language={language} />}
+
+      {selectedRouteItinerary && (
+        <NavigationMode
+          itinerary={selectedRouteItinerary}
+          isOpen={isNavigationOpen}
+          onClose={() => setIsNavigationOpen(false)}
+          language={language}
+          stops={stops}
+          lineLookup={allLinesLookup}
+          currentLocation={currentLocation}
+          onBoardVehicle={({ lineShortName, boardingStop }) =>
+            setSurveyContext({
+              lineId: lineShortName,
+              boardingStop,
+              boardingTime: new Date().toISOString(),
+            })
+          }
+        />
+      )}
+
+      <TripSurvey
+        isOpen={surveyContext !== null}
+        onClose={() => setSurveyContext(null)}
+        lineId={surveyContext?.lineId ?? ''}
+        boardingStop={surveyContext?.boardingStop}
+        boardingTime={surveyContext?.boardingTime}
+        language={language}
+      />
 
       <SettingsPanel
         isOpen={isSettingsOpen}
@@ -1196,6 +1396,7 @@ function App() {
           setSelectedRouteItinerary(null);
         }}
         onItinerarySelected={itinerary => setSelectedRouteItinerary(itinerary)}
+        onStartNavigation={() => setIsNavigationOpen(true)}
         onPlanNewSharedRoute={() => {
           setSharedRouteExpired(false);
           setSelectedRouteItinerary(null);
@@ -1411,7 +1612,9 @@ function App() {
                             className="flex w-full items-center justify-center gap-2 px-0 py-0 cursor-pointer text-xs text-slate-400 transition hover:text-slate-200"
                           >
                             <span>{text.misc.calculateItineraryWith}</span>
-                            <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
+                            <span className="rounded-full bg-black px-2 py-1 border border-slate-700">
+                              <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
+                            </span>
                           </button>
                         )}
                       </div>
@@ -1756,7 +1959,12 @@ function App() {
 
       {/* Bottom bar with clock and signal — desktop only */}
       {!hidePageControls && !isMobile && (
-        <ClockSignal closedLabel={text.misc.networkClosed} />
+        <ClockSignal
+          closedLabel={text.misc.networkClosed}
+          overrideMessage={footerConfig.message}
+          overrideColor={footerConfig.color}
+          showClock={footerConfig.showClock}
+        />
       )}
     </div>
   );

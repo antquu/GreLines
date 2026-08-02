@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
-import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon, PlayIcon } from '@heroicons/react/24/solid';
 import { ArrowUpOnSquareIcon } from '@heroicons/react/24/outline';
 import { FaBus, FaTrain, FaWalking } from 'react-icons/fa';
 import { LineBadge } from './LineBadge';
@@ -24,6 +24,8 @@ interface RouteSidebarProps {
   onLocationCleared?: (field: 'from' | 'to') => void;
   selectedItinerary?: RouteItinerary | null;
   onItinerarySelected?: (itinerary: RouteItinerary | null) => void;
+  /** Lance le mode guidage GPS plein écran pour l'itinéraire sélectionné. */
+  onStartNavigation?: () => void;
   onRouteReset?: () => void;
   lineLookup?: Map<string, AllLinesLine> | null;
   trafficInfo?: Map<string, TrafficDetail[]>;
@@ -172,7 +174,7 @@ const formatDurationLabel = (value: string) => {
   return minutes > 0 ? formatMinutesCompact(minutes) : value;
 };
 
-export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, lineLookup, trafficInfo, pickMode, onRequestPickLocation, sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute }: RouteSidebarProps) => {
+export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, onStartNavigation, lineLookup, trafficInfo, pickMode, onRequestPickLocation, sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute }: RouteSidebarProps) => {
   const text = getText(language);
   const initialDate = useMemo(() => new Date(), []);
   const sheetRef = useRef<SheetRef>(null);
@@ -1403,13 +1405,29 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       ) : (
         /* DETAILS MODE - Show selected itinerary details */
         _selectedItinerary && (
-          <JourneyDetailsPreview 
-            journey={_selectedItinerary as RouteItinerary} 
-            language={language} 
-            stops={stops}
-            lineLookup={lineLookup}
-            trafficInfo={trafficInfo}
-          />
+          <>
+            {/* Le guidage pas-à-pas n'a de sens qu'en mobilité : on ne le
+                propose pas sur ordinateur. */}
+            {onStartNavigation && isMobile && (
+              <div className="px-4 pt-4">
+                <button
+                  type="button"
+                  onClick={onStartNavigation}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-4 text-base font-bold text-white transition hover:bg-blue-500 active:bg-blue-700"
+                >
+                  <PlayIcon className="h-5 w-5" />
+                  {language === 'fr' ? 'Démarrer le guidage' : 'Start navigation'}
+                </button>
+              </div>
+            )}
+            <JourneyDetailsPreview
+              journey={_selectedItinerary as RouteItinerary}
+              language={language}
+              stops={stops}
+              lineLookup={lineLookup}
+              trafficInfo={trafficInfo}
+            />
+          </>
         )
       )}
 
@@ -1421,7 +1439,9 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           className="inline-flex items-center justify-center gap-2 cursor-pointer text-xs text-slate-400 transition hover:text-slate-200"
         >
           <span>{text.madeBy}</span>
-          <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
+          <span className="rounded-full bg-black px-2 py-1 border border-slate-700">
+            <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
+          </span>
         </a>
       </div>
     </div>

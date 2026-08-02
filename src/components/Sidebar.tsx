@@ -754,7 +754,9 @@ export const Sidebar = ({
               onClick={() => currentStopDetail && onPlanRouteFromStop?.(currentStopDetail)}
               className="flex w-full items-center justify-center gap-2 px-0 py-0 cursor-pointer text-xs text-slate-400 transition hover:text-slate-200">
               <span>{text.calculateItineraryWith}</span>
-              <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
+              <span className="rounded-full bg-black px-2 py-1 border border-slate-700">
+                <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
+              </span>
             </button>
           </div>
         </div>

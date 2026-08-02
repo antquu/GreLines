@@ -20,7 +20,7 @@ interface SettingsPanelProps {
   isMobile: boolean;
   language: 'fr' | 'en';
   setLanguage: (l: 'fr' | 'en') => void;
-  /** Theme is hard-coded to dark for now — these props are kept for compat. */
+  /** Thème de l'interface, réglable depuis l'onglet Affichage. */
   theme?: 'light' | 'dark' | 'auto';
   setTheme?: (t: 'light' | 'dark' | 'auto') => void;
   fontSize: 'small' | 'normal' | 'large';
@@ -159,6 +159,8 @@ export function SettingsPanel({
   isMobile,
   language,
   setLanguage,
+  theme,
+  setTheme,
   fontSize,
   setFontSize,
   compactMode,
@@ -229,23 +231,66 @@ export function SettingsPanel({
     </>
   );
 
+  /** Sélecteur de thème illustré (vignettes clair / sombre / auto). */
+  const ThemePicker = () => {
+    const isFr = language === 'fr';
+    const options: Array<{ value: 'light' | 'dark' | 'auto'; label: string }> = [
+      { value: 'light', label: isFr ? 'Clair' : 'Light' },
+      { value: 'dark', label: isFr ? 'Sombre' : 'Dark' },
+      { value: 'auto', label: isFr ? 'Auto' : 'Auto' },
+    ];
+
+    return (
+      <div className="px-4 py-3">
+        <p className="mb-3 text-[15px] text-slate-200">{isFr ? 'Thème' : 'Theme'}</p>
+        <div className="grid grid-cols-3 gap-3">
+          {options.map((option) => {
+            const selected = theme === option.value;
+            return (
+              <button
+                key={option.value}
+                onClick={() => setTheme?.(option.value)}
+                className="flex flex-col items-center gap-2"
+              >
+                <img
+                  src={`/assets/${option.value}${selected ? '-selectioned' : ''}.svg`}
+                  alt={option.label}
+                  className="w-full rounded-lg"
+                />
+                <span className={`text-xs ${selected ? 'font-semibold text-white' : 'text-slate-400'}`}>
+                  {option.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const DisplayContent = () => (
-    <Group>
-      <Row label={text.labels.fontSize}>
-        <Select
-          value={fontSize}
-          onChange={setFontSize}
-          options={[
-            { value: 'small', label: text.options.fontSize[0] },
-            { value: 'normal', label: text.options.fontSize[1] },
-            { value: 'large', label: text.options.fontSize[2] },
-          ]}
-        />
-      </Row>
-      <Row label={text.labels.compactMode} last>
-        <Toggle value={compactMode} onChange={() => setCompactMode(!compactMode)} />
-      </Row>
-    </Group>
+    <>
+      <Group>
+        <ThemePicker />
+      </Group>
+
+      <Group>
+        <Row label={text.labels.fontSize}>
+          <Select
+            value={fontSize}
+            onChange={setFontSize}
+            options={[
+              { value: 'small', label: text.options.fontSize[0] },
+              { value: 'normal', label: text.options.fontSize[1] },
+              { value: 'large', label: text.options.fontSize[2] },
+            ]}
+          />
+        </Row>
+        <Row label={text.labels.compactMode} last>
+          <Toggle value={compactMode} onChange={() => setCompactMode(!compactMode)} />
+        </Row>
+      </Group>
+    </>
   );
 
   const DataContent = () => (
@@ -275,7 +320,9 @@ export function SettingsPanel({
   const AboutContent = () => (
     <div className="flex flex-col">
       <div className="flex items-center justify-center mb-5 pt-2">
-        <img src="/assets/GreLinesAssoLOGO.png" alt="GreLines" className="h-20 w-auto" />
+        <div className="rounded-2xl bg-black border border-slate-700 px-4 py-3 shadow-sm">
+          <img src="/assets/GreLinesAssoLOGO.png" alt="GreLines" className="h-20 w-auto" />
+        </div>
       </div>
 
       <Group>
@@ -316,7 +363,7 @@ export function SettingsPanel({
           href="https://gre-go.vercel.app/"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 h-12 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-xl hover:bg-slate-700 transition"
+          className="flex-1 h-12 flex items-center justify-center bg-black border border-slate-700 rounded-xl hover:bg-slate-900 transition"
         >
           <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-7 w-auto" />
         </a>
@@ -324,7 +371,7 @@ export function SettingsPanel({
           href="https://github.com/antquu/GreLines"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 h-12 flex items-center justify-center gap-2 bg-slate-800 border border-slate-700 rounded-xl hover:bg-slate-700 transition"
+          className="flex-1 h-12 flex items-center justify-center gap-2 bg-black border border-slate-700 rounded-xl hover:bg-slate-900 transition"
         >
           <img src="/assets/GitHubLOGO.png" alt="GitHub" className="h-7 w-auto" />
           <span className="text-white text-xs">Project</span>
@@ -360,7 +407,7 @@ export function SettingsPanel({
             <div className="flex items-center justify-between px-5 pt-2 pb-3 flex-shrink-0">
               <div className="w-9" />
               <h2 className="text-base font-semibold text-white">
-                {text.misc.settingsTitle || 'Réglages'}
+                {text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
               </h2>
               <button
                 onClick={handleClose}
@@ -407,7 +454,7 @@ export function SettingsPanel({
       activeTab={activeTab}
       setActiveTab={setActiveTab}
       onClose={handleClose}
-      title={text.misc.settingsTitle || 'Réglages'}
+      title={text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
     >
       {renderTab()}
     </DesktopFinderWindow>

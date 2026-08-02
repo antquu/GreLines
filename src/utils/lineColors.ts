@@ -23,6 +23,33 @@ export const LINE_COLORS = {
 const DEFAULT_LINE_BADGE_COLOR = '#3b82f6';
 const GRAY_FALLBACK_COLOR = '#94A3B8';
 
+/**
+ * Surcharges de lignes définies dans le CRM GreStudio, indexées par code
+ * normalisé ("A", "C1", "16").
+ *
+ * Elles sont consultées ici, au coeur du résolveur de couleurs, plutôt qu'au
+ * seul endroit où le catalogue est chargé : les couleurs de ligne proviennent
+ * de sources multiples (catalogue, arrêts, départs, itinéraires) et doivent
+ * toutes respecter la surcharge.
+ */
+type LineColorOverride = { color?: string | null; textColor?: string | null };
+const lineColorOverrides = new Map<string, LineColorOverride>();
+
+export function setLineColorOverrides(entries: Array<{ lineId: string } & LineColorOverride>): void {
+  lineColorOverrides.clear();
+  for (const entry of entries) {
+    const code = normalizeLineId(entry.lineId);
+    if (!code) continue;
+    lineColorOverrides.set(code, { color: entry.color, textColor: entry.textColor });
+  }
+}
+
+function getLineColorOverride(lineId?: string | null): LineColorOverride | null {
+  const code = normalizeLineId(lineId);
+  if (!code) return null;
+  return lineColorOverrides.get(code) ?? null;
+}
+
 export const normalizeLineId = (value?: string | null): string | null => {
   if (!value) return null;
   const code = String(value)
@@ -72,6 +99,11 @@ export const resolveLineBackgroundColor = (
   lineId?: string | null,
   defaultColor = DEFAULT_LINE_BADGE_COLOR,
 ): string => {
+  // Une surcharge définie dans le CRM prime sur tout le reste, y compris sur
+  // la table de couleurs officielles ci-dessous.
+  const overrideColor = normalizeHexColor(getLineColorOverride(lineId)?.color);
+  if (overrideColor) return overrideColor;
+
   // Prefer explicit mapping from LINE_COLORS first (matches Grego behaviour)
   const code = normalizeLineId(lineId);
   if (code && LINE_COLORS[code as keyof typeof LINE_COLORS]) {
@@ -90,6 +122,19 @@ export const resolveLineTextColor = (
   lineId?: string | null,
   explicitTextColor?: string | null,
 ): string => {
+  const override = getLineColorOverride(lineId);
+  const overrideTextColor = normalizeHexColor(override?.textColor);
+  if (overrideTextColor) return overrideTextColor;
+  // Couleur de fond surchargée sans couleur de texte : on calcule le contraste
+  // plutôt que d'appliquer les règles de la palette officielle.
+  const overrideBackground = normalizeHexColor(override?.color);
+  if (overrideBackground) {
+    const r = parseInt(overrideBackground.slice(1, 3), 16);
+    const g = parseInt(overrideBackground.slice(3, 5), 16);
+    const b = parseInt(overrideBackground.slice(5, 7), 16);
+    return r * 0.299 + g * 0.587 + b * 0.114 > 186 ? '#000000' : '#FFFFFF';
+  }
+
   // Chrono C1..C9 are yellow in the MTAG palette, so force black text even if
   // an upstream object forgot or overrode the official text color.
   const code = normalizeLineId(lineId);

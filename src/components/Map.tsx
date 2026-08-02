@@ -40,9 +40,12 @@ interface MapProps {
   /** When set, the map shows a crosshair cursor and will forward click events. */
   pickMode?: 'from' | 'to' | null;
   onMapClick?: (lat: number, lon: number) => void;
+  isDarkMode?: boolean;
 }
 
-const MAPTILER_STYLE_URL = 'https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl';
+/** Deux fonds de carte MapTiler : un pour chaque thème de l'app. */
+const DARK_MODE_MAP_STYLE_URL = 'https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl';
+const LIGHT_MODE_MAP_STYLE_URL = 'https://api.maptiler.com/maps/019f7c76-a3f8-751b-bedb-d7fe9d83d122/style.json?key=7TQErbyvEqFlis3QMmSl';
 
 export interface MapRef {
   centerOnStop: (stop: Stop) => void;
@@ -243,14 +246,17 @@ const animateFeatureCollectionProgress = (
 };
 
 const MapComponentBase = (
-  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, routeStart, routeEnd, routeLine, lineGeometries = [], visibleStopPoints, pickMode, onMapClick }: MapProps,
+  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, routeStart, routeEnd, routeLine, lineGeometries = [], visibleStopPoints, pickMode, onMapClick, isDarkMode = false }: MapProps,
   ref: ForwardedRef<MapRef>
 ) => {
   const mapRef = useRef<MapLibreRef>(null);
   const [mapState, setMapState] = useState<MapState>({ bounds: null, zoom: 12.1 });
   const [routeDrawProgress, setRouteDrawProgress] = useState(1);
+  const [hoveredStopId, setHoveredStopId] = useState<string | null>(null);
+  const [hoverLabelVisible, setHoverLabelVisible] = useState(false);
+  const hoverTimerRef = useRef<number | null>(null);
 
-  const mapStyleUrl = MAPTILER_STYLE_URL;
+  const mapStyleUrl = isDarkMode ? DARK_MODE_MAP_STYLE_URL : LIGHT_MODE_MAP_STYLE_URL;
 
   const visibleStops = useMemo(() => {
     // First pass: filter to only stops near a stop served by the active line
@@ -350,8 +356,37 @@ const MapComponentBase = (
 
   const hasLines = linesFeatureCollection.features.length > 0;
 
-  /** Show stop name labels when zoomed in enough to read them comfortably. */
+  /** Show stop name labels when zoomed in enough to read them comfortably, or
+   * after a short hover delay when the user is still zoomed out. */
   const showStopLabels = mapState.zoom >= 15;
+
+  const clearStopHoverTimer = useCallback(() => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }, []);
+
+  const startStopHoverTimer = useCallback((stopId: string) => {
+    clearStopHoverTimer();
+    setHoveredStopId(stopId);
+    setHoverLabelVisible(false);
+    hoverTimerRef.current = window.setTimeout(() => {
+      setHoverLabelVisible(true);
+    }, 900);
+  }, [clearStopHoverTimer]);
+
+  const resetStopHover = useCallback(() => {
+    clearStopHoverTimer();
+    setHoveredStopId(null);
+    setHoverLabelVisible(false);
+  }, [clearStopHoverTimer]);
+
+  useEffect(() => {
+    return () => {
+      clearStopHoverTimer();
+    };
+  }, [clearStopHoverTimer]);
 
   const updateViewport = useCallback(() => {
     if (!mapRef.current) return;
@@ -552,6 +587,8 @@ const MapComponentBase = (
         {visibleStops.map((stop) => {
           const isRouteEndpoint = selectedRouteStopIds.has(stop.id);
           const isSelected = selectedStop?.id === stop.id || isRouteEndpoint;
+          const shouldShowHoverLabel = !showStopLabels && hoveredStopId === stop.id && hoverLabelVisible;
+          const shouldShowLabel = showStopLabels || shouldShowHoverLabel;
           return (
             <Marker
               key={stop.id}
@@ -560,10 +597,8 @@ const MapComponentBase = (
               onClick={() => handleMarkerClick(stop)}
             >
               <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                {/* Name label, only visible at higher zoom levels. We position
-                    it absolutely above the dot so the dot stays the click target
-                    and the label doesn't shift the marker on (de)appearance. */}
-                {showStopLabels && (
+                {/* Name label shown either at high zoom or after a short hover delay when zoomed out. */}
+                {shouldShowLabel && (
                   <div
                     style={{
                       position: 'absolute',
@@ -572,8 +607,8 @@ const MapComponentBase = (
                       whiteSpace: 'nowrap',
                       fontSize: '11px',
                       fontWeight: 600,
-                      color: '#0f172a',
-                      backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                      color: isDarkMode ? '#f8fafc' : '#0f172a',
+                      backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.92)',
                       padding: '2px 6px',
                       borderRadius: '6px',
                       boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
@@ -585,6 +620,16 @@ const MapComponentBase = (
                   </div>
                 )}
                 <div
+                  onMouseEnter={() => startStopHoverTimer(stop.id)}
+                  onMouseMove={() => {
+                    clearStopHoverTimer();
+                    setHoveredStopId(stop.id);
+                    setHoverLabelVisible(false);
+                    hoverTimerRef.current = window.setTimeout(() => {
+                      setHoverLabelVisible(true);
+                    }, 900);
+                  }}
+                  onMouseLeave={resetStopHover}
                   style={{
                     width: isSelected ? '24px' : '16px',
                     height: isSelected ? '24px' : '16px',
