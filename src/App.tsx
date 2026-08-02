@@ -39,17 +39,6 @@ import { useDebouncedValue } from './hooks/useDebouncedValue';
 import type { LineFamily } from './services/allLines';
 import { stripHtml } from './utils/stripHtml';
 
-interface PredictedVehicle {
-  id: string;
-  lineId: string;
-  lineShortName?: string;
-  destination: string;
-  lat: number;
-  lon: number;
-  color: string;
-  minutesUntil: number;
-}
-
 function App() {
   const [stops, setStops] = useState<Stop[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -152,7 +141,7 @@ function App() {
    * véhicule pendant le guidage (moment où il est assis et disponible), pas
    * pendant qu'il marche.
    */
-  const [surveyContext, setSurveyContext] = useState<
+  const [surveyContext, setSurveyContext] = useState
     { lineId: string; boardingStop: string | null; boardingTime: string } | null
   >(null);
 
@@ -180,7 +169,6 @@ function App() {
   const [addressResults, setAddressResults] = useState<AddressResult[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<AddressResult | null>(null);
   const [lineGeometries, setLineGeometries] = useState<LineGeometry[]>([]);
-  const [predictedVehicles, setPredictedVehicles] = useState<PredictedVehicle[]>([]);
   /**
    * When a line filter is active inside the open stop, this holds the lat/lon
    * positions of every stop served by those lines. The map then matches local
@@ -382,54 +370,6 @@ function App() {
     });
     return () => { active = false; };
   }, [selectedStop?.id, selectedStop?.lines, selectedLines, allLinesLookup]);
-
-  useEffect(() => {
-    if (!selectedStop) {
-      setPredictedVehicles([]);
-      return;
-    }
-
-    const upcomingDepartures = [...selectedStop.departures]
-      .filter(dep => dep.departureTime >= 0 && dep.departureTime <= 20)
-      .sort((a, b) => a.departureTime - b.departureTime)
-      .slice(0, 8);
-
-    if (upcomingDepartures.length === 0) {
-      setPredictedVehicles([]);
-      return;
-    }
-
-    const nextVehicles = upcomingDepartures.map((departure, index) => {
-      const line = (selectedStop.lines || []).find(candidate => {
-        const candidates = [candidate.id, candidate.shortName].filter(Boolean).map(value => String(value).toUpperCase());
-        return candidates.includes(String(departure.lineId).toUpperCase()) ||
-          candidates.includes(String(departure.lineShortName || '').toUpperCase());
-      });
-
-      const color = line?.color
-        ? resolveLineBackgroundColor(line.color, line.shortName || line.id)
-        : '#f59e0b';
-
-      const direction = index % 2 === 0 ? 1 : -1;
-      const stride = 0.00004 + (index % 3) * 0.000015;
-      const latOffset = direction * stride;
-      const lonOffset = direction * (stride + 0.00002);
-      const minutesUntil = Math.max(1, Math.min(20, departure.departureTime));
-
-      return {
-        id: `${selectedStop.id}-${departure.lineId}-${departure.destination}-${index}`,
-        lineId: departure.lineId,
-        lineShortName: departure.lineShortName,
-        destination: departure.destination,
-        lat: selectedStop.lat + latOffset,
-        lon: selectedStop.lon + lonOffset,
-        color,
-        minutesUntil,
-      };
-    });
-
-    setPredictedVehicles(nextVehicles);
-  }, [selectedStop?.id, selectedStop?.departures, selectedStop?.lines, selectedStop?.lastUpdate]);
 
   useLayoutEffect(() => {
     localStorage.setItem('greLines_theme', theme);
@@ -915,20 +855,6 @@ function App() {
    * NearbyStopsSheet at its mini snap. If the user declines we still open
    * the sheet so they can browse manually.
    *
-   * Important — we wait until BOTH the map ref is mounted AND stops have
-   * loaded before kicking off the geolocation request, otherwise the sheet
-   * pops up over the splash/loading screen and `mapRef.current.centerOnLocation`
-   * is a no-op (the ref is still null).
-   *
-   * `hasOpenedNearbyOnce` makes sure we never re-trigger after the first
-   * permission dance, even if React re-runs the effect.
-   */
-  /**
-   * Mobile-only: at first paint we ask the browser for the user's location
-   * (one-shot, no watch). If granted we (a) center the map, (b) open the
-   * NearbyStopsSheet at its mini snap. If the user declines we still open
-   * the sheet so they can browse manually.
-   *
    * We wait until stops have loaded before kicking off the request — until
    * then the splash screen is showing and the map ref isn't ready, so an
    * early sheet would flash over the loader and `centerOnLocation` would
@@ -1214,7 +1140,6 @@ function App() {
       routeEnd={routeTo ? { id: routeTo.id, lat: routeTo.lat, lon: routeTo.lon, label: routeTo.label, kind: routeTo.kind } : undefined}
       routeLine={routeLineGeoJSON}
       lineGeometries={lineGeometries}
-      predictedVehicles={predictedVehicles}
       pickMode={mapPickTarget}
       onMapClick={async (lat: number, lon: number) => {
         // Try reverse geocoding first, fall back to coordinate label
@@ -1241,7 +1166,7 @@ function App() {
         (selectedRouteItinerary.routePath || []).map(([lon, lat]) => ({ lat, lon }))
       ) : servedStopPoints}
     />
-  ), [stops, selectedStop, currentLocation, handleStopClick, selectedAddress, lineGeometries, predictedVehicles, servedStopPoints, routeFrom, routeTo, routeLineGeoJSON, selectedRouteItinerary, mapPickTarget]);
+  ), [stops, selectedStop, currentLocation, handleStopClick, selectedAddress, lineGeometries, servedStopPoints, routeFrom, routeTo, routeLineGeoJSON, selectedRouteItinerary, mapPickTarget]);
 
   useEffect(() => {
     if (!selectedRouteItinerary || !routeLineGeoJSON) return;
