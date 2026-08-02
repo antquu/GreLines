@@ -141,7 +141,7 @@ function App() {
    * véhicule pendant le guidage (moment où il est assis et disponible), pas
    * pendant qu'il marche.
    */
-  const [surveyContext, setSurveyContext] = useState
+  const [surveyContext, setSurveyContext] = useState<
     { lineId: string; boardingStop: string | null; boardingTime: string } | null
   >(null);
 
