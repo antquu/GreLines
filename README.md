@@ -169,7 +169,9 @@ Pour toute question concernant le projet, sa licence ou son utilisation :
 Une copie de la GNU GPL v3 doit être fournie avec le projet. La licence complète est disponible sur le site de la Free Software Foundation.
 
 
-[![Bannière Grelines](https://image.noelshack.com/fichiers/2026/33/2/1786482267-warning.png)]
+
+
+![Bannière Grelines](https://image.noelshack.com/fichiers/2026/33/2/1786482267-warning.png)
 ---
 
 ## Fonctionnalités en détail
