@@ -41,6 +41,13 @@ interface SettingsPanelProps {
   setAutoSync: (v: boolean) => void;
   autoLocation: boolean;
   setAutoLocation: (v: boolean) => void;
+  /**
+   * Rouvre le tutoriel « app sur l'écran d'accueil ». Absent (ou non fourni)
+   * quand l'application tourne déjà depuis l'écran d'accueil : l'entrée n'a
+   * alors plus aucun sens.
+   */
+  onOpenInstallGuide?: () => void;
+  showInstallGuide?: boolean;
   appData: { version: string; credits: Array<{ role: string; name: string; link?: string }> } | null;
   text: any;
   contentRef: React.RefObject<HTMLDivElement | null>;
@@ -241,6 +248,8 @@ export function SettingsPanel({
   setAutoSync,
   autoLocation,
   setAutoLocation,
+  onOpenInstallGuide,
+  showInstallGuide = false,
   appData,
   text,
   contentRef,
@@ -323,6 +332,24 @@ export function SettingsPanel({
           <Toggle value={searchHistory} onChange={() => setSearchHistory(!searchHistory)} />
         </Row>
       </Group>
+
+      {/* Rien à installer si l'app tourne déjà depuis l'écran d'accueil : dans
+          ce cas `showInstallGuide` est faux et la ligne disparaît. */}
+      {showInstallGuide && onOpenInstallGuide && (
+        <Group>
+          <button
+            onClick={onOpenInstallGuide}
+            className="w-full flex items-center justify-between px-4 py-3 transition hover:bg-slate-700/40"
+          >
+            <span className="text-[15px] font-medium text-blue-400 text-left">
+              {language === 'fr'
+                ? "Comment installer l'app sur l'écran d'accueil"
+                : 'How to install the app on your home screen'}
+            </span>
+            <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-slate-500" />
+          </button>
+        </Group>
+      )}
 
       {devAvailable && (
         <>

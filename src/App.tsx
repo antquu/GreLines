@@ -14,6 +14,7 @@ import { Map as TransitMap } from './components/Map';
 import { Sidebar } from './components/Sidebar';
 import { SearchBarMobile } from './components/SearchBarMobile';
 import { TrafficPanelMobile } from './components/TrafficPanelMobile';
+import { InstallAppSheet } from './components/InstallAppSheet';
 import { SidebarMobile } from './components/SidebarMobile';
 import { HomeSheet } from './components/HomeSheet';
 import { ClockSignal } from './components/ClockSignal';
@@ -30,6 +31,7 @@ import {
 } from './services/sharedMobility';
 import { toTimetableRouteId } from './services/timetable';
 import { usePerfSettings } from './hooks/usePerfSettings';
+import { canShowInstallGuide, shouldAutoOpenInstallGuide } from './utils/pwa';
 
 import { Analytics } from '@vercel/analytics/react';
 
@@ -171,6 +173,12 @@ function App() {
   
   const [desktopTrafficFilter, setDesktopTrafficFilter] = useState<'all' | LineFamily>('all');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  // Tutoriel « ajouter GreLines à l'écran d'accueil » : proposé une seule fois
+  // aux mobiles qui naviguent depuis le navigateur, puis à la demande via les
+  // réglages. Une fois l'app installée, il disparaît complètement.
+  const [canOfferInstallGuide] = useState(canShowInstallGuide);
+  const [autoOpenInstallGuide] = useState(shouldAutoOpenInstallGuide);
+  const [isInstallSheetOpen, setIsInstallSheetOpen] = useState(false);
   const { settings: perfSettings } = usePerfSettings();
   const [currentLocation, setCurrentLocation] = useState<{lat: number, lon: number} | null>(null);
   const [locationWatchId, setLocationWatchId] = useState<number | null>(null);
@@ -1130,6 +1138,20 @@ function App() {
   useEffect(() => { localStorage.setItem('greLines_autoSync', autoSync ? 'true' : 'false'); }, [autoSync]);
   useEffect(() => { localStorage.setItem('greLines_autoLocation', autoLocation ? 'true' : 'false'); }, [autoLocation]);
 
+  // Ouverture automatique du tutoriel d'installation, une fois par appareil.
+  // Le petit délai laisse la carte s'afficher avant de recouvrir l'écran.
+  useEffect(() => {
+    if (!autoOpenInstallGuide) return;
+    if (localStorage.getItem('greLines_installGuideDismissed') === 'true') return;
+    const timer = window.setTimeout(() => setIsInstallSheetOpen(true), 1200);
+    return () => window.clearTimeout(timer);
+  }, [autoOpenInstallGuide]);
+
+  const dismissInstallGuide = useCallback(() => {
+    localStorage.setItem('greLines_installGuideDismissed', 'true');
+    setIsInstallSheetOpen(false);
+  }, []);
+
   const pushSearchHistoryItem = useCallback((item: SearchHistoryItem) => {
     if (!searchHistory) return;
     setSearchHistoryItems(prev => {
@@ -2086,6 +2108,11 @@ function App() {
         setAutoSync={setAutoSync}
         autoLocation={autoLocation}
         setAutoLocation={setAutoLocation}
+        showInstallGuide={canOfferInstallGuide}
+        onOpenInstallGuide={() => {
+          setSettingsState('closed');
+          setIsInstallSheetOpen(true);
+        }}
         appData={appData}
         text={text}
         contentRef={settingsContentRef}
@@ -2752,6 +2779,16 @@ function App() {
           language={language}
           theme={effectiveTheme}
           lineLookup={allLinesLookup}
+        />
+      )}
+
+      {!hidePageControls && (
+        <InstallAppSheet
+          isOpen={isInstallSheetOpen}
+          onDismiss={dismissInstallGuide}
+          onClose={() => setIsInstallSheetOpen(false)}
+          language={language}
+          theme={effectiveTheme}
         />
       )}
 

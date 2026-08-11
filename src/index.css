@@ -178,6 +178,38 @@ body {
 
 
 
+/*
+ * Glissement horizontal du tutoriel « app sur l'écran d'accueil ».
+ *
+ * En CSS et non via framer-motion : une transformation pilotée en JavaScript
+ * peut rester bloquée à sa valeur de départ (réglage « animations » désactivé,
+ * onglet non composité), ce qui décale durablement tout le contenu. Ici l'état
+ * final est déclaratif, et `perf-no-animations` se contente de l'atteindre
+ * immédiatement.
+ */
+@keyframes install-slide-from-right {
+  from { opacity: 0; transform: translateX(60px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes install-slide-from-left {
+  from { opacity: 0; transform: translateX(-60px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/*
+ * `forwards` et non `both` : si l'animation ne démarre jamais (onglet en
+ * arrière-plan, compositing suspendu), l'élément reste à sa place naturelle
+ * plutôt que figé sur le décalage de départ.
+ */
+.install-slide-right { animation: install-slide-from-right 0.24s ease-out forwards; }
+.install-slide-left  { animation: install-slide-from-left  0.24s ease-out forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .install-slide-right,
+  .install-slide-left { animation: none; }
+}
+
 .perf-no-animations *,
 .perf-no-animations *::before,
 .perf-no-animations *::after {
