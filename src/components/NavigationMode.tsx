@@ -6,17 +6,24 @@ import {
   XMarkIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  MapPinIcon,
+  ArrowPathIcon,
   FlagIcon,
 } from '@heroicons/react/24/solid';
 import { FaWalking } from 'react-icons/fa';
-import { MdTram, MdDirectionsBus } from 'react-icons/md';
+import { TransportModeIcon } from './TransportModeIcon';
 import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
 import { resolveRouteLine } from '../utils/routeLineResolver';
 
-const MAPTILER_STYLE_URL =
-  'https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl';
+
+
+
+
+
+const DARK_MAP_STYLE_URL =
+  'https://api.maptiler.com/maps/019f7c76-a3f8-751b-bedb-d7fe9d83d122/style.json?key=7TQErbyvEqFlis3QMmSl';
+const LIGHT_MAP_STYLE_URL =
+  'https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl';
 
 interface NavigationModeProps {
   itinerary: RouteItinerary;
@@ -26,10 +33,16 @@ interface NavigationModeProps {
   stops: any[];
   lineLookup?: Map<string, AllLinesLine> | null;
   currentLocation?: { lat: number; lon: number } | null;
-  /** Appelé quand l'utilisateur entre dans un véhicule (pour l'enquête qualité). */
+  
+  itineraryOptions?: RouteItinerary[];
+  onItinerarySelected?: (itinerary: RouteItinerary) => void;
+  
   onBoardVehicle?: (info: { lineShortName: string; boardingStop: string | null }) => void;
-  /** Appelé à l'arrivée. */
+  
   onArrived?: () => void;
+  isMobile?: boolean;
+  
+  theme?: 'light' | 'dark';
 }
 
 type StepKind = 'walk' | 'transit' | 'arrival';
@@ -38,18 +51,91 @@ interface NavStep {
   kind: StepKind;
   instruction: string;
   detail: string;
+  headsign?: string;
   durationMin: number;
   color: string;
   lineShortName?: string;
   mode?: string;
   fromName?: string;
-  /** Tracé de l'étape, pour la surbrillance sur la carte. */
   path: Array<[number, number]>;
 }
 
-/**
- * Cap (0–360°, 0 = nord) entre deux points géographiques.
- */
+
+
+
+
+
+
+const PANEL_BG = '#0f172a';
+const WALK_COLOR = '#94a3b8';
+const ARRIVAL_COLOR = '#22c55e';
+
+
+const FOLLOW_ZOOM = 17.5;
+const FOLLOW_PITCH = 55;
+
+const FOLLOW_LOOK_AHEAD_METERS = 30;
+
+const METRES_PER_DEG_LAT = 111320;
+const METRES_PER_DEG_LON_AT_45 = 78710;
+
+
+
+
+
+
+
+function pointAheadOnPath(
+  path: Array<[number, number]>,
+  from: [number, number],
+  aheadMeters: number,
+): [number, number] | null {
+  if (path.length < 2) return null;
+
+  const distance = (a: [number, number], b: [number, number]) => {
+    const dLat = (a[1] - b[1]) * METRES_PER_DEG_LAT;
+    const dLon = (a[0] - b[0]) * METRES_PER_DEG_LON_AT_45;
+    return Math.sqrt(dLat * dLat + dLon * dLon);
+  };
+
+  let nearestIndex = 0;
+  let nearest = Infinity;
+  for (let i = 0; i < path.length; i++) {
+    const d = distance(path[i], from);
+    if (d < nearest) { nearest = d; nearestIndex = i; }
+  }
+
+  let travelled = 0;
+  for (let i = nearestIndex; i < path.length - 1; i++) {
+    travelled += distance(path[i], path[i + 1]);
+    if (travelled >= aheadMeters) return path[i + 1];
+  }
+  return path[path.length - 1];
+}
+
+
+function stepColor(step: NavStep): string {
+  if (step.kind === 'arrival') return ARRIVAL_COLOR;
+  if (step.kind === 'walk') return WALK_COLOR;
+  return step.color;
+}
+
+
+function stepEyebrow(step: NavStep, isFr: boolean): string {
+  switch (step.kind) {
+    case 'walk':    return isFr ? 'À pied' : 'Walk';
+    case 'arrival': return isFr ? 'Arrivée' : 'Arrival';
+    default:        return isFr ? 'Montez à bord' : 'Board';
+  }
+}
+
+
+function isRoundLine(label: string): boolean {
+  const n = label.toUpperCase().trim();
+  if (n === 'A' || n === 'B' || n === 'C' || n === 'D' || n === 'E') return true;
+  return /^C\d+$/.test(n);
+}
+
 function bearingBetween(from: [number, number], to: [number, number]): number {
   const toRad = (v: number) => (v * Math.PI) / 180;
   const toDeg = (v: number) => (v * 180) / Math.PI;
@@ -94,6 +180,45 @@ function decodePolyline(encoded: string): Array<[number, number]> {
   return coordinates;
 }
 
+function coordinateDistance(a: [number, number], b: [number, number]): number {
+  const latMean = ((a[1] + b[1]) / 2) * (Math.PI / 180);
+  const metersPerLon = 111_320 * Math.cos(latMean);
+  const dx = (b[0] - a[0]) * metersPerLon;
+  const dy = (b[1] - a[1]) * 110_540;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function slicePathForCamera(path: Array<[number, number]>, kind: StepKind): Array<[number, number]> {
+  if (path.length <= 2) return path;
+  const maxMeters = kind === 'walk' ? 850 : 1800;
+  const sliced: Array<[number, number]> = [path[0]];
+  let distance = 0;
+  for (let i = 1; i < path.length; i += 1) {
+    distance += coordinateDistance(path[i - 1], path[i]);
+    sliced.push(path[i]);
+    if (distance >= maxMeters) break;
+  }
+  return sliced.length >= 2 ? sliced : path.slice(0, 2);
+}
+
+function getBoundsForPath(path: Array<[number, number]>): [[number, number], [number, number]] | null {
+  if (path.length === 0) return null;
+  const lons = path.map((p) => p[0]);
+  const lats = path.map((p) => p[1]);
+  const west = Math.min(...lons);
+  const east = Math.max(...lons);
+  const south = Math.min(...lats);
+  const north = Math.max(...lats);
+  const minSpan = 0.0026;
+  const lonPad = Math.max((east - west) * 0.18, minSpan);
+  const latPad = Math.max((north - south) * 0.18, minSpan);
+  return [
+    [west - lonPad, south - latPad],
+    [east + lonPad, north + latPad],
+  ];
+}
+
+
 function buildSteps(
   itinerary: RouteItinerary,
   isFr: boolean,
@@ -101,6 +226,17 @@ function buildSteps(
   lineLookup?: Map<string, AllLinesLine> | null
 ): NavStep[] {
   const legs = itinerary.allLegs || [];
+  
+
+
+
+
+  const cleanPlace = (value: unknown): string | undefined => {
+    const name = typeof value === 'string' ? value.trim() : '';
+    if (!name || name === 'Origin' || name === 'Destination') return undefined;
+    return name;
+  };
+
   const steps: NavStep[] = legs.map((leg: any) => {
     const durationMin = Math.max(1, Math.round((leg.duration ?? 0) / 60));
     const path = leg?.legGeometry?.points ? decodePolyline(leg.legGeometry.points) : [];
@@ -108,11 +244,15 @@ function buildSteps(
     if (leg.mode === 'WALK') {
       return {
         kind: 'walk',
-        instruction: isFr ? 'Marchez' : 'Walk',
-        detail: leg.to?.name ? `${isFr ? 'jusqu’à' : 'to'} ${leg.to.name}` : '',
+        
+        
+        instruction: cleanPlace(leg.to?.name)
+          ? `${isFr ? 'Rejoignez' : 'Walk to'} ${cleanPlace(leg.to?.name)}`
+          : (isFr ? 'À pied' : 'Walk'),
+        detail: cleanPlace(leg.to?.name) ? `${isFr ? 'jusqu’à' : 'to'} ${cleanPlace(leg.to?.name)}` : '',
         durationMin,
         color: '#64748b',
-        fromName: leg.from?.name,
+        fromName: cleanPlace(leg.from?.name),
         path,
       };
     }
@@ -130,6 +270,7 @@ function buildSteps(
       kind: 'transit',
       instruction: isFr ? `Prenez ${shortName}` : `Take ${shortName}`,
       detail: leg.to?.name ? `${isFr ? 'descendez à' : 'get off at'} ${leg.to.name}` : '',
+      headsign: leg.headsign,
       durationMin,
       color: line?.color || '#3b82f6',
       lineShortName: shortName,
@@ -154,15 +295,13 @@ function buildSteps(
 function StepIcon({ step, className }: { step: NavStep; className: string }) {
   if (step.kind === 'arrival') return <FlagIcon className={className} />;
   if (step.kind === 'walk') return <FaWalking className={className} />;
-  if (step.mode === 'TRAM') return <MdTram className={className} />;
-  return <MdDirectionsBus className={className} />;
+  return <TransportModeIcon mode={step.mode} className={className} />;
 }
 
 /**
- * Guidage plein écran : la carte reste visible en haut (avec le tracé de
- * l'étape en cours et la position de l'utilisateur), l'instruction occupe une
- * carte basse compacte — plus proche de l'univers GreLines qu'un écran
- * entièrement coloré.
+ * Mode guidage : carte en haut avec le tracé de l'étape en cours, panneau bas
+ * dans le style GreLines (bandeau bleu marine, cartes de ligne colorées,
+ * timeline en pointillés) — repris directement du design fourni.
  */
 export function NavigationMode({
   itinerary,
@@ -174,6 +313,8 @@ export function NavigationMode({
   currentLocation,
   onBoardVehicle,
   onArrived,
+  isMobile = false,
+  theme = 'dark',
 }: NavigationModeProps) {
   const isFr = language === 'fr';
   const mapRef = useRef<MapRef>(null);
@@ -182,90 +323,126 @@ export function NavigationMode({
     [itinerary, isFr, stops, lineLookup]
   );
   const [index, setIndex] = useState(0);
-  /** Opacité pulsée du halo sous le tracé de l'étape. */
-  const [glowOpacity, setGlowOpacity] = useState(0.35);
+  const [hasStarted, setHasStarted] = useState(false);
+  /**
+   * Suivi de position. Actif par défaut : une fois le trajet lancé, la carte
+   * reste centrée sur l'usager et tournée dans le sens de la marche. Dès qu'il
+   * déplace la carte lui-même, le suivi s'interrompt — c'est lui qui regarde —
+   * et un bouton le rétablit.
+   */
+  const [isFollowing, setIsFollowing] = useState(true);
+  const boardedTransitKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
-    let frame = 0;
-    let raf = 0;
-    const tick = () => {
-      frame += 1;
-      // Oscillation lente entre 0.15 et 0.45.
-      setGlowOpacity(0.3 + Math.sin(frame / 30) * 0.15);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen) setIndex(0);
+    if (isOpen) {
+      setIndex(0);
+      setHasStarted(false);
+      boardedTransitKeyRef.current = null;
+    }
   }, [isOpen, itinerary]);
 
   const step = steps[Math.min(index, steps.length - 1)];
 
-  /**
-   * Recadre ET oriente la carte sur l'étape en cours : on fait pivoter la vue
-   * pour que le trajet à parcourir soit à l'horizontale, dans le sens de la
-   * marche (gauche → droite). L'espace disponible sous la carte étant plus
-   * large que haut, on exploite ainsi toute la largeur de l'écran.
-   */
   useEffect(() => {
     if (!isOpen || !step) return;
+    // En suivi, c'est la position qui commande la caméra : recadrer sur l'étape
+    // arracherait la vue à l'usager en pleine marche.
+    if (hasStarted && isFollowing && currentLocation) return;
     const map = mapRef.current;
     if (!map) return;
 
     if (step.path.length < 2) {
-      // Étape sans tracé (arrivée) : on se contente de recentrer, sans rotation.
       const point = step.path[0];
-      if (point) map.easeTo({ center: point, zoom: 15, bearing: 0, duration: 900 });
+      if (point) map.easeTo({ center: point, zoom: 16, bearing: 0, duration: 900 });
       return;
     }
 
-    const start = step.path[0];
-    const end = step.path[step.path.length - 1];
-    // `bearing` place le cap donné vers le haut de l'écran : en retranchant 90°,
-    // la direction du trajet pointe vers la droite (donc à l'horizontale).
+    const cameraPath = slicePathForCamera(step.path, step.kind);
+    const bounds = getBoundsForPath(
+      currentLocation ? [[currentLocation.lon, currentLocation.lat], ...cameraPath] : cameraPath
+    );
+    if (!bounds) return;
+
+    const start = cameraPath[0];
+    const end = cameraPath[Math.min(cameraPath.length - 1, 4)];
     const heading = bearingBetween(start, end);
 
-    const lons = step.path.map((p) => p[0]);
-    const lats = step.path.map((p) => p[1]);
-    map.fitBounds(
-      [
-        [Math.min(...lons), Math.min(...lats)],
-        [Math.max(...lons), Math.max(...lats)],
-      ],
-      { padding: { top: 90, bottom: 60, left: 60, right: 60 }, bearing: heading - 90, duration: 1000 }
-    );
-  }, [isOpen, index, step]);
+    map.fitBounds(bounds, {
+      padding: {
+        top: isMobile ? 24 : 48,
+        bottom: isMobile ? 340 : 300,
+        left: isMobile ? 24 : 48,
+        right: isMobile ? 24 : 48,
+      },
+      bearing: heading,
+      duration: 900,
+      maxZoom: step.kind === 'walk' ? 17 : 15.8,
+    });
+  }, [isOpen, index, step, isMobile]);
 
-  // Signale la montée à bord dès qu'une étape en véhicule commence : c'est le
-  // moment où l'usager est assis et disponible pour répondre à l'enquête.
+  /**
+   * Recentre et oriente la carte à chaque nouvelle position.
+   *
+   * Le cap est pris vers le point du tracé situé une trentaine de mètres plus
+   * loin : viser le point suivant immédiat ferait vibrer la boussole à chaque
+   * relevé GPS. Le décalage vers le bas place l'usager au tiers inférieur de
+   * l'écran, avec la suite du chemin devant lui.
+   */
   useEffect(() => {
-    if (!isOpen || !step || step.kind !== 'transit' || !step.lineShortName) return;
-    onBoardVehicle?.({ lineShortName: step.lineShortName, boardingStop: step.fromName ?? null });
-  }, [isOpen, index]);
+    if (!isOpen || !hasStarted || !isFollowing || !currentLocation) return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    const here: [number, number] = [currentLocation.lon, currentLocation.lat];
+    const lookAhead = pointAheadOnPath(step.path, here, FOLLOW_LOOK_AHEAD_METERS);
+
+    map.easeTo({
+      center: here,
+      bearing: lookAhead ? bearingBetween(here, lookAhead) : map.getBearing(),
+      zoom: FOLLOW_ZOOM,
+      pitch: FOLLOW_PITCH,
+      padding: { top: 0, right: 0, bottom: Math.round(window.innerHeight * 0.35), left: 0 },
+      duration: 800,
+    });
+  }, [isOpen, hasStarted, isFollowing, currentLocation, step]);
+
+  useEffect(() => {
+    if (!hasStarted || !onBoardVehicle) {
+      boardedTransitKeyRef.current = null;
+      return;
+    }
+    if (step.kind !== 'transit' || !step.lineShortName) return;
+    const boardingStop =
+      itinerary.allLegs?.[Math.min(index, Math.max(0, itinerary.allLegs.length - 1))]?.from?.name ??
+      step.fromName ??
+      null;
+    const key = `${index}:${step.lineShortName}:${boardingStop ?? ''}`;
+    if (boardedTransitKeyRef.current === key) return;
+    boardedTransitKeyRef.current = key;
+    onBoardVehicle({ lineShortName: step.lineShortName, boardingStop });
+  }, [hasStarted, index, itinerary.allLegs, step.kind, step.lineShortName, step.fromName, onBoardVehicle]);
 
   if (!isOpen || steps.length === 0) return null;
 
   const isLast = index >= steps.length - 1;
 
-  const fullPath: Array<[number, number]> = itinerary.routePath || [];
+  const fullPath: Array<[number, number]> = itinerary.routePath?.length
+    ? itinerary.routePath
+    : steps.flatMap((item) => item.path);
   const routeGeoJSON = {
     type: 'FeatureCollection' as const,
-    features: [
-      { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: fullPath } },
-    ],
+    features: [{ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: fullPath } }],
   };
   const stepGeoJSON = {
     type: 'FeatureCollection' as const,
-    features: [
-      { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: step.path } },
-    ],
+    features: [{ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: step.path } }],
   };
 
   const handleNext = () => {
+    if (!hasStarted) {
+      setHasStarted(true);
+      return;
+    }
     if (isLast) {
       onArrived?.();
       onClose();
@@ -274,29 +451,42 @@ export function NavigationMode({
     setIndex((i) => Math.min(i + 1, steps.length - 1));
   };
 
+  const arriveLabel = itinerary.arr;
+  // Progression : étapes franchies, plus l'étape courante entamée dès le départ.
+  const progressPercent = steps.length <= 1
+    ? (hasStarted ? 100 : 0)
+    : Math.round(((index + (hasStarted ? 1 : 0)) / steps.length) * 100);
+
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-[10001] flex flex-col bg-gray-950"
+        className="fixed inset-0 z-[10001] overflow-hidden bg-[#0a1420]"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
       >
         {/* Carte */}
-        <div className="relative flex-1">
+        <div className="absolute inset-0">
           <MapLibreMap
             ref={mapRef}
-            initialViewState={{ longitude: 5.74892, latitude: 45.18501, zoom: 13 }}
-            mapStyle={MAPTILER_STYLE_URL}
+            initialViewState={{ longitude: fullPath[0]?.[0] ?? 5.74892, latitude: fullPath[0]?.[1] ?? 45.18501, zoom: 15 }}
+            mapStyle={theme === 'dark' ? DARK_MAP_STYLE_URL : LIGHT_MAP_STYLE_URL}
             style={{ width: '100%', height: '100%' }}
             attributionControl={false}
+            onDragStart={() => setIsFollowing(false)}
+            onRotateStart={() => setIsFollowing(false)}
+            onZoomStart={(event: { originalEvent?: unknown }) => {
+              // Seul un zoom déclenché à la main coupe le suivi : ceux que la
+              // caméra s'inflige elle-même ne comptent pas.
+              if (event?.originalEvent) setIsFollowing(false);
+            }}
           >
             {fullPath.length > 0 && (
               <Source id="nav-full-route" type="geojson" data={routeGeoJSON}>
                 <Layer
                   id="nav-full-route-layer"
                   type="line"
-                  paint={{ 'line-color': '#94a3b8', 'line-width': 4, 'line-opacity': 0.5 }}
+                  paint={{ 'line-color': '#c7cdd8', 'line-width': 6, 'line-opacity': 0.55, 'line-dasharray': [0.08, 1.2] }}
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                 />
               </Source>
@@ -304,40 +494,43 @@ export function NavigationMode({
 
             {step.path.length > 0 && (
               <Source id="nav-step-route" type="geojson" data={stepGeoJSON}>
-                {/* Halo animé sous le tracé, pour le faire « respirer ». */}
+                {/* Liseré blanc puis couleur de la ligne : exactement le tracé
+                    des lignes sur la carte principale. Le halo pulsé d'avant
+                    tournait à 60 images par seconde pour un effet décoratif. */}
                 <Layer
-                  id="nav-step-route-glow"
+                  id="nav-step-route-casing"
                   type="line"
-                  paint={{ 'line-color': step.color, 'line-width': 16, 'line-opacity': glowOpacity, 'line-blur': 8 }}
+                  paint={{ 'line-color': '#ffffff', 'line-width': step.kind === 'walk' ? 12 : 18, 'line-opacity': 0.55 }}
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                 />
                 <Layer
                   id="nav-step-route-layer"
                   type="line"
-                  paint={{ 'line-color': step.color, 'line-width': 7, 'line-opacity': 0.95 }}
+                  paint={{
+                    'line-color': stepColor(step),
+                    'line-width': step.kind === 'walk' ? 7 : 11,
+                    'line-opacity': 0.98,
+                    'line-dasharray': step.kind === 'walk' ? [0.1, 1.4] : [1, 0],
+                  }}
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                 />
               </Source>
             )}
 
-            {/* Repères de début et de fin d'étape */}
             {step.path.length > 1 && (
               <>
                 <Marker longitude={step.path[0][0]} latitude={step.path[0][1]}>
-                  <div className="h-3 w-3 rounded-full border-2 border-white bg-slate-700 shadow" />
+                  <div className="h-5 w-5 rounded-full border-[4px] border-white shadow-[0_4px_16px_rgba(0,0,0,0.35)]" style={{ backgroundColor: stepColor(step) }} />
                 </Marker>
-                <Marker
-                  longitude={step.path[step.path.length - 1][0]}
-                  latitude={step.path[step.path.length - 1][1]}
-                >
+                <Marker longitude={step.path[step.path.length - 1][0]} latitude={step.path[step.path.length - 1][1]}>
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: 'spring', stiffness: 400, damping: 18 }}
-                    className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white shadow-lg"
-                    style={{ backgroundColor: step.color }}
+                    className="flex h-11 w-11 items-center justify-center rounded-full border-[4px] border-white shadow-[0_8px_22px_rgba(0,0,0,0.38)]"
+                    style={{ backgroundColor: stepColor(step) }}
                   >
-                    <StepIcon step={step} className="h-3 w-3 text-white" />
+                    <StepIcon step={step} className="h-5 w-5 text-white" />
                   </motion.div>
                 </Marker>
               </>
@@ -352,101 +545,148 @@ export function NavigationMode({
               </Marker>
             )}
           </MapLibreMap>
-
-          {/* Barre supérieure translucide */}
-          <div className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/70 to-transparent px-4 pb-6 pt-5">
-            <div className="flex items-start gap-3">
-              <div className="flex-1">
-                <div className="flex gap-1">
-                  {steps.map((_, i) => (
-                    <div
-                      key={i}
-                      className={`h-1 flex-1 rounded-full ${i <= index ? 'bg-white' : 'bg-white/25'}`}
-                    />
-                  ))}
-                </div>
-                <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-white/70">
-                  {isFr ? 'Arrivée' : 'Arrival'} {itinerary.arr} · {itinerary.dur}
-                </p>
-              </div>
-              <button
-                onClick={onClose}
-                className="rounded-full bg-black/40 p-2 text-white backdrop-blur active:bg-black/60"
-                aria-label={isFr ? 'Quitter la navigation' : 'Exit navigation'}
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
         </div>
 
-        {/* Carte d'instruction */}
-        <motion.div
-          initial={{ y: 120 }}
-          animate={{ y: 0 }}
-          transition={{ type: 'spring', stiffness: 260, damping: 30 }}
-          className="shrink-0 rounded-t-3xl border-t border-slate-800 bg-slate-900 px-5 pb-7 pt-5 shadow-2xl"
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-transparent" />
+
+        {/* Reprise du suivi, proposée seulement quand il est interrompu. */}
+        {hasStarted && !isFollowing && currentLocation && (
+          <button
+            onClick={() => setIsFollowing(true)}
+            className="pointer-events-auto absolute left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700 bg-slate-950/90 px-4 py-2.5 text-sm font-semibold text-white shadow-xl backdrop-blur"
+          >
+            <ArrowPathIcon className="h-4 w-4" />
+            {isFr ? 'Recentrer' : 'Recenter'}
+          </button>
+        )}
+
+        {/* Bouton fermer */}
+        <button
+          onClick={onClose}
+          className="pointer-events-auto absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-10 flex h-11 w-11 items-center justify-center rounded-full bg-slate-950/85 text-white shadow-xl backdrop-blur active:scale-95"
+          aria-label={isFr ? 'Quitter la navigation' : 'Exit navigation'}
         >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, x: 32 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -32 }}
-              transition={{ duration: 0.25, ease: 'easeOut' }}
-              className="flex items-center gap-4"
-            >
-              <motion.div
-                initial={{ scale: 0.7, rotate: -8 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 16 }}
-                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl"
-                style={{ backgroundColor: step.color }}
-              >
-                {step.kind === 'transit' && step.lineShortName ? (
-                  <span className="text-2xl font-black text-white">{step.lineShortName}</span>
-                ) : (
-                  <StepIcon step={step} className="h-8 w-8 text-white" />
-                )}
-              </motion.div>
+          <XMarkIcon className="h-6 w-6" />
+        </button>
 
+        {/* ─── Panneau de guidage ─────────────────────────────────────────
+            Une seule chose compte quand on marche : la prochaine action. Elle
+            occupe donc le haut du panneau, à la taille d'un panneau d'affichage,
+            et c'est la couleur de la ligne empruntée qui habille le bouton. Le
+            reste du trajet se lit d'un coup d'œil sur le rail au-dessus. */}
+        <motion.div
+          initial={{ y: 160 }}
+          animate={{ y: 0 }}
+          transition={{ type: 'spring', stiffness: 250, damping: 31 }}
+          className="absolute inset-x-0 bottom-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        >
+          {/* Barre de progression : une seule barre pleine, remplie à la
+              couleur de l'étape en cours. Le rail segmenté d'avant changeait de
+              hauteur d'un segment à l'autre, ce qui donnait une ligne qui
+              montait et descendait au lieu d'une progression. */}
+          <div className="mb-2 flex items-center gap-2 px-1">
+            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/15">
+              <motion.span
+                className="block h-full rounded-full"
+                style={{ backgroundColor: stepColor(step) }}
+                animate={{ width: `${progressPercent}%` }}
+                transition={{ duration: 0.4, ease: 'easeOut' }}
+              />
+            </span>
+            <span className="tabular text-[11px] font-semibold text-white/70">
+              {index + 1}/{steps.length}
+            </span>
+          </div>
+
+          <div
+            className="relative overflow-hidden rounded-3xl border border-slate-800 px-5 pb-4 pt-4 shadow-[0_-16px_50px_rgba(0,0,0,0.5)]"
+            style={{ background: PANEL_BG }}
+          >
+            <div className="flex items-start gap-4">
               <div className="min-w-0 flex-1">
-                <h1 className="truncate text-2xl font-extrabold leading-tight text-white">{step.instruction}</h1>
-                {step.detail && <p className="mt-0.5 truncate text-base text-slate-300">{step.detail}</p>}
-                {step.durationMin > 0 && (
-                  <p className="mt-1 text-sm font-medium text-slate-500">{step.durationMin} min</p>
-                )}
+                <p className="signal-label" style={{ color: stepColor(step) }}>
+                  {stepEyebrow(step, isFr)}
+                </p>
+
+                {/* L'instruction : ce qu'il faut faire, maintenant. */}
+                <p className="mt-1.5 text-[26px] font-extrabold leading-[1.1] tracking-tight text-white">
+                  {step.kind === 'transit' && step.headsign ? step.headsign : step.instruction}
+                </p>
+
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {step.kind === 'transit' && step.lineShortName && (
+                    <span
+                      className={`flex h-7 min-w-[1.75rem] items-center justify-center px-2 text-sm font-black text-white ${
+                        isRoundLine(step.lineShortName) ? 'rounded-full' : 'rounded-lg'
+                      }`}
+                      style={{ backgroundColor: step.color }}
+                    >
+                      {step.lineShortName}
+                    </span>
+                  )}
+                  {step.fromName && (
+                    <span className="truncate text-sm text-slate-300">{step.fromName}</span>
+                  )}
+                  {step.durationMin > 0 && (
+                    <span className="tabular text-sm text-slate-400">{step.durationMin} min</span>
+                  )}
+                </div>
               </div>
-            </motion.div>
-          </AnimatePresence>
 
-          <div className="mt-5 flex items-center gap-2.5">
-            <button
-              onClick={() => setIndex((i) => Math.max(i - 1, 0))}
-              disabled={index === 0}
-              className="rounded-xl bg-slate-800 p-3.5 text-slate-300 disabled:opacity-30 active:bg-slate-700"
-              aria-label={isFr ? 'Étape précédente' : 'Previous step'}
-            >
-              <ChevronLeftIcon className="h-6 w-6" />
-            </button>
+              {/* Heure d'arrivée : l'information de fond, discrète mais toujours
+                  là, en chiffres tabulaires comme sur un afficheur de quai. */}
+              <div className="flex-shrink-0 text-right">
+                <p className="signal-label text-slate-500">{isFr ? 'Arrivée' : 'Arrival'}</p>
+                <p className="tabular mt-1 text-[22px] font-bold leading-none text-white">{arriveLabel}</p>
+                <p className="tabular mt-1 text-xs text-slate-500">{itinerary.dur}</p>
+              </div>
+            </div>
 
-            <motion.button
-              whileTap={{ scale: 0.97 }}
-              onClick={handleNext}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white active:bg-blue-700"
-            >
-              {isLast ? (
-                <>
-                  <MapPinIcon className="h-5 w-5" />
-                  {isFr ? 'Terminer' : 'Finish'}
-                </>
-              ) : (
-                <>
-                  {isFr ? 'Étape suivante' : 'Next step'}
-                  <ChevronRightIcon className="h-5 w-5" />
-                </>
+            {/* Action unique, à la couleur de l'étape. Le retour arrière reste
+                possible mais ne rivalise pas avec elle. */}
+            <div className="mt-4 flex items-center gap-2">
+              {hasStarted && index > 0 && (
+                <button
+                  onClick={() => setIndex((i) => Math.max(i - 1, 0))}
+                  className="pointer-events-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-300 transition hover:bg-slate-700"
+                  aria-label={isFr ? 'Étape précédente' : 'Previous step'}
+                >
+                  <ChevronLeftIcon className="h-5 w-5" />
+                </button>
               )}
-            </motion.button>
+
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                onClick={handleNext}
+                className="pointer-events-auto flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-bold text-white shadow-lg"
+                style={{ backgroundColor: hasStarted && isLast ? ARRIVAL_COLOR : stepColor(step) }}
+              >
+                {!hasStarted ? (
+                  <>{isFr ? 'Démarrer' : 'Start'}<ChevronRightIcon className="h-5 w-5" /></>
+                ) : isLast ? (
+                  <><FlagIcon className="h-5 w-5" />{isFr ? 'Terminer' : 'Finish'}</>
+                ) : (
+                  <>{isFr ? 'Étape suivante' : 'Next step'}<ChevronRightIcon className="h-5 w-5" /></>
+                )}
+              </motion.button>
+            </div>
+
+            {/* Prochaine étape annoncée en une ligne : on sait ce qui vient
+                sans dérouler tout le trajet. */}
+            {!isLast && steps[index + 1] && (
+              <p className="mt-3 flex items-center gap-2 truncate border-t border-slate-800 pt-3 text-xs text-slate-400">
+                <span className="signal-label text-slate-500">{isFr ? 'Puis' : 'Then'}</span>
+                <span
+                  className="h-2 w-2 flex-shrink-0 rounded-full"
+                  style={{ backgroundColor: stepColor(steps[index + 1]) }}
+                />
+                <span className="truncate">
+                  {steps[index + 1].kind === 'transit' && steps[index + 1].lineShortName
+                    ? `${steps[index + 1].lineShortName} · ${steps[index + 1].headsign || steps[index + 1].instruction}`
+                    : steps[index + 1].instruction}
+                </span>
+              </p>
+            )}
           </div>
         </motion.div>
       </motion.div>

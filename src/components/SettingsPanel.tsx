@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Sheet } from 'react-modal-sheet';
 import {
   XMarkIcon,
@@ -7,9 +7,13 @@ import {
   PaintBrushIcon,
   CircleStackIcon,
   InformationCircleIcon,
+  CommandLineIcon,
 } from '@heroicons/react/24/solid';
 import { useRef, useState } from 'react';
 import type React from 'react';
+import { usePerfSettings } from '../hooks/usePerfSettings';
+import { idbClear } from '../services/persistentCache';
+import { NETWORKS } from '../services/api';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -20,8 +24,10 @@ interface SettingsPanelProps {
   isMobile: boolean;
   language: 'fr' | 'en';
   setLanguage: (l: 'fr' | 'en') => void;
-  /** Thème de l'interface, réglable depuis l'onglet Affichage. */
+  
   theme?: 'light' | 'dark' | 'auto';
+  
+  uiTheme?: 'light' | 'dark';
   setTheme?: (t: 'light' | 'dark' | 'auto') => void;
   fontSize: 'small' | 'normal' | 'large';
   setFontSize: (f: 'small' | 'normal' | 'large') => void;
@@ -41,10 +47,10 @@ interface SettingsPanelProps {
   panelRef: React.RefObject<HTMLDivElement | null>;
 }
 
-// ─── Atomic settings rows ────────────────────────────────────────────────────
-// All rows share the same height/horizontal padding, with a left label and a
-// right-aligned control. Mobile groups them with subtle dividers (iOS feel);
-// desktop reuses the same atoms inside a content panel.
+
+
+
+
 
 const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
   <motion.button
@@ -151,6 +157,67 @@ const Group = ({
   </div>
 );
 
+/**
+ * Autorités organisatrices, présentées par leur identité visuelle.
+ *
+ * Chaque vignette pilote un ou plusieurs codes réseau : « Tag » regroupe SEM et
+ * SE2, qui sont le même réseau découpé en deux jeux de données côté MTAG.
+ */
+const NETWORK_TILES: Array<{ asset: string; selectedAsset: string; codes: string[]; label: string }> = [
+  { asset: 'Metropole', selectedAsset: 'Metropole-selectioned', codes: ['SEM', 'SE2'], label: 'Métropole' },
+  { asset: 'Gresivaudan', selectedAsset: 'Gresivaudan-selectioned', codes: ['GSV'], label: 'Grésivaudan' },
+  { asset: 'Voironnais', selectedAsset: 'Voironnais-selected', codes: ['TPV'], label: 'Pays Voironnais' },
+  { asset: 'Region', selectedAsset: 'Region-selectioned', codes: ['C38'], label: 'Cars Région' },
+];
+
+/** Codes couverts par les vignettes : le reste passe en liste secondaire. */
+const TILE_CODES = new Set(NETWORK_TILES.flatMap(tile => tile.codes));
+const SECONDARY_NETWORKS = NETWORKS.filter(network => !TILE_CODES.has(network.code));
+
+function NetworkPicker({
+  selected,
+  onToggle,
+  language,
+}: {
+  selected: string[];
+  onToggle: (codes: string[]) => void;
+  language: 'fr' | 'en';
+}) {
+  return (
+    // Trois colonnes comme le sélecteur de thème : les vignettes ont le même
+    // rapport 5:3 et se retrouvent donc exactement à la même échelle.
+    <div className="grid grid-cols-3 gap-3 px-4 py-4">
+      {NETWORK_TILES.map(tile => {
+        const active = tile.codes.every(code => selected.includes(code));
+        return (
+          <button
+            key={tile.label}
+            type="button"
+            onClick={() => onToggle(tile.codes)}
+            aria-pressed={active}
+            className="flex flex-col items-center gap-2"
+          >
+            <img
+              src={`/assets/${active ? tile.selectedAsset : tile.asset}.png`}
+              alt={tile.label}
+              loading="lazy"
+              className={`w-full rounded-lg transition ${active ? '' : 'opacity-50 grayscale'}`}
+            />
+            <span className={`text-xs ${active ? 'font-semibold text-white' : 'text-slate-400'}`}>
+              {tile.label}
+            </span>
+          </button>
+        );
+      })}
+      <p className="col-span-2 text-center text-[11px] text-slate-500">
+        {language === 'fr'
+          ? 'Touchez un réseau pour l’afficher ou le masquer.'
+          : 'Tap a network to show or hide it.'}
+      </p>
+    </div>
+  );
+}
+
 export function SettingsPanel({
   isOpen,
   setSettingsState,
@@ -160,6 +227,7 @@ export function SettingsPanel({
   language,
   setLanguage,
   theme,
+  uiTheme,
   setTheme,
   fontSize,
   setFontSize,
@@ -178,9 +246,31 @@ export function SettingsPanel({
   contentRef,
   panelRef,
 }: SettingsPanelProps) {
-  if (!isOpen) return null;
+  const { settings: perf, setSetting, resetSettings } = usePerfSettings();
+  // Pas de `if (!isOpen) return null` ici : démonter le panneau à la fermeture
+  // supprimerait son animation de sortie. La feuille mobile gère elle-même son
+  // état fermé, et la fenêtre desktop est encadrée par <AnimatePresence>.
+  const resolvedTheme = uiTheme ?? (theme === 'dark' ? 'dark' : 'light');
+  const isLight = resolvedTheme === 'light';
+  const dev = text.dev;
+  // Le mode développeur est réservé à l'ordinateur : ses options supposent un
+  // curseur, un écran large, et n'ont pas de sens sur mobile.
+  const devAvailable = !isMobile;
 
   const handleClose = () => setSettingsState('closed');
+
+  /**
+   * Active ou désactive un bloc de réseaux d'un seul geste (le réseau Tag en
+   * compte deux : SEM et sa suite SE2). Une sélection vide laisserait une carte
+   * sans aucun arrêt, donc Tag est toujours conservé en dernier recours.
+   */
+  const toggleNetwork = (codes: string[]) => {
+    const active = codes.every(code => perf.networks.includes(code));
+    const next = active
+      ? perf.networks.filter(code => !codes.includes(code))
+      : [...new Set([...perf.networks, ...codes])];
+    setSetting('networks', next.length > 0 ? next : ['SEM', 'SE2']);
+  };
 
   // Tab metadata used by both mobile and desktop. Each tab has an icon (only
   // shown on desktop's Finder-style sidebar), a key, and a label.
@@ -188,6 +278,11 @@ export function SettingsPanel({
     { key: 'general', label: text.settings.general, icon: Cog6ToothIcon },
     { key: 'display', label: text.settings.display, icon: PaintBrushIcon },
     { key: 'data', label: text.settings.data, icon: CircleStackIcon },
+    // La section Développeur se place juste sous Données, et seulement quand le
+    // mode développeur est actif.
+    ...(devAvailable && perf.devMode
+      ? [{ key: 'dev', label: dev.section, icon: CommandLineIcon }]
+      : []),
     { key: 'about', label: text.settings.about, icon: InformationCircleIcon },
   ];
 
@@ -228,6 +323,29 @@ export function SettingsPanel({
           <Toggle value={searchHistory} onChange={() => setSearchHistory(!searchHistory)} />
         </Row>
       </Group>
+
+      {devAvailable && (
+        <>
+          <Group>
+            <Row label={dev.devMode} last>
+              <Toggle
+                value={perf.devMode}
+                onChange={() => {
+                  const next = !perf.devMode;
+                  setSetting('devMode', next);
+                  // Sortir du mode développeur ne doit pas laisser l'overlay
+                  // affiché ni l'onglet Développeur sélectionné dans le vide.
+                  if (!next) {
+                    setSetting('devOverlay', false);
+                    if (activeTab === 'dev') setActiveTab('general');
+                  }
+                }}
+              />
+            </Row>
+          </Group>
+          <p className="px-4 text-xs text-slate-500">{dev.devModeHint}</p>
+        </>
+      )}
     </>
   );
 
@@ -290,6 +408,81 @@ export function SettingsPanel({
           <Toggle value={compactMode} onChange={() => setCompactMode(!compactMode)} />
         </Row>
       </Group>
+
+      <Group>
+        <Row label={dev.hideFooterTicker} last>
+          <Toggle
+            value={perf.hideFooterTicker}
+            onChange={() => setSetting('hideFooterTicker', !perf.hideFooterTicker)}
+          />
+        </Row>
+      </Group>
+    </>
+  );
+
+  /**
+   * Section Développeur : chaque bascule coupe réellement un morceau du rendu
+   * ou des requêtes réseau, elle n'est pas décorative.
+   */
+  const DevContent = () => (
+    <>
+      <Group>
+        <Row label={dev.overlay} last>
+          <Toggle value={perf.devOverlay} onChange={() => setSetting('devOverlay', !perf.devOverlay)} />
+        </Row>
+      </Group>
+      <p className="mb-6 px-4 text-xs text-slate-500">{dev.overlayHint}</p>
+
+      <Group title={dev.rendering}>
+        <Row label={dev.stopLineBadges}>
+          <Toggle
+            value={perf.stopLineBadges}
+            onChange={() => setSetting('stopLineBadges', !perf.stopLineBadges)}
+          />
+        </Row>
+        <Row label={dev.stopLabels}>
+          <Toggle value={perf.stopLabels} onChange={() => setSetting('stopLabels', !perf.stopLabels)} />
+        </Row>
+        <Row label={dev.lineShapes}>
+          <Toggle value={perf.lineShapes} onChange={() => setSetting('lineShapes', !perf.lineShapes)} />
+        </Row>
+        <Row label={dev.markerCap} last>
+          <Select
+            value={String(perf.markerCap)}
+            onChange={value => setSetting('markerCap', Number(value))}
+            options={[
+              { value: '0', label: dev.unlimited },
+              { value: '600', label: '600' },
+              { value: '300', label: '300' },
+              { value: '150', label: '150' },
+            ]}
+          />
+        </Row>
+      </Group>
+
+      <Group title={dev.effects}>
+        <Row label={dev.animations}>
+          <Toggle value={perf.animations} onChange={() => setSetting('animations', !perf.animations)} />
+        </Row>
+        <Row label={dev.blurEffects}>
+          <Toggle value={perf.blurEffects} onChange={() => setSetting('blurEffects', !perf.blurEffects)} />
+        </Row>
+        <Row label={dev.shadows} last>
+          <Toggle value={perf.shadows} onChange={() => setSetting('shadows', !perf.shadows)} />
+        </Row>
+      </Group>
+
+      <Group>
+        <button
+          onClick={resetSettings}
+          className="w-full flex items-center justify-between px-4 py-3 transition hover:bg-slate-700/40"
+        >
+          <span className="text-[15px] font-medium text-blue-400">{dev.reset}</span>
+          <ChevronRightIcon className="h-4 w-4 text-slate-500" />
+        </button>
+      </Group>
+
+      <p className="px-4 text-xs text-slate-500">{dev.note}</p>
     </>
   );
 
@@ -301,9 +494,55 @@ export function SettingsPanel({
         </Row>
       </Group>
 
+      {/* Réseaux chargés : les quatre autorités organisatrices sont
+          présentées par leur identité visuelle (mêmes vignettes que le
+          sélecteur de thème), les opérateurs secondaires en simple liste. */}
+      <Group title={text.networks.title}>
+        <NetworkPicker
+          selected={perf.networks}
+          onToggle={toggleNetwork}
+          language={language}
+        />
+      </Group>
+
+      <Group title={text.networks.others}>
+        {SECONDARY_NETWORKS.map((network, index) => (
+          <Row
+            key={network.code}
+            label={network.label}
+            last={index === SECONDARY_NETWORKS.length - 1}
+          >
+            <Toggle
+              value={perf.networks.includes(network.code)}
+              onChange={() => toggleNetwork([network.code])}
+            />
+          </Row>
+        ))}
+      </Group>
+
+      {/* Mobilités partagées : elles ne dépendent pas des réseaux de transport,
+          elles s'appliquent immédiatement et ne rechargent pas le catalogue. */}
+      <Group title={text.networks.shared}>
+        <Row label={text.networks.citiz}>
+          <Toggle value={perf.citiz} onChange={() => setSetting('citiz', !perf.citiz)} />
+        </Row>
+        <Row label={text.networks.voi} last>
+          <Toggle value={perf.voi} onChange={() => setSetting('voi', !perf.voi)} />
+        </Row>
+      </Group>
+
+      <p className="mb-6 px-4 text-xs leading-relaxed text-slate-500">{text.networks.hint}</p>
+
       <Group>
         <button
-          onClick={() => { localStorage.clear(); window.location.reload(); }}
+          onClick={async () => {
+            localStorage.clear();
+            // Le cache persistant (arrêts, lignes, tracés) vit dans IndexedDB
+            // depuis l'optimisation du chargement : le vider aussi, sinon le
+            // bouton ne fait plus qu'une partie du travail.
+            await idbClear().catch(() => {});
+            window.location.reload();
+          }}
           className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-700/40 transition"
         >
           <span className="text-[15px] text-red-400 font-medium">
@@ -320,8 +559,12 @@ export function SettingsPanel({
   const AboutContent = () => (
     <div className="flex flex-col">
       <div className="flex items-center justify-center mb-5 pt-2">
-        <div className="rounded-2xl bg-black border border-slate-700 px-4 py-3 shadow-sm">
-          <img src="/assets/GreLinesAssoLOGO.png" alt="GreLines" className="h-20 w-auto" />
+        <div className="rounded-2xl px-4 py-3">
+          <img
+            src={theme === 'dark' ? '/assets/GreLinesLOGO.png' : '/assets/GreLinesLOGO_dark.png'}
+            alt="GreLines"
+            className="h-28 w-auto"
+          />
         </div>
       </div>
 
@@ -331,6 +574,9 @@ export function SettingsPanel({
         </Row>
         <Row label={text.misc.dataSourceLabel} last>
           <span className="text-[15px] text-slate-400">MTAG API</span>
+        </Row>
+        <Row label={text.misc.dataSourceLabel} last>
+          <span className="text-[15px] text-slate-400">SYSTRAL API</span>
         </Row>
       </Group>
 
@@ -365,7 +611,11 @@ export function SettingsPanel({
           rel="noopener noreferrer"
           className="flex-1 h-12 flex items-center justify-center bg-black border border-slate-700 rounded-xl hover:bg-slate-900 transition"
         >
-          <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-7 w-auto" />
+          <img
+            src={theme === 'dark' ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png'}
+            alt="GreGo"
+            className="h-9 w-auto"
+          />
         </a>
         <a
           href="https://github.com/antquu/GreLines"
@@ -373,7 +623,13 @@ export function SettingsPanel({
           rel="noopener noreferrer"
           className="flex-1 h-12 flex items-center justify-center gap-2 bg-black border border-slate-700 rounded-xl hover:bg-slate-900 transition"
         >
-          <img src="/assets/GitHubLOGO.png" alt="GitHub" className="h-7 w-auto" />
+          {/* Le logotype GitHub existe en deux versions : la claire ne se voit
+              pas sur un fond clair, et inversement. */}
+          <img
+            src={isLight ? '/assets/GitHub_LOGO_dark.png' : '/assets/GitHubLOGO.png'}
+            alt="GitHub"
+            className="h-7 w-auto"
+          />
           <span className="text-white text-xs">Project</span>
         </a>
       </div>
@@ -384,6 +640,7 @@ export function SettingsPanel({
     switch (activeTab) {
       case 'display': return <DisplayContent />;
       case 'data':    return <DataContent />;
+      case 'dev':     return devAvailable && perf.devMode ? <DevContent /> : <GeneralContent />;
       case 'about':   return <AboutContent />;
       case 'general':
       default:        return <GeneralContent />;
@@ -400,20 +657,38 @@ export function SettingsPanel({
         snapPoints={[0, 0.6, 1]}
         initialSnap={2}
       >
-        <Sheet.Container style={{ borderRadius: '24px 24px 0 0', backgroundColor: '#0f172a', zIndex: 100 }}>
-          <Sheet.Header />
+        <Sheet.Container
+          style={{
+            borderRadius: '24px 24px 0 0',
+            background: isLight
+              ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.98))'
+              : '#0f172a',
+            border: isLight ? '1px solid rgba(203,213,225,0.75)' : undefined,
+            zIndex: 100,
+          }}
+        >
+          <Sheet.Header>
+            <div className="flex justify-center pt-2 pb-1">
+              <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
+            </div>
+          </Sheet.Header>
           <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
             {/* Top bar — iOS-style: title centered, close button right */}
             <div className="flex items-center justify-between px-5 pt-2 pb-3 flex-shrink-0">
               <div className="w-9" />
-              <h2 className="text-base font-semibold text-white">
+              <h2
+                className={`text-base font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}
+                style={isLight ? { color: '#0f172a' } : undefined}
+              >
                 {text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
               </h2>
               <button
                 onClick={handleClose}
-                className="w-9 h-9 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-full hover:bg-slate-700 transition"
+                className={`w-9 h-9 flex items-center justify-center rounded-full border transition ${
+                  isLight ? 'bg-white border-slate-200 hover:bg-slate-100' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'
+                }`}
               >
-                <XMarkIcon className="w-4 h-4 text-white" />
+                <XMarkIcon className={`w-4 h-4 ${isLight ? 'text-slate-700' : 'text-white'}`} />
               </button>
             </div>
 
@@ -426,7 +701,9 @@ export function SettingsPanel({
                   className={`px-3.5 py-1.5 text-sm font-medium rounded-xl whitespace-nowrap transition flex-shrink-0 ${
                     activeTab === tab.key
                       ? 'bg-blue-600 text-white'
-                      : 'bg-slate-800 border border-slate-700 text-slate-300'
+                      : isLight
+                        ? 'bg-slate-100 border border-slate-200 text-slate-600'
+                        : 'bg-slate-800 border border-slate-700 text-slate-300'
                   }`}
                 >
                   {tab.label}
@@ -447,17 +724,21 @@ export function SettingsPanel({
 
   // ── Desktop: Finder-style draggable window ───────────────────────────────
   return (
-    <DesktopFinderWindow
-      panelRef={panelRef}
-      contentRef={contentRef}
-      tabs={tabs}
-      activeTab={activeTab}
-      setActiveTab={setActiveTab}
-      onClose={handleClose}
-      title={text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
-    >
-      {renderTab()}
-    </DesktopFinderWindow>
+    <AnimatePresence>
+      {isOpen && (
+        <DesktopFinderWindow
+          panelRef={panelRef}
+          contentRef={contentRef}
+          tabs={tabs}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onClose={handleClose}
+          title={text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
+        >
+          {renderTab()}
+        </DesktopFinderWindow>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -526,7 +807,13 @@ function DesktopFinderWindow({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-md px-4 py-8 select-none">
+    <motion.div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-md px-4 py-8 select-none"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: -20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -608,6 +895,6 @@ function DesktopFinderWindow({
         </div>
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }

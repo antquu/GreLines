@@ -12,11 +12,11 @@ export interface CmsPopup {
   priority: number;
 }
 
-/**
- * Récupère les popups actifs (promo/infotraffic) gérés depuis le CRM
- * GreStudio Relationship Management. Ne renvoie que les popups globaux ou
- * ciblant explicitement la ligne/l'arrêt courant.
- */
+
+
+
+
+
 export async function getActivePopups(context?: { lineId?: string; stopId?: string }): Promise<CmsPopup[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
@@ -41,9 +41,9 @@ export async function getActivePopups(context?: { lineId?: string; stopId?: stri
 
 export interface TripSurveyAnswers {
   lineId: string;
-  /** Arrêt de montée, pour rattacher la réponse à la course concernée. */
+  
   boardingStop?: string | null;
-  /** Heure de montée (ISO), même objectif. */
+  
   boardingTime?: string | null;
   cleanliness?: number;
   punctuality?: number;
@@ -53,12 +53,12 @@ export interface TripSurveyAnswers {
   comment?: string;
 }
 
-/**
- * Enregistre une réponse d'enquête qualité. Pas de compte ni d'identifiant
- * d'appareil : seuls la ligne, l'arrêt et l'heure de montée sont transmis, ce
- * qui permet à l'exploitant de retrouver la course concernée. Appelé
- * uniquement après consentement explicite de l'usager.
- */
+
+
+
+
+
+
 export async function submitTripSurvey(answers: TripSurveyAnswers): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return false;
 
@@ -97,10 +97,10 @@ export interface LineOverrideEntry {
   hidden: boolean;
 }
 
-/**
- * Surcharges d'arrêts définies depuis le CRM (renommage, repositionnement,
- * masquage). GreLines les applique par-dessus la donnée MTAG officielle.
- */
+
+
+
+
 export async function getStopOverrides(): Promise<Map<string, StopOverrideEntry>> {
   if (!isSupabaseConfigured || !supabase) return new Map();
 
@@ -113,11 +113,11 @@ export async function getStopOverrides(): Promise<Map<string, StopOverrideEntry>
   }
 }
 
-/**
- * Surcharges de lignes définies depuis le CRM (code, nom, couleurs, masquage).
- * Indexées par identifiant MTAG (`SEM:A`) ET par code court (`A`), les deux
- * formes circulant dans l'application.
- */
+
+
+
+
+
 export async function getLineOverrides(): Promise<Map<string, LineOverrideEntry>> {
   if (!isSupabaseConfigured || !supabase) return new Map();
 
@@ -143,11 +143,11 @@ export interface FooterConfig {
   showClock: boolean;
 }
 
-/**
- * S'abonne aux modifications faites depuis le CRM (bandeau, popups, surcharges)
- * pour que le site se mette à jour sans rechargement. Renvoie une fonction de
- * désabonnement ; ne fait rien si Supabase n'est pas configuré.
- */
+
+
+
+
+
 export function subscribeToCmsChanges(onChange: () => void): () => void {
   if (!isSupabaseConfigured || !supabase) return () => {};
 
@@ -166,11 +166,11 @@ export function subscribeToCmsChanges(onChange: () => void): () => void {
 
 const DEFAULT_FOOTER: FooterConfig = { message: null, color: '#fbbf24', showClock: true };
 
-/**
- * Configuration du bandeau footer pilotée depuis le CRM : message custom
- * (infotraffic ou texte libre), sa couleur, et l'affichage de l'horloge.
- * Repli sur le comportement historique si Supabase n'est pas configuré.
- */
+
+
+
+
+
 export async function getFooterConfig(): Promise<FooterConfig> {
   if (!isSupabaseConfigured || !supabase) return DEFAULT_FOOTER;
 

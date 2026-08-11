@@ -1,36 +1,36 @@
-/**
- * Address geocoding via the French Base Adresse Nationale (BAN).
- *
- * Free, no API key, excellent for French addresses. Docs:
- *   https://adresse.data.gouv.fr/api-doc/adresse
- *
- * We bias the search around Grenoble (45.1885, 5.7245) so partial queries like
- * "rue de la république" return Grenoble results first instead of Paris.
- */
+
+
+
+
+
+
+
+
+
 
 export interface AddressResult {
-  /** Formatted full label, e.g. "12 Rue de la République 38000 Grenoble" */
+  
   label: string;
-  /** Short street/place name, e.g. "Rue de la République" */
+  
   name: string;
-  /** Postal code + city, e.g. "38000 Grenoble" */
+  
   context: string;
-  /** Latitude in WGS84 (EPSG:4326). */
+  
   lat: number;
-  /** Longitude in WGS84 (EPSG:4326). */
+  
   lon: number;
-  /**
-   * BAN confidence score, 0–1. Higher is better. We sort results by this
-   * descending and keep the top results.
-   */
+  
+
+
+
   score: number;
-  /** Stable id for React keys / deduplication. */
+  
   id: string;
 }
 
 const BAN_ENDPOINT = 'https://api-adresse.data.gouv.fr/search/';
 
-// Grenoble city centre — used to bias geocoding toward local results.
+
 const GRENOBLE_LAT = 45.1885;
 const GRENOBLE_LON = 5.7245;
 
@@ -54,19 +54,19 @@ interface BanResponse {
   features: BanFeature[];
 }
 
-/**
- * Search addresses near Grenoble.
- *
- * Returns at most `limit` results (default 5), sorted by relevance.
- * Returns an empty array on network error rather than throwing — the search
- * UI shouldn't crash if the geocoder is briefly unreachable.
- */
+
+
+
+
+
+
+
 export const searchAddresses = async (
   query: string,
   options?: { limit?: number; signal?: AbortSignal }
 ): Promise<AddressResult[]> => {
   const trimmed = query.trim();
-  // BAN rejects queries shorter than 3 characters.
+  
   if (trimmed.length < 3) return [];
 
   const limit = options?.limit ?? 5;
@@ -117,9 +117,9 @@ export const reverseGeocode = async (
     limit: '1',
   });
   try {
-    const resp = await fetch(`https://api-adresse.data.gouv.fr/reverse?${params.toString()}`);
+    const resp = await fetch(`${BAN_ENDPOINT}?${params.toString()}`);
     if (!resp.ok) return null;
-    const data = await resp.json();
+    const data: BanResponse = await resp.json();
     const feat = data?.features?.[0];
     if (!feat) return null;
     const [rLon, rLat] = feat.geometry.coordinates;
@@ -135,6 +135,7 @@ export const reverseGeocode = async (
       score: props.score ?? 1,
       id: props.id || `reverse-${rLat}-${rLon}`,
     };
-  } catch (err) {    return null;
+  } catch (err) {
+    return null;
   }
 };

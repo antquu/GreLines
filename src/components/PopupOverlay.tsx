@@ -8,11 +8,11 @@ interface PopupOverlayProps {
   language: 'fr' | 'en';
 }
 
-/**
- * Popups que l'usager a explicitement choisi de ne plus revoir. Stocké
- * durablement (localStorage) : une simple fermeture ne suffit pas, le popup
- * réapparaît donc à chaque visite tant que ce choix n'a pas été fait.
- */
+
+
+
+
+
 const OPTED_OUT_KEY = 'greLines_optedOutPopups';
 
 function getOptedOutIds(): Set<string> {
@@ -30,18 +30,21 @@ function markOptedOut(id: string) {
   try {
     localStorage.setItem(OPTED_OUT_KEY, JSON.stringify(Array.from(optedOut)));
   } catch {
-    // ignore
+    
   }
 }
 
-/**
- * Affiche le popup actif (promo/infotraffic) de plus haute priorité géré depuis
- * le CRM GreStudio. Il réapparaît à chaque ouverture du site : seul le lien
- * « Ne plus afficher » le masque définitivement.
- */
+
+
+
+
+
 export function PopupOverlay({ popups, language }: PopupOverlayProps) {
   const [visiblePopup, setVisiblePopup] = useState<CmsPopup | null>(null);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
+  
+  
+  const isLightTheme = !document.documentElement.classList.contains('dark');
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
@@ -57,10 +60,10 @@ export function PopupOverlay({ popups, language }: PopupOverlayProps) {
 
   if (!visiblePopup) return null;
 
-  /** Fermeture simple : le popup réapparaîtra à la prochaine visite. */
+  
   const handleClose = () => setVisiblePopup(null);
 
-  /** Choix explicite : ce popup ne sera plus jamais présenté. */
+  
   const handleOptOut = () => {
     markOptedOut(visiblePopup.id);
     setVisiblePopup(null);
@@ -100,7 +103,7 @@ export function PopupOverlay({ popups, language }: PopupOverlayProps) {
           <div className="p-5">
             <div className="flex items-center gap-2 mb-2">
               {isPromo ? (
-                <MegaphoneIcon className="w-5 h-5 text-indigo-400" />
+                <MegaphoneIcon className="w-5 h-5 text-blue-400" />
               ) : (
                 <ExclamationTriangleIcon className="w-5 h-5 text-amber-400" />
               )}
@@ -117,16 +120,22 @@ export function PopupOverlay({ popups, language }: PopupOverlayProps) {
                 href={visiblePopup.link_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block mt-4 text-sm font-medium text-indigo-400 hover:text-indigo-300"
+                className="inline-block mt-4 text-sm font-medium text-blue-400 hover:text-blue-300"
               >
                 {language === 'fr' ? 'En savoir plus' : 'Learn more'} →
               </a>
             )}
 
             <div className="mt-5 flex flex-col items-center gap-2 border-t border-gray-800 pt-3">
+              {/* En thème clair, le bouton passe en blanc bordé : le bleu plein
+                  attirait l'oeil plus fort que le message qu'il vient clore. */}
               <button
                 onClick={handleClose}
-                className="w-full rounded-xl bg-indigo-500 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-400 active:bg-indigo-600"
+                className={`w-full rounded-xl py-2.5 text-sm font-semibold transition ${
+                  isLightTheme
+                    ? 'bg-blue-600 text-white hover:bg-blue-500 active:bg-blue-700'
+                    : 'bg-blue-600 text-black hover:bg-blue-500 active:bg-blue-700'
+                }`}
               >
                 {language === 'fr' ? 'Compris' : 'Got it'}
               </button>

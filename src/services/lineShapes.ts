@@ -1,23 +1,32 @@
-/**
- * Fetch the polyline geometry of a SEM transit line from the MTAG open data API.
- *
- * Endpoint:
- *   https://data.mobilites-m.fr/api/lines/json?types=ligne&codes=SEM_<lineId>
- *
- * Returns a GeoJSON FeatureCollection. Each feature's geometry is either a
- * `LineString` or `MultiLineString` in WGS84 — the format MapLibre / Leaflet
- * GeoJSON sources expect natively.
- *
- * We return `null` (not throw) on any failure so callers can simply omit the
- * polyline when the API is unreachable.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import type { Line } from '../types';
+import { idbGet, idbSet } from './persistentCache';
+
+
+
+
+
+
+
+const GEOMETRY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface LineGeometry {
-  /** Line code passed in (e.g. "C1", "A", "13"). */
+  
   code: string;
-  /** GeoJSON FeatureCollection ready to feed a map source. */
+  
   geojson: GeoJSON.FeatureCollection;
 }
 
@@ -173,6 +182,44 @@ function normalizeLineKey(value: string): string {
 
 const planGeometryCache = new Map<string, LineGeometry | null>();
 const planGeometryInflight = new Map<string, Promise<LineGeometry | null>>();
+const ENDPOINT_MATCH_THRESHOLD_METERS = 300;
+
+/**
+ * Distance maximale entre un arrêt desservi et le tracé pour le considérer
+ * couvert. Large : l'écart entre le quai et le centroïde du groupe d'arrêts
+ * atteint déjà 100 m sur les grands boulevards.
+ */
+const STOP_COVERAGE_THRESHOLD_METERS = 200;
+
+/**
+ * Proportion d'arrêts devant être couverts pour retenir le tracé du moteur
+ * d'itinéraires. En dessous, il manque une branche ou un bout de ligne.
+ */
+const MIN_STOP_COVERAGE_RATIO = 0.9;
+
+/** Distance d'un point à une polyligne, en mètres. */
+function distanceToPolylineMetres(
+  point: { lat: number; lon: number },
+  coords: [number, number][]
+): number {
+  let bestSq = Infinity;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i];
+    const b = coords[i + 1];
+    const r = projectOntoSegmentMetres(point, a[1], a[0], b[1], b[0]);
+    if (r.distSq < bestSq) bestSq = r.distSq;
+  }
+  return Math.sqrt(bestSq);
+}
+
+function distanceMeters(
+  a: { lat: number; lon: number },
+  b: { lat: number; lon: number }
+): number {
+  const dLat = (a.lat - b.lat) * METRES_PER_DEG_LAT;
+  const dLon = (a.lon - b.lon) * METRES_PER_DEG_LON_AT_45;
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
 
 /**
  * Fetch a single line's geometry terminus-to-terminus via the routing engine.
@@ -249,6 +296,49 @@ export async function getLineGeometryViaPlan(
         return null;
       }
 
+      // The planner occasionally returns a leg that stops early on a branch
+      // even though the route catalogue knows a longer terminus. If the trace
+      // doesn't end near the last served stop, it's safer to fall back to the
+      // static geometry than to truncate the visible line.
+      const planStart = { lon: bestCoords[0][0], lat: bestCoords[0][1] };
+      const planEnd = { lon: bestCoords[bestCoords.length - 1][0], lat: bestCoords[bestCoords.length - 1][1] };
+      const startMatches = Math.min(
+        distanceMeters(planStart, from),
+        distanceMeters(planStart, to)
+      );
+      const endMatches = Math.min(
+        distanceMeters(planEnd, from),
+        distanceMeters(planEnd, to)
+      );
+      const aligned =
+        startMatches <= ENDPOINT_MATCH_THRESHOLD_METERS &&
+        endMatches <= ENDPOINT_MATCH_THRESHOLD_METERS;
+      if (!aligned) {
+        planGeometryCache.set(key, null);
+        return null;
+      }
+
+      // Contrôle de couverture.
+      //
+      // Le test d'extrémités ci-dessus ne suffit pas : il compare le tracé aux
+      // arrêts `stops[0]` et `stops[n-1]`, or MTAG ne renvoie pas forcément les
+      // deux terminus à ces positions. Un trajet écourté passe alors le
+      // contrôle — c'est ce qui arrivait à la ligne C pendant l'interruption
+      // Condillac ↔ Les Taillées : le moteur d'itinéraires, qui raisonne sur le
+      // service *du jour*, ne pouvait pas rouler jusqu'à Condillac, et le tracé
+      // s'arrêtait à Hector Berlioz.
+      //
+      // On vérifie donc que le tracé passe bien à portée de *tous* les arrêts
+      // desservis. Sinon il est incomplet, et la géométrie statique — qui, elle,
+      // couvre toutes les variantes de la ligne — reprend la main.
+      const covered = stops.filter(
+        stop => distanceToPolylineMetres(stop, bestCoords!) <= STOP_COVERAGE_THRESHOLD_METERS
+      ).length;
+      if (covered / stops.length < MIN_STOP_COVERAGE_RATIO) {
+        planGeometryCache.set(key, null);
+        return null;
+      }
+
       const result: LineGeometry = {
         code: `SEM_${key}`,
         geojson: {
@@ -287,12 +377,47 @@ export async function getLineGeometryViaPlan(
 export async function getLinesGeometryPrecise(
   lines: Pick<Line, 'id' | 'shortName'>[]
 ): Promise<LineGeometry[]> {
-  const ids = lines
+  // Les lignes lyonnaises ont leur propre source : leurs tracés viennent du WFS
+  // du Grand Lyon, pas de l'API grenobloise. On les traite à part et on rend
+  // une seule liste — la carte ne fait pas la différence.
+  const tclLines = lines.filter(line => String(line.id).startsWith('TCL:'));
+  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:'));
+
+  const ids = mtagLines
     .map(l => l.shortName || l.id)
     .filter(Boolean) as string[];
 
-  const results = await Promise.all(
-    ids.map(async id => {
+  const [results, tclGeometries] = await Promise.all([
+    Promise.all(ids.map(id => resolveLineGeometry(id))),
+    tclLines.length > 0
+      ? import('./tclNetwork').then(module => module.getTclLineGeometries(tclLines))
+      : Promise.resolve([]),
+  ]);
+
+  return [...results.filter((r): r is LineGeometry => r !== null), ...tclGeometries];
+}
+
+/**
+ * Résout la géométrie d'une ligne en passant d'abord par IndexedDB. Le résultat
+ * est celui *après* arbitrage plan/statique : on ne rejoue ni le calcul ni les
+ * requêtes au prochain affichage de la même ligne.
+ */
+async function resolveLineGeometry(id: string): Promise<LineGeometry | null> {
+  // v2 : les entrées v1 ont pu être calculées avant le contrôle de couverture,
+  // et contenir un tracé écourté par une interruption de service. Sans
+  // changement de clé, elles resteraient affichées pendant sept jours.
+  const cacheKey = `lineGeometry_v2_${normalizeLineKey(id)}`;
+  const cached = await idbGet<LineGeometry>(cacheKey);
+  if (cached) return cached.value;
+
+  const geometry = await computeLineGeometry(id);
+  if (geometry) void idbSet(cacheKey, geometry, GEOMETRY_TTL_MS);
+  return geometry;
+}
+
+async function computeLineGeometry(id: string): Promise<LineGeometry | null> {
+  {
+    {
       // Fetch both candidates in parallel so the comparison is fast.
       const [viaPlan, staticGeom] = await Promise.all([
         getLineGeometryViaPlan(id),
@@ -316,10 +441,8 @@ export async function getLinesGeometryPrecise(
         return staticGeom;
       }
       return viaPlan;
-    })
-  );
-
-  return results.filter((r): r is LineGeometry => r !== null);
+    }
+  }
 }
 
 /** Sum the lengths of every LineString/MultiLineString in a LineGeometry, in
@@ -364,6 +487,8 @@ const STOPS_ENDPOINT_BASE = 'https://data.mobilites-m.fr/api/routers/default/ind
 export interface ServedStopPoint {
   lat: number;
   lon: number;
+  /** Nom renvoyé par MTAG, utilisé pour rattraper les écarts de coordonnées. */
+  name?: string;
 }
 
 const stopsResultCache = new Map<string, ServedStopPoint[] | null>();
@@ -393,7 +518,8 @@ function extractLatLon(s: any): ServedStopPoint | null {
     typeof s?.x === 'number' ? s.x :
     null;
   if (lat === null || lon === null) return null;
-  return { lat, lon };
+  const name = typeof s?.name === 'string' ? s.name : undefined;
+  return { lat, lon, name };
 }
 
 /**
@@ -409,9 +535,19 @@ export async function getStopsServedByLine(
   if (stopsInflightCache.has(routeId)) return stopsInflightCache.get(routeId)!;
 
   const url = `${STOPS_ENDPOINT_BASE}/${encodeURIComponent(routeId)}/stops`;
+  // v2 : les entrées v1 ne contenaient pas le nom de l'arrêt, sur lequel repose
+  // désormais l'appariement. Changer de clé force leur reconstruction plutôt
+  // que de laisser un cache muet dégrader le filtrage pendant sept jours.
+  const cacheKey = `servedStops_v2_${routeId}`;
 
   const promise: Promise<ServedStopPoint[] | null> = (async () => {
     try {
+      const persisted = await idbGet<ServedStopPoint[]>(cacheKey);
+      if (persisted && persisted.value.length > 0) {
+        stopsResultCache.set(routeId, persisted.value);
+        return persisted.value;
+      }
+
       const resp = await fetch(url, { signal: options?.signal });
       if (!resp.ok) {
         stopsResultCache.set(routeId, null);
@@ -428,6 +564,7 @@ export async function getStopsServedByLine(
         if (pt) points.push(pt);
       }
       stopsResultCache.set(routeId, points);
+      if (points.length > 0) void idbSet(cacheKey, points, GEOMETRY_TTL_MS);
       return points;
     } catch (err) {
       if ((err as { name?: string }).name !== 'AbortError') {      }
@@ -448,13 +585,26 @@ export async function getStopsServedByLine(
 export async function getStopsServedByLines(
   lines: Pick<Line, 'id' | 'shortName'>[]
 ): Promise<ServedStopPoint[] | null> {
-  const ids = lines
+  // Les lignes lyonnaises tirent leurs arrêts de leur propre source. Sans cette
+  // branche, filtrer une ligne de Lyon ne renvoyait rien : la carte gardait donc
+  // tous les arrêts au lieu de ne garder que ceux de la ligne.
+  const tclLines = lines.filter(line => String(line.id).startsWith('TCL:'));
+  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:'));
+
+  const ids = mtagLines
     .map(l => l.shortName || l.id)
     .filter(Boolean) as string[];
-  const results = await Promise.all(ids.map(id => getStopsServedByLine(id)));
+
+  const [results, tclServed] = await Promise.all([
+    Promise.all(ids.map(id => getStopsServedByLine(id))),
+    tclLines.length > 0
+      ? import('./tclNetwork').then(module => module.getTclStopsServedByLines(tclLines))
+      : Promise.resolve([] as ServedStopPoint[]),
+  ]);
+
   const successful = results.filter((r): r is ServedStopPoint[] => r !== null);
-  if (successful.length === 0) return null;
-  return successful.flat();
+  if (successful.length === 0 && tclServed.length === 0) return null;
+  return [...successful.flat(), ...tclServed];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -468,15 +618,44 @@ const METRES_PER_DEG_LAT = 111320;
 const METRES_PER_DEG_LON_AT_45 = 78710;
 
 /**
- * Test whether `stop` is near any of the `points` (default radius 35m).
+ * Clé de comparaison de noms d'arrêts : sans accents, sans casse et sans
+ * ponctuation, pour que « Berriat-Le Magasin » et « Berriat - Le Magasin »
+ * soient reconnus comme le même arrêt.
+ */
+function stopNameKey(value: string | undefined | null): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Détermine si `stop` fait partie des arrêts desservis (`points`).
+ *
+ * La comparaison géographique seule ne suffit pas : l'endpoint MTAG
+ * `/routes/<id>/stops` renvoie la position des *quais*, alors que nos arrêts
+ * portent le centroïde du groupe d'arrêts. L'écart atteint 100 m sur les
+ * grands boulevards — mesuré sur la ligne A, 24 des 63 arrêts étaient rejetés
+ * par le seuil de 35 m, dont Gares, Alsace-Lorraine et Victor Hugo, tous
+ * pourtant homonymes exacts de nos arrêts.
+ *
+ * On teste donc le nom en premier. Le rayon, lui, reste volontairement serré :
+ * élargi à 140 m il faisait entrer des arrêts voisins non desservis — « Colonel
+ * Dumont », à 82 m d'un quai de la ligne E, apparaissait dans le filtre E alors
+ * que seul le 25 y passe.
  */
 export function stopIsNearAny(
-  stop: { lat: number; lon: number },
+  stop: { lat: number; lon: number; name?: string },
   points: ServedStopPoint[],
   thresholdMeters: number = 35
 ): boolean {
+  const key = stopNameKey(stop.name);
   const t2 = thresholdMeters * thresholdMeters;
+
   for (const p of points) {
+    if (key && p.name && stopNameKey(p.name) === key) return true;
+
     const dLat = (p.lat - stop.lat) * METRES_PER_DEG_LAT;
     const dLon = (p.lon - stop.lon) * METRES_PER_DEG_LON_AT_45;
     if (dLat * dLat + dLon * dLon <= t2) return true;

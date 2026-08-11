@@ -2,24 +2,31 @@
 import type { StopDetail, Departure } from '../types';
 import { formatDepartureTime, refreshStopDepartures } from '../services/api';
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { UserIcon, ChevronDownIcon, ChevronUpIcon, XMarkIcon, EllipsisVerticalIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon } from '@heroicons/react/24/solid';
+import { UserIcon, ChevronDownIcon, ChevronUpIcon, XMarkIcon, EllipsisVerticalIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon, ClockIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/solid';
+import { isTclId } from '../services/tclNetwork';
 import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
-import { resolveLineStyle } from '../utils/lineColors';
+import { TclSidebar } from './TclSidebar';
+import { resolveLineStyle, isGrenobleNetworkLine } from '../utils/lineColors';
 import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
 import { AddFavoriteModal } from './AddFavoriteModal';
-import { MdTram, MdDirectionsBus } from 'react-icons/md';
+import { TransportModeIcon } from './TransportModeIcon';
+import { normalizeMode } from '../utils/transportMode';
+import { LineBadge } from './LineBadge';
+import { DepartureLineBadge } from './DepartureLineBadge';
 import { getStopTrafficAlerts } from '../utils/stopTrafficMatcher';
+import { getTimetable, isLastDeparture, toTimetableRouteId, type Timetable } from '../services/timetable';
+import { LastRunRibbon } from './LastRunRibbon';
 
 interface SidebarProps {
   stop: StopDetail | null;
   isOpen: boolean;
   onClose: () => void;
   initialSelectedLines?: Set<string>;
-  /**
-   * Controlled mode: if provided, the sidebar uses these and notifies the
-   * parent via `onSelectedLinesChange`. If both are omitted, the sidebar
-   * falls back to internal state (legacy behavior).
-   */
+  
+
+
+
+
   selectedLines?: Set<string>;
   onSelectedLinesChange?: (lines: Set<string>) => void;
   compactMode: boolean;
@@ -27,6 +34,11 @@ interface SidebarProps {
   refreshIntervalMs: number;
   language: 'fr' | 'en';
   onPlanRouteFromStop?: (stop: StopDetail) => void;
+  
+  onOpenTimetable?: (info: { line: { id: string; shortName?: string; color?: string; textColor?: string }; headsign: string }) => void;
+  
+  onOpenLine?: (line: { id: string; shortName?: string }) => void;
+  theme?: 'light' | 'dark';
 }
 
 const getMinutesUntilDeparture = (departure: Departure): number => departure.departureTime;
@@ -52,6 +64,8 @@ const getSidebarText = (language: 'fr' | 'en') => {
     copied: isFr ? 'Copié' : 'Copied',
     nextDepartures: isFr ? 'Prochains départs' : 'Next departures',
     tramway: isFr ? 'Tramway' : 'Tramway',
+    train: isFr ? 'Train' : 'Train',
+    metro: isFr ? 'Métro' : 'Metro',
     bus: 'Bus',
     live: isFr ? 'Direct' : 'Live',
     nextDeparture: isFr ? 'Prochain départ' : 'Next departure',
@@ -66,15 +80,32 @@ const getSidebarText = (language: 'fr' | 'en') => {
     nextLabel: isFr ? 'PROCHAIN' : 'NEXT',
     moreDepartures: (count: number) => isFr ? `+${count} départs supplémentaires` : `+${count} more departures`,
     calculateItineraryWith: isFr ? 'Calculez votre itinéraire avec' : 'Calculate your itinerary with',
+    direction: isFr ? 'Direction' : 'Direction',
     stopAlerts: isFr ? 'Cet arrêt est concerné' : 'Affecting this stop',
     stopAlertsCount: (n: number) => isFr ? `${n} info${n > 1 ? 's' : ''} trafic` : `${n} alert${n > 1 ? 's' : ''}`,
     seeMore: isFr ? 'Voir plus' : 'See more',
     seeLess: isFr ? 'Voir moins' : 'See less',
     planRouteFromStop: isFr ? 'Planifier un trajet depuis cet arrêt' : 'Plan a trip from this stop',
+    timetable: isFr ? 'Fiche horaire' : 'Timetable',
+    seeLine: isFr ? 'Voir la ligne' : 'View line',
+    planRoute: isFr ? 'Itinéraire' : 'Directions',
   };
 };
 
 // Line style resolution is handled centrally via `resolveLineStyle` in utils.
+
+/**
+ * Nom du mode, accordé au pictogramme qui l'accompagne.
+ *
+ * Un TER porte « Train » et non « Bus » : c'est ce qui indique qu'on va sur un
+ * quai de gare, avec un autre titre de transport.
+ */
+function modeLabel(mode: ReturnType<typeof normalizeMode>, text: { bus: string; tramway: string; train: string; metro: string }): string {
+  if (mode === 'METRO') return text.metro;
+  if (mode === 'RAIL') return text.train;
+  if (mode === 'TRAM') return text.tramway;
+  return text.bus;
+}
 
 const isTramway = (lineId: string): boolean => ['A','B','C','D','E'].includes(lineId.toUpperCase().trim());
 
@@ -217,7 +248,10 @@ export const Sidebar = ({
   autoSync,
   refreshIntervalMs,
   language,
+  theme,
   onPlanRouteFromStop,
+  onOpenTimetable,
+  onOpenLine,
 }: SidebarProps) => {
   const [currentStopDetail, setCurrentStopDetail] = useState<StopDetail | null>(null);
   const [departures, setDepartures] = useState<Departure[]>([]);
@@ -238,6 +272,7 @@ export const Sidebar = ({
   const [tooltipCoords, setTooltipCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isFavoriteModalOpen, setIsFavoriteModalOpen] = useState(false);
+  const [showTclWarning, setShowTclWarning] = useState(false);
   // Track favorite status reactively so the star icon updates immediately
   // when add/remove fires from any source (this sidebar, or another tab in
   // the future).
@@ -253,18 +288,27 @@ export const Sidebar = ({
   const exportButtonRef = useRef<HTMLButtonElement>(null);
   const [hasAppliedInitialLines, setHasAppliedInitialLines] = useState(false);
   const [expandedAlerts, setExpandedAlerts] = useState<Set<number>>(new Set());
+
+  /**
+   * Fiches horaires des lignes desservant l'arrêt, chargées en tâche de fond.
+   * Elles ne servent qu'à une chose ici : reconnaître le dernier passage de la
+   * journée, information que le temps réel seul ne porte pas.
+   */
+  const [timetables, setTimetables] = useState<Map<string, Timetable | null>>(new Map());
+
   const text = getSidebarText(language);
 
   useEffect(() => {
     setCurrentStopId(stop?.id || null);
-    if (!stop) { setCurrentStopDetail(null); return; }
+    if (!stop) { setCurrentStopDetail(null); setShowTclWarning(false); return; }
     setCurrentStopDetail(prev => {
       if (prev?.id === stop.id && prev.lines?.length > 0 && (!stop.lines || stop.lines.length === 0)) {
         return { ...stop, lines: prev.lines, departures: stop.departures.length > 0 ? stop.departures : prev.departures, lastUpdate: stop.lastUpdate || prev.lastUpdate };
       }
       return stop;
     });
-  }, [stop]);
+    setShowTclWarning(Boolean(isOpen && isTclId(stop.id)));
+  }, [stop, isOpen]);
 
   const updateDepartures = async () => {
     if (!currentStopDetail || !isOpen || currentStopDetail.lines.length === 0) return;
@@ -337,6 +381,27 @@ export const Sidebar = ({
     });
   };
 
+  useEffect(() => {
+    if (!isOpen || !currentStopDetail) return;
+    let active = true;
+
+    const load = async () => {
+      const lines = currentStopDetail.lines.slice(0, 12);
+      for (const line of lines) {
+        const key = line.shortName || line.id;
+        if (timetables.has(key)) continue;
+        const timetable = await getTimetable(toTimetableRouteId(key));
+        if (!active) return;
+        setTimetables((previous: Map<string, Timetable | null>) => new Map(previous).set(key, timetable));
+      }
+    };
+
+    void load();
+    return () => { active = false; };
+    // `timetables` est volontairement absent : il est alimenté par cet effet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentStopDetail?.id]);
+
   const displayedDepartures = (() => {
     const sorted = [...departures].sort((a, b) => {
       const pa = getDeparturePriority(a), pb = getDeparturePriority(b);
@@ -372,13 +437,19 @@ export const Sidebar = ({
       animate={{ x: isOpen ? 0 : -420, opacity: isOpen ? 1 : 0 }}
       exit={{ x: -420, opacity: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="fixed left-0 top-0 h-screen w-96 bg-slate-900 border-r border-slate-800 shadow-2xl z-60 overflow-y-auto"
+      className="relative fixed left-0 top-0 h-screen w-96 border-r border-slate-800 shadow-2xl z-60 overflow-y-auto bg-slate-900"
     >
+      <TclSidebar
+        visible={showTclWarning}
+        onContinue={() => setShowTclWarning(false)}
+        onClose={onClose}
+        language={language}
+      />
       {isOpen && currentStopDetail && (
         <div className={compactMode ? 'p-4 pb-10' : 'p-6 pb-10'}>
 
           {/* Header */}
-          <div className="flex items-start justify-between mb-6 pt-1">
+          <div className="relative flex items-start justify-between mb-6 pt-1">
             <div className="flex-1 min-w-0 pr-3">
               <h2 className="text-3xl font-extrabold text-white leading-tight">{currentStopDetail.name}</h2>
               {!compactMode && currentStopDetail.city && (
@@ -455,16 +526,20 @@ export const Sidebar = ({
               {[...currentStopDetail.lines].sort(sortLinesByPriority).map(line => {
                 const isActive = selectedLines.has(line.id);
                 const isSelected = selectedLines.size === 0 || isActive;
-                const lineStyle = resolveLineStyle(line.id, line.color, line.textColor);
                 return (
                   <div key={line.id} className="relative">
                     <button
                       onClick={() => setSelectedLines(prev => { const next = new Set(prev); next.has(line.id) ? next.delete(line.id) : next.add(line.id); return next; })}
-                      className={`${getBadgeShapeClass(isRoundLine(line.shortName || line.id))} flex items-center justify-center text-sm font-bold transition-all ${compactMode ? 'w-10 h-10 text-xs' : 'w-12 h-12'} ${isActive ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-900' : ''} ${isSelected ? 'opacity-100' : 'opacity-25'} ${!lineStyle.backgroundColor ? getLineColor(line.id) + ' text-white' : ''}`}
-                      style={lineStyle}
+                      className="relative p-0"
                       title={line.name}
+                      type="button"
                     >
-                      {line.shortName || line.id}
+                      <LineBadge
+                        line={line}
+                        size={compactMode ? 'sm' : 'md'}
+                        active={isActive}
+                        selected={isSelected}
+                      />
                     </button>
                     {line.hasTraffic && (
                       <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center cursor-pointer"
@@ -595,33 +670,51 @@ export const Sidebar = ({
                 const displayTime = getDepartureDisplay(departure, language);
                 const minutesUntil = getMinutesUntilDeparture(departure);
                 const isTram = isTramway(departure.lineId);
+                const mode = normalizeMode(departure.type);
                 const isChrono = isChronoLine(departure.lineId);
                 const itemKey = `${departure.lineId}::${departure.destination}`;
                 const isExpanded = expandedItems.has(itemKey);
                 const departureLine = currentStopDetail.lines.find(l => l.id === departure.lineId || l.shortName === departure.lineShortName || l.shortName === departure.lineId);
                 const secondLine = second ? currentStopDetail.lines.find(l => l.id === second.lineId || l.shortName === second.lineShortName || l.shortName === second.lineId) : undefined;
-                const departureStyle: any = departureLine ? resolveLineStyle(departureLine.id, departureLine.color, departureLine.textColor) : {} as any;
-                const secondStyle: any = secondLine ? resolveLineStyle(secondLine.id, secondLine.color, secondLine.textColor) : {} as any;
+                // Identifiant réseau compris : « C1 » tout court ne dit pas si
+                // l'on parle de la Chrono 1 ou de la C1 du TER, qui se croisent
+                // en gare de Grenoble.
+                const departureRef = departureLine?.routeId || departure.routeId || departure.lineId;
+                const secondRef = second ? (secondLine?.routeId || second.routeId || second.lineId) : '';
+                const departureIsSem = isGrenobleNetworkLine(departureRef);
+                const secondIsSem = isGrenobleNetworkLine(secondRef);
+                const departureStyle: any = departureLine ? resolveLineStyle(departureRef, departureLine.color, departureLine.textColor) : resolveLineStyle(departureRef) as any;
+                const secondStyle: any = secondLine ? resolveLineStyle(secondRef, secondLine.color, secondLine.textColor) : {} as any;
                 const hasTrafficAlert = !!(departureLine?.hasTraffic && departureLine?.trafficDetails?.length);
+                const isLastRun = isLastDeparture(
+                  timetables.get(departure.lineShortName || departure.lineId) ?? null,
+                  departure.destination,
+                  minutesUntil,
+                );
 
                 // Tram ou chrono ou ligne avec trafic + second départ → expandable
                 if ((isTram || isChrono || hasTrafficAlert) && second) {
                   return (
                     <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
                       className="border border-slate-700 rounded-2xl overflow-hidden bg-slate-800">
-                      <motion.button
+                          <motion.button
                         onClick={() => toggleExpanded(itemKey)}
                         className={`w-full ${compactMode ? 'p-3' : 'p-4'} hover:bg-slate-750 active:bg-slate-700 transition text-left`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className={`font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-10 h-10 flex items-center justify-center text-sm flex-shrink-0 ${!departureStyle.backgroundColor ? getLineColor(departure.lineId) + ' text-white' : ''}`} style={departureStyle}>
-                              {departure.lineShortName || departure.lineId}
-                            </div>
+                            <DepartureLineBadge
+                          routeRef={departureRef}
+                          label={departure.lineShortName || departure.lineId}
+                          style={departureStyle}
+                          round={departureIsSem && isRoundLine(departure.lineId)}
+                          sizeClass="w-10 h-10 text-sm"
+                        />
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                              {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                               <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
-                                {isTram ? <MdTram className="w-3.5 h-3.5" /> : <MdDirectionsBus className="w-3.5 h-3.5" />}
-                                <span>{isTram ? text.tramway : text.bus}</span>
+                                <TransportModeIcon mode={mode} className="w-3.5 h-3.5" />
+                                <span>{modeLabel(mode, text)}</span>
                                 {departure.realtime && <span className="text-green-400">• {text.live}</span>}
                                 {hasTrafficAlert && <span className="text-amber-400">• ⚠</span>}
                               </div>
@@ -648,13 +741,17 @@ export const Sidebar = ({
                           </div>
                           <div className="bg-slate-900 rounded-2xl p-3 border border-slate-700 space-y-3">
                             <div className="flex items-center gap-3">
-                              <div className={`font-bold ${getBadgeShapeClass(isRoundLine(second.lineId))} w-10 h-10 flex items-center justify-center text-sm flex-shrink-0 ${!secondStyle?.backgroundColor ? getLineColor(second.lineId) + ' text-white' : ''}`} style={secondStyle}>
-                                {second.lineShortName || second.lineId}
-                              </div>
+                              <DepartureLineBadge
+                          routeRef={secondRef}
+                          label={second.lineShortName || second.lineId}
+                          style={secondStyle}
+                          round={secondIsSem && isRoundLine(second.lineId)}
+                          sizeClass="w-10 h-10 text-sm"
+                        />
                               <div>
                                 <p className="text-sm font-semibold text-white">{second.destination}</p>
                                 <div className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
-                                  {isTram ? <MdTram className="w-3 h-3" /> : <MdDirectionsBus className="w-3 h-3" />}
+                                  <TransportModeIcon mode={second.type} className="w-3 h-3" />
                                   {second.realtime && <span className="text-green-400">• {text.live}</span>}
                                 </div>
                               </div>
@@ -687,6 +784,39 @@ export const Sidebar = ({
                             </div>
                           )}
                           {group.count > 2 && <p className="text-xs text-slate-500 text-center">{text.moreDepartures(group.count - 2)}</p>}
+
+                          {/* Actions du passage : la fiche horaire répond à la
+                              question « et le prochain, c'est quand ? » que le
+                              temps réel seul ne couvre pas. */}
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => onOpenTimetable?.({
+                                line: departureLine ?? { id: departure.lineId, shortName: departure.lineShortName },
+                                headsign: departure.destination,
+                              })}
+                              className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
+                            >
+                              <ClockIcon className="h-4 w-4" />
+                              {text.timetable}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onOpenLine?.(departureLine ?? { id: departure.lineId, shortName: departure.lineShortName })}
+                              className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
+                            >
+                              <MapIcon className="h-4 w-4" />
+                              {text.seeLine}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => currentStopDetail && onPlanRouteFromStop?.(currentStopDetail)}
+                              className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
+                            >
+                              <ArrowsRightLeftIcon className="h-4 w-4" />
+                              {text.planRoute}
+                            </button>
+                          </div>
                         </div>
                       </motion.div>
                     </motion.div>
@@ -699,13 +829,18 @@ export const Sidebar = ({
                     <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
                       className="flex items-center justify-between p-3 rounded-2xl bg-slate-800 border border-slate-700 hover:bg-slate-750 transition">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className={`font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-10 h-10 flex items-center justify-center text-sm flex-shrink-0 ${!departureStyle.backgroundColor ? getLineColor(departure.lineId) + ' text-white' : ''}`} style={departureStyle}>
-                          {departure.lineShortName || departure.lineId}
-                        </div>
+                        <DepartureLineBadge
+                          routeRef={departureRef}
+                          label={departure.lineShortName || departure.lineId}
+                          style={departureStyle}
+                          round={departureIsSem && isRoundLine(departure.lineId)}
+                          sizeClass="w-10 h-10 text-sm"
+                        />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                          {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                           <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                            <MdTram className="w-3 h-3" />{text.tramway}{departure.realtime && <span className="text-green-400"> • {text.live}</span>}
+                            <TransportModeIcon mode={departure.type} className="w-3 h-3" />{modeLabel(normalizeMode(departure.type), text)}{departure.realtime && <span className="text-green-400"> • {text.live}</span>}
                           </p>
                         </div>
                       </div>
@@ -717,27 +852,32 @@ export const Sidebar = ({
                   );
                 }
 
-                // Regular bus
-                const isNext = index === 0;
-                const isNow = minutesUntil <= 2;
+                // Regular bus. Toutes les rangées ont la même teinte : le vert
+                // « prochain » et l'ambre « imminent » colorisaient une
+                // information que l'ordre de la liste et l'heure disent déjà.
                 return (
                   <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
-                    className={`flex items-center justify-between p-3 rounded-2xl border transition ${isNext ? 'bg-emerald-950 border-emerald-700' : isNow ? 'bg-amber-950 border-amber-700' : 'bg-slate-800 border-slate-700 hover:bg-slate-750'}`}>
+                    className="flex items-center justify-between p-3 rounded-2xl border border-slate-700 bg-slate-800 transition hover:bg-slate-750">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className={`font-bold ${getBadgeShapeClass(isRoundLine(departure.lineId))} w-10 h-10 flex items-center justify-center text-sm flex-shrink-0 ${!departureStyle.backgroundColor ? getLineColor(departure.lineId) + ' text-white' : ''}`} style={departureStyle}>
-                        {departure.lineShortName || departure.lineId}
-                      </div>
+                      <DepartureLineBadge
+                          routeRef={departureRef}
+                          label={departure.lineShortName || departure.lineId}
+                          style={departureStyle}
+                          round={departureIsSem && isRoundLine(departure.lineId)}
+                          sizeClass="w-10 h-10 text-sm"
+                        />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                        {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                         <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                          {departure.type === 'BUS' ? <><MdDirectionsBus className="w-3 h-3" />{text.bus}</> : <><MdTram className="w-3 h-3" />{text.tramway}</>}
+                          <TransportModeIcon mode={departure.type} className="w-3 h-3" />
+                          {modeLabel(normalizeMode(departure.type), text)}
                           {departure.realtime && <span className="text-green-400"> • {text.live}</span>}
                         </p>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0 ml-2">
-                      {isNext && <div className="text-xs text-emerald-400 font-semibold mb-0.5">{text.nextLabel}</div>}
-                      <p className={`text-lg font-bold ${isNext ? 'text-emerald-400' : isNow ? 'text-amber-400' : 'text-white'}`}>{renderDepartureTime(displayTime)}</p>
+                      <p className="text-lg font-bold text-white">{renderDepartureTime(displayTime)}</p>
                       {second && <p className="text-xs text-slate-500">{renderDepartureTime(getDepartureDisplay(second, language))}</p>}
                     </div>
                   </motion.div>
@@ -754,9 +894,11 @@ export const Sidebar = ({
               onClick={() => currentStopDetail && onPlanRouteFromStop?.(currentStopDetail)}
               className="flex w-full items-center justify-center gap-2 px-0 py-0 cursor-pointer text-xs text-slate-400 transition hover:text-slate-200">
               <span>{text.calculateItineraryWith}</span>
-              <span className="rounded-full bg-black px-2 py-1 border border-slate-700">
-                <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
-              </span>
+              <img
+                src={theme === 'dark' ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png'}
+                alt="GreGo"
+                className="h-4 w-auto"
+              />
             </button>
           </div>
         </div>
@@ -768,6 +910,7 @@ export const Sidebar = ({
         onClose={() => setIsFavoriteModalOpen(false)}
         stop={currentStopDetail}
         language={language}
+        theme={theme}
       />
     </motion.div>
   );

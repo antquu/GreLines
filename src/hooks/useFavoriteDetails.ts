@@ -11,22 +11,22 @@ export interface FavoriteDetail {
   loading: boolean;
 }
 
-/**
- * For every favorite, fetch the full `StopDetail` (lines + departures) once
- * on mount and then refresh just the departures every 30s. We never refetch
- * the static line list — that doesn't change between sessions and saves a
- * round-trip per favorite per refresh cycle.
- *
- * Returns a per-favorite descriptor preserving the input order so the UI
- * can render placeholders deterministically while data streams in.
- */
+
+
+
+
+
+
+
+
+
 export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = true): FavoriteDetail[] {
   const [details, setDetails] = useState<FavoriteDetail[]>(() =>
     favorites.map(fav => ({ favorite: fav, detail: null, loading: true }))
   );
 
-  // Keep a stable ref to the current details for the interval callback to
-  // read without re-creating the interval each time `details` updates.
+  
+  
   const detailsRef = useRef<FavoriteDetail[]>(details);
   detailsRef.current = details;
 
@@ -38,24 +38,63 @@ export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = tru
 
     let cancelled = false;
 
-    // Reset when favorites change (added/removed/edited).
+    
     setDetails(favorites.map(fav => ({ favorite: fav, detail: null, loading: true })));
 
-    // Initial load — fetch each favorite's full detail in parallel.
-    Promise.all(
-      favorites.map(async fav => {
-        try {
-          const detail = await getStopDetail(fav.stopId);
-          return { favorite: fav, detail, loading: false };
-        } catch (err) {          return { favorite: fav, detail: null, loading: false };
-        }
-      })
-    ).then(loaded => {
-      if (cancelled) return;
-      setDetails(loaded);
-    });
+    const loadInitial = async () => {
+      if (favorites.length === 0) {
+        if (!cancelled) setDetails([]);
+        return;
+      }
 
-    // Refresh every 30s — only the departures, since lines are static.
+      
+      
+      try {
+        const firstDetail = await getStopDetail(favorites[0].stopId);
+        if (!cancelled) {
+          setDetails(prev =>
+            prev.map((entry, idx) =>
+              idx === 0 ? { favorite: favorites[0], detail: firstDetail, loading: false } : entry
+            )
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setDetails(prev =>
+            prev.map((entry, idx) =>
+              idx === 0 ? { favorite: favorites[0], detail: null, loading: false } : entry
+            )
+          );
+        }
+      }
+
+      
+      
+      const rest = await Promise.all(
+        favorites.slice(1).map(async fav => {
+          try {
+            const detail = await getStopDetail(fav.stopId);
+            return { favorite: fav, detail, loading: false };
+          } catch {
+            return { favorite: fav, detail: null, loading: false };
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setDetails(current => {
+        const next = [...current];
+        rest.forEach(entry => {
+          const idx = next.findIndex(item => item.favorite.stopId === entry.favorite.stopId);
+          if (idx >= 0) next[idx] = entry;
+        });
+        return next;
+      });
+    };
+
+    loadInitial();
+
+    
     const interval = setInterval(async () => {
       const current = detailsRef.current;
       const refreshed = await Promise.all(
@@ -76,9 +115,9 @@ export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = tru
       cancelled = true;
       clearInterval(interval);
     };
-    // We deliberately re-key on the favorites' identity (ids+lines), not the
-    // array reference, so a re-render with the same favorites doesn't reload.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
+    
+    
   }, [enabled, favorites.map(f => `${f.stopId}:${f.lines === 'all' ? 'all' : f.lines.join(',')}`).join('|')]);
 
   return details;

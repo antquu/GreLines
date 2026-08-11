@@ -1,38 +1,38 @@
 import { useEffect, useRef } from 'react';
 
-/**
- * Keep the URL in sync with the currently-opened stop and its selected lines.
- *
- * URL format (matches the existing "Export configuration" feature):
- *   - No stop open                       → `/app`
- *   - Stop open, no line filter (all)    → `/app?T1=ALL_SEM:CHAVANT`
- *   - Stop open, single line filter      → `/app?T1=C_SEM:CHAVANT`
- *   - Stop open, multi-line filter       → `/app?T1=A_SEM:CHAVANT&T2=B_SEM:CHAVANT`
- *
- * Uses `history.replaceState` — no reload, no navigation, no visual change.
- *
- * Notes on `selectedLines`:
- *   - An empty Set means "show all" (the existing convention in your app),
- *     and we serialize it as `T1=ALL_<stopId>` to match your share format.
- *   - A non-empty Set is serialized as one `T<i>=<lineId>_<stopId>` per line,
- *     sorted alphabetically (same as the export modal does).
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export interface UseStopUrlSyncArgs {
-  /** Currently opened stop id, or null/undefined if no stop is open. */
+  
   stopId: string | null | undefined;
-  /** Currently selected line ids. Empty set = "all lines". */
+  
   selectedLines: Set<string>;
-  /**
-   * Optional base path override. If omitted, the current pathname is used —
-   * this means the hook works on `/`, `/app`, or any other route without
-   * forcing the user onto a specific path.
-   */
+  
+
+
+
+
   basePath?: string;
-  /**
-   * Optional toggle. Set to false during e.g. SSR or if you want to disable
-   * the sync temporarily. Defaults to true.
-   */
+  
+
+
+
   enabled?: boolean;
 }
 

@@ -1,26 +1,27 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SignalIcon } from '@heroicons/react/24/solid';
+import { usePerfSettings } from '../hooks/usePerfSettings';
 
 const isNetworkClosed = (date: Date) => {
   const totalMinutes = date.getHours() * 60 + date.getMinutes();
   return totalMinutes >= 60 && totalMinutes < 270;
 };
 
-/** Vitesse de défilement, en pixels par seconde (cadence des panneaux de gare). */
+
 const MARQUEE_SPEED_PX_PER_SEC = 60;
 
-/** Aplatit retours à la ligne saisis dans le CRM en espaces. */
+
 function normalizeFooterMessage(message: string): string {
   return message.replace(/\s+/g, ' ').trim();
 }
 
-/**
- * Message du bandeau : affiché tel quel s'il tient dans la place disponible,
- * sinon défilé en continu de droite à gauche sur une seule ligne.
- *
- * Deux copies côte à côte dans un même conteneur flex ; l'animation translate
- * de -50 % assure la boucle sans coupure ni empilement vertical.
- */
+
+
+
+
+
+
+
 function ScrollingMessage({ message, color }: { message: string; color: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
@@ -40,7 +41,7 @@ function ScrollingMessage({ message, color }: { message: string; color: string }
       if (containerWidth === 0 || textWidth === 0) return;
 
       setOverflows(textWidth > containerWidth);
-      // Défilement d'une largeur de texte + espacement entre les deux copies.
+      
       const scrollDistance = textWidth + 48;
       setDurationSec(Math.max(6, scrollDistance / MARQUEE_SPEED_PX_PER_SEC));
     };
@@ -117,6 +118,7 @@ export function ClockSignal({
   /** Affichage de l'horloge quand aucun message custom n'est actif. */
   showClock?: boolean;
 }) {
+  const { settings } = usePerfSettings();
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -127,7 +129,10 @@ export function ClockSignal({
   }, []);
 
   const networkClosed = isNetworkClosed(now);
-  const displayMessage = overrideMessage ? normalizeFooterMessage(overrideMessage) : null;
+  // Réglages > Affichage : le bandeau défilant peut être masqué sans faire
+  // disparaître l'horloge ni l'alerte « réseau fermé ».
+  const displayMessage =
+    overrideMessage && !settings.hideFooterTicker ? normalizeFooterMessage(overrideMessage) : null;
 
   // Rien à afficher : pas de message, réseau ouvert, horloge désactivée.
   if (!displayMessage && !networkClosed && !showClock) return null;

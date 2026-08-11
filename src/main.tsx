@@ -2,9 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './index.css'
-// Chargé après index.css : inverse l'échelle de gris quand le thème clair est actif.
+
 import './light-theme.css'
-import App from './App.tsx'
+import { PerfSettingsProvider } from './hooks/usePerfSettings.tsx'
 
 console.log(`_
   __ _ _ __ | |_ __ _ _ _
@@ -16,8 +16,46 @@ console.log(`_
        made by antqu • github.com/antquu`
 )
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+const root = createRoot(document.getElementById('root')!)
+
+
+
+
+
+
+if (window.location.pathname.startsWith('/app/screen')) {
+  void import('./screen/ScreenApp').then(({ ScreenApp }) => {
+    root.render(
+      <StrictMode>
+        <ScreenApp />
+      </StrictMode>,
+    )
+  })
+} else {
+  void import('./App.tsx').then(({ default: App }) => {
+    root.render(
+      <StrictMode>
+        <PerfSettingsProvider>
+          <App />
+        </PerfSettingsProvider>
+      </StrictMode>,
+    )
+  })
+}
+
+
+
+
+
+
+
+
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      
+      
+    })
+  })
+}

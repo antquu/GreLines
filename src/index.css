@@ -1,18 +1,12 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: 'Helvetica Neue';
-  src: url('/fonts/Helvetica%20Neue%20Medium.ttf') format('truetype');
-  font-weight: 500;
-  font-display: swap;
-}
 
-@font-face {
-  font-family: 'Helvetica Neue';
-  src: url('/fonts/Helvetica%20Neue%20Bold.ttf') format('truetype');
-  font-weight: 700;
-  font-display: swap;
-}
+
+
+
+
+
+
 
 @font-face {
   font-family: 'Canaro Medium';
@@ -147,6 +141,60 @@
 
 body {
   margin: 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+.signal-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+
+
+
+
+
+
+
+
+.perf-no-animations *,
+.perf-no-animations *::before,
+.perf-no-animations *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+.perf-no-blur *,
+.perf-no-blur *::before,
+.perf-no-blur *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.perf-no-shadows *,
+.perf-no-shadows *::before,
+.perf-no-shadows *::after {
+  box-shadow: none !important;
+  text-shadow: none !important;
 }
 
 ::-webkit-scrollbar {
@@ -293,15 +341,15 @@ code {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
-/* Bandeau footer : défilement horizontal quand le message dépasse la largeur. */
-/* Le texte entre par la droite, traverse, puis sort par la gauche. Une seconde
-   copie décalée d'une demi-période assure la continuité du défilement.
- *
- * Volontairement non désactivé par `prefers-reduced-motion` : lorsque le
- * message dépasse la largeur du bandeau, le défilement est le seul moyen d'en
- * lire la totalité. Le figer masquerait l'information au lieu de la rendre
- * plus confortable — c'est une animation fonctionnelle, pas décorative.
- * (Windows expose ce réglage via Accessibilité → Effets visuels.) */
+
+
+
+
+
+
+
+
+
 @keyframes footer-marquee {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }

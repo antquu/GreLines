@@ -12,11 +12,13 @@ import {
 } from '@heroicons/react/24/solid';
 import type { Stop, Line } from '../types';
 import { findClosestStops, formatDistance } from '../utils/geo';
-import { useFavorites } from '../hooks/useFavorites';
-import { useFavoriteDetails } from '../hooks/useFavoriteDetails';
 import { removeFavoriteAndNotify } from '../services/favorites';
 import { getStopLines } from '../services/api';
 import { FavoriteCard } from './FavoriteCard';
+import type { Favorite } from '../services/favorites';
+import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
+import { AtmoPanel } from './AtmoPanel';
+import type { AtmoReport } from '../services/atmo';
 
 interface HomeSheetProps {
   isOpen: boolean;
@@ -29,16 +31,24 @@ interface HomeSheetProps {
   onOpenItinerary: () => void;
   onSnapChange?: (snapIdx: number) => void;
   onSheetProgress?: (progress: number) => void;
-  /**
-   * Bumping this value from the parent triggers a snap back to the mini
-   * (0.15) position with the scroll reset to the top — used when another
-   * sheet (stop sidebar, settings, traffic) opens on top, so the user finds
-   * the home sheet in its initial state when they come back to it.
-   */
+  
+
+
+
+
+
   snapToMiniSignal?: number;
-  /** Bumping this snaps the sheet up to the mid (0.6) snap point. */
+  
   openToMidSignal?: number;
   language: 'fr' | 'en';
+  theme?: 'light' | 'dark';
+  favorites: Favorite[];
+  favoriteDetails: FavoriteDetail[];
+  
+  atmoReport: AtmoReport | null;
+  atmoLoading: boolean;
+  atmoPostalCode: string;
+  onAtmoPostalCodeChange: (postalCode: string) => void;
 }
 
 function getGreeting(language: 'fr' | 'en'): string {
@@ -90,11 +100,11 @@ const getText = (language: 'fr' | 'en') => ({
   direction: language === 'fr' ? 'Direction' : 'To',
 });
 
-/**
- * Returns whether the line should be drawn as a circular badge (tram +
- * chrono) or a rounded rectangle. Mirrors the same convention used in
- * AddFavoriteModal / Sidebar.
- */
+
+
+
+
+
 function isRoundLine(label: string): boolean {
   const n = label.toUpperCase().trim();
   if (n === 'A' || n === 'B' || n === 'C' || n === 'D' || n === 'E') return true;
@@ -102,7 +112,7 @@ function isRoundLine(label: string): boolean {
 }
 
 
-/** Sort by tram → chrono → bus, then alpha-numeric. */
+
 function sortLinesForBadge(lines: Line[]): Line[] {
   const priority = (l: Line) => {
     const n = (l.shortName || l.id).toUpperCase();
@@ -236,8 +246,21 @@ export const HomeSheet = ({
   snapToMiniSignal,
   openToMidSignal,
   language,
+  theme = 'dark',
+  favorites,
+  favoriteDetails,
+  atmoReport,
+  atmoLoading,
+  atmoPostalCode,
+  onAtmoPostalCodeChange,
 }: HomeSheetProps) => {
   const text = getText(language);
+  const isLight = theme === 'light';
+  const surfaceClass = isLight
+    ? 'bg-white border border-slate-200 shadow-[0_20px_50px_rgba(148,163,184,0.18)]'
+    : 'bg-[#2c2d31]/90 border-white/10 shadow-xl';
+  const titleClass = isLight ? 'text-slate-900' : 'text-white';
+  const mutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
 
   const nearby = useMemo(() => {
     if (!currentLocation) return [];
@@ -267,9 +290,6 @@ export const HomeSheet = ({
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, nearby.map(n => n.stop.id).join('|')]);
-
-  const favorites = useFavorites();
-  const favoriteDetails = useFavoriteDetails(favorites, isOpen);
 
   const sheetRef = useRef<SheetRef>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -343,17 +363,19 @@ export const HomeSheet = ({
       // parent so it can animate elements that should follow the sheet.
       onOpenStart={() => {/* no-op, lib hook */}}
     >
-	      <Sheet.Container
+	    <Sheet.Container
 	        style={{
 	          borderRadius: '32px 32px 0 0',
-	          background: 'linear-gradient(180deg, rgba(31,41,55,0.96), rgba(15,23,42,0.98))',
-	          border: '1px solid rgba(148,163,184,0.18)',
+	          background: isLight
+	            ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.98))'
+	            : 'linear-gradient(180deg, rgba(31,41,55,0.96), rgba(15,23,42,0.98))',
+	          border: isLight ? '1px solid rgba(203,213,225,0.75)' : '1px solid rgba(148,163,184,0.18)',
 	          zIndex: 10,
 	        }}
 	      >
 	        <Sheet.Header>
 	          <div className="flex justify-center pt-2 pb-1">
-	            <div className="h-1.5 w-16 rounded-full bg-white/30" />
+	            <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
 	          </div>
 	        </Sheet.Header>
         <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
@@ -367,7 +389,8 @@ export const HomeSheet = ({
 	              <motion.h2
 	                initial={{ opacity: 0, y: 8 }}
 	                animate={{ opacity: 1, y: 0 }}
-                  className="text-sm font-semibold leading-tight text-white"
+                  className={`text-sm font-semibold leading-tight ${titleClass}`}
+                  style={isLight ? { color: '#0f172a' } : undefined}
 	              >
 	                {text.title}
 	              </motion.h2>
@@ -377,18 +400,18 @@ export const HomeSheet = ({
 	            <div className="px-5 space-y-7">
 	              <section>
 	                <div className="mb-3 flex items-center gap-2 px-1">
-                    <h3 className="text-sm font-semibold leading-none text-white">{text.recentTitle}</h3>
-	                  <ChevronRightIcon className="h-6 w-6 text-slate-500" />
+                    <h3 className={`text-sm font-semibold leading-none ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.recentTitle}</h3>
+	                  <ChevronRightIcon className={`h-6 w-6 ${mutedClass}`} />
 	                </div>
 	                {!currentLocation ? (
-	                  <div className="rounded-[28px] border border-white/10 bg-[#2c2d31]/90 p-6 text-center shadow-xl">
-	                    <p className="text-sm font-semibold text-white mb-1">{text.noLocation}</p>
-	                    <p className="text-xs text-slate-400">{text.noLocationHint}</p>
+	                  <div className={`rounded-[28px] p-6 text-center ${surfaceClass}`}>
+	                    <p className={`text-sm font-semibold mb-1 ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.noLocation}</p>
+	                    <p className={`text-xs ${mutedClass}`}>{text.noLocationHint}</p>
 	                  </div>
                 ) : nearby.length === 0 ? (
-                  <p className="text-sm text-slate-500 py-4 text-center">{text.noLocation}</p>
+                  <p className={`text-sm py-4 text-center ${mutedClass}`}>{text.noLocation}</p>
                 ) : (
-	                  <div className="overflow-hidden rounded-[28px] bg-[#2c2d31]/90 shadow-xl">
+	                  <div className={`overflow-hidden rounded-[28px] ${surfaceClass}`}>
 	                    {nearby.map(({ stop, meters }, idx) => (
                       <NearbyStopCard
                         key={stop.id}
@@ -406,12 +429,12 @@ export const HomeSheet = ({
 
 	              <section>
 	                <div className="mb-3 flex items-center gap-2 px-1">
-	                  <h3 className="text-[24px] font-extrabold leading-none text-white">{text.favoritesTitle}</h3>
-	                  <ChevronRightIcon className="h-6 w-6 text-slate-500" />
+	                  <h3 className={`text-[24px] font-extrabold leading-none ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.favoritesTitle}</h3>
+	                  <ChevronRightIcon className={`h-6 w-6 ${mutedClass}`} />
 	                </div>
 	                {favorites.length === 0 ? (
-	                  <div className="rounded-[28px] border border-white/10 bg-[#2c2d31]/90 p-5 shadow-xl">
-	                    <p className="text-sm text-slate-400 leading-relaxed">{text.noFavorites}</p>
+	                  <div className={`rounded-[28px] p-5 ${surfaceClass}`}>
+	                    <p className={`text-sm leading-relaxed ${mutedClass}`}>{text.noFavorites}</p>
 	                  </div>
                 ) : (
                   <div className="space-y-2.5">
@@ -433,6 +456,7 @@ export const HomeSheet = ({
                         }}
                         onRemove={() => removeFavoriteAndNotify(favorite.stopId)}
                         language={language}
+                        theme={theme}
                       />
                     ))}
                   </div>
@@ -440,22 +464,55 @@ export const HomeSheet = ({
               </section>
 
 	              <section>
-	                <h3 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+	                <h3 className={`mb-3 px-1 text-xs font-semibold uppercase tracking-wider ${mutedClass}`}>
 	                  {text.quickAccess}
 	                </h3>
 	                <div className="grid grid-cols-2 gap-3">
-	                  <button onClick={onOpenTraffic} className="rounded-[24px] border border-white/10 bg-white/5 p-4 text-left transition active:scale-[0.98]">
+	                  <button
+	                    onClick={onOpenTraffic}
+	                    className={`rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
+	                      isLight
+	                        ? 'border border-slate-200 bg-white shadow-[0_12px_30px_rgba(148,163,184,0.14)]'
+	                        : 'border border-white/10 bg-white/5'
+	                    }`}
+	                  >
 	                    <ExclamationTriangleIcon className="mb-3 h-7 w-7 text-amber-300" />
-	                    <span className="text-sm font-bold text-white">{text.trafficLabel}</span>
+	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.trafficLabel}</span>
 	                  </button>
-	                  <button onClick={onOpenSettings} className="rounded-[24px] border border-white/10 bg-white/5 p-4 text-left transition active:scale-[0.98]">
+	                  <button
+	                    onClick={onOpenSettings}
+	                    className={`rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
+	                      isLight
+	                        ? 'border border-slate-200 bg-white shadow-[0_12px_30px_rgba(148,163,184,0.14)]'
+	                        : 'border border-white/10 bg-white/5'
+	                    }`}
+	                  >
 	                    <Cog6ToothIcon className="mb-3 h-7 w-7 text-blue-300" />
-	                    <span className="text-sm font-bold text-white">{text.settingsLabel}</span>
+	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.settingsLabel}</span>
 	                  </button>
-	                  <button onClick={onOpenItinerary} className="col-span-2 rounded-[24px] border border-emerald-400/20 bg-emerald-500/10 p-4 text-left transition active:scale-[0.98]">
+	                  <button
+	                    onClick={onOpenItinerary}
+	                    className={`col-span-2 rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
+	                      isLight
+	                        ? 'border border-emerald-200 bg-emerald-50 shadow-[0_12px_30px_rgba(16,185,129,0.12)]'
+	                        : 'border border-emerald-400/20 bg-emerald-500/10'
+	                    }`}
+	                  >
 	                    <MapIcon className="mb-3 h-7 w-7 text-emerald-300" />
-	                    <span className="text-sm font-bold text-white">{text.itineraryLabel}</span>
+	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.itineraryLabel}</span>
 	                  </button>
+	                  {/* Qualité de l'air : un widget carré qui occupe les deux
+	                      colonnes, sur le modèle des grandes vignettes iOS. Sa
+	                      couleur est celle de l'indice du jour. */}
+	                  <div className="col-span-2 aspect-square overflow-hidden rounded-[24px]">
+	                    <AtmoPanel
+	                      report={atmoReport}
+	                      loading={atmoLoading}
+	                      postalCode={atmoPostalCode}
+	                      onPostalCodeChange={onAtmoPostalCodeChange}
+	                      language={language}
+	                    />
+	                  </div>
 	                </div>
 	              </section>
             </div>

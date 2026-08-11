@@ -18,7 +18,7 @@ export interface Line {
   id: string;
   routeId?: string;
   name: string;
-  type: 'BUS' | 'TRAM' | 'OTHER';
+  type: 'BUS' | 'TRAM' | 'RAIL' | 'METRO' | 'OTHER';
   shortName?: string;
   color?: string;
   textColor?: string;
@@ -28,12 +28,18 @@ export interface Line {
 
 export interface Departure {
   lineId: string;
+  
+
+
+
+
+  routeId?: string;
   lineName: string;
   lineShortName?: string;
   destination: string;
   departureTime: number;
   realtime: boolean;
-  type: 'BUS' | 'TRAM' | 'OTHER';
+  type: 'BUS' | 'TRAM' | 'RAIL' | 'METRO' | 'OTHER';
   occupancy?: 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED';
 }
 
@@ -52,3 +58,25 @@ export interface AddressResult {
   lat: number;
   lon: number;
 }
+
+export type SearchHistoryItem =
+  | {
+      kind: 'stop';
+      id: string;
+      name: string;
+      city?: string;
+    }
+  | {
+      kind: 'line';
+      id: string;
+      shortName: string;
+      longName: string;
+    }
+  | {
+      kind: 'address';
+      id: string;
+      name: string;
+      context?: string;
+      lat: number;
+      lon: number;
+    };

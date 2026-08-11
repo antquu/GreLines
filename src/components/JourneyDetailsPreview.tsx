@@ -7,6 +7,7 @@ import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
 import type { TrafficDetail } from '../types';
 import { resolveRouteLine } from '../utils/routeLineResolver';
+import { PlayIcon } from '@heroicons/react/24/solid';
 
 interface JourneyDetailsProps {
   journey: RouteItinerary;
@@ -14,9 +15,11 @@ interface JourneyDetailsProps {
   stops: any[];
   lineLookup?: Map<string, AllLinesLine> | null;
   trafficInfo?: Map<string, TrafficDetail[]>;
+  
+  onStartNavigation?: () => void;
 }
 
-export function JourneyDetailsPreview({ journey, language, stops, lineLookup, trafficInfo }: JourneyDetailsProps) {
+export function JourneyDetailsPreview({ journey, language, stops, lineLookup, trafficInfo, onStartNavigation }: JourneyDetailsProps) {
   const isFr = language === 'fr';
   const [hoveredTrafficLine, setHoveredTrafficLine] = useState<string | null>(null);
   const [tooltipCoords, setTooltipCoords] = useState({ x: 0, y: 0 });
@@ -39,7 +42,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
     details: trafficInfo?.get(lineKey) || [],
   }));
 
-  // Timeline items rendering
+  
   const timelineItems: ReactNode[] = [];
 
   allLegs.forEach((leg, i) => {
@@ -59,7 +62,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
       const lineTrafficKey = normalizeTrafficLineCode(lineName);
       const legHasTraffic = lineTrafficKey ? Boolean(trafficInfo?.has(lineTrafficKey)) : false;
 
-      // Transit start
+      
       timelineItems.push(
         <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
             <div className="flex flex-col items-center w-8 flex-shrink-0">
@@ -253,6 +256,19 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
           <p className="text-xs text-slate-500">{isFr ? 'Arrivée' : 'Arrival'}</p>
         </div>
       </div>
+
+      {/* Le guidage se déclenche juste sous les horaires : on décide de partir
+          après avoir lu l'heure de départ, pas avant. */}
+      {onStartNavigation && (
+        <button
+          type="button"
+          onClick={onStartNavigation}
+          className="mb-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-4 text-base font-bold text-white transition hover:bg-blue-500 active:bg-blue-700"
+        >
+          <PlayIcon className="h-5 w-5" />
+          {isFr ? 'Démarrer le trajet' : 'Start journey'}
+        </button>
+      )}
 
       {/* Timeline */}
       <div className="relative space-y-2">

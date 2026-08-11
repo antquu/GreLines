@@ -5,17 +5,138 @@
     <link rel="icon" type="image/png" href="/flavicon.png" />
     <link rel="apple-touch-icon" href="/flavicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GreLines - Suivez en temps réel les transports en commun de Grenoble</title>
-    <meta name="description" content="Suivez en temps réel les transports en commun de Grenoble : arrêts, horaires, info-trafic, itinéraires et carte interactive." />
-    <meta property="og:title" content="GreLines - Suivi Temps Réel Transports Grenoble" />
-    <meta property="og:description" content="Suivez en temps réel les transports en commun de Grenoble : arrêts, horaires, info-trafic, itinéraires et carte interactive." />
+    <title>GreLines — Horaires en temps réel des transports de Grenoble (Tag, TER, Citiz)</title>
+    <meta
+      name="description"
+      content="Prochains passages en temps réel à chaque arrêt de Grenoble et de sa métropole : trams A à E, Chrono, Proximo, Flexo, TER, bus Tag. Itinéraires, info-trafic, fiches horaires, plan interactif et véhicules en libre-service. Gratuit, sans compte et sans publicité."
+    />
+    <link rel="canonical" href="https://grelines.vercel.app/" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="author" content="antqu" />
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-title" content="GreLines" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    
+
+
+
+    <meta
+      name="keywords"
+      content="Grenoble, transports en commun Grenoble, horaires bus Grenoble, tram Grenoble, temps réel, Tag, M réso, SMMAG, Mobilités M, TER Grenoble, itinéraire Grenoble, prochains passages, info trafic, Chrono, Proximo, Flexo, Citiz, Voi"
+    />
+
+    <meta property="og:site_name" content="GreLines" />
+    <meta property="og:locale" content="fr_FR" />
     <meta property="og:type" content="website" />
-    <!-- Mapbox GL CSS -->
-    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.css" rel="stylesheet" />
+    <meta property="og:url" content="https://grelines.vercel.app/" />
+    <meta property="og:title" content="GreLines — Horaires en temps réel des transports de Grenoble" />
+    <meta
+      property="og:description"
+      content="Prochains passages en temps réel à chaque arrêt de Grenoble : trams, Chrono, Proximo, Flexo, TER. Itinéraires, info-trafic et plan interactif."
+    />
+    <meta property="og:image" content="https://grelines.vercel.app/assets/GreLinesLOGO.png" />
+    <meta property="og:image:alt" content="GreLines" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="GreLines — Horaires en temps réel des transports de Grenoble" />
+    <meta
+      name="twitter:description"
+      content="Prochains passages en temps réel à chaque arrêt de Grenoble : trams, Chrono, Proximo, Flexo, TER. Itinéraires, info-trafic et plan interactif."
+    />
+    <meta name="twitter:image" content="https://grelines.vercel.app/assets/GreLinesLOGO.png" />
+
+    
+
+
+    <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
+    <link rel="preconnect" href="https://data.mobilites-m.fr" crossorigin />
+
+
+    
+
+    <link rel="preload" href="/fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/Inter-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
+
     <meta name="google-site-verification" content="xtrXLi3kJFvwgw-bcUzMIOyC9sFOq5Q_OAj8pMK91QM" />
   </head>
   <body>
     <div id="root"></div>
+
+    
+
+
+
+    <noscript>
+      <h1>GreLines — transports en commun de Grenoble en temps réel</h1>
+      <p>
+        GreLines affiche les prochains passages en temps réel à chaque arrêt de
+        Grenoble et de sa métropole : les trams A, B, C, D et E, les lignes
+        Chrono, Proximo et Flexo du réseau Tag (M réso / SMMAG), les TER de la
+        gare de Grenoble, ainsi que les véhicules en libre-service Citiz et Voi.
+      </p>
+      <p>
+        L'application calcule aussi vos itinéraires, publie l'info-trafic ligne
+        par ligne, les fiches horaires et un plan interactif du réseau. Elle est
+        gratuite, sans compte et sans publicité.
+      </p>
+      <p>
+        Cette application a besoin de JavaScript pour fonctionner. Le code
+        source est disponible sur
+        <a href="https://github.com/antquu/GreLines">github.com/antquu/GreLines</a>.
+      </p>
+    </noscript>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://grelines.vercel.app/#website",
+            "url": "https://grelines.vercel.app/",
+            "name": "GreLines",
+            "inLanguage": "fr-FR",
+            "description": "Horaires en temps réel des transports en commun de Grenoble : trams, Chrono, Proximo, Flexo, TER, itinéraires et info-trafic."
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://grelines.vercel.app/#app",
+            "name": "GreLines",
+            "url": "https://grelines.vercel.app/",
+            "applicationCategory": "TravelApplication",
+            "operatingSystem": "Web",
+            "inLanguage": "fr-FR",
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+            "author": { "@type": "Person", "name": "antqu", "url": "https://github.com/antquu" },
+            "description": "Prochains passages en temps réel à chaque arrêt de Grenoble et de sa métropole, itinéraires, info-trafic, fiches horaires et plan interactif du réseau.",
+            "featureList": [
+              "Prochains passages en temps réel",
+              "Calcul d'itinéraire porte à porte",
+              "Info-trafic par ligne",
+              "Fiches horaires et plans de ligne",
+              "Arrêts favoris",
+              "Véhicules en libre-service Citiz et Voi",
+              "Indice de qualité de l'air",
+              "Affichage plein écran pour téléviseur"
+            ],
+            "areaServed": {
+              "@type": "City",
+              "name": "Grenoble",
+              "address": {
+                "@type": "PostalAddress",
+                "addressLocality": "Grenoble",
+                "addressRegion": "Auvergne-Rhône-Alpes",
+                "addressCountry": "FR"
+              }
+            }
+          }
+        ]
+      }
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

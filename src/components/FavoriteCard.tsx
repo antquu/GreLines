@@ -1,20 +1,21 @@
 import { memo, useMemo } from 'react';
-import { resolveLineBackgroundColor } from '../utils/lineColors';
 import { StarIcon } from '@heroicons/react/24/solid';
-import type { Departure } from '../types';
 import { formatDepartureTime } from '../services/api';
+import { LineBadge } from './LineBadge';
+import type { Departure } from '../types';
 
 export interface FavoriteCardProps {
   stopName: string;
   city?: string;
-  /** "all" → no filter; string[] → only these line ids. */
+  
   lineFilter: 'all' | string[];
-  /** StopDetail-ish: lines + live departures. Null while loading. */
+  
   detail: { lines?: any[]; departures?: Departure[] } | null;
   loading: boolean;
   onOpen: () => void;
   onRemove: () => void;
   language: 'fr' | 'en';
+  theme?: 'light' | 'dark';
 }
 
 function getText(language: 'fr' | 'en') {
@@ -22,17 +23,21 @@ function getText(language: 'fr' | 'en') {
     loading: language === 'fr' ? 'Chargement…' : 'Loading…',
     noDepartures: language === 'fr' ? 'Aucun passage prévu' : 'No upcoming departures',
     direction: language === 'fr' ? 'Direction' : 'To',
+    first: language === 'fr' ? '1er passage' : '1st departure',
+    second: language === 'fr' ? '2e passage' : '2nd departure',
     remove: language === 'fr' ? 'Retirer' : 'Remove',
   };
 }
 
-/**
- * Visual card for a favourite stop. Shows the stop name + city, a remove-star
- * button, and a per-(line, direction) row with up to 2 next departure times.
- *
- * Same look on mobile (inside HomeSheet) and on desktop (inside the favorites
- * hover panel) — that's why this lives in its own file.
- */
+type Group = {
+  lineId: string;
+  shortName: string;
+  color?: string | null;
+  textColor?: string | null;
+  destination: string;
+  times: number[];
+};
+
 function FavoriteCardComponent({
   stopName,
   city,
@@ -42,38 +47,35 @@ function FavoriteCardComponent({
   onOpen,
   onRemove,
   language,
+  theme = 'dark',
 }: FavoriteCardProps) {
   const text = getText(language);
+  const isLight = theme === 'light';
+  const cardClass = isLight
+    ? 'border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(148,163,184,0.18)]'
+    : 'border-slate-800/80 bg-slate-900/85 shadow-[0_18px_50px_rgba(2,6,23,0.35)]';
+  const topBorderClass = isLight ? 'border-slate-100' : 'border-slate-800';
+  const titleClass = isLight ? 'text-slate-900' : 'text-white';
+  const mutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
+  const panelClass = isLight
+    ? 'border-slate-200 bg-slate-50'
+    : 'border-slate-800 bg-slate-950/60';
 
-  // Group departures by (lineId, destination), keep the next 2 per group,
-  // honour the user's line filter. Computed inside the card so callers don't
-  // have to know the wire format.
   const grouped = useMemo(() => {
     if (!detail?.departures || !detail.lines) return [];
-    const filterAccepts = (lineId: string) =>
-      lineFilter === 'all' || lineFilter.includes(lineId);
-
-    type Bucket = {
-      lineId: string;
-      lineColor: string;
-      lineLabel: string;
-      destination: string;
-      times: number[];
-    };
-    const map = new Map<string, Bucket>();
+    const filterAccepts = (lineId: string) => lineFilter === 'all' || lineFilter.includes(lineId);
+    const map = new Map<string, Group>();
 
     for (const dep of detail.departures) {
-      if (!filterAccepts(dep.lineId)) continue;
-      if (dep.departureTime < 0) continue;
+      if (!filterAccepts(dep.lineId) || dep.departureTime < 0) continue;
       const key = `${dep.lineId}|${dep.destination}`;
       if (!map.has(key)) {
         const line = detail.lines.find((l: any) => l.id === dep.lineId);
-        const rawColor = line?.color || null;
-        const lineColor = resolveLineBackgroundColor(rawColor, dep.lineId);
         map.set(key, {
           lineId: dep.lineId,
-          lineColor,
-          lineLabel: dep.lineShortName || dep.lineId,
+          shortName: dep.lineShortName || line?.shortName || dep.lineId,
+          color: line?.color,
+          textColor: line?.textColor,
           destination: dep.destination,
           times: [],
         });
@@ -83,7 +85,7 @@ function FavoriteCardComponent({
     }
 
     return Array.from(map.values()).sort((a, b) => {
-      const lc = a.lineLabel.localeCompare(b.lineLabel, undefined, { numeric: true });
+      const lc = a.shortName.localeCompare(b.shortName, undefined, { numeric: true });
       if (lc !== 0) return lc;
       return a.destination.localeCompare(b.destination);
     });
@@ -92,9 +94,9 @@ function FavoriteCardComponent({
   return (
     <div
       data-home-sheet-expand
-      className="overflow-hidden rounded-[28px] border border-slate-700/70 bg-slate-950/95 shadow-[0_24px_60px_rgba(15,23,42,0.35)]"
+      className={`overflow-hidden rounded-[30px] border ${cardClass}`}
     >
-      <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
+      <div className={`flex items-start justify-between gap-3 border-b px-4 pt-4 pb-3 ${topBorderClass}`}>
         <div
           role="button"
           tabIndex={0}
@@ -105,65 +107,71 @@ function FavoriteCardComponent({
               onOpen();
             }
           }}
-          className="flex-1 min-w-0 text-left cursor-pointer"
+          className="min-w-0 flex-1 cursor-pointer text-left"
         >
-          <p className="text-base font-semibold text-white truncate">{stopName}</p>
-          {city && <p className="text-sm text-slate-400 truncate mt-1">{city}</p>}
+          <p className={`truncate text-base font-semibold ${titleClass}`}>{stopName}</p>
+          {city && <p className={`mt-1 truncate text-sm ${mutedClass}`}>{city}</p>}
         </div>
         <button
           onClick={onRemove}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-800/90 text-slate-100 shadow-sm transition hover:bg-slate-700"
+          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border transition ${
+            isLight
+              ? 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600'
+              : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-rose-300'
+          }`}
           aria-label={text.remove}
         >
-          <StarIcon className="w-4 h-4 text-amber-300" />
+          <StarIcon className="w-4 h-4 text-amber-500" />
         </button>
       </div>
 
-      <div className="space-y-3 px-4 pb-4">
+      <div className="space-y-2 px-4 py-4">
         {loading ? (
-          <div className="rounded-[24px] bg-slate-900/80 px-3 py-3 text-center text-sm text-slate-400">
+          <div className={`rounded-[24px] border px-3 py-4 text-center text-sm ${panelClass} ${mutedClass}`}>
             {text.loading}
           </div>
         ) : grouped.length === 0 ? (
-          <div className="rounded-[24px] bg-slate-900/80 px-3 py-3 text-center text-sm text-slate-400">
+          <div className={`rounded-[24px] border px-3 py-4 text-center text-sm ${panelClass} ${mutedClass}`}>
             {text.noDepartures}
           </div>
         ) : (
-          grouped.map(g => (
+          grouped.map(group => (
             <div
-              key={`${g.lineId}|${g.destination}`}
-              className="rounded-[24px] border border-slate-800/80 bg-slate-900/80 p-3 shadow-inner"
+              key={`${group.lineId}|${group.destination}`}
+              className={`rounded-[26px] border px-3 py-3 shadow-[0_8px_18px_rgba(148,163,184,0.08)] ${panelClass}`}
             >
-              <div className="flex items-start gap-3">
-                <span
-                  className="flex-shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white"
-                  style={{ backgroundColor: g.lineColor }}
-                >
-                  {g.lineLabel}
-                </span>
+              <div className="flex items-center gap-3">
+                <LineBadge
+                  line={{ id: group.lineId, shortName: group.shortName, color: group.color || undefined, textColor: group.textColor || undefined }}
+                  size="md"
+                />
+
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                    {text.direction}
-                  </p>
-                  <p className="truncate text-sm font-semibold text-white">
-                    {g.destination}
-                  </p>
+                  <p className={`text-[11px] uppercase tracking-[0.18em] ${mutedClass}`}>{text.direction}</p>
+                  <p className={`truncate text-sm font-semibold ${titleClass}`}>{group.destination}</p>
                 </div>
-                <div className="flex flex-col items-end gap-1 text-right">
-                  {g.times.length === 0 ? (
-                    <span className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-500">—</span>
-                  ) : (
-                    g.times.map((t, i) => (
-                      <span
-                        key={i}
-                        className={`rounded-full px-2 py-1 font-mono text-sm font-semibold ${
-                          i === 0 ? 'bg-slate-800 text-white' : 'bg-slate-900 text-slate-400'
-                        }`}
-                      >
-                        {formatDepartureTime({ departureTime: t } as Departure, language)}
-                      </span>
-                    ))
-                  )}
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="text-right">
+                    <div className={`text-[10px] uppercase tracking-[0.16em] ${mutedClass}`}>{text.first}</div>
+                    <div className={`mt-1 rounded-full px-2.5 py-1 text-sm font-semibold shadow-sm border ${
+                      isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-950 border-slate-700 text-white'
+                    }`}>
+                      {group.times[0] != null
+                        ? formatDepartureTime({ departureTime: group.times[0] } as Departure, language)
+                        : '—'}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-[10px] uppercase tracking-[0.16em] ${mutedClass}`}>{text.second}</div>
+                    <div className={`mt-1 rounded-full px-2.5 py-1 text-sm font-semibold shadow-sm border ${
+                      isLight ? 'bg-white border-slate-200 text-slate-500' : 'bg-slate-950 border-slate-700 text-slate-300'
+                    }`}>
+                      {group.times[1] != null
+                        ? formatDepartureTime({ departureTime: group.times[1] } as Departure, language)
+                        : '—'}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

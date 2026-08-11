@@ -1,29 +1,29 @@
-/*
- * Thème clair.
- *
- * L'interface de GreLines a été écrite entièrement en couleurs sombres codées
- * en dur (slate-950 → slate-500 pour les fonds, slate-200 → slate-500 pour les
- * textes), sans aucune variante `dark:`. Plutôt que de réécrire ces centaines
- * d'occurrences dans 17 fichiers, on inverse ici l'échelle de gris lorsque la
- * classe `dark` est absente de <html>.
- *
- * Les couleurs d'accent (bleu, rouge, ambre, indigo…) sont volontairement
- * laissées intactes : elles restent lisibles sur fond clair.
- *
- * Ces règles sont volontairement hors `@layer` : en cascade CSS, les styles
- * sans couche l'emportent sur ceux des couches nommées (dont `utilities` de
- * Tailwind), ce qui garantit qu'elles s'appliquent quel que soit l'ordre de
- * bundling.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   html:not(.dark) {
-    /* Fonds, du plus clair au plus soutenu. */
+    
     --gl-surface: #ffffff;
     --gl-surface-raised: #f1f5f9;
     --gl-surface-hover: #e2e8f0;
     --gl-surface-strong: #cbd5e1;
 
-    /* Textes, du plus contrasté au plus discret. */
+    
     --gl-text: #0f172a;
     --gl-text-muted: #334155;
     --gl-text-subtle: #475569;
@@ -33,9 +33,9 @@
     --gl-border-strong: #cbd5e1;
   }
 
-  /* --- Fonds ---------------------------------------------------------
-     Les sélecteurs d'attribut couvrent d'un coup toutes les variantes
-     d'opacité (`bg-slate-900/80`, `/90`, `/95`…) sans avoir à les énumérer. */
+  
+
+
   html:not(.dark) [class*="bg-slate-950"],
   html:not(.dark) [class*="bg-slate-900"],
   html:not(.dark) [class*="bg-gray-950"],
@@ -62,7 +62,7 @@
     background-color: #94a3b8;
   }
 
-  /* --- Textes -------------------------------------------------------- */
+  
   html:not(.dark) .text-white,
   html:not(.dark) [class*="text-slate-100"],
   html:not(.dark) [class*="text-slate-200"],
@@ -90,7 +90,7 @@
     color: var(--gl-text-faint);
   }
 
-  /* --- Bordures ------------------------------------------------------ */
+  
   html:not(.dark) [class*="border-slate-800"],
   html:not(.dark) [class*="border-slate-700"],
   html:not(.dark) [class*="border-gray-800"],
@@ -107,10 +107,10 @@
     border-color: var(--gl-border);
   }
 
-  /* --- Accents -------------------------------------------------------
-     Les teintes claires (300/400) sont lisibles sur fond sombre mais pas sur
-     fond blanc : on les remplace par la nuance foncée correspondante, ce qui
-     conserve le code couleur (ambre = alerte, rouge = incident…). */
+  
+
+
+
   html:not(.dark) [class*="text-amber-200"],
   html:not(.dark) [class*="text-amber-300"],
   html:not(.dark) [class*="text-amber-400"],
@@ -146,11 +146,11 @@
     color: #4338ca;
   }
 
-  /* --- Blocs infotrafic ----------------------------------------------
-     Les encarts de perturbation sont peints en ambre très sombre
-     (`bg-amber-950`), illisible sur fond clair. On les repasse sur un fond
-     ambre pâle cerné du jaune du bouton infotrafic (amber-500), pour que
-     l'alerte reste immédiatement identifiable. */
+  
+
+
+
+
   html:not(.dark) [class*="bg-amber-950"],
   html:not(.dark) [class*="bg-amber-900"] {
     background-color: #fffbeb;
@@ -167,19 +167,19 @@
     background-color: #f59e0b;
   }
 
-  /* Texte à l'intérieur des encarts : nuances foncées pour le contraste. */
+  
   html:not(.dark) [class*="text-amber-100"],
   html:not(.dark) [class*="text-amber-900"] {
     color: #78350f;
   }
 
-  /* L'icône blanche des pastilles ambre doit le rester. */
+  
   html:not(.dark) [class*="bg-amber-500"] .text-white,
   html:not(.dark) [class*="bg-amber-400"] .text-white {
     color: #ffffff;
   }
 
-  /* --- Survols ------------------------------------------------------- */
+  
   html:not(.dark) .hover\:bg-slate-800:hover,
   html:not(.dark) .hover\:bg-slate-700:hover {
     background-color: var(--gl-surface-hover);
@@ -189,9 +189,9 @@
     color: var(--gl-text);
   }
 
-  /* Bandeau bas : suit le thème, avec un liseré haut pour rester détaché
-     du contenu. L'horloge, écrite en blanc dans le composant, est reprise
-     ici pour rester lisible sur fond clair. */
+  
+
+
   html:not(.dark) .grelines-footer-bar {
     background-color: var(--gl-surface);
     border-color: var(--gl-border);

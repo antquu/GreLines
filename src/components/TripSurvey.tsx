@@ -19,7 +19,7 @@ function setSurveyConsent(value: Exclude<Consent, null>) {
   try {
     localStorage.setItem(CONSENT_KEY, value);
   } catch {
-    // ignore
+    
   }
 }
 
@@ -27,9 +27,9 @@ interface TripSurveyProps {
   isOpen: boolean;
   onClose: () => void;
   lineId: string;
-  /** Arrêt de montée, pour rattacher la réponse à la course concernée. */
+  
   boardingStop?: string | null;
-  /** Heure de montée (ISO). */
+  
   boardingTime?: string | null;
   language: 'fr' | 'en';
 }

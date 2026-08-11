@@ -1,14 +1,14 @@
-/**
- * Compute the great-circle distance between two WGS84 points, in metres,
- * using the Haversine formula.
- */
+
+
+
+
 export const haversineMeters = (
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number
 ): number => {
-  const R = 6_371_000; // Earth radius (m)
+  const R = 6_371_000; 
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -18,7 +18,7 @@ export const haversineMeters = (
   return 2 * R * Math.asin(Math.sqrt(a));
 };
 
-/** Format a metric distance for human display. */
+
 export const formatDistance = (meters: number, language: 'fr' | 'en' = 'fr'): string => {
   if (meters < 1000) return `${Math.round(meters)} m`;
   const km = meters / 1000;

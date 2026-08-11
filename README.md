@@ -1,14 +1,14 @@
 [![Bannière Grelines](https://image.noelshack.com/fichiers/2026/16/2/1776164180-grelines-banniere.png)](https://grelines.vercel.app/)
 
-[![React](https://img.shields.io/badge/React-18.2.4-blue.svg)](https://reactjs.org/)
+[![React](https://img.shields.io/badge/React-19.2.4-blue.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-3178C6.svg)](https://www.typescriptlang.org/)
 [![Framer Motion](https://img.shields.io/badge/Framer_Motion-12.38.0-0055FF.svg)](https://www.framer.com/motion/)
-[![Leaflet](https://img.shields.io/badge/Leaflet-1.9.4-199900.svg)](https://leafletjs.com/)
+[![MapLibre GL](https://img.shields.io/badge/MapLibre_GL-5.21.0-000000.svg)](https://maplibre.org/)
 [![MapTiler](https://img.shields.io/badge/MapTiler-API-000000.svg)](https://www.maptiler.com/)
 
-> Une application web React moderne pour visualiser les arrêts de transport public de Grenoble avec des informations de départ en temps réel, utilisant Mapbox.
+> Une application web React moderne pour visualiser les arrêts de transport public de Grenoble avec des informations de départ en temps réel, utilisant MapLibre GL et MapTiler.
 
 ## 📸 Captures d'écran
 
@@ -26,7 +26,7 @@
 
 ## ✨ Fonctionnalités
 
-- 🗺️ **Intégration Mapbox** avec Mapbox GL JS
+- 🗺️ **Intégration MapLibre** avec MapTiler
 - 🚌 **Informations d'arrêts en temps réel** via l'API MTAG
 - 🎯 **Sidebar animée** glissant depuis la gauche
 - 📱 **Carte en plein écran** avec overlay (pas côte à côte)
@@ -35,12 +35,21 @@
 - 🌙 **Support du mode sombre**
 - ⚡ **Design responsive** et optimisé
 
-## 🛠️ Pile technologique
+## � Note de mise à jour
+- **Version** : `3.2.0`
+- **Nouvelles fonctionnalités** :
+  - Panneau d'avertissement TCL dédié avec overlay A/B clair et réactif
+  - Logo dynamique selon le thème sombre/clair et design de logos agrandi
+  - Sidebar détaillée en overlay plein écran, optimisée pour mobile et desktop
+  - Meilleure intégration d'Apple Maps/MapLibre et gestion des tuiles MapTiler
+  - Audit des assets et identification des images inutilisées
 
-- **Framework Frontend**: React 18 avec TypeScript
+## �🛠️ Pile technologique
+
+- **Framework Frontend**: React 19 avec TypeScript
 - **Outil de build**: Vite
 - **Stylisation**: Tailwind CSS
-- **Cartes**: Leaflet avec tuiles MapTiler
+- **Cartes**: MapLibre GL avec tuiles MapTiler
 - **Animations**: Framer Motion
 - **Appels API**: Axios
 - **Police**: Helvetica/Polices système
@@ -50,7 +59,7 @@
 ```
 src/
 ├── components/          # Composants React
-│   ├── Map.tsx         # Composant Mapbox
+│   ├── Map.tsx         # Composant MapLibre
 │   ├── Sidebar.tsx     # Sidebar overlay animée
 │   └── index.ts        # Exports des composants
 ├── services/           # Services API
@@ -93,7 +102,7 @@ La carte utilise MapTiler avec une clé gratuite (100k tuiles/mois). La configur
 
 Si vous voulez changer de style MapTiler :
 1. Choisissez un style sur [MapTiler](https://www.maptiler.com/)
-2. Remplacez le `MAPTILER_STYLE_ID` dans `src/components/Map.tsx`
+2. Remplacez le `mapStyle` URL dans `src/components/Map.tsx`
 
 ## 🔌 Intégration API
 
@@ -118,7 +127,7 @@ Cela permet à la carte d'être toujours visible pendant que les détails glisse
 
 ### Fonctionnalités en détail
 
-#### Carte Mapbox interactive
+#### Carte MapLibre interactive
 - Affiche tous les arrêts de transport de Grenoble
 - Marqueurs jaunes pour les arrêts réguliers
 - Marqueur bleu pour l'arrêt sélectionné
@@ -153,7 +162,7 @@ Cela permet à la carte d'être toujours visible pendant que les détails glisse
 - `src/services/api.ts` - Remplacer les données mock par des appels API réels
 
 **Pour personnaliser la carte :**
-- `src/components/Map.tsx` - Ajuster la configuration Leaflet et les tuiles MapTiler
+- `src/components/Map.tsx` - Ajuster la configuration MapLibre et les tuiles MapTiler
 
 **Pour personnaliser l'apparence de la sidebar :**
 - `src/components/Sidebar.tsx` - Modifier les styles et la disposition
@@ -166,7 +175,7 @@ Cela permet à la carte d'être toujours visible pendant que les détails glisse
 - Chrome/Edge 88+
 - Firefox 85+
 - Safari 14+
-- Leaflet supporté sur tous les navigateurs modernes
+- Navigateurs modernes supportés par MapLibre GL
 
 ## 📄 Licence
 
@@ -174,8 +183,17 @@ Ce projet est sous la licence GNU GPL v3.
 
 ## 🆘 Support
 
-Pour les problèmes ou questions concernant Leaflet ou MapTiler, consultez :
-- [Documentation Leaflet](https://leafletjs.com/)
+Pour les problèmes ou questions concernant MapLibre ou MapTiler, consultez :
+- [Documentation MapLibre GL](https://maplibre.org/)
 - [Documentation MapTiler](https://docs.maptiler.com/)
 - [Documentation API MTAG](https://data.mobilites-m.fr/donnees)
+
+## 🔄 Note de mise à jour
+
+- Version `3.2.0` définie dans `public/grelines.json`
+- Nouveau panneau d'avertissement TCL dédié dans l'interface
+- Mode sombre/clair avec logo adaptatif et éléments graphiques améliorés
+- Sidebar overlay enrichie, pleinement compatible mobile et desktop
+- Meilleure expérience de carte avec MapLibre/MapTiler et support Apple Maps
+- Audit d'assets et nettoyage des images non utilisées
 ```

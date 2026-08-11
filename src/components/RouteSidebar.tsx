@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
-import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon, PlayIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon } from '@heroicons/react/24/solid';
 import { ArrowUpOnSquareIcon } from '@heroicons/react/24/outline';
-import { FaBus, FaTrain, FaWalking } from 'react-icons/fa';
+import { FaWalking } from 'react-icons/fa';
+import { TransportModeIcon } from './TransportModeIcon';
 import { LineBadge } from './LineBadge';
 import { JourneyDetailsPreview } from './JourneyDetailsPreview';
 import { searchAddresses } from '../services/geocoding';
@@ -24,7 +25,8 @@ interface RouteSidebarProps {
   onLocationCleared?: (field: 'from' | 'to') => void;
   selectedItinerary?: RouteItinerary | null;
   onItinerarySelected?: (itinerary: RouteItinerary | null) => void;
-  /** Lance le mode guidage GPS plein écran pour l'itinéraire sélectionné. */
+  onItinerariesUpdated?: (itineraries: RouteItinerary[]) => void;
+  
   onStartNavigation?: () => void;
   onRouteReset?: () => void;
   lineLookup?: Map<string, AllLinesLine> | null;
@@ -39,6 +41,7 @@ interface RouteSidebarProps {
     dur?: string;
   } | null;
   onPlanNewSharedRoute?: () => void;
+  theme?: 'light' | 'dark';
 }
 
 const getText = (language: 'fr' | 'en') => {
@@ -174,8 +177,9 @@ const formatDurationLabel = (value: string) => {
   return minutes > 0 ? formatMinutesCompact(minutes) : value;
 };
 
-export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, onStartNavigation, lineLookup, trafficInfo, pickMode, onRequestPickLocation, sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute }: RouteSidebarProps) => {
+export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, onItinerariesUpdated, onStartNavigation, lineLookup, trafficInfo, pickMode, onRequestPickLocation, sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute, theme }: RouteSidebarProps) => {
   const text = getText(language);
+  const isLight = theme === 'light';
   const initialDate = useMemo(() => new Date(), []);
   const sheetRef = useRef<SheetRef>(null);
   const snapPoints = [0, 0.25, 0.6, 1];
@@ -183,8 +187,12 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   const fullIndex = snapPoints.length - 1;
   const [snapIdx, setSnapIdx] = useState<number>(fullIndex);
   const headerSurfaceClass = isMobile
-    ? 'border-b border-slate-800/80 bg-slate-900/95 backdrop-blur'
-    : 'border-b border-slate-800 bg-slate-950';
+    ? isLight
+      ? 'border-b border-slate-200/80 bg-white/95 backdrop-blur'
+      : 'border-b border-slate-800/80 bg-slate-900/95 backdrop-blur'
+    : isLight
+      ? 'border-b border-slate-200 bg-white'
+      : 'border-b border-slate-800 bg-slate-950';
   const [fromQuery, setFromQuery] = useState('');
   const [toQuery, setToQuery] = useState('');
   const [fromSuggestions, setFromSuggestions] = useState<RouteLocation[]>([]);
@@ -472,6 +480,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     const queryTime = scheduleIsNow ? formatTimeInput(new Date()) : scheduleTime;
     if (!options.silent) {
       setRouteResults([]);
+      onItinerariesUpdated?.([]);
       _onItinerarySelected?.(null);
     }
 
@@ -490,6 +499,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         walkSpeed,
       });
       setRouteResults(itineraries);
+      onItinerariesUpdated?.(itineraries);
       if (!options.silent && sharedRouteTarget && !sharedRouteExpired) {
         const targetKey = [sharedRouteTarget.dep || '', sharedRouteTarget.arr || '', sharedRouteTarget.dur || ''].join('|');
         if (sharedRouteTargetHandledRef.current !== targetKey) {
@@ -890,16 +900,25 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   }, [isOpen]);
 
   const routeSidebarContent = (
-      <div className={isMobile ? 'w-full min-h-full bg-transparent px-0 pb-24' : `w-full max-w-md bg-slate-950 border-l border-slate-800 shadow-2xl overflow-y-auto pb-24`} style={{ minHeight: isMobile ? 'auto' : '100vh' }}>
+      <div className={isMobile ? (isLight ? 'w-full h-auto bg-slate-50 text-slate-900 px-0 pb-24' : 'w-full h-auto bg-transparent px-0 pb-24') : `w-full max-w-md h-screen bg-slate-950 border-l border-slate-800 shadow-2xl overflow-y-auto pb-24`} style={{ height: isMobile ? 'auto' : '100vh' }}>
 
-      {shareToastVisible && (
-        <div className="pointer-events-none fixed left-1/2 top-4 z-[90] -translate-x-1/2 rounded-full border border-blue-500/40 bg-slate-900/95 px-4 py-2 text-sm font-semibold text-white shadow-2xl shadow-blue-950/40">
+      <AnimatePresence>{shareToastVisible && (
+        <motion.div
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -12 }}
+          className={`pointer-events-none fixed left-1/2 top-4 z-[90] -translate-x-1/2 rounded-full px-4 py-2 text-sm font-semibold shadow-2xl ${
+            isLight ? 'border border-slate-200 bg-white/95 text-slate-900 shadow-slate-300/50' : 'border border-blue-500/40 bg-slate-900/95 text-white shadow-blue-950/40'
+          }`}
+        >
           {text.copiedUrl}
-        </div>
-      )}
+        </motion.div>
+      )}</AnimatePresence>
       {dragState && (
         <div
-          className="pointer-events-none fixed z-[80] rounded-2xl border border-blue-500 bg-slate-900 px-4 py-3 text-left text-sm text-white shadow-2xl shadow-blue-950/40"
+          className={`pointer-events-none fixed z-[80] rounded-2xl px-4 py-3 text-left text-sm shadow-2xl ${
+            isLight ? 'border border-slate-200 bg-white text-slate-900 shadow-slate-300/50' : 'border border-blue-500 bg-slate-900 text-white shadow-blue-950/40'
+          }`}
           style={{
             left: dragState.x,
             top: dragState.y,
@@ -925,10 +944,10 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         {sharedRouteExpired ? (
           <>
             <div>
-              <div className="text-sm font-semibold text-slate-200">{text.title}</div>
+              <div className={`text-sm font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{text.title}</div>
               <div className="text-xs text-slate-500">{text.shareJourney}</div>
             </div>
-            <button onClick={onClose} className="flex h-10 w-10 items-center justify-center text-slate-300 transition hover:text-blue-300" aria-label={text.close}>
+            <button onClick={onClose} className={`flex h-10 w-10 items-center justify-center transition ${isLight ? 'text-slate-600 hover:text-blue-600' : 'text-slate-300 hover:text-blue-300'}`} aria-label={text.close}>
               <XMarkIcon className="h-5 w-5" />
             </button>
           </>
@@ -936,17 +955,19 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           <>
             <button
               onClick={() => _onItinerarySelected?.(null)}
-              className={`rounded-full ${isMobile ? 'p-2.5 bg-slate-900/90' : 'p-2 bg-slate-900'} text-slate-300 hover:bg-slate-800 transition`}
+              className={`rounded-full ${isMobile ? 'p-2.5' : 'p-2'} transition ${
+                isLight ? 'bg-white text-slate-700 hover:bg-slate-100' : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+              }`}
             >
               <ArrowLeftIcon className="w-5 h-5" />
             </button>
-            <div className="text-sm font-semibold text-slate-200">
+            <div className={`text-sm font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
               {language === 'fr' ? 'Trajet' : 'Journey'}
             </div>
             <button
               type="button"
               onClick={copyShareUrl}
-              className={`flex ${isMobile ? 'h-11 w-11' : 'h-10 w-10'} items-center justify-center text-slate-300 transition hover:text-blue-300`}
+              className={`flex ${isMobile ? 'h-11 w-11' : 'h-10 w-10'} items-center justify-center transition ${isLight ? 'text-slate-600 hover:text-blue-600' : 'text-slate-300 hover:text-blue-300'}`}
               aria-label={text.shareJourney}
               title={text.shareJourney}
             >
@@ -956,10 +977,10 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         ) : (
           <>
             <div>
-              <div className="text-sm font-semibold text-slate-200">{text.title}</div>
+              <div className={`text-sm font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{text.title}</div>
               <div className="text-xs text-slate-500">{text.choosePoint}</div>
             </div>
-            <button onClick={onClose} className={`rounded-full ${isMobile ? 'p-2.5 bg-slate-900/90' : 'p-2 bg-slate-900'} text-slate-300 hover:bg-slate-800`}>
+            <button onClick={onClose} className={`rounded-full ${isMobile ? 'p-2.5' : 'p-2'} transition ${isLight ? 'bg-white text-slate-700 hover:bg-slate-100' : 'bg-slate-900 text-slate-300 hover:bg-slate-800'}`}>
               <XMarkIcon className="w-5 h-5" />
             </button>
           </>
@@ -982,7 +1003,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         </div>
       ) : !_selectedItinerary ? (
         /* SEARCH MODE */
-        <div className="space-y-4 p-4">
+        <div className={`space-y-4 p-4 ${isLight ? 'text-slate-900' : ''}`}>
         <div className="relative">
           <label className="block text-xs uppercase tracking-[0.18em] text-slate-500 mb-2">{text.from}</label>
           {fromSelection ? (
@@ -993,7 +1014,9 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                 value={fromQuery}
                 onChange={e => setFromQuery(e.target.value)}
                 placeholder={text.choosePoint}
-                className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                className={`w-full rounded-2xl border px-4 py-3 text-sm outline-none focus:border-blue-500 ${
+                  isLight ? 'border-slate-200 bg-white text-slate-900' : 'border-slate-700 bg-slate-900 text-white'
+                }`}
               />
               <button
                 type="button"
@@ -1045,13 +1068,17 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         </div>
 
         {pickMode && (
-          <div className="rounded-2xl bg-sky-950 border border-sky-700 px-4 py-3 text-sm text-sky-200 text-center">
+          <div className={`rounded-2xl border px-4 py-3 text-sm text-center ${
+            isLight ? 'bg-sky-50 border-sky-200 text-sky-700' : 'bg-sky-950 border-sky-700 text-sky-200'
+          }`}>
             {text.pickPointOnMap}
           </div>
         )}
 
         {routeError && (
-          <div className="rounded-2xl bg-rose-950 border border-rose-700 px-4 py-3 text-sm text-rose-200">
+          <div className={`rounded-2xl border px-4 py-3 text-sm ${
+            isLight ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-rose-950 border-rose-700 text-rose-200'
+          }`}>
             {routeError}
           </div>
         )}
@@ -1061,19 +1088,23 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             <button
               type="button"
               onClick={openScheduleMenu}
-              className={`inline-flex h-10 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 ${isMobile ? 'max-w-full' : ''}`}
+              className={`inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${isMobile ? 'max-w-full' : ''} ${
+                isLight ? 'bg-white text-slate-900 hover:bg-slate-100' : 'bg-slate-900 text-slate-100 hover:bg-slate-800'
+              }`}
             >
               <span>{schedulePillLabel}</span>
-              <ChevronDownIcon className="h-4 w-4 text-slate-400" />
+              <ChevronDownIcon className={`h-4 w-4 ${isLight ? 'text-slate-500' : 'text-slate-400'}`} />
             </button>
             <button
               type="button"
               onClick={() => setActiveScheduleMenu(activeScheduleMenu === 'mode' ? null : 'mode')}
-              className={`inline-flex h-10 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 ${isMobile ? 'max-w-full' : ''}`}
+              className={`inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${isMobile ? 'max-w-full' : ''} ${
+                isLight ? 'bg-white text-slate-900 hover:bg-slate-100' : 'bg-slate-900 text-slate-100 hover:bg-slate-800'
+              }`}
               aria-label={`${text.prefer}: ${preferenceLabel}`}
             >
               <span>{text.prefer}</span>
-              <ChevronDownIcon className="h-4 w-4 text-slate-400" />
+              <ChevronDownIcon className={`h-4 w-4 ${isLight ? 'text-slate-500' : 'text-slate-400'}`} />
             </button>
 
             {activeScheduleMenu === 'time' && (
@@ -1368,11 +1399,10 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                                     line={{ id: line.id, shortName: line.shortName, color: line.color, textColor: line.textColor, hasTraffic }}
                                     size="sm"
                                   />
-                                  {String(leg.mode || '').toUpperCase().includes('TRAM') ? (
-                                    <FaTrain className="h-5 w-5 text-slate-400" />
-                                  ) : (
-                                    <FaBus className="h-5 w-5 text-slate-400" />
-                                  )}
+                                  {/* Le mode décide seul du pictogramme : un
+                                      tramway portait ici l'icône du train, et
+                                      un TER celle du bus. */}
+                                  <TransportModeIcon mode={leg.mode} className="h-5 w-5 text-slate-400" />
                                 </>
                               ) : null}
                             </div>
@@ -1407,25 +1437,15 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         _selectedItinerary && (
           <>
             {/* Le guidage pas-à-pas n'a de sens qu'en mobilité : on ne le
-                propose pas sur ordinateur. */}
-            {onStartNavigation && isMobile && (
-              <div className="px-4 pt-4">
-                <button
-                  type="button"
-                  onClick={onStartNavigation}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-4 text-base font-bold text-white transition hover:bg-blue-500 active:bg-blue-700"
-                >
-                  <PlayIcon className="h-5 w-5" />
-                  {language === 'fr' ? 'Démarrer le guidage' : 'Start navigation'}
-                </button>
-              </div>
-            )}
+                propose pas sur ordinateur. Le bouton est posé par la fiche
+                elle-même, juste sous les horaires. */}
             <JourneyDetailsPreview
               journey={_selectedItinerary as RouteItinerary}
               language={language}
               stops={stops}
               lineLookup={lineLookup}
               trafficInfo={trafficInfo}
+              onStartNavigation={onStartNavigation && isMobile ? onStartNavigation : undefined}
             />
           </>
         )
@@ -1439,9 +1459,11 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           className="inline-flex items-center justify-center gap-2 cursor-pointer text-xs text-slate-400 transition hover:text-slate-200"
         >
           <span>{text.madeBy}</span>
-          <span className="rounded-full bg-black px-2 py-1 border border-slate-700">
-            <img src="/assets/GreGoLOGO.png" alt="GreGo" className="h-4 w-auto" />
-          </span>
+          <img
+            src={theme === 'dark' ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png'}
+            alt="GreGo"
+            className="h-4 w-auto"
+          />
         </a>
       </div>
     </div>
@@ -1458,20 +1480,36 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         onSnap={setSnapIdx}
         style={{ zIndex: 1000 }}
       >
-        <Sheet.Container
+      <Sheet.Container
           style={{
             borderRadius: '28px 28px 0 0',
-            background: 'linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,1))',
-            border: '1px solid rgba(148,163,184,0.18)',
-            boxShadow: '0 -16px 40px rgba(2,6,23,0.55)',
+            background: isLight
+              ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.98))'
+              : 'linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,1))',
+            border: isLight ? '1px solid rgba(203,213,225,0.75)' : '1px solid rgba(148,163,184,0.18)',
+            boxShadow: isLight ? '0 -16px 40px rgba(148,163,184,0.25)' : '0 -16px 40px rgba(2,6,23,0.55)',
             zIndex: 1000,
             pointerEvents: _selectedItinerary && snapIdx === miniIndex ? 'none' : 'auto',
           }}
         >
-          <div style={{ pointerEvents: 'auto' }}>
+          {/* Ce conteneur ne sert qu'à rétablir les événements de pointeur, mais
+              il s'intercale entre la feuille et son contenu : sans reprendre la
+              colonne flexible, `Sheet.Content` perd sa hauteur.
+              Le `maxHeight` est l'autre moitié du problème : la feuille garde sa
+              taille pleine et se contente de glisser vers le bas, si bien qu'aux
+              positions intermédiaires le bas de la zone scrollable sort de
+              l'écran — on scrollait jusqu'au bout sans jamais voir la fin du
+              trajet. On la borne donc à la fraction réellement visible. */}
+          <div
+            className="flex min-h-0 flex-1 flex-col"
+            style={{
+              pointerEvents: 'auto',
+              maxHeight: `${(snapPoints[snapIdx] ?? 1) * 100}%`,
+            }}
+          >
             <Sheet.Header>
               <div className="flex justify-center pt-3 pb-1">
-                <div className="h-1.5 w-16 rounded-full bg-white/25" />
+                <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/25'}`} />
               </div>
             </Sheet.Header>
             <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
@@ -1499,7 +1537,7 @@ return (
         animate={{ x: isOpen ? 0 : 400, opacity: isOpen ? 1 : 0 }}
         transition={{ type: 'spring', stiffness: 260, damping: 24 }}
         className="fixed inset-y-0 right-0 z-50 w-full max-w-md"
-        style={{ minHeight: '100vh' }}
+        style={{ height: '100vh' }}
       >
         {routeSidebarContent}
       </motion.div>

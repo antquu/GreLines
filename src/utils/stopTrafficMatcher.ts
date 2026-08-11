@@ -1,12 +1,12 @@
 import type { Stop, Line, TrafficDetail } from '../types';
 
-/**
- * Normalize a string for comparison:
- * - Lowercase
- * - Remove accents (NFD + strip combining marks)
- * - Replace any non-alphanumeric run by a single space
- * - Trim and collapse spaces
- */
+
+
+
+
+
+
+
 function normalize(value: string | undefined | null): string {
   return String(value || '')
     .normalize('NFD')
@@ -16,14 +16,14 @@ function normalize(value: string | undefined | null): string {
     .trim();
 }
 
-/**
- * Split a stop name into "significant" tokens for matching.
- * - Drops short connector words ("de", "la", "le", "du", "des", "et", "aux", "a", "au", "l", "d")
- * - Drops generic transport words that produce false positives ("arret", "station", "gare" alone is kept though)
- *
- * Returns an array like ["grenoble", "verdun", "preference"] for "Grenoble - Verdun-Préfecture".
- * If after filtering there are no tokens left (e.g. name was only stopwords), falls back to all tokens.
- */
+
+
+
+
+
+
+
+
 function tokenizeStopName(name: string): string[] {
   const STOPWORDS = new Set([
     'de', 'des', 'du', 'la', 'le', 'les', 'l', 'd',
@@ -38,15 +38,15 @@ function tokenizeStopName(name: string): string[] {
   return filtered.length > 0 ? filtered : tokens;
 }
 
-/**
- * Check whether the stop name appears in a piece of text.
- * Strategy:
- *   1. Try the full normalized name as a single substring (covers exact match).
- *   2. Otherwise, require ALL significant tokens to appear as whole words.
- *
- * "Whole word" is enforced by checking that surrounding chars in the normalized
- * text are spaces (the normalization already converted punctuation to spaces).
- */
+
+
+
+
+
+
+
+
+
 function textMentionsStopName(text: string, stopName: string): boolean {
   const normalizedText = ` ${normalize(text)} `;
   const normalizedName = normalize(stopName);

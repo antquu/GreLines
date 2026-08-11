@@ -1,0 +1,55 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.gl-screen :is(h1, h2, h3) {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+
+html:not(.dark) .gl-screen .text-white {
+  color: #ffffff;
+}
+
+
+
+
+
+
+@keyframes screen-arrival {
+  0%, 100% { color: #0f172a; }
+  50% { color: #cbd5e1; }
+}
+
+.gl-screen .screen-arrival {
+  animation: screen-arrival 1.4s ease-in-out infinite;
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .gl-screen .screen-arrival {
+    animation-duration: 4s;
+  }
+}

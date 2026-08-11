@@ -1,5 +1,5 @@
 {
-  "version": "3.0.3",
+  "version": "3.2.0",
 
   "credits": [
     {
@@ -16,6 +16,11 @@
       "role": "Thanks to MReso for providing us with the data free of charge! / Merci a MReso de nous fournir les données gratuitement!",
       "name": "M - OpenData",
       "link": "https://data.mobilites-m.fr/"
+    },
+    {
+      "role": "Thanks to Metropole Grand Lyon for providing us with the data free of charge! / Merci a Metropole Grand Lyon de nous fournir les données gratuitement!",
+      "name": "GrandLyon - data",
+      "link": "https://data.grandlyon.com/portail/fr/accueil"
     }
   ]
 }

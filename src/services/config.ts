@@ -1,5 +1,5 @@
-// Configuration loader for GreLines app
-// Loads configuration from environment variables
+
+
 
 export interface Credit {
   role: string;
@@ -22,7 +22,7 @@ export interface GreLinesConfig {
 
 export function loadConfig(): GreLinesConfig {
   try {
-    // Load from environment variables (Vite prefixes with VITE_)
+    
     const version = import.meta.env.VITE_APP_VERSION || '2.0.1';
 
     const creditsJson = import.meta.env.VITE_CREDITS;
@@ -38,7 +38,7 @@ export function loadConfig(): GreLinesConfig {
         identifiers
       }
     };
-  } catch (error) {    // Return default config if parsing fails
+  } catch (error) {    
     return {
       version: '2.0.1',
       credits: [],
@@ -49,5 +49,5 @@ export function loadConfig(): GreLinesConfig {
   }
 }
 
-// Export the loaded configuration
+
 export const config = loadConfig();

@@ -4,34 +4,38 @@ const BUS_FALLBACK_LINES = new Set([
 const CHRONO_FALLBACK_A = new Set(['C1','C2','C3','C4','C5','C6','C7','C8']);
 const CHRONO_FALLBACK_B = new Set(['C9','C10','C11','C12','C13','C14']);
 export const LINE_COLORS = {
-  C11: "#EF7C00",
-  D: "#FD8C06",
-  C1: "#F5D24D",
-  C2: "#F5D24D",
-  C3: "#F5D24D",
-  C4: "#F5D24D",
-  C5: "#F5D24D",
-  C6: "#F5D24D",
-  C7: "#F5D24D",
-  C8: "#F5D24D",
-  C9: "#F5D24D",
-  C10: "#EF7C00",
-  C12: "#EF7C00",
-  C13: "#EF7C00",
-  C14: "#EF7C00",
+  A: '#006EBB',
+  B: '#009850',
+  C: '#C20078',
+  D: '#DE9917',
+  E: '#533786',
+  C1: '#F5D24D',
+  C2: '#F5D24D',
+  C3: '#F5D24D',
+  C4: '#F5D24D',
+  C5: '#F5D24D',
+  C6: '#F5D24D',
+  C7: '#F5D24D',
+  C8: '#F5D24D',
+  C9: '#EF7C00',
+  C10: '#EF7C00',
+  C11: '#EF7C00',
+  C12: '#EF7C00',
+  C13: '#EF7C00',
+  C14: '#EF7C00',
 };
 const DEFAULT_LINE_BADGE_COLOR = '#3b82f6';
 const GRAY_FALLBACK_COLOR = '#94A3B8';
 
-/**
- * Surcharges de lignes définies dans le CRM GreStudio, indexées par code
- * normalisé ("A", "C1", "16").
- *
- * Elles sont consultées ici, au coeur du résolveur de couleurs, plutôt qu'au
- * seul endroit où le catalogue est chargé : les couleurs de ligne proviennent
- * de sources multiples (catalogue, arrêts, départs, itinéraires) et doivent
- * toutes respecter la surcharge.
- */
+
+
+
+
+
+
+
+
+
 type LineColorOverride = { color?: string | null; textColor?: string | null };
 const lineColorOverrides = new Map<string, LineColorOverride>();
 
@@ -49,6 +53,42 @@ function getLineColorOverride(lineId?: string | null): LineColorOverride | null 
   if (!code) return null;
   return lineColorOverrides.get(code) ?? null;
 }
+
+
+
+
+
+
+
+
+
+
+export const isGrenobleNetworkLine = (value?: string | null): boolean => {
+  const raw = String(value ?? '').trim().toUpperCase();
+  if (!raw) return true;
+  const separator = raw[3];
+  if (raw.length < 4 || (separator !== ':' && separator !== '_')) return true;
+  const network = raw.slice(0, 3);
+  return network === 'SEM' || network === 'SE2';
+};
+
+
+export const SNCF_TER_COLOR = '#00337F';
+
+
+
+
+
+
+
+
+export const isSncfLine = (value?: string | null): boolean => {
+  const raw = String(value ?? '').trim().toUpperCase();
+  if (raw.length < 4) return false;
+  const separator = raw[3];
+  if (separator !== ':' && separator !== '_') return false;
+  return raw.slice(0, 3) === 'SNC';
+};
 
 export const normalizeLineId = (value?: string | null): string | null => {
   if (!value) return null;
