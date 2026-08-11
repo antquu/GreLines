@@ -34,7 +34,7 @@ import { usePerfSettings } from './hooks/usePerfSettings';
 import { canShowInstallGuide, shouldAutoOpenInstallGuide } from './utils/pwa';
 
 import { Analytics } from '@vercel/analytics/react';
-
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 
 
@@ -2938,6 +2938,7 @@ function App() {
       )}
 
       {import.meta.env.PROD && <Analytics />}
+      {import.meta.env.PROD && <SpeedInsights />}
 
       {/* Fiche horaire d'une ligne, à droite de la fiche d'arrêt */}
       <DeferredPanel isOpen={timetableTarget !== null}>
