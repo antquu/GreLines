@@ -5,8 +5,7 @@ import './index.css'
 
 import './light-theme.css'
 import { PerfSettingsProvider } from './hooks/usePerfSettings.tsx'
-
-import { Analytics } from '@vercel/analytics/react';
+import { Analytics } from '@vercel/analytics/react'
 
 console.log(`_
   __ _ _ __ | |_ __ _ _ _
@@ -30,6 +29,7 @@ if (window.location.pathname.startsWith('/app/screen')) {
     root.render(
       <StrictMode>
         <ScreenApp />
+        <Analytics />
       </StrictMode>,
     )
   })
@@ -39,6 +39,7 @@ if (window.location.pathname.startsWith('/app/screen')) {
       <StrictMode>
         <PerfSettingsProvider>
           <App />
+          <Analytics />
         </PerfSettingsProvider>
       </StrictMode>,
     )
