@@ -76,6 +76,9 @@ const FOLLOW_PITCH = 55;
 
 const FOLLOW_LOOK_AHEAD_METERS = 30;
 
+/** Délai sans geste au bout duquel la carte se recentre d'elle-même. */
+const FOLLOW_RESUME_MS = 8000;
+
 const METRES_PER_DEG_LAT = 111320;
 const METRES_PER_DEG_LON_AT_45 = 78710;
 
@@ -84,6 +87,120 @@ const METRES_PER_DEG_LON_AT_45 = 78710;
 
 
 
+
+/**
+ * Projette une position sur le tracé de l'étape.
+ *
+ * Le GPS d'un téléphone dérive de dix à vingt mètres en ville, et sur un tram
+ * il dérive *à côté des rails*. Comme on sait par où passe le véhicule, on
+ * ramène le point sur le tracé : la pastille suit la ligne au lieu de flotter
+ * dans les immeubles. Au-delà de `maxSnapMeters`, on renonce — l'usager n'est
+ * probablement pas encore sur l'itinéraire.
+ */
+function snapToPath(
+  path: Array<[number, number]>,
+  point: [number, number],
+  maxSnapMeters = 60,
+): [number, number] | null {
+  if (path.length < 2) return null;
+
+  const toMetres = (lon: number, lat: number): [number, number] => [
+    (lon - point[0]) * METRES_PER_DEG_LON_AT_45,
+    (lat - point[1]) * METRES_PER_DEG_LAT,
+  ];
+
+  let bestDistSq = Infinity;
+  let best: [number, number] | null = null;
+
+  for (let i = 0; i < path.length - 1; i++) {
+    const [ax, ay] = toMetres(path[i][0], path[i][1]);
+    const [bx, by] = toMetres(path[i + 1][0], path[i + 1][1]);
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSq = dx * dx + dy * dy;
+
+    // Position du pied de la perpendiculaire, bornée au segment.
+    let t = lengthSq === 0 ? 0 : -(ax * dx + ay * dy) / lengthSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const cx = ax + t * dx;
+    const cy = ay + t * dy;
+    const distSq = cx * cx + cy * cy;
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      best = [
+        point[0] + cx / METRES_PER_DEG_LON_AT_45,
+        point[1] + cy / METRES_PER_DEG_LAT,
+      ];
+    }
+  }
+
+  if (!best || Math.sqrt(bestDistSq) > maxSnapMeters) return null;
+  return best;
+}
+
+/**
+ * Position lissée entre deux relevés GPS.
+ *
+ * Le navigateur ne rend une position que toutes les quelques secondes : la
+ * pastille sautait d'un bond à chaque relevé. On interpole entre l'ancienne et
+ * la nouvelle sur `SMOOTHING_MS`, ce qui donne un déplacement continu — et
+ * comme la caméra suit cette valeur lissée, elle glisse au lieu de tressauter.
+ * Un saut de plus de 300 m (reprise du signal, tunnel) est appliqué d'un coup :
+ * l'interpoler ferait traverser la ville à la pastille.
+ */
+const SMOOTHING_MS = 900;
+const SMOOTHING_TELEPORT_METERS = 300;
+
+function useSmoothedPosition(target: [number, number] | null): [number, number] | null {
+  const [smoothed, setSmoothed] = useState<[number, number] | null>(target);
+  const fromRef = useRef<[number, number] | null>(target);
+  const frameRef = useRef(0);
+
+  useEffect(() => {
+    if (!target) {
+      setSmoothed(null);
+      fromRef.current = null;
+      return;
+    }
+
+    const from = fromRef.current;
+    if (!from) {
+      fromRef.current = target;
+      setSmoothed(target);
+      return;
+    }
+
+    const jump = coordinateDistance(from, target) * METRES_PER_DEG_LAT;
+    if (jump > SMOOTHING_TELEPORT_METERS) {
+      fromRef.current = target;
+      setSmoothed(target);
+      return;
+    }
+
+    const start = performance.now();
+    const tick = (now: number) => {
+      const linear = Math.min(1, (now - start) / SMOOTHING_MS);
+      // Décélération douce : la pastille arrive sans à-coup sur le relevé.
+      const eased = 1 - Math.pow(1 - linear, 3);
+      const next: [number, number] = [
+        from[0] + (target[0] - from[0]) * eased,
+        from[1] + (target[1] - from[1]) * eased,
+      ];
+      setSmoothed(next);
+      if (linear < 1) {
+        frameRef.current = requestAnimationFrame(tick);
+      } else {
+        fromRef.current = target;
+      }
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [target?.[0], target?.[1]]);
+
+  return smoothed;
+}
 
 function pointAheadOnPath(
   path: Array<[number, number]>,
@@ -343,6 +460,33 @@ export function NavigationMode({
 
   const step = steps[Math.min(index, steps.length - 1)];
 
+  /**
+   * Position affichée : relevé GPS ramené sur le tracé de l'étape, puis lissé.
+   * C'est elle que suivent la pastille *et* la caméra, pour qu'elles ne se
+   * contredisent jamais.
+   */
+  const snappedLocation = useMemo<[number, number] | null>(() => {
+    if (!currentLocation) return null;
+    const here: [number, number] = [currentLocation.lon, currentLocation.lat];
+    return snapToPath(step?.path ?? [], here) ?? here;
+  }, [currentLocation?.lat, currentLocation?.lon, step]);
+
+  const smoothedLocation = useSmoothedPosition(snappedLocation);
+
+  /**
+   * Reprise automatique du suivi.
+   *
+   * Interrompre le recentrage dès qu'on touche la carte est nécessaire — on
+   * regarde parfois la suite du trajet. Mais l'oublier ainsi condamnait
+   * l'usager à retrouver le bouton « Recentrer » : passé quelques secondes sans
+   * geste, la carte revient d'elle-même sur lui.
+   */
+  useEffect(() => {
+    if (!isOpen || !hasStarted || isFollowing) return;
+    const timer = window.setTimeout(() => setIsFollowing(true), FOLLOW_RESUME_MS);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, hasStarted, isFollowing]);
+
   useEffect(() => {
     if (!isOpen || !step) return;
     // En suivi, c'est la position qui commande la caméra : recadrer sur l'étape
@@ -389,22 +533,25 @@ export function NavigationMode({
    * l'écran, avec la suite du chemin devant lui.
    */
   useEffect(() => {
-    if (!isOpen || !hasStarted || !isFollowing || !currentLocation) return;
+    if (!isOpen || !hasStarted || !isFollowing || !smoothedLocation) return;
     const map = mapRef.current;
     if (!map) return;
 
-    const here: [number, number] = [currentLocation.lon, currentLocation.lat];
+    const here = smoothedLocation;
     const lookAhead = pointAheadOnPath(step.path, here, FOLLOW_LOOK_AHEAD_METERS);
 
+    // `easeTo` sans durée : la caméra colle à la position déjà lissée image par
+    // image. Une animation de 800 ms par-dessus le lissage se serait battue
+    // avec lui, et la carte accusait un retard visible sur la pastille.
     map.easeTo({
       center: here,
       bearing: lookAhead ? bearingBetween(here, lookAhead) : map.getBearing(),
       zoom: FOLLOW_ZOOM,
       pitch: FOLLOW_PITCH,
       padding: { top: 0, right: 0, bottom: Math.round(window.innerHeight * 0.35), left: 0 },
-      duration: 800,
+      duration: 0,
     });
-  }, [isOpen, hasStarted, isFollowing, currentLocation, step]);
+  }, [isOpen, hasStarted, isFollowing, smoothedLocation, step]);
 
   useEffect(() => {
     if (!hasStarted || !onBoardVehicle) {
@@ -536,12 +683,24 @@ export function NavigationMode({
               </>
             )}
 
-            {currentLocation && (
-              <Marker longitude={currentLocation.lon} latitude={currentLocation.lat}>
-                <div className="relative flex items-center justify-center">
-                  <span className="absolute h-8 w-8 animate-ping rounded-full bg-blue-500/40" />
-                  <span className="relative h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-lg" />
-                </div>
+            {smoothedLocation && (
+              <Marker longitude={smoothedLocation[0]} latitude={smoothedLocation[1]}>
+                {/* À bord, la pastille prend le visage du véhicule : on ne
+                    marche plus, on est *dans* le tram — et la couleur de la
+                    ligne dit lequel. */}
+                {step.kind === 'transit' ? (
+                  <div
+                    className="flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-white shadow-[0_6px_18px_rgba(0,0,0,0.4)]"
+                    style={{ backgroundColor: stepColor(step) }}
+                  >
+                    <TransportModeIcon mode={step.mode ?? 'BUS'} className="h-5 w-5 text-white" />
+                  </div>
+                ) : (
+                  <div className="relative flex items-center justify-center">
+                    <span className="absolute h-8 w-8 animate-ping rounded-full bg-blue-500/40" />
+                    <span className="relative h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-lg" />
+                  </div>
+                )}
               </Marker>
             )}
           </MapLibreMap>

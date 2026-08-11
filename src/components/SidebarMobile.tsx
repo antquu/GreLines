@@ -1,6 +1,6 @@
 ﻿import { motion } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
-import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon, ClockIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/solid';
 import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
 import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
 import { AddFavoriteModal } from './AddFavoriteModal';
@@ -11,6 +11,10 @@ import { formatDepartureTime, refreshStopDepartures } from '../services/api';
 import { resolveLineStyle, isGrenobleNetworkLine } from '../utils/lineColors';
 import { LineBadge } from './LineBadge';
 import { DepartureLineBadge } from './DepartureLineBadge';
+import { LastRunRibbon } from './LastRunRibbon';
+import { TclSidebar } from './TclSidebar';
+import { isTclId } from '../services/tclNetwork';
+import { getTimetable, isLastDeparture, toTimetableRouteId, type Timetable } from '../services/timetable';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { getStopTrafficAlerts } from '../utils/stopTrafficMatcher';
 
@@ -34,6 +38,10 @@ interface SidebarMobileProps {
   language: 'fr' | 'en';
   theme?: 'light' | 'dark';
   onPlanRouteFromStop?: (stop: StopDetail) => void;
+  /** Ouvre la fiche horaire de la ligne d'un passage. */
+  onOpenTimetable?: (info: { line: { id: string; shortName?: string; color?: string; textColor?: string }; headsign: string }) => void;
+  /** Ouvre la fiche de la ligne. */
+  onOpenLine?: (line: { id: string; shortName?: string }) => void;
 }
 
 const getMinutesUntilDeparture = (departure: Departure): number => departure.departureTime;
@@ -68,6 +76,10 @@ const getSidebarText = (language: 'fr' | 'en') => {
     noDeparturesAvailable: isFr ? 'Aucun départ disponible' : 'No departures available',
     stopAlerts: isFr ? 'Cet arrêt est concerné' : 'Affecting this stop',
     affecting: isFr ? 'Concerne :' : 'Affects:',
+    moreDepartures: (count: number) => isFr ? `+${count} départs supplémentaires` : `+${count} more departures`,
+    timetable: isFr ? 'Fiche horaire' : 'Timetable',
+    seeLine: isFr ? 'Voir la ligne' : 'View line',
+    planRoute: isFr ? 'Itinéraire' : 'Directions',
     planRouteFromStop: isFr ? 'Planifier un trajet depuis cet arrêt' : 'Plan a trip from this stop',
   };
 };
@@ -257,7 +269,7 @@ const CopyButton = ({ value, copyLabel, copiedLabel }: { value: string; copyLabe
   );
 };
 
-export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, selectedLines: controlledSelectedLines, onSelectedLinesChange, compactMode, autoSync, refreshIntervalMs, language, theme = 'dark', onPlanRouteFromStop }: SidebarMobileProps) => {
+export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, selectedLines: controlledSelectedLines, onSelectedLinesChange, compactMode, autoSync, refreshIntervalMs, language, theme = 'dark', onPlanRouteFromStop, onOpenTimetable, onOpenLine }: SidebarMobileProps) => {
   const [currentStopDetail, setCurrentStopDetail] = useState<StopDetail | null>(null);
   const [departures, setDepartures] = useState<Departure[]>([]);
   const [internalSelectedLines, setInternalSelectedLines] = useState<Set<string>>(initialSelectedLines || new Set());
@@ -273,6 +285,19 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
   };
   const [currentStopId, setCurrentStopId] = useState<string | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  /**
+   * Fiches horaires des lignes desservies, pour reconnaître le dernier passage
+   * de la journée. Même mécanique que sur ordinateur : le ruban « dernier
+   * passage » est justement l'information qu'on veut voir sur un téléphone,
+   * quand il est trop tard pour se tromper.
+   */
+  const [timetables, setTimetables] = useState<Map<string, Timetable | null>>(new Map());
+  /**
+   * Avertissement réseau TCL. Il se montre par-dessus la feuille, en plein
+   * écran : c'est un message qu'on lit et qu'on acquitte, pas un panneau qu'on
+   * fait glisser.
+   */
+  const [showTclWarning, setShowTclWarning] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isFavoriteModalOpen, setIsFavoriteModalOpen] = useState(false);
   const [isFav, setIsFav] = useState(false);
@@ -310,14 +335,35 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
 
   useEffect(() => {
     setCurrentStopId(stop?.id || null);
-    if (!stop) { setCurrentStopDetail(null); return; }
+    if (!stop) { setCurrentStopDetail(null); setShowTclWarning(false); return; }
+    setShowTclWarning(Boolean(isOpen && isTclId(stop.id)));
     setCurrentStopDetail(prev => {
       if (prev?.id === stop.id && prev.lines?.length > 0 && (!stop.lines || stop.lines.length === 0)) {
         return { ...stop, lines: prev.lines, departures: stop.departures.length > 0 ? stop.departures : prev.departures, lastUpdate: stop.lastUpdate || prev.lastUpdate };
       }
       return stop;
     });
-  }, [stop]);
+  }, [stop, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !currentStopDetail) return;
+    let active = true;
+
+    const load = async () => {
+      for (const line of currentStopDetail.lines.slice(0, 12)) {
+        const key = line.shortName || line.id;
+        if (timetables.has(key)) continue;
+        const timetable = await getTimetable(toTimetableRouteId(key));
+        if (!active) return;
+        setTimetables(previous => new Map(previous).set(key, timetable));
+      }
+    };
+
+    void load();
+    return () => { active = false; };
+    // `timetables` est volontairement absent : il est alimenté par cet effet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentStopDetail?.id]);
 
   const updateDepartures = async () => {
     if (!currentStopDetail || !isOpen || currentStopDetail.lines.length === 0) return;
@@ -414,12 +460,30 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLines.size, isOpen]);
 
+  // L'avertissement se lit par-dessus la fiche : autant qu'elle soit déjà
+  // dépliée en dessous quand on l'acquitte.
+  useEffect(() => {
+    if (showTclWarning) sheetRef.current?.snapTo(fullIndex);
+  }, [showTclWarning, fullIndex]);
+
   const toggleExpanded = (key: string) => {
     setExpandedItems(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
   };
 
   return (
     <>
+    {/* Plein écran et non dans la feuille : l'avertissement n'est pas une
+        section de la fiche, c'est une porte qu'on franchit. */}
+    {showTclWarning && (
+      <div className="fixed inset-0 z-[10004]">
+        <TclSidebar
+          visible={showTclWarning}
+          onContinue={() => setShowTclWarning(false)}
+          onClose={() => { setShowTclWarning(false); onClose(); }}
+          language={language}
+        />
+      </div>
+    )}
     <Sheet
       ref={sheetRef}
       style={{ zIndex: 100 }}
@@ -597,26 +661,32 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                   const departureStyle: any = departureLine ? resolveLineStyle(departureRef, departureLine.color, departureLine.textColor) : resolveLineStyle(departureRef) as any;
                   const secondStyle: any = secondLine ? resolveLineStyle(secondRef, secondLine.color, secondLine.textColor) : {} as any;
                   const hasTrafficAlert = !!(departureLine?.hasTraffic && departureLine?.trafficDetails?.length);
+                  const isLastRun = isLastDeparture(
+                    timetables.get(departure.lineShortName || departure.lineId) ?? null,
+                    departure.destination,
+                    getMinutesUntilDeparture(departure),
+                  );
 
-                  // Tram, Chrono ou ligne avec trafic + second → expandable
+                  // Tram ou chrono ou ligne avec trafic + second départ → expandable
                   if ((isTram || isChrono || hasTrafficAlert) && second) {
                     return (
                       <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
-                        className="border border-slate-700 rounded-2xl overflow-hidden bg-slate-800 shadow-sm">
-                        <motion.button
+                        className="border border-slate-700 rounded-2xl overflow-hidden bg-slate-800">
+                            <motion.button
                           onClick={() => toggleExpanded(itemKey)}
-                          className="w-full p-4 hover:bg-slate-750 transition text-left active:bg-slate-700">
+                          className={`w-full ${compactMode ? 'p-3' : 'p-4'} hover:bg-slate-750 active:bg-slate-700 transition text-left`}>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <DepartureLineBadge
-                          routeRef={departureRef}
-                          label={departure.lineShortName || departure.lineId}
-                          style={departureStyle}
-                          round={departureIsSem && isRoundLine(departure.lineId)}
-                          sizeClass="w-11 h-11 text-sm"
-                        />
+                            routeRef={departureRef}
+                            label={departure.lineShortName || departure.lineId}
+                            style={departureStyle}
+                            round={departureIsSem && isRoundLine(departure.lineId)}
+                            sizeClass="w-10 h-10 text-sm"
+                          />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                                {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                                 <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
                                   <TransportModeIcon mode={mode} className="w-3.5 h-3.5" />
                                   <span>{modeLabel(mode, text)}</span>
@@ -627,47 +697,53 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                               <div className="text-right">
-                                <p className="text-xl font-bold text-white">{renderDepartureTime(displayTime)}</p>
-                                {(isTram || isChrono) && !compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
+                                <p className="text-lg font-bold text-white">{renderDepartureTime(displayTime)}</p>
+                                {!compactMode && (isTram || isChrono) && <OccupancyDisplay occupancy={departure.occupancy} />}
                               </div>
                               {isExpanded ? <ChevronUpIcon className="w-4 h-4 text-slate-400" /> : <ChevronDownIcon className="w-4 h-4 text-slate-400" />}
                             </div>
                           </div>
                         </motion.button>
 
-                        {isExpanded && (
-                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }}
-                            className="border-t border-slate-700 p-4 bg-slate-800/50 space-y-3">
-                            <div className="rounded-[24px] border border-slate-700 bg-slate-900/80 p-3.5 shadow-[0_8px_20px_rgba(15,23,42,0.18)]">
-                              <div className="flex items-start gap-3">
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: isExpanded ? 'auto' : 0, opacity: isExpanded ? 1 : 0 }} transition={{ duration: 0.25 }} className="overflow-hidden border-t border-slate-700">
+                          <div className={`${compactMode ? 'p-3' : 'p-4'} bg-slate-800/60 space-y-3`}>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{text.nextDeparture}</p>
+                              <button onClick={() => toggleExpanded(itemKey)}
+                                className="w-6 h-6 flex items-center justify-center hover:bg-slate-700 rounded-lg transition">
+                                <XMarkIcon className="w-3.5 h-3.5 text-slate-400" />
+                              </button>
+                            </div>
+                            <div className="bg-slate-900 rounded-2xl p-3 border border-slate-700 space-y-3">
+                              <div className="flex items-center gap-3">
                                 <DepartureLineBadge
-                          routeRef={secondRef}
-                          label={second.lineShortName || second.lineId}
-                          style={secondStyle}
-                          round={secondIsSem && isRoundLine(second.lineId)}
-                          sizeClass="w-10 h-10 text-sm"
-                        />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{text.direction || 'Direction'}</p>
-                                  <p className="text-sm font-semibold text-white truncate">{second.destination}</p>
-                                  {second.realtime && <p className="text-xs text-green-400 mt-1">LIVE</p>}
+                            routeRef={secondRef}
+                            label={second.lineShortName || second.lineId}
+                            style={secondStyle}
+                            round={secondIsSem && isRoundLine(second.lineId)}
+                            sizeClass="w-10 h-10 text-sm"
+                          />
+                                <div>
+                                  <p className="text-sm font-semibold text-white">{second.destination}</p>
+                                  <div className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
+                                    <TransportModeIcon mode={second.type} className="w-3 h-3" />
+                                    {second.realtime && <span className="text-green-400">• {text.live}</span>}
+                                  </div>
                                 </div>
                               </div>
-                              <div className="mt-3 grid grid-cols-2 gap-2">
-                                <div className="rounded-2xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-                                  <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{language === 'fr' ? '1er passage' : '1st departure'}</p>
-                                  <p className="mt-1 text-sm font-semibold text-white">{renderDepartureTime(displayTime)}</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-slate-800 rounded-xl p-3">
+                                  <p className="text-xs text-slate-400 font-medium mb-1">{text.time}</p>
+                                  <p className="text-2xl font-bold text-white">{renderDepartureTime(getDepartureDisplay(second, language))}</p>
                                 </div>
-                                <div className="rounded-2xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-                                  <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{language === 'fr' ? '2e passage' : '2nd departure'}</p>
-                                  <p className="mt-1 text-sm font-semibold text-slate-300">{renderDepartureTime(getDepartureDisplay(second, language))}</p>
-                                </div>
+                                {(isTram || isChrono) && (
+                                  <div className="bg-slate-800 rounded-xl p-3">
+                                    <p className="text-xs text-slate-400 font-medium mb-2">{text.occupancy}</p>
+                                    {!compactMode && <OccupancyDisplay occupancy={second.occupancy} showError />}
+                                  </div>
+                                )}
                               </div>
-                              {(isTram || isChrono) && !compactMode && (
-                                <div className="mt-3 flex items-center justify-end">
-                                  <OccupancyDisplay occupancy={second.occupancy} showError />
-                                </div>
-                              )}
+                              {second.realtime && <p className="text-xs text-green-400 font-semibold flex items-center gap-1">● {text.realTimeData}</p>}
                             </div>
                             {hasTrafficAlert && departureLine?.trafficDetails?.[0] && (
                               <div className="bg-amber-950 border border-amber-700 rounded-2xl p-3">
@@ -682,97 +758,102 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                                 <p className="text-xs text-amber-400/60 mt-1">{text.estimatedEnd} {departureLine.trafficDetails[0].dateFin || 'N/A'}</p>
                               </div>
                             )}
-                          </motion.div>
-                        )}
+                            {group.count > 2 && <p className="text-xs text-slate-500 text-center">{text.moreDepartures(group.count - 2)}</p>}
+
+                            {/* Actions du passage : la fiche horaire répond à la
+                                question « et le prochain, c'est quand ? » que le
+                                temps réel seul ne couvre pas. */}
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => onOpenTimetable?.({
+                                  line: departureLine ?? { id: departure.lineId, shortName: departure.lineShortName },
+                                  headsign: departure.destination,
+                                })}
+                                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
+                              >
+                                <ClockIcon className="h-4 w-4" />
+                                {text.timetable}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onOpenLine?.(departureLine ?? { id: departure.lineId, shortName: departure.lineShortName })}
+                                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
+                              >
+                                <MapIcon className="h-4 w-4" />
+                                {text.seeLine}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => currentStopDetail && onPlanRouteFromStop?.(currentStopDetail)}
+                                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
+                              >
+                                <ArrowsRightLeftIcon className="h-4 w-4" />
+                                {text.planRoute}
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
                       </motion.div>
                     );
                   }
 
-                  // Single tram sans second
+                  // Single tram without second
                   if (isTram) {
                     return (
                       <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
-                        className="border border-slate-700 rounded-2xl p-4 bg-slate-800 shadow-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <DepartureLineBadge
-                          routeRef={departureRef}
-                          label={departure.lineShortName || departure.lineId}
-                          style={departureStyle}
-                          round={departureIsSem && isRoundLine(departure.lineId)}
-                          sizeClass="w-11 h-11 text-sm"
-                        />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
-                              <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
-                                <TransportModeIcon mode={departure.type} className="w-3.5 h-3.5" /><span>{modeLabel(normalizeMode(departure.type), text)}</span>
-                                {departure.realtime && <span className="text-green-400">• {text.live}</span>}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <p className="text-xl font-bold text-white">{renderDepartureTime(displayTime)}</p>
-                            {!compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  }
-
-                  // Bus avec second départ
-                  if (second) {
-                    return (
-                      <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
-                        className="border border-slate-700 rounded-2xl p-4 bg-slate-800 shadow-sm active:bg-slate-700 transition">
-                        <div className="flex items-center justify-between gap-3 mb-2.5">
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <DepartureLineBadge
-                          routeRef={departureRef}
-                          label={departure.lineShortName || departure.lineId}
-                          style={departureStyle}
-                          round={departureIsSem && isRoundLine(departure.lineId)}
-                          sizeClass="w-11 h-11 text-sm"
-                        />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
-                              <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
-                                <TransportModeIcon mode={departure.type} className="w-3.5 h-3.5" /><span>{modeLabel(normalizeMode(departure.type), text)}</span>
-                                {departure.realtime && <span className="text-green-400">• {text.live}</span>}
-                              </div>
-                            </div>
-                          </div>
-                          <p className="text-xl font-bold text-white flex-shrink-0">{renderDepartureTime(displayTime)}</p>
-                        </div>
-                        <div className="flex items-center justify-end gap-2 text-sm text-slate-400 border-t border-slate-700 pt-2.5">
-                          <span className="text-xs">{text.nextLabel}</span>
-                          <span className="font-semibold text-slate-300">{renderDepartureTime(getDepartureDisplay(second, language))}</span>
-                        </div>
-                      </motion.div>
-                    );
-                  }
-
-                  // Bus simple
-                  return (
-                    <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
-                      className="border border-slate-700 rounded-2xl p-4 bg-slate-800 shadow-sm active:bg-slate-700 transition">
-                      <div className="flex items-center justify-between gap-3">
+                        className="flex items-center justify-between p-3 rounded-2xl bg-slate-800 border border-slate-700 hover:bg-slate-750 transition">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           <DepartureLineBadge
-                          routeRef={departureRef}
-                          label={departure.lineShortName || departure.lineId}
-                          style={departureStyle}
-                          round={departureIsSem && isRoundLine(departure.lineId)}
-                          sizeClass="w-11 h-11 text-sm"
-                        />
+                            routeRef={departureRef}
+                            label={departure.lineShortName || departure.lineId}
+                            style={departureStyle}
+                            round={departureIsSem && isRoundLine(departure.lineId)}
+                            sizeClass="w-10 h-10 text-sm"
+                          />
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
-                            <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
-                              <TransportModeIcon mode={departure.type} className="w-3.5 h-3.5" /><span>{modeLabel(normalizeMode(departure.type), text)}</span>
-                              {departure.realtime && <span className="text-green-400">• {text.live}</span>}
-                            </div>
+                            {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
+                            <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                              <TransportModeIcon mode={departure.type} className="w-3 h-3" />{modeLabel(normalizeMode(departure.type), text)}{departure.realtime && <span className="text-green-400"> • {text.live}</span>}
+                            </p>
                           </div>
                         </div>
-                        <p className="text-xl font-bold text-white flex-shrink-0">{renderDepartureTime(displayTime)}</p>
+                        <div className="text-right flex-shrink-0 ml-2">
+                          <p className="text-lg font-bold text-white">{renderDepartureTime(displayTime)}</p>
+                          {!compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
+                        </div>
+                      </motion.div>
+                    );
+                  }
+
+                  // Regular bus. Toutes les rangées ont la même teinte : le vert
+                  // « prochain » et l'ambre « imminent » colorisaient une
+                  // information que l'ordre de la liste et l'heure disent déjà.
+                  return (
+                    <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
+                      className="flex items-center justify-between p-3 rounded-2xl border border-slate-700 bg-slate-800 transition hover:bg-slate-750">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <DepartureLineBadge
+                            routeRef={departureRef}
+                            label={departure.lineShortName || departure.lineId}
+                            style={departureStyle}
+                            round={departureIsSem && isRoundLine(departure.lineId)}
+                            sizeClass="w-10 h-10 text-sm"
+                          />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                          {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
+                          <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                            <TransportModeIcon mode={departure.type} className="w-3 h-3" />
+                            {modeLabel(normalizeMode(departure.type), text)}
+                            {departure.realtime && <span className="text-green-400"> • {text.live}</span>}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0 ml-2">
+                        <p className="text-lg font-bold text-white">{renderDepartureTime(displayTime)}</p>
+                        {second && <p className="text-xs text-slate-500">{renderDepartureTime(getDepartureDisplay(second, language))}</p>}
                       </div>
                     </motion.div>
                   );

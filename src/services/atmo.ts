@@ -152,9 +152,57 @@ export interface Commune {
   nom: string;
   code: string;
   population?: number;
+  /** Premier code postal de la commune, montré en indice dans les suggestions. */
+  postalCode?: string;
+  departement?: string;
 }
 
+const searchCache = new Map<string, Commune[]>();
+
 const communesCache = new Map<string, Commune[]>();
+
+/**
+ * Communes dont le nom approche la saisie, les plus peuplées d'abord.
+ *
+ * On cherche par nom et non par code postal : personne ne connaît le code INSEE
+ * de sa commune, et beaucoup hésitent déjà sur son code postal. Le tri par
+ * population met « Grenoble » devant les hameaux homonymes.
+ */
+export async function searchCommunes(query: string, limit = 6): Promise<Commune[]> {
+  const term = query.trim();
+  if (term.length < 2) return [];
+
+  const cached = searchCache.get(term.toLowerCase());
+  if (cached) return cached;
+
+  try {
+    const params = new URLSearchParams({
+      nom: term,
+      fields: 'nom,code,codesPostaux,population,departement',
+      boost: 'population',
+      limit: String(limit),
+    });
+    const response = await fetch(`${GEO_ENDPOINT}?${params.toString()}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    if (!Array.isArray(data)) return [];
+
+    const communes: Commune[] = data
+      .filter((entry: any) => typeof entry?.code === 'string' && typeof entry?.nom === 'string')
+      .map((entry: any) => ({
+        nom: entry.nom,
+        code: entry.code,
+        population: typeof entry.population === 'number' ? entry.population : 0,
+        postalCode: Array.isArray(entry.codesPostaux) ? entry.codesPostaux[0] : undefined,
+        departement: entry.departement?.nom,
+      }));
+
+    searchCache.set(term.toLowerCase(), communes);
+    return communes;
+  } catch {
+    return [];
+  }
+}
 
 /** Communes desservies par un code postal, de la plus peuplée à la plus petite. */
 export async function getCommunesByPostalCode(postalCode: string): Promise<Commune[]> {
@@ -184,6 +232,16 @@ export async function getCommunesByPostalCode(postalCode: string): Promise<Commu
   } catch {
     return [];
   }
+}
+
+/**
+ * Indice ATMO d'une commune désignée par son code INSEE. Renvoie `null` quand
+ * Atmo ne la couvre pas — c'est le cas hors région grenobloise.
+ */
+export async function getAtmoReportForCommune(commune: Commune): Promise<AtmoReport | null> {
+  const report = await getAtmoReport(commune.code);
+  if (!report) return null;
+  return { ...report, communeName: report.communeName || commune.nom };
 }
 
 /**

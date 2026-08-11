@@ -710,10 +710,10 @@ export function SharedMobilitySidebar({
       snapPoints={[0, 0.6, 1]}
       initialSnap={1}
     >
-      <Sheet.Container style={{ borderRadius: '24px 24px 0 0', backgroundColor: '#0f172a', zIndex: 100 }}>
+      <Sheet.Container style={{ borderRadius: '24px 24px 0 0', backgroundColor: 'var(--gl-sheet-bg)', zIndex: 100 }}>
         <Sheet.Header>
           <div className="flex justify-center pt-3 pb-1">
-            <div className="h-1.5 w-16 rounded-full bg-white/20" />
+            <div className="h-1.5 w-16 rounded-full bg-slate-400/50" />
           </div>
         </Sheet.Header>
         <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>

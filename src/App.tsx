@@ -88,7 +88,7 @@ import type { LineFamily } from './services/allLines';
 import { stripHtml } from './utils/stripHtml';
 import { buildJourneyGeometry, type JourneyStopRef } from './utils/journeyGeometry';
 import { AtmoPanel, atmoColor, atmoPicto } from './components/AtmoPanel';
-import { getAtmoReportByPostalCode, DEFAULT_ATMO_POSTAL_CODE, type AtmoReport } from './services/atmo';
+import { getAtmoReportByPostalCode, getAtmoReportForCommune, DEFAULT_ATMO_POSTAL_CODE, type AtmoReport, type Commune } from './services/atmo';
 import { haversineMeters, findClosestStops } from './utils/geo';
 
 function App() {
@@ -147,9 +147,24 @@ function App() {
   
   const [isAtmoBtnHovered, setIsAtmoBtnHovered] = useState(false);
   const [isAtmoPanelHovered, setIsAtmoPanelHovered] = useState(false);
-  const [atmoPostalCode, setAtmoPostalCode] = useState<string>(
+  // Code postal de repli : il ne sert qu'au tout premier chargement et aux
+  // sessions ouvertes avant la recherche par nom de commune.
+  const [atmoPostalCode] = useState<string>(
     () => localStorage.getItem('greLines_atmoPostalCode') || DEFAULT_ATMO_POSTAL_CODE
   );
+  /**
+   * Commune choisie dans la liste de suggestions. Elle l'emporte sur le code
+   * postal, qui ne sert plus qu'au tout premier chargement et aux sessions
+   * antérieures à la recherche par nom.
+   */
+  const [atmoCommune, setAtmoCommune] = useState<Commune | null>(() => {
+    try {
+      const stored = localStorage.getItem('greLines_atmoCommune');
+      return stored ? (JSON.parse(stored) as Commune) : null;
+    } catch {
+      return null;
+    }
+  });
   const [atmoReport, setAtmoReport] = useState<AtmoReport | null>(null);
   const [atmoLoading, setAtmoLoading] = useState(false);
   
@@ -759,7 +774,8 @@ function App() {
    * avant qu'on pense à ouvrir la carte.
    */
   useEffect(() => {
-    localStorage.setItem('greLines_atmoPostalCode', atmoPostalCode);
+    if (atmoCommune) localStorage.setItem('greLines_atmoCommune', JSON.stringify(atmoCommune));
+    else localStorage.setItem('greLines_atmoPostalCode', atmoPostalCode);
 
     // Pas d'AbortController ici : la requête est mutualisée entre appelants
     // par le cache du service, l'annuler priverait aussi le suivant de sa
@@ -767,7 +783,7 @@ function App() {
     // à laisser la carte vide.
     let active = true;
     setAtmoLoading(true);
-    getAtmoReportByPostalCode(atmoPostalCode)
+    (atmoCommune ? getAtmoReportForCommune(atmoCommune) : getAtmoReportByPostalCode(atmoPostalCode))
       .then(report => {
         if (!active) return;
         setAtmoReport(report);
@@ -777,7 +793,7 @@ function App() {
       });
 
     return () => { active = false; };
-  }, [atmoPostalCode]);
+  }, [atmoPostalCode, atmoCommune]);
   // Live favourites list + their detail (lines + departures, refreshed every 30s).
   // Loaded globally so the app can prioritize the first favorite before it
   // leaves the splash screen.
@@ -2519,8 +2535,7 @@ function App() {
                     <AtmoPanel
                       report={atmoReport}
                       loading={atmoLoading}
-                      postalCode={atmoPostalCode}
-                      onPostalCodeChange={setAtmoPostalCode}
+                      onCommuneChange={setAtmoCommune}
                       language={language}
                     />
                   </div>
@@ -2725,8 +2740,7 @@ function App() {
           favoriteDetails={favoritesDetails}
           atmoReport={atmoReport}
           atmoLoading={atmoLoading}
-          atmoPostalCode={atmoPostalCode}
-          onAtmoPostalCodeChange={setAtmoPostalCode}
+          onAtmoCommuneChange={setAtmoCommune}
         />
       )}
 
@@ -2821,6 +2835,12 @@ function App() {
           language={language}
           theme={effectiveTheme}
           onPlanRouteFromStop={openRouteFromStop}
+          onOpenTimetable={setTimetableTarget}
+          onOpenLine={line => {
+            const resolved = allLinesLookup.get(line.id.toUpperCase().trim())
+              ?? allLinesLookup.get((line.shortName || line.id).toUpperCase().trim());
+            if (resolved) handleLineSearchSelect(resolved);
+          }}
         />
       )}
 

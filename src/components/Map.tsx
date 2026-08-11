@@ -1168,43 +1168,31 @@ const MapComponentBase = (
   }, [findVisibleStop, handleMarkerClick, onMapClick, collectSharedSelection, openSharedSelection, findNearestSharedPoint, gatherAround]);
 
   /**
-   * Cadre sur la station consultée.
+   * Cadre sur la station consultée : au plus près, toujours.
    *
-   * Un seul véhicule : on zoome au maximum utile dessus. Plusieurs : on ajuste
-   * le cadre pour tous les voir, avec de la marge pour les épingles.
+   * Sauf quand le clic a déjà emmené la caméra sur un véhicule précis — dans ce
+   * cas le drapeau est levé et on ne touche à rien, sinon la caméra repartait
+   * du véhicule choisi vers le centre de la station.
    */
-    useEffect(() => {
-      const map = mapRef.current;
-      if (!map || !focusedShared || focusedShared.points.length === 0) return;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !focusedShared || focusedShared.points.length === 0) return;
 
-      if (skipFocusedSharedZoomRef.current) {
-        skipFocusedSharedZoomRef.current = false;
-        return;
-      }
+    if (skipFocusedSharedZoomRef.current) {
+      skipFocusedSharedZoomRef.current = false;
+      return;
+    }
 
-    // On cadre sur les pastilles réellement dessinées : la couronne déborde du
-    // point d'origine.
+    // On vient chercher *ce* véhicule : la caméra descend au zoom maximal que
+    // le style accepte, sur le barycentre des pastilles. Le cadrage précédent
+    // calculait le zoom qui fait tenir la couronne d'éclatement (une douzaine
+    // de mètres) avec du rembourrage : il retombait toujours un cran sous le
+    // maximum, et l'on voyait la carte reculer juste après s'être approchée.
     const spread = explodeIntoVehiclePoints(focusedShared.points);
-    const lons = spread.map(point => point.lon);
-    const lats = spread.map(point => point.lat);
-    const west = Math.min(...lons);
-    const east = Math.max(...lons);
-    const south = Math.min(...lats);
-    const north = Math.max(...lats);
+    const lon = spread.reduce((sum, point) => sum + point.lon, 0) / spread.length;
+    const lat = spread.reduce((sum, point) => sum + point.lat, 0) / spread.length;
 
-    // On monte jusqu'au zoom maximal que la carte accepte : on vient chercher
-    // *ce* véhicule, il faut voir le trottoir où il est garé. Le plafond de
-    // 19,5 précédent était souvent plus bas que le zoom courant, si bien que
-    // cliquer sur une trottinette dézoomait au lieu de rapprocher.
-    const maxZoom = map.getMaxZoom();
-    const centerLon = (west + east) / 2;
-    const centerLat = (south + north) / 2;
-
-    map.flyTo({
-      center: [centerLon, centerLat],
-      zoom: maxZoom,
-      duration: 900,
-    });
+    map.flyTo({ center: [lon, lat], zoom: map.getMaxZoom(), duration: 900 });
   }, [focusedShared]);
 
   /**

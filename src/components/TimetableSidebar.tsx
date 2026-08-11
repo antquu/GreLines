@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sheet } from 'react-modal-sheet';
 import { XMarkIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsRightLeftIcon, PaperClipIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
 import { resolveLineStyle } from '../utils/lineColors';
@@ -108,7 +107,9 @@ function TimetableStopRow({
           className="absolute left-1/2 top-5 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] bg-slate-900"
           style={{
             borderColor: lineColor,
-            backgroundColor: isFirst || isLast ? lineColor : '#0f172a',
+            // Le coeur du jalon prend la couleur de la feuille : blanc en
+            // theme clair, ardoise en sombre.
+            backgroundColor: isFirst || isLast ? lineColor : 'var(--gl-sheet-bg)',
             width: isFirst || isLast ? 14 : 11,
             height: isFirst || isLast ? 14 : 11,
           }}
@@ -405,25 +406,31 @@ export function TimetableSidebar({
     );
   }
 
+  // Sur mobile, la fiche horaire prend tout l'écran, comme la visionneuse de
+  // plan : c'est un tableau qu'on lit de haut en bas, une feuille l'aurait
+  // toujours amputé d'un tiers pour montrer une carte qu'on ne regarde pas.
   return (
-    <Sheet
-      style={{ zIndex: 110 }}
-      isOpen={isOpen && line !== null}
-      onClose={onClose}
-      snapPoints={[0, 0.6, 1]}
-      initialSnap={1}
-    >
-      <Sheet.Container style={{ borderRadius: '24px 24px 0 0', backgroundColor: '#0f172a', zIndex: 110 }}>
-        <Sheet.Header>
-          <div className="flex justify-center pt-3 pb-1">
-            <div className="h-1.5 w-16 rounded-full bg-white/20" />
+    <AnimatePresence>
+      {isOpen && line && (
+        <motion.div
+          key="timetable-fullscreen"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 24 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="fixed inset-0 z-[110] flex flex-col"
+          style={{ backgroundColor: 'var(--gl-sheet-bg)' }}
+        >
+          <div
+            className="min-h-0 flex-1 overflow-y-auto px-5 pb-12"
+            style={{
+              paddingTop: 'max(1rem, env(safe-area-inset-top))',
+            }}
+          >
+            {body}
           </div>
-        </Sheet.Header>
-        <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
-          <div className="flex-1 overflow-y-auto px-5 pb-10 pt-2">{body}</div>
-        </Sheet.Content>
-      </Sheet.Container>
-      <Sheet.Backdrop onTap={onClose} style={{ zIndex: 109 }} />
-    </Sheet>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

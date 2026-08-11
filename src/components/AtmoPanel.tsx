@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { readableTextColor } from './LineBadge';
-import { isValidPostalCode, type AtmoReport } from '../services/atmo';
+import { searchCommunes, type AtmoReport, type Commune } from '../services/atmo';
 
 const UNKNOWN_COLOR = '#64748b';
 
@@ -11,10 +11,9 @@ const getText = (language: 'fr' | 'en') => {
     loading: fr ? 'Chargement…' : 'Loading…',
     unavailable: fr ? 'Indice indisponible' : 'Index unavailable',
     unknownCommune: fr ? 'Commune inconnue' : 'Unknown city',
-    inseeLabel: fr ? 'Changer de commune' : 'Change city',
-    inseePlaceholder: fr ? 'Code postal (ex. 38000)' : 'Postal code (e.g. 38000)',
-    inseeInvalid: fr ? 'Code postal à 5 chiffres' : '5-digit postal code',
-    apply: fr ? 'OK' : 'OK',
+    searchLabel: fr ? 'Changer de commune' : 'Change city',
+    searchPlaceholder: fr ? 'Chercher une commune…' : 'Search a city…',
+    noMatch: fr ? 'Aucune commune trouvée' : 'No city found',
     forecastFor: (date: string) => (fr ? `Prévision du ${date}` : `Forecast for ${date}`),
   };
 };
@@ -49,26 +48,49 @@ export function atmoPicto(report: AtmoReport | null): string | null {
 export function AtmoPanel({
   report,
   loading,
-  postalCode,
-  onPostalCodeChange,
+  onCommuneChange,
   language,
 }: {
   report: AtmoReport | null;
   loading: boolean;
-  postalCode: string;
-  onPostalCodeChange: (postalCode: string) => void;
+  onCommuneChange: (commune: Commune) => void;
   language: 'fr' | 'en';
 }) {
   const text = getText(language);
-  const [draft, setDraft] = useState(postalCode);
-  const [invalid, setInvalid] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Commune[]>([]);
+  const [searching, setSearching] = useState(false);
+  const requestRef = useRef(0);
 
-  // Le champ suit le code réellement appliqué : si la commune change ailleurs,
-  // l'input ne doit pas rester sur une saisie abandonnée.
+  // Recherche différée : on tape « Saint-Martin-d'Hères » en vingt frappes, pas
+  // en vingt requêtes.
   useEffect(() => {
-    setDraft(postalCode);
-    setInvalid(false);
-  }, [postalCode]);
+    const term = query.trim();
+    if (term.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    const ticket = ++requestRef.current;
+    const timer = window.setTimeout(() => {
+      void searchCommunes(term).then(communes => {
+        // Une réponse en retard ne doit pas écraser une saisie plus récente.
+        if (requestRef.current !== ticket) return;
+        setResults(communes);
+        setSearching(false);
+      });
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  // La commune affichée a changé : la recherche a abouti, on referme la liste.
+  useEffect(() => {
+    setQuery('');
+    setResults([]);
+  }, [report?.insee]);
 
   const color = atmoColor(report);
   const picto = atmoPicto(report);
@@ -76,15 +98,6 @@ export function AtmoPanel({
   const soft = (alpha: number) =>
     foreground === '#000000' ? `rgba(0,0,0,${alpha})` : `rgba(255,255,255,${alpha})`;
 
-  const submit = () => {
-    const value = draft.trim();
-    if (!isValidPostalCode(value)) {
-      setInvalid(true);
-      return;
-    }
-    setInvalid(false);
-    onPostalCodeChange(value);
-  };
 
   return (
     <div
@@ -128,42 +141,50 @@ export function AtmoPanel({
         )}
       </div>
 
-      {/* On saisit un code postal — celui qu'on connaît — et le service le
-          traduit en code INSEE, seule clé que l'API ATMO accepte. */}
-      <form
-        className="flex flex-shrink-0 items-center gap-2"
-        onSubmit={event => {
-          event.preventDefault();
-          submit();
-        }}
-      >
+      {/* Recherche par nom de commune, avec la même mécanique de suggestions
+          que la barre de recherche : on tape « Sassenage », pas « 38474 ». */}
+      <div className="relative flex-shrink-0">
         <input
-          value={draft}
-          onChange={event => { setDraft(event.target.value); setInvalid(false); }}
-          placeholder={text.inseePlaceholder}
-          aria-label={text.inseeLabel}
-          maxLength={5}
-          inputMode="numeric"
-          className="min-w-0 flex-1 rounded-xl px-3 py-2 text-sm font-semibold outline-none placeholder:font-normal"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          placeholder={text.searchPlaceholder}
+          aria-label={text.searchLabel}
+          autoComplete="off"
+          className="w-full rounded-xl px-3 py-2 text-sm font-semibold outline-none placeholder:font-normal"
           style={{
             backgroundColor: soft(0.15),
             color: foreground,
-            border: `1px solid ${invalid ? '#b91c1c' : soft(0.25)}`,
+            border: `1px solid ${soft(0.25)}`,
           }}
         />
-        <button
-          type="submit"
-          className="flex-shrink-0 rounded-xl px-3 py-2 text-sm font-bold transition"
-          style={{ backgroundColor: soft(0.2), color: foreground }}
-        >
-          {text.apply}
-        </button>
-      </form>
-      {invalid && (
-        <p className="mt-1 flex-shrink-0 text-[11px]" style={{ color: soft(0.75) }}>
-          {text.inseeInvalid}
-        </p>
-      )}
+
+        {query.trim().length >= 2 && (
+          <ul
+            className="absolute bottom-full left-0 z-10 mb-2 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
+          >
+            {results.length === 0 ? (
+              <li className="px-3 py-2.5 text-xs text-slate-400">
+                {searching ? text.loading : text.noMatch}
+              </li>
+            ) : (
+              results.map(commune => (
+                <li key={commune.code}>
+                  <button
+                    type="button"
+                    onClick={() => onCommuneChange(commune)}
+                    className="flex w-full items-baseline justify-between gap-2 px-3 py-2.5 text-left transition hover:bg-slate-800"
+                  >
+                    <span className="min-w-0 truncate text-sm font-semibold text-white">{commune.nom}</span>
+                    <span className="tabular flex-shrink-0 text-[11px] text-slate-400">
+                      {commune.postalCode ?? commune.code}
+                    </span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

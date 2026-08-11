@@ -107,6 +107,10 @@
   --heading: 'Inter', 'Helvetica Neue', sans-serif;
   --mono: 'Inter', 'Monaco', 'Consolas', monospace;
   --code-bg: rgba(255, 255, 255, 0.05);
+  /* Fond des feuilles mobiles. Il est peint en style en ligne par les
+     composants (react-modal-sheet impose le style), donc hors de portee des
+     regles du theme clair : cette variable est le seul point de bascule. */
+  --gl-sheet-bg: #0f172a;
   color-scheme: light;
 }
 

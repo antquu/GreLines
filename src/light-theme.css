@@ -18,6 +18,7 @@
 
   html:not(.dark) {
     
+    --gl-sheet-bg: #ffffff;
     --gl-surface: #ffffff;
     --gl-surface-raised: #f1f5f9;
     --gl-surface-hover: #e2e8f0;

@@ -538,20 +538,23 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
         style={{ zIndex: 60 }}
         isOpen={isOpen && line !== null}
         onClose={onClose}
-        snapPoints={[0, 0.6, 1]}
-        initialSnap={1}
+        // Trois hauteurs : plein écran pour lire la ligne d'un bout à l'autre,
+        // moyen pour la parcourir en gardant la carte en vue, petit pour ne
+        // garder que l'en-tête et regarder le tracé.
+        snapPoints={[0, 0.28, 0.62, 1]}
+        initialSnap={2}
       >
         <Sheet.Container
           style={{
             borderRadius: '28px 28px 0 0',
-            backgroundColor: '#0f172a',
+            backgroundColor: 'var(--gl-sheet-bg)',
             border: '1px solid rgba(148,163,184,0.18)',
             zIndex: 60,
           }}
         >
           <Sheet.Header>
             <div className="flex justify-center pt-3 pb-1">
-              <div className="h-1.5 w-16 rounded-full bg-white/20" />
+              <div className="h-1.5 w-16 rounded-full bg-slate-400/50" />
             </div>
           </Sheet.Header>
           <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>

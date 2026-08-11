@@ -10,7 +10,7 @@ import { normalizeMode } from '../utils/transportMode';
 
 
 
-export const TIMES_PER_DIRECTION = 3;
+export const TIMES_PER_DIRECTION = 2;
 
 
 export const DIRECTIONS_PER_LINE = 2;

@@ -42,9 +42,6 @@ function markOptedOut(id: string) {
 export function PopupOverlay({ popups, language }: PopupOverlayProps) {
   const [visiblePopup, setVisiblePopup] = useState<CmsPopup | null>(null);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
-  
-  
-  const isLightTheme = !document.documentElement.classList.contains('dark');
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
@@ -127,15 +124,13 @@ export function PopupOverlay({ popups, language }: PopupOverlayProps) {
             )}
 
             <div className="mt-5 flex flex-col items-center gap-2 border-t border-gray-800 pt-3">
-              {/* En thème clair, le bouton passe en blanc bordé : le bleu plein
-                  attirait l'oeil plus fort que le message qu'il vient clore. */}
+              {/* Le libellé est peint en style en ligne : la feuille du thème
+                  clair repeint `.text-white` en sombre, et « Compris »
+                  disparaissait sur le bleu. */}
               <button
                 onClick={handleClose}
-                className={`w-full rounded-xl py-2.5 text-sm font-semibold transition ${
-                  isLightTheme
-                    ? 'bg-blue-600 text-white hover:bg-blue-500 active:bg-blue-700'
-                    : 'bg-blue-600 text-black hover:bg-blue-500 active:bg-blue-700'
-                }`}
+                className="w-full rounded-xl bg-blue-600 py-2.5 text-sm font-semibold transition hover:bg-blue-500 active:bg-blue-700"
+                style={{ color: '#ffffff' }}
               >
                 {language === 'fr' ? 'Compris' : 'Got it'}
               </button>

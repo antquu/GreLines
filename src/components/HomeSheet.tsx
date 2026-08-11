@@ -18,7 +18,7 @@ import { FavoriteCard } from './FavoriteCard';
 import type { Favorite } from '../services/favorites';
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import { AtmoPanel } from './AtmoPanel';
-import type { AtmoReport } from '../services/atmo';
+import type { AtmoReport, Commune } from '../services/atmo';
 
 interface HomeSheetProps {
   isOpen: boolean;
@@ -47,8 +47,7 @@ interface HomeSheetProps {
   
   atmoReport: AtmoReport | null;
   atmoLoading: boolean;
-  atmoPostalCode: string;
-  onAtmoPostalCodeChange: (postalCode: string) => void;
+  onAtmoCommuneChange: (commune: Commune) => void;
 }
 
 function getGreeting(language: 'fr' | 'en'): string {
@@ -251,8 +250,7 @@ export const HomeSheet = ({
   favoriteDetails,
   atmoReport,
   atmoLoading,
-  atmoPostalCode,
-  onAtmoPostalCodeChange,
+  onAtmoCommuneChange,
 }: HomeSheetProps) => {
   const text = getText(language);
   const isLight = theme === 'light';
@@ -508,8 +506,7 @@ export const HomeSheet = ({
 	                    <AtmoPanel
 	                      report={atmoReport}
 	                      loading={atmoLoading}
-	                      postalCode={atmoPostalCode}
-	                      onPostalCodeChange={onAtmoPostalCodeChange}
+	                      onCommuneChange={onAtmoCommuneChange}
 	                      language={language}
 	                    />
 	                  </div>

@@ -34,35 +34,77 @@ interface TripSurveyProps {
   language: 'fr' | 'en';
 }
 
-const QUESTIONS = (isFr: boolean) => [
-  { key: 'cleanliness' as const, label: isFr ? 'Propreté du véhicule' : 'Vehicle cleanliness' },
-  { key: 'comfort' as const, label: isFr ? 'Confort du trajet' : 'Ride comfort' },
-  { key: 'crowding' as const, label: isFr ? "Niveau d'affluence" : 'Crowding level' },
-  { key: 'punctuality' as const, label: isFr ? 'Respect des horaires' : 'Schedule adherence' },
+/**
+ * Trois paliers plutôt que cinq étoiles.
+ *
+ * On répond debout, dans un véhicule qui bouge : « 3 sur 5 » demande un arbitrage
+ * que personne ne fait honnêtement dans ces conditions. Mauvais / Moyen / Bien
+ * se choisit d'un pouce, et l'émoji dit lequel avant même qu'on lise.
+ *
+ * La valeur envoyée reste sur l'échelle de 1 à 5 (1, 3, 5) : le questionnaire
+ * change, pas l'historique déjà collecté côté exploitant.
+ */
+const TIERS = [
+  { value: 1, tone: 'bad' as const, label: (isFr: boolean) => (isFr ? 'Mauvais' : 'Poor') },
+  { value: 3, tone: 'mid' as const, label: (isFr: boolean) => (isFr ? 'Moyen' : 'Okay') },
+  { value: 5, tone: 'good' as const, label: (isFr: boolean) => (isFr ? 'Bien' : 'Good') },
 ];
 
-function StarRow({
+/** Un émoji par question et par palier : le même mot ne pèse pas pareil selon le sujet. */
+const QUESTIONS = (isFr: boolean) => [
+  {
+    key: 'cleanliness' as const,
+    label: isFr ? 'Propreté du véhicule' : 'Vehicle cleanliness',
+    emojis: { bad: '💩', mid: '🧻', good: '✨' },
+  },
+  {
+    key: 'comfort' as const,
+    label: isFr ? 'Confort du trajet' : 'Ride comfort',
+    emojis: { bad: '🤢', mid: '😐', good: '😌' },
+  },
+  {
+    key: 'crowding' as const,
+    label: isFr ? "Niveau d'affluence" : 'Crowding level',
+    emojis: { bad: '🥵', mid: '🧍', good: '💺' },
+  },
+];
+
+function TierRow({
   value,
+  emojis,
+  isFr,
   onChange,
 }: {
   value: number | undefined;
+  emojis: { bad: string; mid: string; good: string };
+  isFr: boolean;
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="flex gap-1.5">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          onClick={() => onChange(n)}
-          className={`h-10 w-10 rounded-lg text-lg font-bold transition-colors ${
-            value !== undefined && n <= value
-              ? 'bg-indigo-500 text-white'
-              : 'bg-slate-800 text-slate-500 active:bg-slate-700'
-          }`}
-        >
-          {n}
-        </button>
-      ))}
+    <div className="grid grid-cols-3 gap-2">
+      {TIERS.map(tier => {
+        const selected = value === tier.value;
+        const selectedClass =
+          tier.tone === 'bad'
+            ? 'border-red-400 bg-red-500/15 text-red-200'
+            : tier.tone === 'mid'
+            ? 'border-amber-400 bg-amber-500/15 text-amber-200'
+            : 'border-emerald-400 bg-emerald-500/15 text-emerald-200';
+        return (
+          <button
+            key={tier.value}
+            type="button"
+            onClick={() => onChange(tier.value)}
+            aria-pressed={selected}
+            className={`flex flex-col items-center gap-1 rounded-xl border py-2.5 text-xs font-semibold transition-colors ${
+              selected ? selectedClass : 'border-slate-700 bg-slate-800 text-slate-400 active:bg-slate-700'
+            }`}
+          >
+            <span className="text-2xl leading-none" aria-hidden="true">{emojis[tier.tone]}</span>
+            {tier.label(isFr)}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -83,7 +125,6 @@ export function TripSurvey({
   const isFr = language === 'fr';
   const [consent, setConsent] = useState<Consent>(null);
   const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [onTime, setOnTime] = useState<boolean | undefined>(undefined);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -92,7 +133,6 @@ export function TripSurvey({
     if (isOpen) {
       setConsent(getSurveyConsent());
       setAnswers({});
-      setOnTime(undefined);
       setComment('');
       setDone(false);
     }
@@ -121,8 +161,6 @@ export function TripSurvey({
       cleanliness: answers.cleanliness,
       comfort: answers.comfort,
       crowding: answers.crowding,
-      punctuality: answers.punctuality,
-      onTime,
       comment,
     });
     setSubmitting(false);
@@ -130,7 +168,7 @@ export function TripSurvey({
     setTimeout(onClose, 1600);
   };
 
-  const hasAnswer = Object.keys(answers).length > 0 || onTime !== undefined || comment.trim();
+  const hasAnswer = Object.keys(answers).length > 0 || comment.trim().length > 0;
 
   return (
     <AnimatePresence>
@@ -190,7 +228,7 @@ export function TripSurvey({
                     {isFr ? 'Votre trajet' : 'Your trip'} · {lineId}
                   </h2>
                   <p className="text-xs text-slate-500">
-                    {isFr ? 'Réponses anonymes · 1 = mauvais, 5 = excellent' : 'Anonymous · 1 = poor, 5 = excellent'}
+                    {isFr ? 'Réponses anonymes · trois réponses possibles' : 'Anonymous · three answers'}
                   </p>
                 </div>
                 <button onClick={onClose} className="rounded-full p-1 text-slate-500 active:text-white">
@@ -202,36 +240,14 @@ export function TripSurvey({
                 {QUESTIONS(isFr).map((q) => (
                   <div key={q.key}>
                     <p className="mb-1.5 text-sm font-medium text-slate-300">{q.label}</p>
-                    <StarRow
+                    <TierRow
                       value={answers[q.key]}
+                      emojis={q.emojis}
+                      isFr={isFr}
                       onChange={(value) => setAnswers({ ...answers, [q.key]: value })}
                     />
                   </div>
                 ))}
-
-                <div>
-                  <p className="mb-1.5 text-sm font-medium text-slate-300">
-                    {isFr ? 'Êtes-vous arrivé à l’heure ?' : 'Did you arrive on time?'}
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setOnTime(true)}
-                      className={`flex-1 rounded-lg py-2.5 text-sm font-semibold ${
-                        onTime === true ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {isFr ? 'Oui' : 'Yes'}
-                    </button>
-                    <button
-                      onClick={() => setOnTime(false)}
-                      className={`flex-1 rounded-lg py-2.5 text-sm font-semibold ${
-                        onTime === false ? 'bg-red-500 text-white' : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {isFr ? 'Non' : 'No'}
-                    </button>
-                  </div>
-                </div>
 
                 <div>
                   <p className="mb-1.5 text-sm font-medium text-slate-300">
