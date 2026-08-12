@@ -4,7 +4,6 @@ import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6
 import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
 import { useFavoriteDetails } from './hooks/useFavoriteDetails';
-import { removeFavoriteAndNotify } from './services/favorites';
 import { FavoriteCard } from './components/FavoriteCard';
 import { getAllSemLines, buildLineLookup, type AllLinesLine } from './services/allLines';
 import { LineBadge } from './components/LineBadge';

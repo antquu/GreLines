@@ -12,7 +12,6 @@ import {
 } from '@heroicons/react/24/solid';
 import type { Stop, Line } from '../types';
 import { findClosestStops, formatDistance } from '../utils/geo';
-import { removeFavoriteAndNotify } from '../services/favorites';
 import { getStopLines } from '../services/api';
 import { FavoriteCard } from './FavoriteCard';
 import type { Favorite } from '../services/favorites';
