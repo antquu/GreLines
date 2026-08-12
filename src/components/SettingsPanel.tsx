@@ -636,7 +636,11 @@ export function SettingsPanel({
           href="https://gre-go.vercel.app/"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 h-12 flex items-center justify-center bg-black border border-slate-700 rounded-xl hover:bg-slate-900 transition"
+          className={`flex-1 h-12 flex items-center justify-center border rounded-xl transition ${
+            isLight
+              ? 'bg-transparent border-slate-300 hover:bg-slate-100'
+              : 'bg-transparent border-slate-700 hover:bg-slate-800'
+          }`}
         >
           <img
             src={theme === 'dark' ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png'}
@@ -645,10 +649,30 @@ export function SettingsPanel({
           />
         </a>
         <a
+          href="https://grelines-og.vercel.app/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`flex-1 h-12 flex items-center justify-center border rounded-xl transition ${
+            isLight
+              ? 'bg-transparent border-slate-300 hover:bg-slate-100'
+              : 'bg-transparent border-slate-700 hover:bg-slate-800'
+          }`}
+        >
+          <img
+            src={theme === 'dark' ? '/assets/og_dark.png' : '/assets/og_light.png'}
+            alt="OG"
+            className="h-6 w-auto"
+          />
+        </a>
+        <a
           href="https://github.com/antquu/GreLines"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 h-12 flex items-center justify-center gap-2 bg-black border border-slate-700 rounded-xl hover:bg-slate-900 transition"
+          className={`flex-1 h-12 flex items-center justify-center gap-2 border rounded-xl transition ${
+            isLight
+              ? 'bg-transparent border-slate-300 hover:bg-slate-100'
+              : 'bg-transparent border-slate-700 hover:bg-slate-800'
+          }`}
         >
           {/* Le logotype GitHub existe en deux versions : la claire ne se voit
               pas sur un fond clair, et inversement. */}
@@ -657,7 +681,7 @@ export function SettingsPanel({
             alt="GitHub"
             className="h-7 w-auto"
           />
-          <span className="text-white text-xs">Project</span>
+          <span className={`text-xs ${isLight ? 'text-slate-900' : 'text-white'}`}>Project</span>
         </a>
       </div>
     </div>
@@ -761,6 +785,7 @@ export function SettingsPanel({
           setActiveTab={setActiveTab}
           onClose={handleClose}
           title={text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
+          theme={theme}
         >
           {renderTab()}
         </DesktopFinderWindow>
@@ -784,6 +809,7 @@ interface DesktopFinderWindowProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  theme?: 'light' | 'dark' | 'auto';
 }
 
 function DesktopFinderWindow({
@@ -795,6 +821,7 @@ function DesktopFinderWindow({
   onClose,
   title,
   children,
+  theme,
 }: DesktopFinderWindowProps) {
   // Initial position: roughly centered-up. We use `pos` as the live transform
   // so framer-motion doesn't have to re-mount the panel on each update.
@@ -893,7 +920,7 @@ function DesktopFinderWindow({
         <div className="flex flex-1 min-h-0">
           {/* Sidebar — Finder-style: translucent, icon + label */}
           <div className="w-48 bg-slate-800/40 border-r border-slate-700 flex flex-col py-3 flex-shrink-0">
-            <div className="px-3 space-y-0.5">
+            <div className="px-3 space-y-0.5 flex-1">
               {tabs.map(tab => {
                 const Icon = tab.icon;
                 const active = activeTab === tab.key;
