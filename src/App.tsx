@@ -17,6 +17,7 @@ import { TrafficPanelMobile } from './components/TrafficPanelMobile';
 import { InstallAppSheet } from './components/InstallAppSheet';
 import { SidebarMobile } from './components/SidebarMobile';
 import { HomeSheet } from './components/HomeSheet';
+import { LinesExplorerSheet } from './components/LinesExplorerSheet';
 import { ClockSignal } from './components/ClockSignal';
 import { PopupOverlay } from './components/PopupOverlay';
 import { DeferredPanel } from './components/DeferredPanel';
@@ -246,6 +247,7 @@ function App() {
   const [snapHomeToMiniSignal, setSnapHomeToMiniSignal] = useState(0);
   
   const [openHomeSheetSignal, setOpenHomeSheetSignal] = useState(0);
+  const [isLinesExplorerOpen, setIsLinesExplorerOpen] = useState(false);
   
 
 
@@ -279,7 +281,7 @@ function App() {
   >(null);
   /** Plan de ligne (PDF) ouvert en visionneuse plein écran. */
   const [lineMapTarget, setLineMapTarget] = useState<
-    { routeId: string; label: string; color?: string } | null
+    { routeId: string; label: string; color?: string; lineId?: string } | null
   >(null);
   const [settingsState, setSettingsState] = useState<'closed' | 'peek' | 'open'>('closed');
   const isSettingsOpen = settingsState !== 'closed';
@@ -2108,7 +2110,7 @@ function App() {
         setAutoSync={setAutoSync}
         autoLocation={autoLocation}
         setAutoLocation={setAutoLocation}
-        showInstallGuide={canOfferInstallGuide}
+        showInstallGuide={/* mobile uniquement : inutile dans les réglages PC */ isMobile && canOfferInstallGuide}
         onOpenInstallGuide={() => {
           setSettingsState('closed');
           setIsInstallSheetOpen(true);
@@ -2505,7 +2507,6 @@ function App() {
                                 setIsFavPanelHovered(false);
                                 handleStopClick(stub);
                               }}
-                              onRemove={() => removeFavoriteAndNotify(favorite.stopId)}
                               language={language}
                             />
                           ))}
@@ -2768,6 +2769,26 @@ function App() {
           atmoReport={atmoReport}
           atmoLoading={atmoLoading}
           onAtmoCommuneChange={setAtmoCommune}
+          allLines={allLines}
+          onOpenLines={() => {
+            setSnapHomeToMiniSignal(s => s + 1);
+            setIsLinesExplorerOpen(true);
+          }}
+        />
+      )}
+
+      {isMobile && !hidePageControls && (
+        <LinesExplorerSheet
+          isOpen={isLinesExplorerOpen}
+          onClose={() => setIsLinesExplorerOpen(false)}
+          lines={allLines}
+          onLineClick={line => {
+            // On ferme l'explorateur puis on ouvre la feuille de la ligne.
+            setIsLinesExplorerOpen(false);
+            handleLineSearchSelect(line);
+          }}
+          language={language}
+          theme={effectiveTheme}
         />
       )}
 
@@ -2846,6 +2867,7 @@ function App() {
             routeId: toTimetableRouteId(selectedLine.shortName || selectedLine.id),
             label: `${language === 'fr' ? 'Ligne' : 'Line'} ${selectedLine.shortName || selectedLine.id}`,
             color: selectedLine.color,
+            lineId: selectedLine.id,
           });
         }}
         onStopClick={(stop) => {
@@ -2957,6 +2979,7 @@ function App() {
               routeId: toTimetableRouteId(line.shortName || line.id),
               label: `${language === 'fr' ? 'Ligne' : 'Line'} ${line.shortName || line.id}`,
               color: line.color,
+              lineId: line.id,
             });
           }}
         />
@@ -2970,6 +2993,7 @@ function App() {
           routeId={lineMapTarget?.routeId ?? null}
           lineLabel={lineMapTarget?.label}
           lineColor={lineMapTarget?.color}
+          lineId={lineMapTarget?.lineId ?? null}
           isMobile={isMobile}
           language={language}
         />

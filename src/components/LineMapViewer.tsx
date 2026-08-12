@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowDownTrayIcon } from '@heroicons/react/24/solid';
+import { LineBadge } from './LineBadge';
 import { idbGet, idbSet } from '../services/persistentCache';
 
 interface LineMapViewerProps {
@@ -8,6 +9,7 @@ interface LineMapViewerProps {
   onClose: () => void;
   
   routeId: string | null;
+  lineId?: string | null;
   
   lineLabel?: string;
   lineColor?: string;
@@ -159,6 +161,7 @@ export function LineMapViewer({
   routeId,
   lineLabel,
   lineColor = '#3b82f6',
+  lineId = null,
   isMobile,
   language,
 }: LineMapViewerProps) {
@@ -495,9 +498,15 @@ export function LineMapViewer({
           {/* Bandeau : identité de la ligne à gauche, commandes à droite. */}
           <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="h-[3px] w-8 flex-shrink-0 rounded-full" style={{ backgroundColor: lineColor }} />
+              {lineId || routeId || lineLabel ? (
+                <LineBadge
+                  line={{ id: lineId ?? routeId ?? '', shortName: (lineLabel ?? '').replace(/^(Ligne|Line)\s+/i, ''), color: lineColor, textColor: undefined, routeId: lineId ?? routeId ?? undefined }}
+                  size="sm"
+                />
+              ) : (
+                <div className="h-[3px] w-8 flex-shrink-0 rounded-full" style={{ backgroundColor: lineColor }} />
+              )}
               <div className="min-w-0">
-                <p className="signal-label text-slate-500">{text.title}</p>
                 {lineLabel && (
                   <p className="truncate text-[15px] font-bold text-white">{lineLabel}</p>
                 )}

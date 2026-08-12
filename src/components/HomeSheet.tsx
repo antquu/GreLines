@@ -20,6 +20,9 @@ import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import { AtmoPanel } from './AtmoPanel';
 import type { AtmoReport, Commune } from '../services/atmo';
 
+/** Le strict nécessaire pour dessiner une pastille de ligne. */
+type MarqueeLine = Pick<Line, 'id' | 'shortName' | 'color' | 'textColor'>;
+
 interface HomeSheetProps {
   isOpen: boolean;
   onClose: () => void;
@@ -29,6 +32,10 @@ interface HomeSheetProps {
   onOpenTraffic: () => void;
   onOpenSettings: () => void;
   onOpenItinerary: () => void;
+  /** Ouvre l'explorateur de lignes (recherche mobile focalisée). */
+  onOpenLines?: () => void;
+  /** Catalogue complet des lignes du réseau, pour le bandeau défilant. */
+  allLines?: MarqueeLine[];
   onSnapChange?: (snapIdx: number) => void;
   onSheetProgress?: (progress: number) => void;
   
@@ -95,6 +102,7 @@ const getText = (language: 'fr' | 'en') => ({
   trafficLabel: language === 'fr' ? 'Infotrafic' : 'Traffic info',
   itineraryLabel: language === 'fr' ? 'Itinéraire' : 'Itinerary',
   settingsLabel: language === 'fr' ? 'Réglages' : 'Settings',
+  linesLabel: language === 'fr' ? 'Explorer les lignes' : 'Explore lines',
   remove: language === 'fr' ? 'Retirer' : 'Remove',
   direction: language === 'fr' ? 'Direction' : 'To',
 });
@@ -112,8 +120,8 @@ function isRoundLine(label: string): boolean {
 
 
 
-function sortLinesForBadge(lines: Line[]): Line[] {
-  const priority = (l: Line) => {
+function sortLinesForBadge<T extends MarqueeLine>(lines: T[]): T[] {
+  const priority = (l: T) => {
     const n = (l.shortName || l.id).toUpperCase();
     if (['A', 'B', 'C', 'D', 'E'].includes(n)) return 0;
     if (/^C\d+$/.test(n)) return 1;
@@ -126,7 +134,7 @@ function sortLinesForBadge(lines: Line[]): Line[] {
   });
 }
 
-function MiniLineBadge({ line }: { line: Line }) {
+function MiniLineBadge({ line }: { line: MarqueeLine }) {
   const label = line.shortName || line.id;
   const round = isRoundLine(label);
   const style = resolveLineStyle(line.id, line.color, line.textColor);
@@ -138,6 +146,106 @@ function MiniLineBadge({ line }: { line: Line }) {
       style={style}
     >
       {label}
+    </div>
+  );
+}
+
+/** Réseaux urbains de l'agglomération, seuls porteurs des codes du bandeau. */
+const URBAN_NETWORKS = ['SEM', 'SE2', 'GSV', 'TPV'];
+
+/**
+ * Codes Proximo du réseau, dans l'ordre de la grille officielle. La liste est
+ * explicite plutôt que déduite d'une couleur : les Proximo ne sont pas tous
+ * bleus, et la couleur réelle de chaque ligne vient toujours du catalogue.
+ */
+const PROXIMO_CODES = [
+  '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25',
+  '30', '31', '32', '33', '34', '35', '36', '37',
+  '80', '82', '84', '85', '86', '88', '89', '90', '91', '92',
+  'N62', 'N93', 'N94', 'N97', 'N98', 'N99',
+];
+
+function networkOf(id: string): string {
+  return id.split(':')[0].toUpperCase().trim();
+}
+
+function codeOf(line: MarqueeLine): string {
+  return (line.shortName || line.id).toUpperCase().trim();
+}
+
+/** Sélection affichée dans le bandeau : trams, Chrono C1→C11, Proximo. */
+function isMarqueeLine(line: MarqueeLine): boolean {
+  if (!URBAN_NETWORKS.includes(networkOf(line.id))) return false;
+  const code = codeOf(line);
+  if (['A', 'B', 'C', 'D', 'E'].includes(code)) return true;
+  if (/^C([1-9]|1[01])$/.test(code)) return true;
+  return PROXIMO_CODES.includes(code);
+}
+
+/**
+ * Un même code peut exister sur plusieurs réseaux (30 chez TPV et GSV…) : on
+ * ne garde qu'une pastille par code, celle du réseau le plus proche du cœur
+ * de l'agglomération.
+ */
+function dedupeByCode(lines: MarqueeLine[]): MarqueeLine[] {
+  const best = new Map<string, MarqueeLine>();
+  for (const line of lines) {
+    const code = codeOf(line);
+    const current = best.get(code);
+    if (!current || URBAN_NETWORKS.indexOf(networkOf(line.id)) < URBAN_NETWORKS.indexOf(networkOf(current.id))) {
+      best.set(code, line);
+    }
+  }
+  return [...best.values()];
+}
+
+/**
+ * Bandeau d'icônes de lignes qui défile en continu de droite à gauche, sur le
+ * même principe que le marquee des infos trafic de la sidebar desktop : la
+ * liste est dupliquée et translatée de -50 %, ce qui donne une boucle sans
+ * couture. La vitesse est constante en px/s quelle que soit la largeur.
+ */
+const LINES_MARQUEE_SPEED_PX_PER_SEC = 40;
+
+function LinesMarquee({ lines }: { lines: MarqueeLine[] }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [durationSec, setDurationSec] = useState(20);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const update = () => {
+      // La piste contient deux copies : une boucle = la moitié de sa largeur.
+      const loopWidth = track.scrollWidth / 2;
+      if (loopWidth > 0) {
+        setDurationSec(Math.max(8, loopWidth / LINES_MARQUEE_SPEED_PX_PER_SEC));
+      }
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, [lines]);
+
+  return (
+    <div className="relative w-full overflow-hidden">
+      <div
+        ref={trackRef}
+        className="flex w-max items-center gap-1.5"
+        style={{
+          animationName: 'footer-marquee',
+          animationDuration: `${durationSec}s`,
+          animationTimingFunction: 'linear',
+          animationIterationCount: 'infinite',
+        }}
+      >
+        {lines.map(line => (
+          <MiniLineBadge key={`a-${line.id}`} line={line} />
+        ))}
+        {lines.map(line => (
+          <MiniLineBadge key={`b-${line.id}`} line={line} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -251,6 +359,8 @@ export const HomeSheet = ({
   atmoReport,
   atmoLoading,
   onAtmoCommuneChange,
+  onOpenLines,
+  allLines = [],
 }: HomeSheetProps) => {
   const text = getText(language);
   const isLight = theme === 'light';
@@ -259,6 +369,15 @@ export const HomeSheet = ({
     : 'bg-[#2c2d31]/90 border-white/10 shadow-xl';
   const titleClass = isLight ? 'text-slate-900' : 'text-white';
   const mutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
+
+  // Bandeau défilant : uniquement les trams A→E, les Chrono C1→C11 et les
+  // Proximo bleus. Les codes C1…C11 existent aussi côté TER (SNC:C1, bleu
+  // marine) : on ne garde que ceux du réseau urbain (SEM / SE2) pour éviter
+  // d'afficher la pastille TER à la place de la ligne Chrono.
+  const marqueeLines = useMemo(
+    () => sortLinesForBadge(dedupeByCode(allLines.filter(isMarqueeLine))),
+    [allLines]
+  );
 
   const nearby = useMemo(() => {
     if (!currentLocation) return [];
@@ -437,7 +556,7 @@ export const HomeSheet = ({
                 ) : (
                   <div className="space-y-2.5">
                     {favoriteDetails.map(({ favorite, detail, loading }) => (
-                      <FavoriteCard
+                        <FavoriteCard
                         key={favorite.stopId}
                         stopName={favorite.stopName}
                         city={favorite.city}
@@ -452,7 +571,7 @@ export const HomeSheet = ({
                             : { id: favorite.stopId, name: favorite.stopName, lat: 0, lon: 0, city: favorite.city };
                           onStopClick(stub, lineFilter);
                         }}
-                        onRemove={() => removeFavoriteAndNotify(favorite.stopId)}
+                        
                         language={language}
                         theme={theme}
                       />
@@ -490,7 +609,7 @@ export const HomeSheet = ({
 	                  </button>
 	                  <button
 	                    onClick={onOpenItinerary}
-	                    className={`col-span-2 rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
+	                    className={`rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
 	                      isLight
 	                        ? 'border border-emerald-200 bg-emerald-50 shadow-[0_12px_30px_rgba(16,185,129,0.12)]'
 	                        : 'border border-emerald-400/20 bg-emerald-500/10'
@@ -499,6 +618,24 @@ export const HomeSheet = ({
 	                    <MapIcon className="mb-3 h-7 w-7 text-emerald-300" />
 	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.itineraryLabel}</span>
 	                  </button>
+	                  {/* Explorer les lignes : même gabarit que la vignette
+	                      Infotrafic, mais l'icône est remplacée par toutes les
+	                      icônes du réseau qui défilent de droite à gauche. */}
+	                  {onOpenLines && marqueeLines.length > 0 && (
+	                    <button
+	                      onClick={onOpenLines}
+	                      className={`overflow-hidden rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
+	                        isLight
+	                          ? 'border border-slate-200 bg-white shadow-[0_12px_30px_rgba(148,163,184,0.14)]'
+	                          : 'border border-white/10 bg-white/5'
+	                      }`}
+	                    >
+	                      <div className="mb-3">
+	                        <LinesMarquee lines={marqueeLines} />
+	                      </div>
+	                      <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.linesLabel}</span>
+	                    </button>
+	                  )}
 	                  {/* Qualité de l'air : un widget carré qui occupe les deux
 	                      colonnes, sur le modèle des grandes vignettes iOS. Sa
 	                      couleur est celle de l'indice du jour. */}
