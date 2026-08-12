@@ -821,7 +821,6 @@ function DesktopFinderWindow({
   onClose,
   title,
   children,
-  theme,
 }: DesktopFinderWindowProps) {
   // Initial position: roughly centered-up. We use `pos` as the live transform
   // so framer-motion doesn't have to re-mount the panel on each update.
