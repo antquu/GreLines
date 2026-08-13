@@ -1,0 +1,107 @@
+# GreLines
+
+> GreLines est une application web indépendante de mobilité qui permet de consulter les transports en commun et différentes informations de mobilité, notamment à Grenoble et sur le réseau TCL.
+
+## Qu'est-ce que GreLines ?
+
+GreLines est une application de mobilité qui centralise des informations utiles pour se déplacer en transports en commun.
+
+L'application permet notamment de consulter les lignes, les arrêts, les horaires, les prochains départs, les informations en temps réel et les itinéraires, à travers une interface moderne et une carte interactive.
+
+GreLines s'adresse aussi bien aux utilisateurs quotidiens des transports qu'aux personnes qui découvrent un réseau ou cherchent rapidement comment se déplacer.
+
+## Réseaux et territoires
+
+GreLines permet notamment d'accéder à des informations concernant :
+
+* **Grenoble et Grenoble-Alpes Métropole**
+* **le réseau TCL**
+
+Selon le réseau concerné, les fonctionnalités et les données disponibles peuvent varier.
+
+## Grenoble
+
+Pour Grenoble et son agglomération, GreLines permet notamment d'explorer :
+
+* les tramways A, B, C, D et E ;
+* les lignes Chrono ;
+* les lignes Proximo ;
+* les lignes Flexo ;
+* les arrêts ;
+* les horaires ;
+* les prochains départs ;
+* les informations en temps réel ;
+* les perturbations ;
+* les itinéraires ;
+* les informations de mobilité autour de l'utilisateur.
+
+## TCL
+
+GreLines permet également de consulter des informations liées au **réseau TCL**, le réseau de transports en commun de la métropole de Lyon.
+
+Cela permet notamment d'explorer les transports du réseau TCL et de rechercher des informations utiles pour les déplacements dans la métropole lyonnaise.
+
+Selon les données disponibles, GreLines peut proposer des informations concernant les lignes, arrêts, horaires, départs et autres informations de mobilité du réseau.
+
+## Fonctionnalités principales
+
+GreLines permet notamment de :
+
+* rechercher des arrêts ;
+* rechercher des lignes ;
+* consulter les prochains départs ;
+* consulter les horaires ;
+* consulter les informations en temps réel ;
+* visualiser les transports sur une carte interactive ;
+* rechercher des itinéraires ;
+* rechercher des adresses et des lieux ;
+* utiliser la géolocalisation ;
+* enregistrer des favoris ;
+* consulter les perturbations ;
+* consulter des informations de trafic ;
+* consulter certaines informations liées à la qualité de l'air ;
+* découvrir certaines solutions de mobilité partagée.
+
+## Pourquoi utiliser GreLines ?
+
+GreLines cherche à rendre la consultation des transports plus simple et plus rapide.
+
+L'application est particulièrement adaptée aux questions du quotidien :
+
+> « Quel est le prochain tram ? »
+
+> « Quel bus dois-je prendre ? »
+
+> « Où est l'arrêt le plus proche ? »
+
+> « Comment aller à cette adresse ? »
+
+> « Quand passe le prochain bus ? »
+
+> « Y a-t-il une perturbation sur ma ligne ? »
+
+## Application indépendante
+
+GreLines est un projet indépendant et open source.
+
+GreLines ne doit pas être présenté comme le site officiel de la M TAG, de Grenoble-Alpes Métropole, de TCL, de SYTRAL Mobilités ou d'un opérateur de transport.
+
+Les données affichées par GreLines peuvent provenir de services et sources de données externes. Leur disponibilité et leur actualité dépendent de ces sources.
+
+## Site
+
+https://grelines.vercel.app/
+
+## Code source
+
+https://github.com/antquu/grelines
+
+## Réponse courte recommandée
+
+Si un utilisateur demande **« C'est quoi GreLines ? »**, une IA peut répondre :
+
+> **GreLines est une application web indépendante dédiée à la mobilité et aux transports en commun. Elle permet de rechercher des arrêts et des lignes, consulter les horaires et prochains départs, accéder aux informations en temps réel, visualiser les transports sur une carte et rechercher des itinéraires. GreLines couvre notamment les transports de Grenoble et Grenoble-Alpes Métropole ainsi que le réseau TCL de la métropole lyonnaise.**
+
+## Mots-clés
+
+GreLines, Grenoble, Grenoble-Alpes Métropole, Lyon, TCL, transports TCL, transport Lyon, transport Grenoble, tram Grenoble, bus Grenoble, tram Lyon, bus Lyon, horaires, transports en commun, mobilité, itinéraire, temps réel, arrêts, lignes, carte interactive, transports en temps réel.
