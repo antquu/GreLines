@@ -668,24 +668,6 @@ export function stopIsNearAny(
  * whether the geometries are `LineString` or `MultiLineString`.
  * Returns arrays of `[lon, lat]` coordinate pairs.
  */
-function extractLineCoords(geometries: LineGeometry[]): [number, number][][] {
-  const lines: [number, number][][] = [];
-  for (const g of geometries) {
-    for (const feat of g.geojson.features) {
-      const geom = feat.geometry;
-      if (!geom) continue;
-      if (geom.type === 'LineString') {
-        lines.push(geom.coordinates as [number, number][]);
-      } else if (geom.type === 'MultiLineString') {
-        for (const part of geom.coordinates as [number, number][][]) {
-          lines.push(part);
-        }
-      }
-    }
-  }
-  return lines;
-}
-
 interface ProjectionResult {
   distSq: number;
   lat: number;
@@ -738,29 +720,53 @@ export function snapStopToLines(
   stop: { lat: number; lon: number },
   geometries: LineGeometry[],
   maxSnapMeters: number = 80
-): { lat: number; lon: number } | null {
+): { lat: number; lon: number; color: string } | null {
   if (geometries.length === 0) return null;
-  const lines = extractLineCoords(geometries);
-  if (lines.length === 0) return null;
 
   const maxSq = maxSnapMeters * maxSnapMeters;
   let bestDistSq = Infinity;
   let bestLat = stop.lat;
   let bestLon = stop.lon;
+  /*
+   * La couleur du tracé le plus proche voyage avec le point calé.
+   *
+   * Elle est lue sur la feature elle-même, où l'appelant l'a déjà posée pour
+   * peindre la ligne : arrêt et tracé tirent ainsi leur couleur de la même
+   * source, et ne peuvent pas diverger. La redéduire ici du code de la ligne
+   * donnait une autre couleur que celle du trait.
+   */
+  let bestColor = '';
 
-  for (const coords of lines) {
-    for (let i = 0; i < coords.length - 1; i++) {
-      const a = coords[i];
-      const b = coords[i + 1];
-      const r = projectOntoSegmentMetres(stop, a[1], a[0], b[1], b[0]);
-      if (r.distSq < bestDistSq) {
-        bestDistSq = r.distSq;
-        bestLat = r.lat;
-        bestLon = r.lon;
+  for (const geometry of geometries) {
+    for (const feature of geometry.geojson.features) {
+      const geom = feature.geometry;
+      if (!geom) continue;
+      const parts: [number, number][][] =
+        geom.type === 'LineString'
+          ? [geom.coordinates as [number, number][]]
+          : geom.type === 'MultiLineString'
+          ? (geom.coordinates as [number, number][][])
+          : [];
+      const color = String((feature.properties as any)?.color || '');
+
+      for (const coords of parts) {
+        for (let i = 0; i < coords.length - 1; i++) {
+          const a = coords[i];
+          const b = coords[i + 1];
+          const r = projectOntoSegmentMetres(stop, a[1], a[0], b[1], b[0]);
+          if (r.distSq < bestDistSq) {
+            bestDistSq = r.distSq;
+            bestLat = r.lat;
+            bestLon = r.lon;
+            bestColor = color;
+          }
+        }
       }
     }
   }
 
   if (bestDistSq > maxSq) return null;
-  return { lat: bestLat, lon: bestLon };
+  // Un tracé « exceptionnel » porte sa couleur suivie d'un alpha (`#RRGGBBCC`).
+  // La pastille, elle, se veut franche : on ne garde que les six chiffres.
+  return { lat: bestLat, lon: bestLon, color: bestColor.slice(0, 7) };
 }

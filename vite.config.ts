@@ -16,37 +16,31 @@ function serverlessFunctions(): Plugin {
     configureServer(server) {
       const mode = server.config.mode;
 
-      server.middlewares.use('/api/tcl', async (req, res) => {
-        try {
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          const keys = ['GRANDLYON_USERNAME', 'GRANDLYON_PASSWORD'];
-          
-          
-          
-          for (const key of keys) delete process.env[key];
-          const env = loadEnv(mode, process.cwd(), '');
-          for (const key of keys) {
-            if (env[key]) process.env[key] = env[key];
-          }
+      // Une même fonction sert les deux mondes : Vercel en production, ce
+      // middleware en développement. Les secrets sont relus depuis le fichier
+      // d'environnement à chaque appel, pour qu'une clé ajoutée ne demande pas
+      // de redémarrer le serveur.
+      const serve = (route: string, file: string, keys: string[]) => {
+        server.middlewares.use(route, async (req, res) => {
+          try {
+            for (const key of keys) delete process.env[key];
+            const env = loadEnv(mode, process.cwd(), '');
+            for (const key of keys) {
+              if (env[key]) process.env[key] = env[key];
+            }
 
-          
-          
-          const module = await server.ssrLoadModule('/api/tcl.js');
-          await module.default(req, res);
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ error: 'Fonction en échec', detail: String(error) }));
-        }
-      });
+            const module = await server.ssrLoadModule(file);
+            await module.default(req, res);
+          } catch (error) {
+            res.statusCode = 500;
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ error: 'Fonction en échec', detail: String(error) }));
+          }
+        });
+      };
+
+      serve('/api/tcl', '/api/tcl.js', ['GRANDLYON_USERNAME', 'GRANDLYON_PASSWORD']);
+      serve('/api/uber', '/api/uber.js', ['UBER_API_TOKEN', 'UBER_AUTH_SCHEME']);
     },
   };
 }

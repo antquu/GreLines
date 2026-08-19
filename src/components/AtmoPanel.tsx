@@ -50,11 +50,19 @@ export function AtmoPanel({
   loading,
   onCommuneChange,
   language,
+  followMap = false,
 }: {
   report: AtmoReport | null;
   loading: boolean;
   onCommuneChange: (commune: Commune) => void;
   language: 'fr' | 'en';
+  /**
+   * L'indice suit la commune au centre de la carte : la recherche disparaît.
+   *
+   * Elle n'aurait aucun effet — le prochain déplacement de carte écraserait le
+   * choix. Un champ qu'on remplit pour rien est pire que pas de champ.
+   */
+  followMap?: boolean;
 }) {
   const text = getText(language);
   const [query, setQuery] = useState('');
@@ -143,6 +151,7 @@ export function AtmoPanel({
 
       {/* Recherche par nom de commune, avec la même mécanique de suggestions
           que la barre de recherche : on tape « Sassenage », pas « 38474 ». */}
+      {!followMap && (
       <div className="relative flex-shrink-0">
         <input
           value={query}
@@ -185,6 +194,7 @@ export function AtmoPanel({
           </ul>
         )}
       </div>
+      )}
     </div>
   );
 }

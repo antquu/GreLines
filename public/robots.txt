@@ -10,7 +10,7 @@
 #     **************  *****     **********   ************  ****  ****     ****   **********  **********
 #
 #   GreLines - transports en commun de Grenoble, en temps reel
-#   https://grelines.vercel.app
+#   https://grelines.fr/
 #
 #   robots.txt / hello !
 #
@@ -107,7 +107,7 @@ Disallow: /*?*from=
 Disallow: /*?*to=
 Disallow: /*?*sharedJourney=
 
-Sitemap: https://grelines.vercel.app/sitemap.xml
+Sitemap: https://www.grelines.fr/sitemap.xml
 
 #
 #              _

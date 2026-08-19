@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon, CheckCircleIcon, ShieldCheckIcon } from '@heroicons/react/24/solid';
-import { submitTripSurvey } from '../services/cms';
+import { submitTripSurvey, type TripSurveyLeg } from '../services/cms';
 
 const CONSENT_KEY = 'greLines_surveyConsent';
 
@@ -31,6 +31,13 @@ interface TripSurveyProps {
   boardingStop?: string | null;
   
   boardingTime?: string | null;
+  /**
+   * Le voyage en cours, tronçons en transport seulement.
+   *
+   * Il part avec l'avis pour qu'on sache, plus tard, quel trajet était noté —
+   * pas seulement quelle ligne. La marche en est exclue en amont, dans l'appelant.
+   */
+  journey?: TripSurveyLeg[];
   language: 'fr' | 'en';
 }
 
@@ -120,6 +127,7 @@ export function TripSurvey({
   lineId,
   boardingStop,
   boardingTime,
+  journey,
   language,
 }: TripSurveyProps) {
   const isFr = language === 'fr';
@@ -128,6 +136,18 @@ export function TripSurvey({
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  /**
+   * Une question à la fois, qui glisse pour laisser la place à la suivante.
+   *
+   * Le formulaire posait ses trois questions d'un bloc, avec un bouton
+   * « Envoyer » au bas : c'est un questionnaire, et un questionnaire se remet à
+   * plus tard. Une seule question, trois pastilles, la suivante qui arrive dès
+   * qu'on a touché — cela se répond au feu rouge sans y penser, et l'on a
+   * terminé avant d'avoir décidé de commencer.
+   */
+  const [stepIndex, setStepIndex] = useState(0);
+  /** +1 : on avance, la carte vient de la droite. -1 : on revient. */
+  const [direction, setDirection] = useState(1);
 
   useEffect(() => {
     if (isOpen) {
@@ -135,6 +155,8 @@ export function TripSurvey({
       setAnswers({});
       setComment('');
       setDone(false);
+      setStepIndex(0);
+      setDirection(1);
     }
   }, [isOpen]);
 
@@ -152,23 +174,61 @@ export function TripSurvey({
     onClose();
   };
 
-  const handleSubmit = async () => {
+  /*
+   * Les valeurs sont passées explicitement plutôt que lues dans l'état.
+   *
+   * La dernière pastille touchée enchaîne aussitôt sur l'envoi ; à cet instant
+   * `setAnswers` n'a pas encore été appliqué, et l'on posterait un avis amputé
+   * de la réponse qu'on vient tout juste de recevoir.
+   */
+  const handleSubmit = async (
+    finalAnswers: Record<string, number> = answers,
+    finalComment: string = comment
+  ) => {
+    if (Object.keys(finalAnswers).length === 0 && !finalComment.trim()) {
+      onClose();
+      return;
+    }
     setSubmitting(true);
     await submitTripSurvey({
       lineId,
       boardingStop,
       boardingTime,
-      cleanliness: answers.cleanliness,
-      comfort: answers.comfort,
-      crowding: answers.crowding,
-      comment,
+      // L'heure du téléphone, prise à la seconde où l'on valide : c'est elle qui,
+      // rapportée à l'heure de montée, situera le véhicule sur son parcours.
+      answeredAt: new Date().toISOString(),
+      journey,
+      cleanliness: finalAnswers.cleanliness,
+      comfort: finalAnswers.comfort,
+      crowding: finalAnswers.crowding,
+      comment: finalComment,
     });
     setSubmitting(false);
     setDone(true);
     setTimeout(onClose, 1600);
   };
 
-  const hasAnswer = Object.keys(answers).length > 0 || comment.trim().length > 0;
+  const questions = QUESTIONS(isFr);
+  /** Les trois questions, puis le mot libre : quatre cartes qui défilent. */
+  const stepCount = questions.length + 1;
+  const isCommentStep = stepIndex >= questions.length;
+
+  const goTo = (next: number, finalAnswers?: Record<string, number>) => {
+    if (next >= stepCount) {
+      handleSubmit(finalAnswers ?? answers);
+      return;
+    }
+    setDirection(next > stepIndex ? 1 : -1);
+    setStepIndex(Math.max(0, next));
+  };
+
+  const pick = (key: string, value: number) => {
+    const updated = { ...answers, [key]: value };
+    setAnswers(updated);
+    // Un court délai laisse voir la pastille se colorer avant qu'elle sorte :
+    // sans lui, on ne sait pas si l'on a bien touché ce qu'on visait.
+    window.setTimeout(() => goTo(stepIndex + 1, updated), 180);
+  };
 
   return (
     <AnimatePresence>
@@ -222,54 +282,104 @@ export function TripSurvey({
             </div>
           ) : (
             <div>
-              <div className="mb-4 flex items-start justify-between">
-                <div>
-                  <h2 className="text-lg font-bold text-white">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-bold text-white">
                     {isFr ? 'Votre trajet' : 'Your trip'} · {lineId}
                   </h2>
-                  <p className="text-xs text-slate-500">
-                    {isFr ? 'Réponses anonymes · trois réponses possibles' : 'Anonymous · three answers'}
-                  </p>
+                  {/* La progression remplace le compteur : trois traits, on voit
+                      qu'il en reste deux sans avoir à lire « 1 sur 3 ». */}
+                  <div className="mt-2 flex gap-1.5" aria-hidden="true">
+                    {Array.from({ length: stepCount }).map((_, i) => (
+                      <span
+                        key={i}
+                        className={`h-1 w-6 rounded-full transition-colors ${
+                          i <= stepIndex ? 'bg-indigo-400' : 'bg-slate-700'
+                        }`}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <button onClick={onClose} className="rounded-full p-1 text-slate-500 active:text-white">
+                <button
+                  onClick={onClose}
+                  className="flex-shrink-0 rounded-full p-1 text-slate-500 active:text-white"
+                  aria-label={isFr ? 'Fermer' : 'Close'}
+                >
                   <XMarkIcon className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {QUESTIONS(isFr).map((q) => (
-                  <div key={q.key}>
-                    <p className="mb-1.5 text-sm font-medium text-slate-300">{q.label}</p>
-                    <TierRow
-                      value={answers[q.key]}
-                      emojis={q.emojis}
-                      isFr={isFr}
-                      onChange={(value) => setAnswers({ ...answers, [q.key]: value })}
-                    />
-                  </div>
-                ))}
-
-                <div>
-                  <p className="mb-1.5 text-sm font-medium text-slate-300">
-                    {isFr ? 'Commentaire (facultatif)' : 'Comment (optional)'}
-                  </p>
-                  <textarea
-                    rows={2}
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    placeholder={isFr ? 'Une remarque à partager ?' : 'Anything to share?'}
-                  />
-                </div>
+              {/* Une carte à l'écran, la suivante en attente hors cadre. La
+                  hauteur est fixée pour que le panneau ne saute pas entre deux
+                  questions de longueur différente. */}
+              <div className="relative overflow-hidden" style={{ minHeight: 132 }}>
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.div
+                    key={isCommentStep ? 'comment' : questions[stepIndex].key}
+                    initial={{ x: direction > 0 ? '55%' : '-55%', opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: direction > 0 ? '-55%' : '55%', opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 460, damping: 40 }}
+                  >
+                    {isCommentStep ? (
+                      <div>
+                        <p className="mb-1.5 text-sm font-medium text-slate-300">
+                          {isFr ? 'Un mot à ajouter ?' : 'Anything to add?'}
+                        </p>
+                        <textarea
+                          rows={3}
+                          value={comment}
+                          onChange={(e) => setComment(e.target.value)}
+                          className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder={isFr ? 'Facultatif' : 'Optional'}
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="mb-2 text-sm font-medium text-slate-300">
+                          {questions[stepIndex].label}
+                        </p>
+                        <TierRow
+                          value={answers[questions[stepIndex].key]}
+                          emojis={questions[stepIndex].emojis}
+                          isFr={isFr}
+                          onChange={(value) => pick(questions[stepIndex].key, value)}
+                        />
+                      </div>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
               </div>
 
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !hasAnswer}
-                className="mt-5 w-full rounded-xl bg-indigo-500 py-3 text-sm font-semibold text-white disabled:opacity-40 active:bg-indigo-600"
-              >
-                {submitting ? (isFr ? 'Envoi…' : 'Sending…') : isFr ? 'Envoyer' : 'Send'}
-              </button>
+              {/* Retour et Ignorer, en retrait : répondre se fait en touchant une
+                  pastille, pas en visant un bouton de validation. */}
+              <div className="mt-4 flex items-center gap-2">
+                {stepIndex > 0 && (
+                  <button
+                    onClick={() => goTo(stepIndex - 1)}
+                    className="rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-400 active:text-white"
+                  >
+                    {isFr ? 'Retour' : 'Back'}
+                  </button>
+                )}
+                <div className="flex-1" />
+                {isCommentStep ? (
+                  <button
+                    onClick={() => handleSubmit()}
+                    disabled={submitting}
+                    className="rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40 active:bg-indigo-600"
+                  >
+                    {submitting ? (isFr ? 'Envoi…' : 'Sending…') : isFr ? 'Terminer' : 'Finish'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => goTo(stepIndex + 1)}
+                    className="rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-400 active:text-white"
+                  >
+                    {isFr ? 'Ignorer' : 'Skip'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </motion.div>

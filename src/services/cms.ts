@@ -39,12 +39,37 @@ export async function getActivePopups(context?: { lineId?: string; stopId?: stri
   }
 }
 
+/**
+ * Un tronçon en transport, de quai à quai.
+ *
+ * Jamais la marche : le premier et le dernier tronçon à pied d'un trajet
+ * partent de chez quelqu'un et y reviennent. On garde de quoi établir les
+ * trajets moyens sur le réseau, pas de quoi savoir où habitent les gens.
+ */
+export interface TripSurveyLeg {
+  line: string;
+  from: string;
+  to: string;
+  departure?: string;
+  arrival?: string;
+}
+
 export interface TripSurveyAnswers {
   lineId: string;
-  
+
   boardingStop?: string | null;
-  
+
   boardingTime?: string | null;
+  /**
+   * L'instant de la réponse, vu du téléphone.
+   *
+   * `created_at` dira quand la base a reçu la ligne, ce qui peut arriver
+   * plusieurs minutes plus tard sur un réseau lent. C'est pourtant l'écart avec
+   * l'heure de montée qui situe le véhicule sur son parcours.
+   */
+  answeredAt?: string;
+  /** Le voyage, tronçons en transport seulement. */
+  journey?: TripSurveyLeg[];
   cleanliness?: number;
   punctuality?: number;
   crowding?: number;
@@ -73,6 +98,46 @@ export async function submitTripSurvey(answers: TripSurveyAnswers): Promise<bool
       comfort: answers.comfort ?? null,
       on_time: answers.onTime ?? null,
       comment: answers.comment?.trim() || null,
+      answered_at: answers.answeredAt ?? new Date().toISOString(),
+      journey: answers.journey ?? [],
+    });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Un avis sur un arrêt, recueilli pendant l'attente.
+ *
+ * Les enquêtes véhicule ne disaient rien du quai, alors qu'on y passe autant de
+ * temps qu'à bord et que ses défauts lui sont propres : un afficheur éteint, un
+ * abri cassé, un quai peu rassurant le soir. On ne peut les constater qu'en
+ * étant là, ce qui fait de l'attente le seul moment où la question a un sens.
+ */
+export interface StopSurveyAnswers {
+  stopId: string;
+  stopName?: string | null;
+  /** Échelle 1 / 3 / 5, la même que les enquêtes véhicule pour qu'elles se comparent. */
+  displayReadable?: number;
+  shelterCondition?: number;
+  feelsSafe?: number;
+  comment?: string;
+  answeredAt?: string;
+}
+
+export async function submitStopSurvey(answers: StopSurveyAnswers): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+
+  try {
+    const { error } = await supabase.from('stop_surveys').insert({
+      stop_id: answers.stopId,
+      stop_name: answers.stopName ?? null,
+      display_readable: answers.displayReadable ?? null,
+      shelter_condition: answers.shelterCondition ?? null,
+      feels_safe: answers.feelsSafe ?? null,
+      comment: answers.comment?.trim() || null,
+      answered_at: answers.answeredAt ?? new Date().toISOString(),
     });
     return !error;
   } catch {

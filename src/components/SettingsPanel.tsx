@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Sheet } from 'react-modal-sheet';
+import { MapSheet } from './MapSheet';
+import { LegalSheet } from './LegalSheet';
 import {
   XMarkIcon,
   ChevronRightIcon,
@@ -9,13 +10,27 @@ import {
   InformationCircleIcon,
   CommandLineIcon,
 } from '@heroicons/react/24/solid';
-import { useRef, useState } from 'react';
+import { createContext, useContext, useRef, useState } from 'react';
 import type React from 'react';
+import { MobileNotificationPrompt } from './MobileNotificationPrompt';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 import { idbClear } from '../services/persistentCache';
 import { NETWORKS } from '../services/api';
+import {
+  notificationPermission,
+  notificationsEnabled,
+  requestNotificationPermission,
+  setNotificationsEnabled,
+} from '../services/tripNotifications';
 
 interface SettingsPanelProps {
+  /**
+   * « inline » rend les réglages à nu — toutes les sections à la suite, sans
+   * feuille, sans onglets ni bouton de fermeture. C'est la forme qu'ils
+   * prennent au bas de l'écran Compte, où ils ne sont pas un écran mais la
+   * seconde moitié de celui qu'on regarde.
+   */
+  variant?: 'panel' | 'inline';
   isOpen: boolean;
   settingsState: 'closed' | 'peek' | 'open';
   setSettingsState: (s: 'closed' | 'peek' | 'open') => void;
@@ -25,8 +40,19 @@ interface SettingsPanelProps {
   language: 'fr' | 'en';
   setLanguage: (l: 'fr' | 'en') => void;
   
+  /**
+   * Le compte de l'appareil, et ce qu'on en fait.
+   *
+   * Le panneau ne connaît ni la base ni les cartes : il reçoit de quoi afficher
+   * une ligne et un rappel de clic. C'est ce qui lui permet de rester le même
+   * dans les réglages du téléphone, dans l'écran Compte et sur ordinateur.
+   */
+  accountPseudo?: string | null;
+  accountAvatar?: string | null;
+  onOpenAccount?: () => void;
+  /** Le theme choisi, « auto » compris — c'est lui que les vignettes montrent. */
   theme?: 'light' | 'dark' | 'auto';
-  
+  /** Le theme reellement applique, une fois « auto » resolu. */
   uiTheme?: 'light' | 'dark';
   setTheme?: (t: 'light' | 'dark' | 'auto') => void;
   fontSize: 'small' | 'normal' | 'large';
@@ -40,6 +66,9 @@ interface SettingsPanelProps {
   autoSync: boolean;
   setAutoSync: (v: boolean) => void;
   autoLocation: boolean;
+  /** L'indice de qualité de l'air suit la commune au centre de la carte. */
+  atmoFollowMap: boolean;
+  setAtmoFollowMap: (value: boolean) => void;
   setAutoLocation: (v: boolean) => void;
   /**
    * Rouvre le tutoriel « app sur l'écran d'accueil ». Absent (ou non fourni)
@@ -76,6 +105,29 @@ const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) =
   </motion.button>
 );
 
+/**
+ * Réglages à l'air libre.
+ *
+ * Dans le panneau, chaque groupe est une carte posée sur le fond — c'est la
+ * convention des écrans de réglages. Au bas de l'écran Compte, la même carte
+ * ferait doublon avec celle du portefeuille juste au-dessus : les rangées y
+ * vivent donc sans cadre, séparées par un simple filet.
+ */
+const BareSettings = createContext(false);
+
+/**
+ * L'apparence, pour les petits composants de rangée.
+ *
+ * `Row`, `Group` et le sélecteur sont définis hors du composant principal et ne
+ * voient donc pas son `resolvedTheme`. Ils écrivaient en blanc en dur, ce qui ne
+ * se remarquait pas tant que les réglages vivaient sur un fond sombre — mais au
+ * bas de l'écran Compte en thème clair, cela donnait du blanc sur du blanc.
+ *
+ * Un contexte plutôt qu'une prop à faire descendre partout : ces composants sont
+ * utilisés des dizaines de fois, et il en aurait manqué une.
+ */
+const SettingsLight = createContext(false);
+
 const Row = ({
   label,
   children,
@@ -84,16 +136,30 @@ const Row = ({
   label: string;
   children: React.ReactNode;
   last?: boolean;
-}) => (
-  <div
-    className={`flex items-center justify-between px-4 py-3 ${
-      last ? '' : 'border-b border-slate-700/60'
-    }`}
-  >
-    <span className="text-[15px] text-white">{label}</span>
-    <div className="flex-shrink-0">{children}</div>
-  </div>
-);
+}) => {
+  const bare = useContext(BareSettings);
+  const isLight = useContext(SettingsLight);
+  return (
+    <div
+      className={`flex items-center justify-between py-3.5 ${bare ? 'px-1' : 'px-4'} ${
+        last
+          ? ''
+          : `border-b ${
+              bare
+                ? isLight
+                  ? 'border-slate-900/10'
+                  : 'border-white/5'
+                : isLight
+                ? 'border-slate-200'
+                : 'border-slate-700/60'
+            }`
+      }`}
+    >
+      <span className={`text-[15px] ${isLight ? 'text-slate-900' : 'text-white'}`}>{label}</span>
+      <div className="flex-shrink-0">{children}</div>
+    </div>
+  );
+};
 
 const Select = <T extends string>({
   value,
@@ -103,8 +169,10 @@ const Select = <T extends string>({
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
-}) => (
-  <div className="inline-flex max-w-[360px] flex-wrap justify-end gap-1 rounded-xl bg-slate-950/70 p-1">
+}) => {
+  const isLight = useContext(SettingsLight);
+  return (
+  <div className={`inline-flex max-w-[360px] flex-wrap justify-end gap-1 rounded-xl p-1 ${isLight ? 'bg-slate-100' : 'bg-slate-950/70'}`}>
     {options.map(o => (
       <motion.button
         key={o.value}
@@ -114,14 +182,18 @@ const Select = <T extends string>({
         className={`rounded-lg px-2.5 py-1.5 text-[13px] font-semibold transition ${
           value === o.value
             ? 'bg-blue-600 text-white shadow-sm'
+            : isLight
+            ? 'text-slate-700 hover:bg-white'
             : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
         }`}
+        style={value === o.value ? { color: '#ffffff' } : undefined}
       >
         {o.label}
       </motion.button>
     ))}
   </div>
-);
+  );
+};
 
 const Dropdown = <T extends string>({
   value,
@@ -151,18 +223,30 @@ const Group = ({
 }: {
   title?: string;
   children: React.ReactNode;
-}) => (
+}) => {
+  const isLight = useContext(SettingsLight);
+  return (
   <div className="mb-6">
     {title && (
-      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 mb-2">
+      <h4 className={`text-xs font-semibold uppercase tracking-wider px-4 mb-2 ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>
         {title}
       </h4>
     )}
-    <div className="bg-slate-800/90 border border-slate-700 rounded-2xl overflow-hidden shadow-[0_12px_30px_rgba(2,6,23,0.22)]">
+    <GroupSurface>{children}</GroupSurface>
+  </div>
+  );
+};
+/** Le cadre d'un groupe — une carte dans le panneau, rien du tout à l'air libre. */
+const GroupSurface = ({ children }: { children: React.ReactNode }) => {
+  const bare = useContext(BareSettings);
+  const isLight = useContext(SettingsLight);
+  if (bare) return <div>{children}</div>;
+  return (
+    <div className={`rounded-2xl border overflow-hidden ${isLight ? 'border-slate-200 bg-white shadow-none' : 'border-slate-700 bg-slate-800/90 shadow-[0_12px_30px_rgba(2,6,23,0.22)]'}`}>
       {children}
     </div>
-  </div>
-);
+  );
+};
 
 /**
  * Autorités organisatrices, présentées par leur identité visuelle.
@@ -170,62 +254,102 @@ const Group = ({
  * Chaque vignette pilote un ou plusieurs codes réseau : « Tag » regroupe SEM et
  * SE2, qui sont le même réseau découpé en deux jeux de données côté MTAG.
  */
-const NETWORK_TILES: Array<{ asset: string; selectedAsset: string; codes: string[]; label: string }> = [
+/*
+ * Les logos vivent dans `/assets/network/`, à part du reste.
+ *
+ * Le pictogramme du TER s'appelle `ter.png` et sert déjà au badge de ligne :
+ * deux fichiers du même nom pour deux usages différents finissent par se
+ * marcher dessus. Un dossier propre au sélecteur règle la question une fois.
+ *
+ * Les suffixes d'état sélectionné ne sont pas uniformes — `-selectioned`,
+ * `-selectionned`, `-selected` selon le fichier — alors on les écrit en toutes
+ * lettres plutôt que de les déduire : une convention qu'on invente ici ne
+ * renommerait pas les fichiers pour autant.
+ */
+const NETWORK_ASSETS = '/assets/network';
+
+type NetworkTile = { asset: string; selectedAsset: string; codes: string[]; label: string };
+
+/** Les autorités organisatrices, celles qui portent le réseau structurant. */
+const NETWORK_TILES: NetworkTile[] = [
   { asset: 'Metropole', selectedAsset: 'Metropole-selectioned', codes: ['SEM', 'SE2'], label: 'Métropole' },
   { asset: 'Gresivaudan', selectedAsset: 'Gresivaudan-selectioned', codes: ['GSV'], label: 'Grésivaudan' },
   { asset: 'Voironnais', selectedAsset: 'Voironnais-selected', codes: ['TPV'], label: 'Pays Voironnais' },
   { asset: 'Region', selectedAsset: 'Region-selectioned', codes: ['C38'], label: 'Cars Région' },
 ];
 
-/** Codes couverts par les vignettes : le reste passe en liste secondaire. */
-const TILE_CODES = new Set(NETWORK_TILES.flatMap(tile => tile.codes));
+/** Les opérateurs qui s'ajoutent aux précédents, chacun avec sa plaque. */
+const OPERATOR_TILES: NetworkTile[] = [
+  { asset: 'Bulle', selectedAsset: 'Bulle-selectionned', codes: ['BUL'], label: 'Bulles' },
+  { asset: 'Transaltitude', selectedAsset: 'Transaltitude-selectionned', codes: ['TRA'], label: 'Transaltitude' },
+  { asset: 'MCovoit', selectedAsset: 'MCovoit-selectionned', codes: ['MCO'], label: "M'Covoit" },
+  { asset: 'TER', selectedAsset: 'TER-selectionned', codes: ['SNC'], label: 'TER' },
+  { asset: 'TCL', selectedAsset: 'TCL-selectionned', codes: ['TCL'], label: 'TCL' },
+];
+
+/** Les véhicules en libre-service, qui ne sont pas des réseaux de lignes. */
+const SHARED_TILES: Array<{ asset: string; selectedAsset: string; setting: 'citiz' | 'voi'; label: string }> = [
+  { asset: 'citiz', selectedAsset: 'Citiz-selectionned', setting: 'citiz', label: 'Citiz' },
+  { asset: 'voi', selectedAsset: 'voi-selectionned', setting: 'voi', label: 'Voi' },
+];
+
+/** Codes couverts par une vignette : le reste garde son interrupteur. */
+const TILE_CODES = new Set([...NETWORK_TILES, ...OPERATOR_TILES].flatMap(tile => tile.codes));
 const SECONDARY_NETWORKS = NETWORKS.filter(network => !TILE_CODES.has(network.code));
 
-function NetworkPicker({
-  selected,
+/**
+ * Une grille de plaques à cocher.
+ *
+ * Le même dessin sert aux autorités organisatrices, aux opérateurs et aux
+ * véhicules partagés : trois colonnes, même rapport 5:3 que le sélecteur de
+ * thème, donc même échelle d'un groupe à l'autre. Éteinte, la plaque passe en
+ * grisé — on voit qu'elle existe et qu'elle n'est pas retenue.
+ */
+function NetworkTiles({
+  tiles,
+  isActive,
   onToggle,
-  language,
+  hint,
 }: {
-  selected: string[];
-  onToggle: (codes: string[]) => void;
-  language: 'fr' | 'en';
+  tiles: Array<{ asset: string; selectedAsset: string; label: string; key: string }>;
+  isActive: (key: string) => boolean;
+  onToggle: (key: string) => void;
+  hint?: string;
 }) {
+  const isLight = useContext(SettingsLight);
   return (
-    // Trois colonnes comme le sélecteur de thème : les vignettes ont le même
-    // rapport 5:3 et se retrouvent donc exactement à la même échelle.
     <div className="grid grid-cols-3 gap-3 px-4 py-4">
-      {NETWORK_TILES.map(tile => {
-        const active = tile.codes.every(code => selected.includes(code));
+      {tiles.map(tile => {
+        const active = isActive(tile.key);
         return (
           <button
-            key={tile.label}
+            key={tile.key}
             type="button"
-            onClick={() => onToggle(tile.codes)}
+            onClick={() => onToggle(tile.key)}
             aria-pressed={active}
             className="flex flex-col items-center gap-2"
           >
             <img
-              src={`/assets/${active ? tile.selectedAsset : tile.asset}.png`}
+              src={`${NETWORK_ASSETS}/${active ? tile.selectedAsset : tile.asset}.png`}
               alt={tile.label}
               loading="lazy"
               className={`w-full rounded-lg transition ${active ? '' : 'opacity-50 grayscale'}`}
             />
-            <span className={`text-xs ${active ? 'font-semibold text-white' : 'text-slate-400'}`}>
+            <span className={`text-center text-xs ${active ? `font-semibold ${isLight ? 'text-slate-900' : 'text-white'}` : 'text-slate-400'}`}>
               {tile.label}
             </span>
           </button>
         );
       })}
-      <p className="col-span-2 text-center text-[11px] text-slate-500">
-        {language === 'fr'
-          ? 'Touchez un réseau pour l’afficher ou le masquer.'
-          : 'Tap a network to show or hide it.'}
-      </p>
+      {hint && (
+        <p className="col-span-3 pt-1 text-center text-[11px] text-slate-500">{hint}</p>
+      )}
     </div>
   );
 }
 
 export function SettingsPanel({
+  variant = 'panel',
   isOpen,
   setSettingsState,
   activeTab,
@@ -235,6 +359,9 @@ export function SettingsPanel({
   setLanguage,
   theme,
   uiTheme,
+  accountPseudo,
+  accountAvatar,
+  onOpenAccount,
   setTheme,
   fontSize,
   setFontSize,
@@ -247,6 +374,8 @@ export function SettingsPanel({
   autoSync,
   setAutoSync,
   autoLocation,
+  atmoFollowMap,
+  setAtmoFollowMap,
   setAutoLocation,
   onOpenInstallGuide,
   showInstallGuide = false,
@@ -256,10 +385,17 @@ export function SettingsPanel({
   panelRef,
 }: SettingsPanelProps) {
   const { settings: perf, setSetting, resetSettings } = usePerfSettings();
+  /** Les conditions et le sort des données, dans leur propre feuille. */
+  const [isLegalOpen, setIsLegalOpen] = useState(false);
+  const [isNotificationPromptOpen, setIsNotificationPromptOpen] = useState(false);
+  const [notificationsOn, setNotificationsOn] = useState(
+    () => notificationPermission() === 'granted' && notificationsEnabled(),
+  );
+  const tripNotificationPermission = notificationPermission();
   // Pas de `if (!isOpen) return null` ici : démonter le panneau à la fermeture
   // supprimerait son animation de sortie. La feuille mobile gère elle-même son
   // état fermé, et la fenêtre desktop est encadrée par <AnimatePresence>.
-  const resolvedTheme = uiTheme ?? (theme === 'dark' ? 'dark' : 'light');
+  const resolvedTheme = uiTheme ?? (theme === 'light' ? 'light' : 'dark');
   const isLight = resolvedTheme === 'light';
   const dev = text.dev;
   // Le mode développeur est réservé à l'ordinateur : ses options supposent un
@@ -267,6 +403,28 @@ export function SettingsPanel({
   const devAvailable = !isMobile;
 
   const handleClose = () => setSettingsState('closed');
+
+  const handleTripNotificationsEnable = async () => {
+    const granted = await requestNotificationPermission();
+    setNotificationsEnabled(granted);
+    setNotificationsOn(granted);
+  };
+
+  const handleNotificationsToggle = () => {
+    if (notificationsOn) {
+      setNotificationsEnabled(false);
+      setNotificationsOn(false);
+      return;
+    }
+
+    if (notificationPermission() === 'granted') {
+      setNotificationsEnabled(true);
+      setNotificationsOn(true);
+      return;
+    }
+
+    setIsNotificationPromptOpen(true);
+  };
 
   /**
    * Active ou désactive un bloc de réseaux d'un seul geste (le réseau Tag en
@@ -297,8 +455,78 @@ export function SettingsPanel({
 
   // ── Tab contents (shared between mobile + desktop) ───────────────────────
 
-  const GeneralContent = () => (
+  /*
+   * Le contenu des onglets : des éléments, pas des composants.
+   *
+   * Ils étaient déclarés en fonctions (`const GeneralContent = () => …`) puis
+   * rendus en `<GeneralContent />`. Une fonction déclarée dans le corps du
+   * composant change d'identité à chaque rendu : React n'y voyait pas le même
+   * type et démontait tout l'onglet pour le remonter à neuf. Chaque clic sur un
+   * sélecteur rejouait donc l'arrivée de tous les autres, fermait le menu
+   * déroulant qu'on venait d'ouvrir, perdait le focus — et le panneau remontait
+   * en haut.
+   *
+   * En éléments, React reconcilie au lieu de remonter : seul ce qui a changé
+   * change.
+   */
+  const generalContent = (
     <>
+      {/* Le compte, en tête de section.
+          Avant la langue et le rafraîchissement, parce qu'il ne se règle qu'une
+          fois : ce qu'on fait une seule fois se met devant, ce qu'on ajuste se
+          met après. La ligne change de forme selon qu'il existe — invitation
+          d'un côté, profil de l'autre — mais garde sa place, pour qu'on n'ait pas
+          à la chercher une fois créé. */}
+      {isMobile && onOpenAccount && (
+        <div className="mb-6">
+          {/* Son propre cadre, même à l'air libre.
+              Les autres rangées se passent de bordure dans l'écran Compte, où
+              elles suivent le portefeuille. Celle-ci n'est pas un réglage mais
+              une porte : le cadre arrondi le dit, et la distingue de la liste
+              d'interrupteurs qui suit. */}
+          <button
+            type="button"
+            onClick={onOpenAccount}
+            className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition ${
+              isLight
+                ? 'border-slate-200 bg-white hover:bg-slate-50'
+                : 'border-slate-800 bg-slate-900/70 hover:bg-slate-800/70'
+            }`}
+          >
+            {accountPseudo ? (
+              <>
+                <span
+                  className={`flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border text-lg ${
+                    isLight ? 'border-slate-200 bg-white' : 'border-slate-700 bg-white'
+                  }`}
+                >
+                  {accountAvatar ? (
+                    <span aria-hidden>{accountAvatar}</span>
+                  ) : (
+                    <span aria-hidden>🙂</span>
+                  )}
+                </span>
+                <span
+                  className={`min-w-0 flex-1 truncate text-[15px] font-bold ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  }`}
+                >
+                  {accountPseudo}
+                </span>
+              </>
+            ) : (
+              <span
+                className={`min-w-0 flex-1 text-[15px] ${
+                  isLight ? 'text-slate-900' : 'text-white'
+                }`}
+              >
+                {language === 'fr' ? 'Connecter son compte' : 'Connect your account'}
+              </span>
+            )}
+            <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-slate-500" />
+          </button>
+        </div>
+      )}
       <Group>
         <Row label={text.labels.language}>
           <Dropdown
@@ -328,10 +556,57 @@ export function SettingsPanel({
         <Row label={text.labels.autoLocation}>
           <Toggle value={autoLocation} onChange={() => setAutoLocation(!autoLocation)} />
         </Row>
+        {/* Éteint, le panneau de qualité de l'air retrouve sa recherche : c'est
+            à nouveau l'utilisateur qui désigne la commune. */}
+        <Row label={text.labels.atmoFollowMap}>
+          <Toggle value={atmoFollowMap} onChange={() => setAtmoFollowMap(!atmoFollowMap)} />
+        </Row>
         <Row label={text.labels.searchHistory} last>
           <Toggle value={searchHistory} onChange={() => setSearchHistory(!searchHistory)} />
         </Row>
       </Group>
+
+      {isMobile && (
+        <>
+          <Group>
+            <Row label="Notification" last>
+              <span className="hidden">
+                <span className="block text-[15px] font-medium text-white">
+                  {language === 'fr' ? 'Notification' : 'Notification'}
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-400">
+                  {tripNotificationPermission === 'granted'
+                    ? language === 'fr'
+                      ? 'Activées pour les trajets'
+                      : 'Enabled for trips'
+                    : tripNotificationPermission === 'denied'
+                    ? language === 'fr'
+                      ? 'Autorisation refusée'
+                      : 'Permission denied'
+                    : language === 'fr'
+                    ? 'Configurer les notifications de trajet'
+                    : 'Set up trip notifications'}
+                </span>
+              </span>
+              <Toggle value={notificationsOn} onChange={handleNotificationsToggle} />
+            </Row>
+          </Group>
+
+          <MobileNotificationPrompt
+            isOpen={isNotificationPromptOpen}
+            language={language}
+            onEnable={async () => {
+              await handleTripNotificationsEnable();
+              setIsNotificationPromptOpen(false);
+            }}
+            onDismiss={() => {
+              setNotificationsEnabled(false);
+              setNotificationsOn(false);
+              setIsNotificationPromptOpen(false);
+            }}
+          />
+        </>
+      )}
 
       {/* Rien à installer si l'app tourne déjà depuis l'écran d'accueil : dans
           ce cas `showInstallGuide` est faux et la ligne disparaît. */}
@@ -339,7 +614,7 @@ export function SettingsPanel({
         <Group>
           <button
             onClick={onOpenInstallGuide}
-            className="w-full flex items-center justify-between px-4 py-3 transition hover:bg-slate-700/40"
+                className="w-full flex items-center justify-between rounded-2xl px-4 py-3 transition hover:bg-slate-700/40"
           >
             <span className="text-[15px] font-medium text-blue-400 text-left">
               {language === 'fr'
@@ -376,13 +651,22 @@ export function SettingsPanel({
     </>
   );
 
-  /** Sélecteur de thème illustré (vignettes clair / sombre / auto). */
-  const ThemePicker = () => {
+  /**
+   * Sélecteur de thème illustré : clair ou sombre.
+   *
+   * Le troisième choix, « auto », a disparu — il n'apportait qu'une hésitation
+   * de plus dans une liste où deux vignettes suffisent. Le sombre tient ce
+   * rôle : c'est lui qu'on trouve à la première ouverture, et c'est vers lui
+   * que retombe un réglage « auto » hérité de l'ancienne version.
+   */
+  const themePicker = (() => {
     const isFr = language === 'fr';
+    /* « Auto » en premier : c'est le défaut, et le seul des trois qui n'impose
+       rien. Les deux autres sont des dérogations à ce que dit l'appareil. */
     const options: Array<{ value: 'light' | 'dark' | 'auto'; label: string }> = [
+      { value: 'auto', label: 'Auto' },
       { value: 'light', label: isFr ? 'Clair' : 'Light' },
       { value: 'dark', label: isFr ? 'Sombre' : 'Dark' },
-      { value: 'auto', label: isFr ? 'Auto' : 'Auto' },
     ];
 
     return (
@@ -390,7 +674,7 @@ export function SettingsPanel({
         <p className="mb-3 text-[15px] text-slate-200">{isFr ? 'Thème' : 'Theme'}</p>
         <div className="grid grid-cols-3 gap-3">
           {options.map((option) => {
-            const selected = theme === option.value;
+            const selected = (theme ?? 'auto') === option.value;
             return (
               <button
                 key={option.value}
@@ -411,12 +695,12 @@ export function SettingsPanel({
         </div>
       </div>
     );
-  };
+  })();
 
-  const DisplayContent = () => (
+  const displayContent = (
     <>
       <Group>
-        <ThemePicker />
+        {themePicker}
       </Group>
 
       <Group>
@@ -451,7 +735,7 @@ export function SettingsPanel({
    * Section Développeur : chaque bascule coupe réellement un morceau du rendu
    * ou des requêtes réseau, elle n'est pas décorative.
    */
-  const DevContent = () => (
+  const devContent = (
     <>
       <Group>
         <Row label={dev.overlay} last>
@@ -502,7 +786,7 @@ export function SettingsPanel({
       <Group>
         <button
           onClick={resetSettings}
-          className="w-full flex items-center justify-between px-4 py-3 transition hover:bg-slate-700/40"
+          className="w-full flex items-center justify-between rounded-2xl px-4 py-3 transition hover:bg-slate-700/40"
         >
           <span className="text-[15px] font-medium text-blue-400">{dev.reset}</span>
           <ChevronRightIcon className="h-4 w-4 text-slate-500" />
@@ -513,7 +797,7 @@ export function SettingsPanel({
     </>
   );
 
-  const DataContent = () => (
+  const dataContent = (
     <>
       <Group>
         <Row label={text.labels.autoSync} last>
@@ -521,18 +805,32 @@ export function SettingsPanel({
         </Row>
       </Group>
 
-      {/* Réseaux chargés : les quatre autorités organisatrices sont
-          présentées par leur identité visuelle (mêmes vignettes que le
-          sélecteur de thème), les opérateurs secondaires en simple liste. */}
+      {/* Tout le sélecteur est en plaques désormais : les autorités
+          organisatrices, les opérateurs, les véhicules partagés. Un réseau se
+          reconnaît à sa marque bien avant à son nom, et une liste d'interrupteurs
+          demandait de lire dix libellés pour trouver celui qu'on cherche. */}
       <Group title={text.networks.title}>
-        <NetworkPicker
-          selected={perf.networks}
-          onToggle={toggleNetwork}
-          language={language}
+        <NetworkTiles
+          tiles={NETWORK_TILES.map(tile => ({ ...tile, key: tile.codes.join('+') }))}
+          isActive={key => key.split('+').every(code => perf.networks.includes(code))}
+          onToggle={key => toggleNetwork(key.split('+'))}
         />
       </Group>
 
       <Group title={text.networks.others}>
+        <NetworkTiles
+          tiles={OPERATOR_TILES.map(tile => ({ ...tile, key: tile.codes.join('+') }))}
+          isActive={key => key.split('+').every(code => perf.networks.includes(code))}
+          onToggle={key => toggleNetwork(key.split('+'))}
+          hint={
+            language === 'fr'
+              ? 'Touchez un réseau pour l’afficher ou le masquer.'
+              : 'Tap a network to show or hide it.'
+          }
+        />
+        {/* Ce qui n'a pas de plaque garde son interrupteur : le funiculaire des
+            Petites Roches n'a pas de logo, et une case vide vaudrait moins
+            qu'une ligne de texte. */}
         {SECONDARY_NETWORKS.map((network, index) => (
           <Row
             key={network.code}
@@ -550,12 +848,11 @@ export function SettingsPanel({
       {/* Mobilités partagées : elles ne dépendent pas des réseaux de transport,
           elles s'appliquent immédiatement et ne rechargent pas le catalogue. */}
       <Group title={text.networks.shared}>
-        <Row label={text.networks.citiz}>
-          <Toggle value={perf.citiz} onChange={() => setSetting('citiz', !perf.citiz)} />
-        </Row>
-        <Row label={text.networks.voi} last>
-          <Toggle value={perf.voi} onChange={() => setSetting('voi', !perf.voi)} />
-        </Row>
+        <NetworkTiles
+          tiles={SHARED_TILES.map(tile => ({ ...tile, key: tile.setting }))}
+          isActive={key => Boolean(perf[key as 'citiz' | 'voi'])}
+          onToggle={key => setSetting(key as 'citiz' | 'voi', !perf[key as 'citiz' | 'voi'])}
+        />
       </Group>
 
       <p className="mb-6 px-4 text-xs leading-relaxed text-slate-500">{text.networks.hint}</p>
@@ -570,7 +867,7 @@ export function SettingsPanel({
             await idbClear().catch(() => {});
             window.location.reload();
           }}
-          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-700/40 transition"
+          className="w-full flex items-center justify-between rounded-2xl px-4 py-3 hover:bg-slate-700/40 transition"
         >
           <span className="text-[15px] text-red-400 font-medium">
             {text.buttons.clearCache}
@@ -583,7 +880,7 @@ export function SettingsPanel({
     </>
   );
 
-  const AboutContent = () => (
+  const aboutContent = (
     <div className="flex flex-col">
       <div className="flex items-center justify-center mb-5 pt-2">
         <div className="rounded-2xl px-4 py-3">
@@ -594,6 +891,20 @@ export function SettingsPanel({
           />
         </div>
       </div>
+
+      {/* Ce qu'on fait des données se lit avant la version de l'application :
+          c'est la question qu'on vient poser ici, l'autre est une curiosité. */}
+      <Group>
+        <button
+          onClick={() => setIsLegalOpen(true)}
+            className="flex w-full items-center justify-between rounded-2xl px-4 py-3.5 transition hover:bg-slate-700/40"
+        >
+          <span className={`text-[15px] ${isLight ? 'text-slate-900' : 'text-white'}`}>
+            {language === 'fr' ? 'Conditions et données' : 'Terms and data'}
+          </span>
+          <ChevronRightIcon className="h-4 w-4 text-slate-500" />
+        </button>
+      </Group>
 
       <Group>
         <Row label={text.misc.versionLabel}>
@@ -687,43 +998,57 @@ export function SettingsPanel({
     </div>
   );
 
-  const renderTab = () => {
-    switch (activeTab) {
-      case 'display': return <DisplayContent />;
-      case 'data':    return <DataContent />;
-      case 'dev':     return devAvailable && perf.devMode ? <DevContent /> : <GeneralContent />;
-      case 'about':   return <AboutContent />;
+  const renderTabByKey = (key: string) => {
+    switch (key) {
+      case 'display': return displayContent;
+      case 'data':    return dataContent;
+      case 'dev':     return devAvailable && perf.devMode ? devContent : generalContent;
+      case 'about':   return aboutContent;
       case 'general':
-      default:        return <GeneralContent />;
+      default:        return generalContent;
     }
   };
+
+  const renderTab = () => renderTabByKey(activeTab);
+
+  // ── Réglages à nu : toutes les sections à la suite, sans habillage ───────
+  if (variant === 'inline') {
+    return (
+      <SettingsLight value={isLight}>
+      <BareSettings value>
+      <div className="space-y-8">
+        {tabs.map(tab => (
+          <section key={tab.key}>
+            <h3
+              className={`mb-3 px-1 text-[22px] font-extrabold leading-none ${
+                isLight ? 'text-slate-900' : 'text-white'
+              }`}
+            >
+              {tab.label}
+            </h3>
+            {renderTabByKey(tab.key)}
+          </section>
+        ))}
+      </div>
+      {/* La feuille des conditions vit à côté des réglages, pas dedans : elle
+          doit pouvoir se poser par-dessus eux, quelle que soit leur forme. */}
+      <LegalSheet
+        isOpen={isLegalOpen}
+        onClose={() => setIsLegalOpen(false)}
+        language={language}
+        theme={resolvedTheme}
+        isMobile={isMobile}
+      />
+      </BareSettings>
+      </SettingsLight>
+    );
+  }
 
   // ── Mobile: iOS-style settings sheet ─────────────────────────────────────
   if (isMobile) {
     return (
-      <Sheet
-        style={{ zIndex: 100 }}
-        isOpen={isOpen}
-        onClose={handleClose}
-        snapPoints={[0, 0.6, 1]}
-        initialSnap={2}
-      >
-        <Sheet.Container
-          style={{
-            borderRadius: '24px 24px 0 0',
-            background: isLight
-              ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.98))'
-              : '#0f172a',
-            border: isLight ? '1px solid rgba(203,213,225,0.75)' : undefined,
-            zIndex: 100,
-          }}
-        >
-          <Sheet.Header>
-            <div className="flex justify-center pt-2 pb-1">
-              <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
-            </div>
-          </Sheet.Header>
-          <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
+      <>
+      <MapSheet initialSnap={3} isOpen={isOpen} onClose={handleClose} isLight={isLight} zIndex={100}>
             {/* Top bar — iOS-style: title centered, close button right */}
             <div className="flex items-center justify-between px-5 pt-2 pb-3 flex-shrink-0">
               <div className="w-9" />
@@ -766,15 +1091,21 @@ export function SettingsPanel({
             <div ref={contentRef} className="overflow-y-auto flex-1 px-3 pb-12">
               {renderTab()}
             </div>
-          </Sheet.Content>
-        </Sheet.Container>
-        <Sheet.Backdrop onTap={handleClose} style={{ zIndex: 99 }} />
-      </Sheet>
+      </MapSheet>
+      <LegalSheet
+        isOpen={isLegalOpen}
+        onClose={() => setIsLegalOpen(false)}
+        language={language}
+        theme={resolvedTheme}
+        isMobile
+      />
+      </>
     );
   }
 
   // ── Desktop: Finder-style draggable window ───────────────────────────────
   return (
+    <SettingsLight value={isLight}>
     <AnimatePresence>
       {isOpen && (
         <DesktopFinderWindow
@@ -785,12 +1116,22 @@ export function SettingsPanel({
           setActiveTab={setActiveTab}
           onClose={handleClose}
           title={text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
-          theme={theme}
+          /* La fenêtre se peint dans le thème appliqué, pas dans le thème
+             choisi : « auto » n'est pas une couleur. */
+          theme={resolvedTheme}
         >
           {renderTab()}
         </DesktopFinderWindow>
       )}
     </AnimatePresence>
+    <LegalSheet
+      isOpen={isLegalOpen}
+      onClose={() => setIsLegalOpen(false)}
+      language={language}
+      theme={resolvedTheme}
+      isMobile={false}
+    />
+    </SettingsLight>
   );
 }
 
@@ -809,7 +1150,7 @@ interface DesktopFinderWindowProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  theme?: 'light' | 'dark' | 'auto';
+  theme?: 'light' | 'dark';
 }
 
 function DesktopFinderWindow({

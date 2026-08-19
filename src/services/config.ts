@@ -1,6 +1,14 @@
 
 
 
+/**
+ * Boutique de titres M réso.
+ *
+ * Le site du fournisseur, pas une page à nous : l'achat, le compte et le
+ * paiement restent chez lui.
+ */
+export const PASS_SHOP_URL = 'https://pass.mobilites-m.fr/mypass/services/public-transport';
+
 export interface Credit {
   role: string;
   name: string | null;

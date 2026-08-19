@@ -204,6 +204,56 @@ export async function searchCommunes(query: string, limit = 6): Promise<Commune[
   }
 }
 
+/**
+ * La commune sous un point de la carte.
+ *
+ * L'API géo sait répondre à l'envers : on lui donne des coordonnées, elle rend
+ * la commune qui les contient. C'est ce qui permet à l'indice de qualité de
+ * l'air de suivre ce qu'on regarde plutôt qu'un lieu choisi une fois pour
+ * toutes — on déplace la carte sur Voiron, l'indice devient celui de Voiron.
+ *
+ * Le résultat est mis en cache au millième de degré : déplacer la carte de
+ * quelques mètres ne redemande rien.
+ */
+const reverseCache = new Map<string, Commune | null>();
+
+export async function getCommuneAtCoords(lat: number, lon: number): Promise<Commune | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+  if (reverseCache.has(key)) return reverseCache.get(key) ?? null;
+
+  try {
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lon),
+      fields: 'nom,code,codesPostaux,population,departement',
+    });
+    const response = await fetch(`${GEO_ENDPOINT}?${params.toString()}`);
+    if (!response.ok) {
+      reverseCache.set(key, null);
+      return null;
+    }
+    const data = await response.json();
+    const entry = Array.isArray(data) ? data[0] : null;
+    if (!entry?.code || !entry?.nom) {
+      reverseCache.set(key, null);
+      return null;
+    }
+    const commune: Commune = {
+      nom: entry.nom,
+      code: entry.code,
+      population: typeof entry.population === 'number' ? entry.population : 0,
+      postalCode: Array.isArray(entry.codesPostaux) ? entry.codesPostaux[0] : undefined,
+      departement: entry.departement?.nom,
+    };
+    reverseCache.set(key, commune);
+    return commune;
+  } catch {
+    reverseCache.set(key, null);
+    return null;
+  }
+}
+
 /** Communes desservies par un code postal, de la plus peuplée à la plus petite. */
 export async function getCommunesByPostalCode(postalCode: string): Promise<Commune[]> {
   const code = postalCode.trim();

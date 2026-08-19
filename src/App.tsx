@@ -1,9 +1,13 @@
 ﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy } from 'react';
 import { AnimatePresence, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
-import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon, ArrowsRightLeftIcon, CloudIcon } from '@heroicons/react/24/solid';
+import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, PlusIcon } from '@heroicons/react/24/solid';
 import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
 import { useFavoriteDetails } from './hooks/useFavoriteDetails';
+import { useFavoriteJourneys } from './hooks/useFavoriteJourneys';
+import { useJourneyHistory } from './hooks/useJourneyHistory';
+import { addFavoriteJourney, journeyKey, FAVORITE_JOURNEYS_MAX } from './services/favoriteJourneys';
+import { recordJourney } from './services/journeyHistory';
 import { FavoriteCard } from './components/FavoriteCard';
 import { getAllSemLines, buildLineLookup, type AllLinesLine } from './services/allLines';
 import { LineBadge } from './components/LineBadge';
@@ -14,8 +18,25 @@ import { Sidebar } from './components/Sidebar';
 import { SearchBarMobile } from './components/SearchBarMobile';
 import { TrafficPanelMobile } from './components/TrafficPanelMobile';
 import { InstallAppSheet } from './components/InstallAppSheet';
+import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
 import { SidebarMobile } from './components/SidebarMobile';
 import { HomeSheet } from './components/HomeSheet';
+import { AccountScreen } from './components/AccountScreen';
+import { FavoritesScreen } from './components/FavoritesScreen';
+import { Toast } from './components/Toast';
+import { OuraWallet } from './components/OuraWallet';
+import { AddCardSheet } from './components/AddCardSheet';
+import { listOuraCards, subscribeToCards, verifyCards, isSupabaseConfigured, type OuraCard } from './services/ouraCard';
+import { awardTrip, type TripAward } from './services/greLinesPoints';
+import { loadAccount, creditAccount, recordTrip, type Account } from './services/account';
+import { resolveRouteLine } from './utils/routeLineResolver';
+import { rememberStop } from './utils/recentStops';
+import { AccountSetupScreen } from './components/AccountSetupScreen';
+import { ProfileScreen } from './components/ProfileScreen';
+import { TripCompleteScreen } from './components/TripCompleteScreen';
+import { useCardNotices } from './hooks/useCardNotices';
+import { JourneyConfigScreen } from './components/JourneyConfigScreen';
+import { AddJourneyDialog, type PendingJourney } from './components/AddJourneyDialog';
 import { LinesExplorerSheet } from './components/LinesExplorerSheet';
 import { ClockSignal } from './components/ClockSignal';
 import { PopupOverlay } from './components/PopupOverlay';
@@ -25,6 +46,7 @@ import {
   fetchSharedMobility,
   EMPTY_SHARED_MOBILITY,
   SHARED_MOBILITY_TTL_MS,
+  SHARED_OPERATOR_COLORS,
   type SharedMobilityData,
   type SharedOperator,
   type SharedVehiclePoint,
@@ -32,6 +54,8 @@ import {
 import { toTimetableRouteId } from './services/timetable';
 import { usePerfSettings } from './hooks/usePerfSettings';
 import { canShowInstallGuide, shouldAutoOpenInstallGuide } from './utils/pwa';
+import { shouldAutoOpenMobileNotificationPrompt, markMobileNotificationPromptDismissed } from './utils/mobileNotificationPrompt';
+import { requestNotificationPermission, setNotificationsEnabled } from './services/tripNotifications';
 
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -77,6 +101,7 @@ import {
   subscribeToCmsChanges,
   type CmsPopup,
   type FooterConfig,
+  type TripSurveyLeg,
 } from './services/cms';
 import { getCachedStopLines, getStopDetail, getStopLines, getStopsByPrefixes, getTrafficLines, getDepartures, refreshStopLines, setActiveNetworks, type RouteLocation, type RouteItinerary } from './services/api';
 import { getTclStopDetail, getTclStops, isTclId, TCL_NETWORK } from './services/tclNetwork';
@@ -85,13 +110,20 @@ import { getLinesGeometryPrecise, getStopsServedByLines, type LineGeometry, type
 import type { Line, SearchHistoryItem, Stop, StopDetail, TrafficDetail } from './types';
 import type { MapRef } from './components/Map';
 import { useStopUrlSync } from './hooks/useStopUrlSync';
+import { screenFromPath, useScreenUrl } from './hooks/useScreenUrl';
+import { readCampaign, recordCampaignVisit } from './services/campaign';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import type { LineFamily } from './services/allLines';
 import { stripHtml } from './utils/stripHtml';
 import { buildJourneyGeometry, type JourneyStopRef } from './utils/journeyGeometry';
 import { AtmoPanel, atmoColor, atmoPicto } from './components/AtmoPanel';
-import { getAtmoReportByPostalCode, getAtmoReportForCommune, DEFAULT_ATMO_POSTAL_CODE, type AtmoReport, type Commune } from './services/atmo';
-import { haversineMeters, findClosestStops } from './utils/geo';
+import { getCommuneAtCoords, getAtmoReportByPostalCode, getAtmoReportForCommune, DEFAULT_ATMO_POSTAL_CODE, type AtmoReport, type Commune } from './services/atmo';
+import { haversineMeters, findClosestStops, formatCoordinates, currentPositionLocation, CURRENT_POSITION_ID } from './utils/geo';
+import { clearNavigationSession, loadNavigationSession, saveNavigationSession } from './services/navigationSession';
+import { setSavedPlace, type SavedPlaceKind } from './services/savedPlaces';
+
+/** Ce que la carte est en train de désigner : une extrémité, ou un lieu enregistré. */
+export type MapPickTarget = 'from' | 'to' | SavedPlaceKind;
 
 function App() {
   const [stops, setStops] = useState<Stop[]>([]);
@@ -113,6 +145,28 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [trafficInfo, setTrafficInfo] = useState<Map<string, TrafficDetail[]>>(new Map());
   const [isRouteSidebarOpen, setIsRouteSidebarOpen] = useState(false);
+  /** L'écran Compte : une page pleine, qui met la feuille d'accueil de côté. */
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  /** L'écran Favoris : une page pleine lui aussi, entre l'accueil et le compte. */
+  const [isFavoritesOpen, setIsFavoritesOpen] = useState(false);
+  /** La configuration des trajets favoris, un cran plus loin dans les Favoris. */
+  const [isJourneyConfigOpen, setIsJourneyConfigOpen] = useState(false);
+  /**
+   * Le choix d'un nouveau trajet favori : un second planificateur, avec ses
+   * propres extrémités. Il ne partage rien avec celui de l'onglet Itinéraire —
+   * chercher un favori ne doit pas effacer le trajet qu'on avait en cours.
+   */
+  const [isJourneyPickerOpen, setIsJourneyPickerOpen] = useState(false);
+  const [pickerFrom, setPickerFrom] = useState<RouteLocation | null>(null);
+  const [pickerTo, setPickerTo] = useState<RouteLocation | null>(null);
+  const [pickerResults, setPickerResults] = useState<RouteItinerary[]>([]);
+  /** Le trajet soumis à la question « voulez-vous l'ajouter ? ». */
+  const [pendingJourney, setPendingJourney] = useState<PendingJourney | null>(null);
+  /** Une carte est au premier plan : la barre d'onglets quitte le bas de l'écran. */
+  const [isCardFocused, setIsCardFocused] = useState(false);
+  /** L'écran Compte défile : la barre d'onglets se resserre. */
+  const [isNavCompact, setIsNavCompact] = useState(false);
+
   const [routeFrom, setRouteFrom] = useState<RouteLocation | null>(null);
   const [routeTo, setRouteTo] = useState<RouteLocation | null>(null);
   const [selectedRouteItinerary, setSelectedRouteItinerary] = useState<RouteItinerary | null>(null);
@@ -147,6 +201,20 @@ function App() {
   
   
   
+  /*
+   * Le portefeuille, sur ordinateur.
+   *
+   * Même mécanique de survol que ses voisins — infotrafic, favoris, qualité de
+   * l'air : une pastille qui s'ouvre en carré. À une différence près : la
+   * fenêtre d'ajout d'une carte sort du panneau, et la souris qui va la remplir
+   * quitte donc la zone de survol. Sans épingle, le portefeuille se refermerait
+   * derrière elle et l'on reviendrait sur la carte routière.
+   */
+  const [isWalletBtnHovered, setIsWalletBtnHovered] = useState(false);
+  const [isWalletPanelHovered, setIsWalletPanelHovered] = useState(false);
+  const [isWalletPinned, setIsWalletPinned] = useState(false);
+  const [isDesktopAddCardOpen, setIsDesktopAddCardOpen] = useState(false);
+  const [walletCards, setWalletCards] = useState<OuraCard[]>([]);
   const [isAtmoBtnHovered, setIsAtmoBtnHovered] = useState(false);
   const [isAtmoPanelHovered, setIsAtmoPanelHovered] = useState(false);
   // Code postal de repli : il ne sert qu'au tout premier chargement et aux
@@ -169,16 +237,84 @@ function App() {
   });
   const [atmoReport, setAtmoReport] = useState<AtmoReport | null>(null);
   const [atmoLoading, setAtmoLoading] = useState(false);
+  /**
+   * L'indice suit la carte.
+   *
+   * Par défaut, la qualité de l'air affichée est celle de la commune qu'on est
+   * en train de regarder : on déplace la carte sur Voiron, l'indice devient
+   * celui de Voiron. C'est presque toujours ce qu'on veut, et ça évite de
+   * chercher une commune qu'on a déjà sous les yeux.
+   *
+   * Désactivé, on retrouve le choix manuel — et la barre de recherche du
+   * panneau, qui n'a plus lieu d'être tant que la carte décide.
+   */
+  const [atmoFollowMap, setAtmoFollowMap] = useState(
+    () => localStorage.getItem('greLines_atmoFollowMap') !== 'false',
+  );
+  useEffect(() => {
+    localStorage.setItem('greLines_atmoFollowMap', String(atmoFollowMap));
+  }, [atmoFollowMap]);
+  /** Centre de la carte, pour y chercher la commune. */
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number } | null>(null);
+  /**
+   * On ne retient le centre qu'au kilomètre près.
+   *
+   * La carte annonce son centre trois fois par seconde pendant un geste ; le
+   * mémoriser tel quel rendrait l'application entière à chaque image. Au
+   * centième de degré, un déplacement dans la même commune ne produit aucun
+   * rendu — et changer de commune en produit un, ce qui est le but.
+   */
+  const handleMapCenterChange = useCallback((lat: number, lon: number) => {
+    setMapCenter(current => {
+      if (current && Math.abs(current.lat - lat) < 0.01 && Math.abs(current.lon - lon) < 0.01) {
+        return current;
+      }
+      return { lat, lon };
+    });
+  }, []);
   
   
   const [desktopTrafficFilter, setDesktopTrafficFilter] = useState<'all' | LineFamily>('all');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  /**
+   * L'écran affiché, écrit dans la barre d'adresse — et relu au chargement,
+   * pour qu'une adresse partagée ouvre bien l'écran qu'elle désigne.
+   */
+  const currentScreen = isCardFocused
+    ? 'card'
+    : isAccountOpen
+    ? 'account'
+    : isFavoritesOpen
+    ? 'favorites'
+    : isRouteSidebarOpen
+    ? 'route'
+    : 'home';
+  useScreenUrl(currentScreen, isMobile);
+
+  /**
+   * Au chargement, on revient toujours à la carte.
+   *
+   * Les adresses d'écrans servent à s'y retrouver pendant qu'on navigue, pas à
+   * rouvrir l'application là où on l'a laissée : un lien vers « ma carte » ne
+   * doit pas ouvrir le portefeuille de quelqu'un d'autre, et sur ordinateur ces
+   * écrans n'existent même pas.
+   */
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!screenFromPath(window.location.pathname)) return;
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `/app${window.location.search}${window.location.hash}`,
+    );
+  }, []);
   // Tutoriel « ajouter GreLines à l'écran d'accueil » : proposé une seule fois
   // aux mobiles qui naviguent depuis le navigateur, puis à la demande via les
   // réglages. Une fois l'app installée, il disparaît complètement.
   const [canOfferInstallGuide] = useState(canShowInstallGuide);
   const [autoOpenInstallGuide] = useState(shouldAutoOpenInstallGuide);
   const [isInstallSheetOpen, setIsInstallSheetOpen] = useState(false);
+  const [isMobileNotificationPromptOpen, setIsMobileNotificationPromptOpen] = useState(false);
   const { settings: perfSettings } = usePerfSettings();
   const [currentLocation, setCurrentLocation] = useState<{lat: number, lon: number} | null>(null);
   const [locationWatchId, setLocationWatchId] = useState<number | null>(null);
@@ -261,7 +397,6 @@ function App() {
   /**
    * Search bar opacity: fades out as sheet opens, becomes invisible when fully open
    */
-  const searchBarOpacity = useTransform(sheetProgress, [0, 0.6, 1], [1, 0.5, 0]);
   const [sidebarState, setSidebarState] = useState<'closed' | 'peek' | 'open'>('closed');
   const [activeSettingsTab, setActiveSettingsTab] = useState('general');
   /** Recherche universelle (Maj + Espace), ordinateur uniquement. */
@@ -294,6 +429,16 @@ function App() {
    * l'écran de chargement noir en pleine face, avant de revenir aux réglages.
    */
   const [appliedNetworks, setAppliedNetworks] = useState(perfSettings.networks);
+  /**
+   * Le catalogue a déjà été chargé une fois.
+   *
+   * Le premier chargement mérite son écran : il n'y a rien à montrer tant qu'il
+   * n'a pas abouti. Les suivants — on vient de décocher un réseau — arrivent
+   * sur une carte déjà remplie, qui reste parfaitement lisible pendant qu'on la
+   * met à jour. Leur renvoyer l'écran noir, c'est reprendre l'application à
+   * quelqu'un qui s'en servait.
+   */
+  const hasLoadedCatalogueRef = useRef(false);
   const pendingNetworksKey = perfSettings.networks.join(',');
   if (!isSettingsOpen && pendingNetworksKey !== appliedNetworks.join(',')) {
     // Ajusté pendant le rendu : le chargement démarre dès la fermeture, sans
@@ -314,6 +459,44 @@ function App() {
   /** Mode guidage GPS plein écran (mobile), lancé depuis un itinéraire sélectionné. */
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
   /**
+   * Le bilan du trajet qu'on vient de terminer.
+   *
+   * Il survit à la fermeture du guidage : l'écran de fin monte pendant que le
+   * guidage s'efface dessous, et il faut bien que quelqu'un tienne les points
+   * gagnés le temps de les montrer.
+   */
+  const [tripAward, setTripAward] = useState<TripAward | null>(null);
+  /**
+   * Le compte de l'appareil.
+   *
+   * `null` tant qu'on n'en a pas créé : l'application marche entièrement sans, et
+   * c'est voulu — on doit pouvoir prendre un tram sans s'inscrire à quoi que ce
+   * soit. Le compte n'ajoute que la mémoire de ce qu'on a rendu aux autres.
+   */
+  const [account, setAccount] = useState<Account | null>(null);
+  const [isAccountSetupOpen, setIsAccountSetupOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  useEffect(() => {
+    void loadAccount().then(setAccount);
+  }, []);
+
+  /*
+   * Les cartes du portefeuille, chargées une fois au lancement.
+   *
+   * Elles ne se remplissaient que sur ordinateur, à l'ouverture du portefeuille :
+   * sur mobile elles vivent dans l'écran Compte, avec son propre état. Tout ce
+   * qui les demande ailleurs — la création du compte, le profil, la vignette de
+   * la feuille d'accueil — recevait donc une liste vide.
+   *
+   * On les charge sans attendre : la requête est mise en cache, et trois écrans
+   * les veulent déjà.
+   */
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void listOuraCards().then(setWalletCards);
+  }, []);
+  /**
    * Contexte de l'enquête qualité : renseigné quand l'usager monte à bord d'un
    * véhicule pendant le guidage (moment où il est assis et disponible), pas
    * pendant qu'il marche.
@@ -322,19 +505,58 @@ function App() {
     { lineId: string; boardingStop: string | null; boardingTime: string } | null
   >(null);
 
+  /**
+   * Reprise d'un guidage interrompu.
+   *
+   * Uniquement sur téléphone : c'est là qu'on quitte l'application sans le
+   * vouloir, et le guidage n'y est de toute façon proposé que là. La session
+   * porte sa propre péremption, calculée sur la durée du trajet — un trajet fini
+   * depuis longtemps ne se rouvre pas.
+   */
+  useEffect(() => {
+    if (!isMobile) return;
+    const resumed = loadNavigationSession();
+    if (!resumed) return;
+    setSelectedRouteItinerary(resumed);
+    setIsNavigationOpen(true);
+    // Une seule tentative, au démarrage : la reprise ne doit pas se rejouer à
+    // chaque bascule de largeur d'écran.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [language, setLanguage] = useState<'fr' | 'en'>(() => {
     const saved = localStorage.getItem('greLines_language');
     return saved === 'en' ? 'en' : 'fr';
   });
 
+  /**
+   * Thème choisi. Il n'y a plus que deux réponses : clair ou sombre.
+   *
+   * Un réglage « auto » enregistré par une version précédente se lit comme
+   * sombre — c'est ce qu'il donnait la plupart du temps, et c'est le thème par
+   * défaut de l'application.
+   */
+  /**
+   * Le thème choisi — pas forcément celui qu'on voit.
+   *
+   * « auto » s'en remet à l'appareil : clair le jour, sombre le soir, si le
+   * système le dit. C'est le défaut, parce que l'application n'a pas d'avis à
+   * imposer sur un réglage que l'utilisateur a déjà pris ailleurs. Ce qui est
+   * réellement appliqué vit dans `effectiveTheme`.
+   */
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => {
-    return (localStorage.getItem('greLines_theme') as 'light' | 'dark' | 'auto') || 'dark';
+    const stored = localStorage.getItem('greLines_theme');
+    return stored === 'light' || stored === 'dark' ? stored : 'auto';
   });
-  const [effectiveTheme, setEffectiveTheme] = useState<'light' | 'dark'>(() => {
-    if (typeof window === 'undefined') return theme === 'dark' ? 'dark' : 'light';
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    return theme === 'auto' ? (prefersDark ? 'dark' : 'light') : theme;
-  });
+  /**
+   * Le thème réellement appliqué, une fois « auto » résolu.
+   *
+   * Sombre au premier rendu quand on est en automatique : l'effet qui interroge
+   * l'appareil s'exécute juste après, avant la peinture, et corrige au besoin.
+   */
+  const [effectiveTheme, setEffectiveTheme] = useState<'light' | 'dark'>(
+    theme === 'light' ? 'light' : 'dark',
+  );
   const [fontSize, setFontSize] = useState<'small' | 'normal' | 'large'>(() => {
     return (localStorage.getItem('greLines_fontSize') as any) || 'normal';
   });
@@ -742,28 +964,35 @@ function App() {
       body.style.colorScheme = isDark ? 'dark' : 'light';
     };
 
-    const prefersDarkMedia = window.matchMedia('(prefers-color-scheme: dark)');
+    if (theme !== 'auto') {
+      applyMode(theme === 'dark');
+      setEffectiveTheme(theme);
+      return;
+    }
 
-    const updateThemeMode = (prefersDark: boolean) => {
-      const nextDark = theme === 'auto' ? prefersDark : theme === 'dark';
-      applyMode(nextDark);
-      setEffectiveTheme(nextDark ? 'dark' : 'light');
+    /*
+     * En automatique, c'est l'appareil qui décide — et il peut changer d'avis
+     * pendant qu'on regarde : un téléphone bascule en sombre au coucher du
+     * soleil. On écoute donc la requête média au lieu de la lire une fois.
+     */
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const sync = () => {
+      applyMode(query.matches);
+      setEffectiveTheme(query.matches ? 'dark' : 'light');
     };
-
-    updateThemeMode(prefersDarkMedia.matches);
-
-    const handleChange = (e: MediaQueryListEvent) => {
-      if (theme === 'auto') applyMode(e.matches);
-    };
-
-    prefersDarkMedia.addEventListener('change', handleChange);
-    return () => prefersDarkMedia.removeEventListener('change', handleChange);
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
   }, [theme]);
 
   const handleSidebarClose = useCallback(() => {
     setSidebarState('closed');
     setSelectedStop(null);
     setSelectedLines(new Set());
+    // La feuille d'accueil reprend sa place, repliée sur sa barre d'onglets :
+    // fermer un arrêt, c'est revenir à « Autour », pas se retrouver devant une
+    // feuille dépliée qu'on n'a pas demandée.
+    setSnapHomeToMiniSignal(s => s + 1);
   }, []);
 
   const handleSidebarOpen = useCallback(() => setSidebarState('open'), []);
@@ -775,6 +1004,7 @@ function App() {
 
   const isTrafficPanelOpen = isTrafficButtonHovered || isTrafficPanelHovered || isTrafficPanelPinned;
   const isFavPanelOpen = isFavBtnHovered || isFavPanelHovered;
+  const isWalletPanelOpen = isWalletBtnHovered || isWalletPanelHovered || isWalletPinned;
   const isAtmoPanelOpen = isAtmoBtnHovered || isAtmoPanelHovered;
 
   /**
@@ -803,11 +1033,72 @@ function App() {
 
     return () => { active = false; };
   }, [atmoPostalCode, atmoCommune]);
+
+  /**
+   * La commune sous le centre de la carte, tant que le suivi est actif.
+   *
+   * Arrondi au centième de degré — le kilomètre — avant d'interroger : un
+   * déplacement de quelques mètres ne change pas de commune, et la requête
+   * inverse n'a pas à suivre le doigt.
+   */
+  const mapCenterKey = mapCenter ? `${mapCenter.lat.toFixed(2)},${mapCenter.lon.toFixed(2)}` : null;
+  useEffect(() => {
+    if (!atmoFollowMap || !mapCenter) return;
+    let active = true;
+    void getCommuneAtCoords(mapCenter.lat, mapCenter.lon).then(commune => {
+      if (!active || !commune) return;
+      // Même commune qu'avant : on ne relance pas le chargement de l'indice.
+      setAtmoCommune(current => (current?.code === commune.code ? current : commune));
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atmoFollowMap, mapCenterKey]);
   // Live favourites list + their detail (lines + departures, refreshed every 30s).
   // Loaded globally so the app can prioritize the first favorite before it
   // leaves the splash screen.
   const favoritesList = useFavorites();
   const favoritesDetails = useFavoriteDetails(favoritesList, true);
+  const favoriteJourneys = useFavoriteJourneys();
+  const journeyHistory = useJourneyHistory();
+
+  /*
+   * Les cartes du portefeuille, sur ordinateur.
+   *
+   * Chargees a la premiere ouverture du panneau seulement : personne n'a besoin
+   * de son titre de transport tant qu'il ne l'a pas demande, et l'appel coute un
+   * aller-retour au reseau par carte. Elles se tiennent ensuite a jour toutes
+   * seules — une carte coupee depuis le panneau d'administration se voit sans
+   * rien recharger.
+   */
+  const [walletLoaded, setWalletLoaded] = useState(false);
+  useEffect(() => {
+    if (isMobile || !isWalletPanelOpen || walletLoaded || !isSupabaseConfigured) return;
+    let active = true;
+    void listOuraCards().then(async list => {
+      if (!active) return;
+      setWalletCards(list);
+      setWalletLoaded(true);
+      const checked = await verifyCards(list);
+      if (active) setWalletCards(checked);
+    });
+    return () => { active = false; };
+  }, [isMobile, isWalletPanelOpen, walletLoaded]);
+
+  useEffect(() => {
+    if (isMobile || !walletLoaded) return;
+    return subscribeToCards(() => {
+      void listOuraCards().then(setWalletCards);
+    });
+  }, [isMobile, walletLoaded]);
+  /** Un message non lu sur l'une des cartes du portefeuille, s'il y en a un. */
+  const { notice: cardNotice, dismiss: dismissCardNotice } = useCardNotices(isMobile);
+  /**
+   * Les lignes en perturbation, par leur code court.
+   *
+   * La carte du trafic est déjà indexée ainsi ; on n'en garde que les clés,
+   * qui suffisent aux pastilles d'alerte posées sur les badges des favoris.
+   */
+  const disruptedLineCodes = useMemo(() => new Set(trafficInfo.keys()), [trafficInfo]);
   const firstFavoriteLoading = favoritesList.length > 0 && (favoritesDetails[0]?.loading ?? true);
 
   /**
@@ -837,7 +1128,12 @@ function App() {
   );
 
   const mapRef = useRef<MapRef>(null);
-  const [mapPickTarget, setMapPickTarget] = useState<'from' | 'to' | null>(null);
+  /**
+   * Point en attente d'être désigné sur la carte. Les deux extrémités du
+   * trajet, mais aussi le domicile et le travail : la feuille qui les définit
+   * propose « ouvrir la carte », et c'est le même geste qui répond.
+   */
+  const [mapPickTarget, setMapPickTarget] = useState<MapPickTarget | null>(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
@@ -925,6 +1221,93 @@ function App() {
     setSharedRouteTarget(null);
   };
 
+  /**
+   * Appui long sur la carte : on pose un point là où le doigt s'est arrêté.
+   *
+   * L'adresse est cherchée à rebours pour nommer l'endroit ; à défaut — plein
+   * champ, zone sans voirie — les coordonnées font l'affaire, elles désignent
+   * le point aussi sûrement qu'un nom de rue.
+   */
+  /**
+   * Nommer un point posé sur la carte.
+   *
+   * Un point se dit par une adresse : « 12 rue Ampère » se reconnaît, là où
+   * « 45.18821, 5.72452 » ne dit rien. On demande donc son adresse à la base
+   * nationale ; à défaut, l'arrêt le plus proche fait l'affaire, et en dernier
+   * recours le point s'annonce simplement comme tel. Les coordonnées, elles,
+   * restent celles du doigt : ce sont elles qui calculent le trajet.
+   */
+  const describeMapPoint = useCallback(async (lat: number, lon: number): Promise<AddressResult> => {
+    const found = await reverseGeocode(lat, lon);
+    if (found) return { ...found, lat, lon };
+
+    const [closest] = findClosestStops(stops, lat, lon, 1);
+    const id = `map-${lat.toFixed(5)}-${lon.toFixed(5)}`;
+    if (closest && closest.meters <= 400) {
+      const label = `Près de ${closest.stop.name}`;
+      return { id, label, name: label, context: closest.stop.city || '', lat, lon, score: 0 };
+    }
+
+    const label = 'Point sur la carte';
+    // Les coordonnées descendent en sous-titre : invisibles au premier regard,
+    // lisibles quand on veut vraiment savoir où l'on a pointé.
+    return { id, label, name: label, context: formatCoordinates(lat, lon), lat, lon, score: 0 };
+  }, [stops]);
+
+  /**
+   * Les dernières recherches, relues comme des destinations possibles.
+   *
+   * L'historique retient des arrêts et des adresses ; le planificateur, lui,
+   * ne connaît que des points. Un arrêt n'y entre que si on sait encore où il
+   * est — un identifiant sans coordonnées ne mène nulle part.
+   */
+  const recentRoutePlaces = useMemo((): RouteLocation[] => (
+    searchHistoryItems.flatMap((item): RouteLocation[] => {
+      if (item.kind === 'address') {
+        return [{ id: item.id, label: item.name, lat: item.lat, lon: item.lon, kind: 'address', raw: item }];
+      }
+      if (item.kind === 'stop') {
+        const stop = stops.find(entry => entry.id === item.id);
+        if (!stop) return [];
+        return [{ id: stop.id, label: stop.name, lat: stop.lat, lon: stop.lon, kind: 'stop', raw: stop }];
+      }
+      return [];
+    })
+  ), [searchHistoryItems, stops]);
+
+  const handleMapLongPress = useCallback(async (lat: number, lon: number) => {
+    if (mapPickTarget) return;
+
+    const address = await describeMapPoint(lat, lon);
+
+    setSelectedStop(null);
+    setSidebarState('closed');
+    setSharedSelection(null);
+    setSelectedAddress(address);
+  }, [mapPickTarget, describeMapPoint]);
+
+  /** « Y aller » depuis la fiche d'un point : il devient la destination. */
+  const openRouteToAddress = useCallback((address: AddressResult) => {
+    setRouteTo({
+      id: address.id,
+      label: address.name || address.label,
+      lat: address.lat,
+      lon: address.lon,
+      kind: 'address',
+      raw: address,
+    });
+    setRouteFrom(currentLocation ? currentPositionLocation(currentLocation) : null);
+    setSelectedRouteItinerary(null);
+    setRouteItineraryOptions([]);
+    setMapPickTarget(null);
+    setSharedRouteExpired(false);
+    setSharedRouteTarget(null);
+    setSelectedAddress(null);
+    setSelectedStop(null);
+    setSidebarState('closed');
+    setIsRouteSidebarOpen(true);
+  }, [currentLocation]);
+
   const openRouteFromStop = useCallback((stop: StopDetail) => {
     const location: RouteLocation = {
       id: stop.id,
@@ -938,17 +1321,7 @@ function App() {
     // comment y aller, pas pour en partir. Le départ reste à choisir (ou la
     // position courante si elle est connue).
     setRouteTo(location);
-    setRouteFrom(
-      currentLocation
-        ? {
-            id: 'position',
-            label: language === 'fr' ? 'Ma position' : 'My location',
-            lat: currentLocation.lat,
-            lon: currentLocation.lon,
-            kind: 'address',
-          }
-        : null
-    );
+    setRouteFrom(currentLocation ? currentPositionLocation(currentLocation) : null);
     setSelectedRouteItinerary(null);
     setMapPickTarget(null);
     setSharedRouteExpired(false);
@@ -1030,6 +1403,28 @@ function App() {
     }
   };
 
+  /**
+   * Venue par une affiche. L'adresse porte la source et l'arrêt : on compte la
+   * visite, on ouvre l'arrêt, puis on nettoie la barre d'adresse — rechargée ou
+   * partagée, la page ne recomptera pas.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined' || stops.length === 0) return;
+    const visit = readCampaign(window.location.search);
+    if (!visit) return;
+    void recordCampaignVisit(visit);
+    if (visit.stopId) {
+      const stop = stops.find(entry => entry.id === visit.stopId);
+      if (stop) handleStopClick(stop);
+    }
+    const url = new URL(window.location.href);
+    for (const key of [...url.searchParams.keys()]) {
+      if (key.toLowerCase().startsWith('utm_')) url.searchParams.delete(key);
+    }
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stops.length]);
+
   useEffect(() => {
     // Only run once stops are loaded — applyConfigFromParams needs them to
     // resolve a stop id from the URL.
@@ -1084,7 +1479,9 @@ function App() {
 
     const fetchStops = async () => {
       try {
-        setIsLoading(true);
+        // Premier chargement seulement : ensuite, la mise à jour se fait sous
+        // la carte, sans rien masquer.
+        if (!hasLoadedCatalogueRef.current) setIsLoading(true);
         // Les surcharges définies dans le CRM (renommage, repositionnement,
         // masquage) sont appliquées par-dessus la donnée officielle MTAG.
         // Les réseaux ne viennent pas tous du même fournisseur : MTAG sert
@@ -1120,7 +1517,10 @@ function App() {
       } catch (err) {
         if (!active) return;
         setError('Failed to load stops');      } finally {
-        if (active) setIsLoading(false);
+        if (active) {
+          setIsLoading(false);
+          hasLoadedCatalogueRef.current = true;
+        }
       }
     };
     fetchStops();
@@ -1148,9 +1548,30 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [autoOpenInstallGuide]);
 
+  useEffect(() => {
+    if (!shouldAutoOpenMobileNotificationPrompt()) return;
+    const timer = window.setTimeout(() => {
+      markMobileNotificationPromptDismissed();
+      setIsMobileNotificationPromptOpen(true);
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const dismissInstallGuide = useCallback(() => {
     localStorage.setItem('greLines_installGuideDismissed', 'true');
     setIsInstallSheetOpen(false);
+  }, []);
+
+  const dismissMobileNotificationPrompt = useCallback(() => {
+    markMobileNotificationPromptDismissed();
+    setIsMobileNotificationPromptOpen(false);
+  }, []);
+
+  const enableMobileNotifications = useCallback(async () => {
+    const granted = await requestNotificationPermission();
+    setNotificationsEnabled(granted);
+    markMobileNotificationPromptDismissed();
+    setIsMobileNotificationPromptOpen(false);
   }, []);
 
   const pushSearchHistoryItem = useCallback((item: SearchHistoryItem) => {
@@ -1183,6 +1604,15 @@ function App() {
         name: stop.name,
         city: stop.city,
       });
+      /*
+       * L'arrêt entre dans les récents.
+       *
+       * Ici et nulle part ailleurs : tous les chemins qui ouvrent un arrêt — la
+       * carte, la recherche, un favori, un lien partagé — passent par cette
+       * fonction. Poser l'enregistrement dans chacun d'eux aurait garanti qu'il
+       * en manque un.
+       */
+      rememberStop(stop);
       setSelectedLine(null);
       setLineGeometries([]);
       setSelectedAddress(null); // opening a stop clears any address marker
@@ -1608,6 +2038,7 @@ function App() {
       settings: { general: 'Général', display: 'Affichage', data: 'Données', about: 'À propos' },
       labels: {
         language: 'Langue', refreshInterval: 'Rafraîchissement', autoLocation: 'Centrer automatiquement',
+        atmoFollowMap: 'Qualité de l’air de la ville regardée',
         searchHistory: 'Historique de recherche', theme: 'Thème', accentColor: 'Couleur accent',
         fontSize: 'Taille du texte', compactMode: 'Mode compact', autoSync: 'Actualisation auto',
         clearCache: 'Effacer le cache', localStorageInfo: 'Paramètres stockés localement', noStops: 'Aucun arrêt visible',
@@ -1624,7 +2055,7 @@ function App() {
         shared: 'Mobilités partagées',
         citiz: 'Voitures Citiz',
         voi: 'Trottinettes et vélos Voi',
-        hint: 'Les changements s’appliquent à la fermeture des réglages. Chaque réseau ajouté est téléchargé une fois, puis conservé hors ligne. Les lignes scolaires sont toujours écartées : elles ne circulent que deux fois par jour et représentent plus de la moitié du réseau.',
+        hint: 'Les changements s’appliquent à la fermeture des réglages, sans recharger l’application. Chaque réseau ajouté est téléchargé une fois, puis conservé hors ligne. Les lignes scolaires sont toujours écartées : elles ne circulent que deux fois par jour et représentent plus de la moitié du réseau.',
       },
       dev: {
         section: 'Développeur',
@@ -1667,6 +2098,7 @@ function App() {
       settings: { general: 'General', display: 'Display', data: 'Data', about: 'About' },
       labels: {
         language: 'Language', refreshInterval: 'Refresh Interval', autoLocation: 'Auto-center location',
+        atmoFollowMap: 'Air quality follows the map',
         searchHistory: 'Search history', theme: 'Theme', accentColor: 'Accent color',
         fontSize: 'Font Size', compactMode: 'Compact mode', autoSync: 'Auto-sync departures',
         clearCache: 'Clear cache & data', localStorageInfo: 'Settings saved locally', noStops: 'No stops visible',
@@ -1683,7 +2115,7 @@ function App() {
         shared: 'Shared mobility',
         citiz: 'Citiz cars',
         voi: 'Voi scooters and bikes',
-        hint: 'Changes apply once you close settings. Each network is downloaded once, then kept offline. School services are always excluded: they run twice a day and account for more than half the network.',
+        hint: 'Changes apply once you close settings, without reloading the app. Each network is downloaded once, then kept offline. School services are always excluded: they run twice a day and account for more than half the network.',
       },
       dev: {
         section: 'Developer',
@@ -1724,7 +2156,21 @@ function App() {
   const text = translations[language];
 
   const hidePageControls = false;
-  const isLoadingOverlayVisible = isLoading || firstFavoriteLoading;
+  /**
+   * L'écran de chargement n'appartient qu'au démarrage.
+   *
+   * Une fois l'application affichée, plus rien ne doit la recouvrir : ni un
+   * réseau qu'on décoche, ni un favori qu'on ajoute — deux gestes qui
+   * relançaient un chargement et renvoyaient l'écran noir en pleine face. Ce
+   * qui se recharge ensuite le fait sous la carte, qui reste lisible.
+   */
+  const [hasBooted, setHasBooted] = useState(false);
+  const isLoadingOverlayVisible = !hasBooted && (isLoading || firstFavoriteLoading);
+  useEffect(() => {
+    if (!isLoading && !firstFavoriteLoading) setHasBooted(true);
+  }, [isLoading, firstFavoriteLoading]);
+  /** Le démarrage est passé : les messages d'accueil peuvent paraître. */
+  const popupsReleased = hasBooted;
 
   // ─── Itinéraire sur la carte ──────────────────────────────────────────────
   // Le tracé renvoyé par le planificateur est approximatif : il coupe les
@@ -1840,6 +2286,12 @@ function App() {
   }, [stops]);
 
   const getItineraryLineColor = useCallback((leg: any): string => {
+    // Une course en véhicule partagé n'emprunte aucune ligne : c'est la couleur
+    // de l'opérateur qui identifie le tronçon sur la carte.
+    const sharedOperator = leg?.sharedOperator as SharedOperator | undefined;
+    if (sharedOperator) return SHARED_OPERATOR_COLORS[sharedOperator];
+    if (leg?.taxiCompany) return '#f59e0b';
+
     const candidates = getRouteCandidates(leg?.routeShortName, leg?.route, leg?.routeId);
     const normalized = candidates[0] || null;
     if (!normalized) return '#94a3b8';
@@ -1861,6 +2313,47 @@ function App() {
       resolveCluster,
     });
   }, [selectedRouteItinerary, getItineraryLineColor, getRouteCandidates, itineraryLineShapes, resolveCluster]);
+
+  /**
+   * Le tracé de chaque tronçon, indexé par son rang, pour le guidage.
+   *
+   * Il sort du même calcul que celui de la carte — recalé sur les arrêts,
+   * découpé sur la bonne variante de ligne, appuyé sur les géométries de
+   * référence quand il y en a. Le guidage redécodait jusqu'ici la polyligne
+   * brute du routeur de son côté : il annonçait donc les virages d'un chemin
+   * qui n'était pas celui qu'on lui montrait.
+   */
+  /**
+   * Le trajet noté, réduit à ses tronçons en transport.
+   *
+   * La marche est écartée ici, à la source, et non filtrée plus loin : le
+   * premier et le dernier tronçon à pied d'un trajet partent de chez quelqu'un
+   * et y reviennent. Les laisser passer, même un instant, reviendrait à
+   * constituer un registre de domiciles pour mesurer la fréquentation d'une
+   * ligne de bus. De quai à quai suffit — c'est ce qui fait un trajet moyen.
+   */
+  const surveyJourney = useMemo((): TripSurveyLeg[] => {
+    const legs = selectedRouteItinerary?.allLegs ?? [];
+    return legs
+      .filter((leg: any) => leg?.mode && leg.mode !== 'WALK')
+      .map((leg: any) => ({
+        line: String(leg.routeShortName || leg.route || leg.routeId || '').replace(/^SEM[:_]/, ''),
+        from: String(leg.from?.name ?? ''),
+        to: String(leg.to?.name ?? ''),
+        departure: leg.startTime ? new Date(leg.startTime).toISOString() : undefined,
+        arrival: leg.endTime ? new Date(leg.endTime).toISOString() : undefined,
+      }))
+      .filter(leg => leg.line && leg.from && leg.to);
+  }, [selectedRouteItinerary]);
+
+  const navigationLegPaths = useMemo(() => {
+    if (!journeyGeometry) return undefined;
+    const paths = new Map<number, Array<[number, number]>>();
+    for (const leg of journeyGeometry.legGeometries) {
+      if (leg.coordinates.length >= 2) paths.set(leg.index, leg.coordinates);
+    }
+    return paths;
+  }, [journeyGeometry]);
 
   /**
    * Arrêts listés par la fiche adresse. La carte les nomme en toutes lettres
@@ -1898,8 +2391,10 @@ function App() {
           };
           if (mapPickTarget === 'from') {
             setRouteFrom(location);
-          } else {
+          } else if (mapPickTarget === 'to') {
             setRouteTo(location);
+          } else {
+            setSavedPlace(mapPickTarget, location);
           }
           setSelectedAddress(null);
           setSelectedRouteItinerary(null);
@@ -1927,22 +2422,26 @@ function App() {
       routeStops={routeStopsGeoJSON}
       routeLineBadges={routeLineBadges}
       lineGeometries={lineGeometries}
+      onCenterChange={handleMapCenterChange}
       pickMode={mapPickTarget}
+      onLongPress={isMobile ? handleMapLongPress : undefined}
       onMapClick={async (lat: number, lon: number) => {
-        // Try reverse geocoding first, fall back to coordinate label
-        const addr = await reverseGeocode(lat, lon);
+        // Le point se nomme par son adresse et se calcule par ses coordonnées.
+        const addr = await describeMapPoint(lat, lon);
         const location: RouteLocation = {
-          id: addr?.id || `mappick-${lat}-${lon}`,
-          label: addr?.label || `${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+          id: addr.id || `mappick-${lat}-${lon}`,
+          label: addr.label,
           lat,
           lon,
           kind: 'address',
-          raw: addr || null,
+          raw: addr,
         } as RouteLocation;
         if (mapPickTarget === 'from') {
           setRouteFrom(location);
         } else if (mapPickTarget === 'to') {
           setRouteTo(location);
+        } else if (mapPickTarget) {
+          setSavedPlace(mapPickTarget, location);
         }
         setMapPickTarget(null);
         setSelectedRouteItinerary(null);
@@ -2048,18 +2547,30 @@ function App() {
         </div>
       )}
 
-      {!isLoadingOverlayVisible && <PopupOverlay popups={activePopups} language={language} />}
+      {/* Une fois posée, la couche ne se démonte plus.
+          Elle ne s'affichait qu'après le chargement, ce qui est juste — mais
+          tout retour de l'écran de chargement la démontait, et son remontage
+          rejouait le message qu'on venait de refermer. Un avis qu'on chasse
+          deux fois n'est plus un avis, c'est une porte qui claque. */}
+      {popupsReleased && <PopupOverlay popups={activePopups} language={language} theme={effectiveTheme} />}
 
       <DeferredPanel isOpen={selectedRouteItinerary !== null}>
         {selectedRouteItinerary && (
         <NavigationMode
           itinerary={selectedRouteItinerary}
           isOpen={isNavigationOpen}
-          onClose={() => setIsNavigationOpen(false)}
+          onClose={() => {
+            // Fermer soi-même, c'est renoncer au trajet : rien à reprendre.
+            clearNavigationSession();
+            setIsNavigationOpen(false);
+          }}
           language={language}
           stops={stops}
           lineLookup={allLinesLookup}
           currentLocation={currentLocation}
+          /* Le guidage suit exactement le tracé que la carte dessine : c'est le
+             même calcul, fait une seule fois. */
+          legPaths={navigationLegPaths}
           itineraryOptions={routeItineraryOptions}
           onItinerarySelected={setSelectedRouteItinerary}
           onBoardVehicle={({ lineShortName, boardingStop }) =>
@@ -2069,10 +2580,142 @@ function App() {
               boardingTime: new Date().toISOString(),
             })
           }
+          /*
+           * Arriver crédite le trajet et ouvre l'écran de fin. Le questionnaire
+           * de descente ne se déclenche plus ici : les questions se posent
+           * désormais pendant le trajet, quand on est encore dans le véhicule.
+           */
+          onArrived={(contributions) => {
+            const award = awardTrip(contributions);
+            setTripAward(award);
+            /*
+             * Le compte reçoit le même crédit que l'appareil, quand il existe.
+             * L'addition se fait côté base pour qu'un téléphone et une tablette sur
+             * la même carte ne s'écrasent pas l'un l'autre, et l'on relit ensuite
+             * pour que le profil affiche le total véritable.
+             */
+            if (account) {
+              const legs = (selectedRouteItinerary?.allLegs ?? [])
+                .filter((leg: any) => leg?.mode && leg.mode !== 'WALK')
+                .map((leg: any) => ({
+                  line: String(leg.routeShortName || leg.route || leg.routeId || '').replace(
+                    /^SEM[:_]/,
+                    ''
+                  ),
+                  from: String(leg.from?.name ?? ''),
+                  to: String(leg.to?.name ?? ''),
+                  departure: leg.startTime ? new Date(leg.startTime).toISOString() : undefined,
+                  arrival: leg.endTime ? new Date(leg.endTime).toISOString() : undefined,
+                  color:
+                    resolveRouteLine({
+                      routeShortName: leg.routeShortName,
+                      route: leg.route,
+                      routeId: leg.routeId,
+                      lineLookup: allLinesLookup,
+                      stops,
+                    })?.color || '#3b82f6',
+                }))
+                .filter(leg => leg.line && leg.from && leg.to);
+
+              void recordTrip(account.cardCode, {
+                origin: selectedRouteItinerary?.depName ?? null,
+                destination: selectedRouteItinerary?.arrName ?? null,
+                startedAt: legs[0]?.departure ?? null,
+                endedAt: legs[legs.length - 1]?.arrival ?? null,
+                legs,
+                path: (selectedRouteItinerary?.routePath ?? []) as Array<[number, number]>,
+                points: award.points,
+                travellersHelped: award.travellersHelped,
+              });
+
+              void creditAccount(account.cardCode, {
+                points: award.points,
+                trips: 1,
+                travellersHelped: award.travellersHelped,
+              }).then(() => loadAccount().then(setAccount));
+            }
+            clearNavigationSession();
+            /*
+             * Le guidage ne se ferme qu'une fois l'ecran de fin monte.
+             * Le couper tout de suite ferait defiler la carte verte de
+             * l'arrivee vers la carte d'accueil pendant que l'ecran monte : on
+             * verrait passer un troisieme decor sous celui qui arrive. Il reste
+             * donc derriere le temps de l'animation, puis s'efface a l'abri.
+             */
+            window.setTimeout(() => setIsNavigationOpen(false), 700);
+          }}
           isMobile={isMobile}
+          /* Sans cette ligne, le guidage retombait sur sa valeur par défaut —
+             sombre — et gardait un panneau bleu nuit au bas d'une carte claire. */
+          theme={effectiveTheme}
         />
         )}
       </DeferredPanel>
+
+      {/* L'écran de fin de trajet. Le fermer ne laisse rien ouvert derrière :
+          on redescend sur la carte, l'écran « Autour ». */}
+      <TripCompleteScreen
+        isOpen={tripAward !== null}
+        award={tripAward}
+        /* Sans compte, pas de points : les annoncer sans pouvoir les garder
+           serait une promesse en l'air. Le nombre de voyageurs renseignés reste,
+           lui, puisqu'il décrit ce trajet-là et non un cumul. */
+        showPoints={account !== null}
+        language={language}
+        origin={selectedRouteItinerary?.depName}
+        destination={selectedRouteItinerary?.arrName}
+        account={account}
+        /* La photo de la carte ne sert que si le compte n'a pas d'émoji : c'est
+           déjà son visage, et personne n'a envie d'en choisir un pour rien. */
+        photoUrl={
+          walletCards.find(entry => entry.cardCode === account?.cardCode)?.photoUrl ?? null
+        }
+        /* Les lignes du trajet, avec leur couleur : c'est ce qui distingue deux
+           trajets vers la même destination. */
+        lines={(selectedRouteItinerary?.allLegs ?? [])
+          .filter((leg: any) => leg?.mode && leg.mode !== 'WALK')
+          .map((leg: any) => ({
+            label: String(leg.routeShortName || leg.route || leg.routeId || '').replace(
+              /^SEM[:_]/,
+              ''
+            ),
+            color:
+              resolveRouteLine({
+                routeShortName: leg.routeShortName,
+                route: leg.route,
+                routeId: leg.routeId,
+                lineLookup: allLinesLookup,
+                stops,
+              })?.color || '#3b82f6',
+          }))
+          .filter((line: { label: string }) => line.label)}
+        onClose={() => {
+          setTripAward(null);
+          setSelectedRouteItinerary(null);
+          setIsRouteSidebarOpen(false);
+        }}
+      />
+
+      <AccountSetupScreen
+        isOpen={isAccountSetupOpen}
+        cards={walletCards}
+        language={language}
+        isLight={effectiveTheme === 'light'}
+        onBack={() => setIsAccountSetupOpen(false)}
+        onDone={created => {
+          setAccount(created);
+          setIsAccountSetupOpen(false);
+        }}
+      />
+
+      <ProfileScreen
+        isOpen={isProfileOpen}
+        account={account}
+        card={walletCards.find(card => card.cardCode === account?.cardCode) ?? null}
+        language={language}
+        isLight={effectiveTheme === 'light'}
+        onBack={() => setIsProfileOpen(false)}
+      />
 
       <DeferredPanel isOpen={surveyContext !== null}>
         <TripSurvey
@@ -2081,6 +2724,7 @@ function App() {
           lineId={surveyContext?.lineId ?? ''}
           boardingStop={surveyContext?.boardingStop}
           boardingTime={surveyContext?.boardingTime}
+          journey={surveyJourney}
           language={language}
         />
       </DeferredPanel>
@@ -2109,6 +2753,8 @@ function App() {
         setAutoSync={setAutoSync}
         autoLocation={autoLocation}
         setAutoLocation={setAutoLocation}
+        atmoFollowMap={atmoFollowMap}
+        setAtmoFollowMap={setAtmoFollowMap}
         showInstallGuide={/* mobile uniquement : inutile dans les réglages PC */ isMobile && canOfferInstallGuide}
         onOpenInstallGuide={() => {
           setSettingsState('closed');
@@ -2119,6 +2765,11 @@ function App() {
         contentRef={settingsContentRef}
         panelRef={settingsPanelRef}
         uiTheme={effectiveTheme}
+        accountPseudo={account?.pseudo ?? null}
+        accountAvatar={account?.avatarEmoji ?? null}
+        onOpenAccount={() =>
+        account ? setIsProfileOpen(true) : setIsAccountSetupOpen(true)
+        }
       />
       </DeferredPanel>
 
@@ -2138,6 +2789,7 @@ function App() {
         lineLookup={allLinesLookup}
         trafficInfo={trafficInfo}
         pickMode={mapPickTarget}
+        recentPlaces={recentRoutePlaces}
         onRequestPickLocation={(field) => {
           setMapPickTarget(field);
           setSelectedRouteItinerary(null);
@@ -2145,6 +2797,7 @@ function App() {
           setSharedRouteExpired(false);
           setSharedRouteTarget(null);
         }}
+        onCancelPickLocation={() => setMapPickTarget(null)}
         onLocationSelected={(location, field) => {
           setSelectedAddress(null);
           if (field === 'from') {
@@ -2174,7 +2827,25 @@ function App() {
           setSelectedRouteItinerary(null);
           setRouteItineraryOptions([]);
         }}
-        onItinerarySelected={itinerary => setSelectedRouteItinerary(itinerary)}
+        onItinerarySelected={itinerary => {
+          setSelectedRouteItinerary(itinerary);
+          // Ouvrir la fiche d'un itinéraire, c'est dire « celui-là, je le
+          // prends » : le trajet entre dans l'historique, où l'on viendra le
+          // repêcher pour en faire un favori. La position courante en est
+          // exclue — « Ma position » d'hier ne désigne plus rien aujourd'hui.
+          if (
+            itinerary &&
+            routeFrom &&
+            routeTo &&
+            routeFrom.id !== CURRENT_POSITION_ID &&
+            routeTo.id !== CURRENT_POSITION_ID
+          ) {
+            recordJourney(routeFrom, routeTo, {
+              lines: itinerary.lineKeys,
+              duration: itinerary.dur,
+            });
+          }
+        }}
         onItinerariesUpdated={options => {
           setRouteItineraryOptions(options);
           if (autoPickFirstItinerary && options.length > 0) {
@@ -2182,7 +2853,11 @@ function App() {
             setAutoPickFirstItinerary(false);
           }
         }}
-        onStartNavigation={() => setIsNavigationOpen(true)}
+        onStartNavigation={() => {
+          if (isMobile && selectedRouteItinerary) saveNavigationSession(selectedRouteItinerary);
+          setIsNavigationOpen(true);
+        }}
+        currentLocation={currentLocation}
         onPlanNewSharedRoute={() => {
           setSharedRouteExpired(false);
           setSelectedRouteItinerary(null);
@@ -2204,36 +2879,7 @@ function App() {
 
       {!isLoading && (
         <>
-          {isMobile && !hidePageControls && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && !isRouteSidebarOpen && (
-            <motion.div
-              style={{ opacity: searchBarOpacity }}
-              className="pointer-events-none"
-              initial={false}
-            >
-              <div className="pointer-events-auto">
-                  <SearchBarMobile
-                  searchQuery={searchQuery}
-                  onSearchChange={setSearchQuery}
-                  matchedStops={matchedStops}
-                  matchedLines={matchedLines}
-                  allLines={allLines}
-                  matchedStopLines={searchStopLines}
-                  stops={stops}
-                  searchHistoryItems={searchHistory ? searchHistoryItems : []}
-                  searchPlaceholder={text.searchPlaceholder}
-                  unknownCityLabel={text.unknownCity}
-                  onStopClick={stop => { setSelectedAddress(null); setSelectedLine(null); handleStopClick(stop); mapRef.current?.centerOnStop(stop); }}
-                  onLineClick={line => handleLineSearchSelect(line)}
-                  isFocused={isSearchFocused}
-                  onFocus={setIsSearchFocused}
-                  addressResults={addressResults}
-                  onAddressClick={handleAddressSelect}
-                  language={language}
-                  theme={effectiveTheme}
-                />
-              </div>
-            </motion.div>
-          )}
+
 
           {isMobile && !hidePageControls && isNearbySheetOpen && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
             <>
@@ -2516,6 +3162,106 @@ function App() {
                 </div>
               </div>
 
+              {/* ── Portefeuille OURA (ordinateur) ───────────────────
+                  Replié, le bouton porte le recto du carton : on reconnaît sa
+                  carte de transport à ses couleurs avant d'avoir lu quoi que ce
+                  soit. Ouvert, c'est le même portefeuille que sur téléphone —
+                  même pile, mêmes gestes, mêmes messages — posé dans le carré
+                  des panneaux voisins. */}
+              <div
+                onMouseEnter={() => setIsWalletBtnHovered(true)}
+                onMouseLeave={() => setIsWalletBtnHovered(false)}
+                className="relative z-50"
+              >
+                <div
+                  /* Plus haut que ses voisins, et c'est voulu : les autres
+                     panneaux sont des listes qu'on parcourt, celui-ci porte un
+                     objet — une carte au format bancaire, qui mange à elle
+                     seule la moitié d'un carré de 384 px. Ce qui se lit dessous
+                     n'avait alors plus la place d'exister, et le texte passait
+                     sous la pile. La largeur, elle, reste celle des autres :
+                     c'est la rangée de pastilles qui doit rester régulière. */
+                  className={`flex items-center justify-center cursor-pointer border transition-all duration-300 overflow-hidden ${
+                    isWalletPanelOpen
+                      ? 'w-96 h-[34rem] rounded-2xl bg-slate-900/95 border-slate-700'
+                      : 'w-10 h-10 rounded-full bg-slate-900 border-slate-700 shadow-lg'
+                  }`}
+                  title={language === 'fr' ? 'Portefeuille GreLines' : 'GreLines Wallet'}
+                >
+                  {!isWalletPanelOpen && (
+                    <img
+                      src="/assets/oura.png"
+                      alt="OURA"
+                      className="h-6 w-6 rounded-[3px] object-cover"
+                      draggable={false}
+                    />
+                  )}
+                  <div
+                    onMouseEnter={() => setIsWalletPanelHovered(true)}
+                    onMouseLeave={() => setIsWalletPanelHovered(false)}
+                    className={`absolute top-0 left-0 z-50 transition-all duration-300 ease-out ${
+                      isWalletPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                    }`}
+                    style={{ width: '100%', height: '100%' }}
+                  >
+                    <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
+                      {/* Le titre et l'ajout partagent la ligne : ajouter une
+                          carte est l'action de ce panneau, elle se tient à
+                          côté de son nom. */}
+                      <div className="flex flex-shrink-0 items-center justify-between px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src="/assets/oura.png"
+                            alt=""
+                            className="h-8 w-8 rounded-lg object-cover"
+                            draggable={false}
+                          />
+                          <span className="text-sm font-bold text-white">
+                            {language === 'fr' ? 'Portefeuille' : 'Wallet'}
+                          </span>
+                        </div>
+                        {isSupabaseConfigured && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // On épingle avant d'ouvrir : la souris part vers
+                              // la fenêtre, hors de la zone de survol.
+                              setIsWalletPinned(true);
+                              setIsDesktopAddCardOpen(true);
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-slate-200 transition hover:bg-slate-700"
+                            aria-label={language === 'fr' ? 'Ajouter une carte' : 'Add a card'}
+                          >
+                            <PlusIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* `relative` : c'est ce cadre que la carte dépliée prend
+                          pour référence. Sans lui, elle remonterait chercher le
+                          premier ancêtre positionné et déborderait du panneau.
+                          Et pas de défilement — la couche dépliée se pose au
+                          pixel, elle n'a rien à faire dans un conteneur qui
+                          glisse sous elle. */}
+                      <div className="relative min-h-0 flex-1 overflow-hidden px-4 pb-4">
+                        <OuraWallet
+                          variant="panel"
+                          cards={walletCards}
+                          language={language}
+                          theme={effectiveTheme}
+                          disabled={!isSupabaseConfigured}
+                          onAddCard={() => {
+                            setIsWalletPinned(true);
+                            setIsDesktopAddCardOpen(true);
+                          }}
+                          onCardsChange={setWalletCards}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* ── Indice ATMO (desktop) ─────────────────────────────
                   Même mécanique de survol que les deux panneaux voisins. Replié,
                   le bouton porte la couleur du niveau du jour et son
@@ -2564,6 +3310,7 @@ function App() {
                       loading={atmoLoading}
                       onCommuneChange={setAtmoCommune}
                       language={language}
+                      followMap={atmoFollowMap}
                     />
                   </div>
                 </div>
@@ -2728,9 +3475,22 @@ function App() {
           mounted afterwards (stop sidebar / traffic / settings) appears
           above it visually. Stays open in the background and only closes
           via the user's explicit X tap. */}
+      {/* Le planificateur ouvert prend l'écran, y compris replié sur la carte
+          où il ne laisse qu'un bandeau : la barre de navigation de l'accueil
+          se rangerait juste dessous, deux barres l'une sur l'autre. */}
       {isMobile && (
         <HomeSheet
-          isOpen={isNearbySheetOpen}
+          /* La fiche d'arrêt ne se pose pas sur l'accueil : elle prend sa
+             place. Les deux feuilles occupent le même bas d'écran et se
+             disputeraient la poignée ; celle de l'arrêt gagne, l'accueil s'en
+             va le temps de la consultation et revient quand on la referme —
+             sur l'onglet « Autour », d'où l'on venait. */
+          /* Une carte au premier plan referme la feuille, et c'est voulu : elle
+             sort par le bas en emportant la barre d'onglets, puis remonte quand
+             on repose la carte. C'est le seul moment où l'écran appartient
+             entièrement à autre chose qu'à la carte du réseau. */
+          isOpen={isNearbySheetOpen && !isRouteSidebarOpen && !isCardFocused && !(isMobile && isSidebarOpen)}
+          locked={isAccountOpen || isFavoritesOpen}
           onClose={() => {
             setIsNearbySheetOpen(false);
             setHasUserClosedHome(true);
@@ -2761,18 +3521,269 @@ function App() {
             setSnapHomeToMiniSignal(s => s + 1);
             setIsRouteSidebarOpen(true);
           }}
+          onOpenAccount={() => setIsAccountOpen(true)}
+          onLeaveAccount={() => setIsAccountOpen(false)}
+          // Le compte et les favoris ne cohabitent pas : l'un se range quand
+          // l'autre s'ouvre, et c'est ce qui donne aux Favoris le bord par
+          // lequel ils entrent — la gauche s'ils remplacent le compte.
+          onOpenFavorites={() => {
+            setIsAccountOpen(false);
+            setIsFavoritesOpen(true);
+          }}
+          onLeaveFavorites={() => setIsFavoritesOpen(false)}
+          navCompact={(isAccountOpen || isFavoritesOpen) && isNavCompact}
           language={language}
           theme={effectiveTheme}
+          account={account}
+          accountPhotoUrl={
+            walletCards.find(entry => entry.cardCode === account?.cardCode)?.photoUrl ?? null
+          }
+          onOpenProfile={() => setIsProfileOpen(true)}
+          walletCardCount={walletCards.length}
           favorites={favoritesList}
           favoriteDetails={favoritesDetails}
           atmoReport={atmoReport}
           atmoLoading={atmoLoading}
           onAtmoCommuneChange={setAtmoCommune}
+          atmoFollowMap={atmoFollowMap}
           allLines={allLines}
           onOpenLines={() => {
             setSnapHomeToMiniSignal(s => s + 1);
             setIsLinesExplorerOpen(true);
           }}
+          // La recherche vit dans l'en-tête de la feuille : c'est elle qui
+          // remplace la barre d'onglets dès qu'on tire la feuille vers le haut.
+          searchBar={
+            <SearchBarMobile
+              inline
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              matchedStops={matchedStops}
+              matchedLines={matchedLines}
+              allLines={allLines}
+              matchedStopLines={searchStopLines}
+              stops={stops}
+              searchHistoryItems={searchHistory ? searchHistoryItems : []}
+              searchPlaceholder={text.searchPlaceholder}
+              unknownCityLabel={text.unknownCity}
+              onStopClick={stop => { setSelectedAddress(null); setSelectedLine(null); handleStopClick(stop); mapRef.current?.centerOnStop(stop); }}
+              onLineClick={line => handleLineSearchSelect(line)}
+              isFocused={isSearchFocused}
+              onFocus={setIsSearchFocused}
+              addressResults={addressResults}
+              onAddressClick={handleAddressSelect}
+              language={language}
+              theme={effectiveTheme}
+            />
+          }
+        />
+      )}
+
+      {/* L'écran Favoris. Il se range du côté d'où il devra revenir : à gauche
+          quand le Compte occupe la page — le Compte est à sa droite dans la
+          barre d'onglets — à droite le reste du temps. C'est cette seule règle
+          qui fait que les écrans glissent toujours dans le bon sens. */}
+      {isMobile && (
+        <FavoritesScreen
+          isOpen={isFavoritesOpen}
+          side={isAccountOpen ? 'left' : 'right'}
+          language={language}
+          theme={effectiveTheme}
+          stopDetails={favoritesDetails}
+          journeys={favoriteJourneys}
+          disruptedLines={disruptedLineCodes}
+          lineLookup={allLinesLookup}
+          onScrolledChange={setIsNavCompact}
+          onOpenStop={(stopId, lineId) => {
+            const favorite = favoritesList.find(entry => entry.stopId === stopId);
+            // Une ligne touchée l'emporte sur le filtre du favori : on vient de
+            // dire laquelle des dix on regarde.
+            const lineFilter = lineId
+              ? [lineId]
+              : favorite && favorite.lines !== 'all'
+              ? favorite.lines
+              : undefined;
+            if (lineFilter && lineFilter.length > 0) {
+              setInitialSelectedLines(new Set(lineFilter));
+            }
+            // La fiche recharge l'arrêt de toute façon : un identifiant et un
+            // nom suffisent à la lui faire ouvrir.
+            const stub: Stop = stops.find(stop => stop.id === stopId) ?? {
+              id: stopId,
+              name: favorite?.stopName ?? stopId,
+              lat: 0,
+              lon: 0,
+              city: favorite?.city,
+            };
+            setIsFavoritesOpen(false);
+            setSnapHomeToMiniSignal(s => s + 1);
+            handleStopClick(stub);
+          }}
+          onConfigureJourneys={() => setIsJourneyConfigOpen(true)}
+          onOpenJourney={(journey, itinerary) => {
+            setIsFavoritesOpen(false);
+            setRouteFrom(journey.from);
+            setRouteTo(journey.to);
+            // Un itinéraire touché ouvre sa fiche directement : on a désigné un
+            // départ précis, pas « un trajet vers là-bas ».
+            setSelectedRouteItinerary(itinerary ?? null);
+            setRouteItineraryOptions(itinerary ? [itinerary] : []);
+            setMapPickTarget(null);
+            setSharedRouteExpired(false);
+            setSharedRouteTarget(null);
+            setSelectedAddress(null);
+            setSelectedStop(null);
+            setSidebarState('closed');
+            setIsRouteSidebarOpen(true);
+          }}
+        />
+      )}
+
+      {/* La configuration des trajets favoris et, un cran plus loin encore, le
+          choix d'un nouveau trajet. Les deux pages entrent par la droite : on
+          s'enfonce dans les favoris, on ne change pas d'onglet. */}
+      {isMobile && (
+        <>
+          <JourneyConfigScreen
+            isOpen={isJourneyConfigOpen}
+            language={language}
+            theme={effectiveTheme}
+            history={journeyHistory}
+            favorites={favoriteJourneys}
+            onClose={() => setIsJourneyConfigOpen(false)}
+            onPickFromHistory={entry =>
+              setPendingJourney({ from: entry.from, to: entry.to, lines: entry.lines })
+            }
+            onNewJourney={() => {
+              setPickerFrom(null);
+              setPickerTo(null);
+              setPickerResults([]);
+              setIsJourneyPickerOpen(true);
+            }}
+          />
+
+          <DeferredPanel isOpen={isJourneyPickerOpen}>
+            <RouteSidebar
+              variant="favoritePicker"
+              isOpen={isJourneyPickerOpen}
+              onClose={() => setIsJourneyPickerOpen(false)}
+              stops={stops}
+              language={language}
+              isMobile
+              theme={effectiveTheme}
+              routeFrom={pickerFrom}
+              routeTo={pickerTo}
+              selectedItinerary={null}
+              lineLookup={allLinesLookup}
+              trafficInfo={trafficInfo}
+              currentLocation={currentLocation}
+              // Pas d'historique des lieux : on ne compose pas ici le trajet du
+              // jour, on décrit un trajet qu'on refera. Les raccourcis d'un
+              // départ pressé n'y ont pas leur place.
+              recentPlaces={[]}
+              onLocationSelected={(location, field) => {
+                if (field === 'from') setPickerFrom(location);
+                else setPickerTo(location);
+              }}
+              onLocationCleared={field => {
+                if (field === 'from') setPickerFrom(null);
+                else setPickerTo(null);
+                setPickerResults([]);
+              }}
+              onItinerariesUpdated={setPickerResults}
+              onPickJourney={itinerary => {
+                if (!pickerFrom || !pickerTo) return;
+                // Le bouton du bas ne désigne aucun itinéraire : on prend celui
+                // du haut de la liste, qui est celui qu'on aurait choisi.
+                const chosen = itinerary ?? pickerResults[0] ?? null;
+                setPendingJourney({
+                  from: pickerFrom,
+                  to: pickerTo,
+                  lines: chosen?.lineKeys ?? [],
+                });
+              }}
+            />
+          </DeferredPanel>
+
+          <AddJourneyDialog
+            journey={pendingJourney}
+            language={language}
+            isLight={effectiveTheme === 'light'}
+            isFull={
+              favoriteJourneys.length >= FAVORITE_JOURNEYS_MAX &&
+              !favoriteJourneys.some(
+                entry =>
+                  pendingJourney != null &&
+                  entry.id === journeyKey(pendingJourney.from, pendingJourney.to),
+              )
+            }
+            onCancel={() => setPendingJourney(null)}
+            onConfirm={() => {
+              if (!pendingJourney) return;
+              addFavoriteJourney(pendingJourney.from, pendingJourney.to, {
+                lines: pendingJourney.lines,
+              });
+              // Le trajet ajouté, on redescend d'un coup jusqu'aux Favoris :
+              // c'est là que le nouvel onglet vient d'apparaître, et c'est lui
+              // qu'on veut voir — pas la page qui a servi à le créer.
+              setPendingJourney(null);
+              setIsJourneyPickerOpen(false);
+              setIsJourneyConfigOpen(false);
+            }}
+          />
+        </>
+      )}
+
+      {/* L'écran Compte. Il porte sa propre barre d'onglets — la même, mais
+          posée sur une page : ici, rien ne se tire. */}
+      {isMobile && (
+        <AccountScreen
+          isOpen={isAccountOpen}
+          language={language}
+          theme={effectiveTheme}
+          onCardFocusChange={setIsCardFocused}
+          onScrolledChange={setIsNavCompact}
+          settings={(
+            <SettingsPanel
+              variant="inline"
+              isOpen
+              settingsState={settingsState}
+              setSettingsState={setSettingsState}
+              activeTab={activeSettingsTab}
+              setActiveTab={setActiveSettingsTab}
+              isMobile={isMobile}
+              language={language}
+              setLanguage={setLanguage}
+              theme={theme}
+              setTheme={setTheme}
+              fontSize={fontSize}
+              setFontSize={setFontSize}
+              compactMode={compactMode}
+              setCompactMode={setCompactMode}
+              refreshInterval={refreshInterval}
+              setRefreshInterval={setRefreshInterval}
+              searchHistory={searchHistory}
+              setSearchHistory={setSearchHistory}
+              autoSync={autoSync}
+              setAutoSync={setAutoSync}
+              autoLocation={autoLocation}
+              setAutoLocation={setAutoLocation}
+              atmoFollowMap={atmoFollowMap}
+              setAtmoFollowMap={setAtmoFollowMap}
+              onOpenInstallGuide={() => setIsInstallSheetOpen(true)}
+              showInstallGuide={isMobile && canOfferInstallGuide}
+              appData={appData}
+              text={text}
+              uiTheme={effectiveTheme}
+              accountPseudo={account?.pseudo ?? null}
+              accountAvatar={account?.avatarEmoji ?? null}
+              onOpenAccount={() =>
+              account ? setIsProfileOpen(true) : setIsAccountSetupOpen(true)
+              }
+              contentRef={settingsContentRef}
+              panelRef={settingsPanelRef}
+            />
+          )}
         />
       )}
 
@@ -2811,6 +3822,13 @@ function App() {
           theme={effectiveTheme}
         />
       )}
+
+      <MobileNotificationPrompt
+        isOpen={isMobileNotificationPromptOpen}
+        language={language}
+        onEnable={enableMobileNotifications}
+        onDismiss={dismissMobileNotificationPrompt}
+      />
 
       {!isMobile && (
         <Sidebar
@@ -2916,6 +3934,7 @@ function App() {
         }}
         isMobile={isMobile}
         language={language}
+        onOpenItinerary={selectedAddress ? () => openRouteToAddress(selectedAddress) : undefined}
       />
       </DeferredPanel>
 
@@ -3023,13 +4042,7 @@ function App() {
               // Sur mobile avec la géolocalisation active, le départ est connu :
               // on enchaîne directement sur le premier itinéraire proposé.
               if (currentLocation) {
-                setRouteFrom({
-                  id: 'position',
-                  label: language === 'fr' ? 'Ma position' : 'My location',
-                  lat: currentLocation.lat,
-                  lon: currentLocation.lon,
-                  kind: 'address',
-                });
+                setRouteFrom(currentPositionLocation(currentLocation));
                 setAutoPickFirstItinerary(isMobile);
               }
               setSharedSelection(null);
@@ -3039,7 +4052,57 @@ function App() {
         )}
       </DeferredPanel>
 
+      {/* La fenêtre d'ajout, sur ordinateur. Elle sort du panneau, qui reste
+          épinglé tant qu'elle est là : on revient au portefeuille en la fermant,
+          pas à la carte routière. Pas de lecture par l'appareil photo — une
+          webcam ne cadre pas un carton tenu à la main. */}
+      {!isMobile && (
+        <AddCardSheet
+          isOpen={isDesktopAddCardOpen}
+          language={language}
+          theme={effectiveTheme}
+          allowScan={false}
+          variant="dialog"
+          linkOnly
+          onClose={() => {
+            setIsDesktopAddCardOpen(false);
+            setIsWalletPinned(false);
+          }}
+          onSaved={card => {
+            setWalletCards(current => [...current.filter(entry => entry.id !== card.id), card]);
+            setIsDesktopAddCardOpen(false);
+            setIsWalletPinned(false);
+          }}
+        />
+      )}
+
       {/* Overlay de performance — mode développeur, ordinateur uniquement */}
+      {/* Un message reçu sur une carte du portefeuille. On l'annonce là où l'on
+          annonce tout le reste — la pastille du haut — parce qu'il attendrait
+          sinon dans un écran qu'on n'ouvre pas tous les jours. La toucher mène
+          au portefeuille, où il se lit. */}
+      <Toast
+        message={
+          cardNotice
+            ? {
+                id: cardNotice.notification.id,
+                text: language === 'fr' ? 'Nouvelle notification' : 'New notification',
+                detail:
+                  language === 'fr'
+                    ? `Sur la carte de ${cardNotice.cardLabel}`
+                    : `On ${cardNotice.cardLabel}’s card`,
+                icon: <BellAlertIcon className="h-5 w-5" />,
+              }
+            : null
+        }
+        isLight={effectiveTheme === 'light'}
+        onDismiss={dismissCardNotice}
+        onClick={() => {
+          setIsFavoritesOpen(false);
+          setIsAccountOpen(true);
+        }}
+      />
+
       {!isMobile && <DevOverlay />}
     </div>
     </MotionConfig>

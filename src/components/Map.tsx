@@ -2,7 +2,7 @@
 import type { ForwardedRef } from 'react';
 import MapLibreMap, { Marker, Source, Layer } from 'react-map-gl/maplibre';
 import type { Line, Stop } from '../types';
-import type { MapRef as MapLibreRef } from 'react-map-gl/maplibre';
+import type { MapRef as MapLibreRef, MapLayerMouseEvent, MapLayerTouchEvent } from 'react-map-gl/maplibre';
 import type { AddressResult } from '../services/geocoding';
 import type { LineGeometry, ServedStopPoint } from '../services/lineShapes';
 import { stopIsNearAny, snapStopToLines } from '../services/lineShapes';
@@ -66,8 +66,19 @@ interface MapProps {
 
   visibleStopPoints?: ServedStopPoint[] | null;
   
-  pickMode?: 'from' | 'to' | null;
+  /** Un point est en attente d'être désigné : extrémité du trajet, domicile ou travail. */
+  /**
+   * Le centre de la carte, à chaque déplacement (limité à trois fois par
+   * seconde comme le reste du suivi de viewport).
+   */
+  onCenterChange?: (lat: number, lon: number) => void;
+  pickMode?: 'from' | 'to' | 'home' | 'work' | null;
   onMapClick?: (lat: number, lon: number) => void;
+  /**
+   * Appui long sur un point de la carte. MapLibre le rapporte comme un
+   * `contextmenu` : clic droit sur ordinateur, doigt maintenu sur mobile.
+   */
+  onLongPress?: (lat: number, lon: number) => void;
   isDarkMode?: boolean;
   
   sharedMobility?: SharedMobilityData;
@@ -87,6 +98,9 @@ const MAX_LABEL_LINE_BADGES = 3;
 
 
 const STOPS_LAYER_ID = 'stops-circles';
+
+/** Durée du contact au-delà de laquelle on désigne un point plutôt qu'on ne fait glisser la carte. */
+const LONG_PRESS_MS = 500;
 
 
 
@@ -490,7 +504,7 @@ const animateFeatureCollectionProgress = (
 };
 
 const MapComponentBase = (
-  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, lineGeometries = [], visibleStopPoints, pickMode, onMapClick, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
+  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, lineGeometries = [], visibleStopPoints, onCenterChange, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
   ref: ForwardedRef<MapRef>
 ) => {
   const { settings: perf } = usePerfSettings();
@@ -501,6 +515,13 @@ const MapComponentBase = (
   const styleImageHookRef = useRef(false);
   const [routeDrawProgress, setRouteDrawProgress] = useState(1);
   const [hoveredStopId, setHoveredStopId] = useState<string | null>(null);
+  /**
+   * La couche des arrêts sert de repère à toutes les autres via `beforeId`.
+   * MapLibre refuse une référence vers une couche absente et fait échouer le
+   * montage : les couches montées tôt — véhicules partagés servis depuis le
+   * cache — attendent donc de savoir qu'elle existe.
+   */
+  const [stopsLayerReady, setStopsLayerReady] = useState(false);
   const [hoverLabelVisible, setHoverLabelVisible] = useState(false);
   const hoverTimerRef = useRef<number | null>(null);
   const [stopLinesById, setStopLinesById] = useState<Record<string, Line[]>>({});
@@ -526,9 +547,13 @@ const MapComponentBase = (
 
     if (visibleStopPoints && lineGeometries.length > 0) {
       filtered = filtered.map(stop => {
-        if (stop.id === selectedStop?.id) return stop;
         const snapped = snapStopToLines(stop, lineGeometries, 80);
-        return snapped ? { ...stop, lat: snapped.lat, lon: snapped.lon } : stop;
+        if (!snapped) return stop;
+        // L'arrêt consulté garde sa position — on ne déplace pas ce qu'on est
+        // en train de regarder — mais il prend quand même la couleur de sa
+        // ligne : il est sur le tracé comme les autres.
+        if (stop.id === selectedStop?.id) return { ...stop, lineColor: snapped.color };
+        return { ...stop, lat: snapped.lat, lon: snapped.lon, lineColor: snapped.color };
       });
     }
 
@@ -757,6 +782,14 @@ const MapComponentBase = (
     };
   }, [clearStopHoverTimer]);
 
+  /*
+   * Le rappel du parent vit dans une référence : sans elle, il entrerait dans
+   * les dépendances de `updateViewport`, qui changerait d'identité à chaque
+   * rendu du parent — et avec lui les écouteurs de la carte.
+   */
+  const onCenterChangeRef = useRef(onCenterChange);
+  useEffect(() => { onCenterChangeRef.current = onCenterChange; }, [onCenterChange]);
+
   const updateViewport = useCallback(() => {
     if (!mapRef.current) return;
     const bounds = mapRef.current.getBounds();
@@ -770,6 +803,10 @@ const MapComponentBase = (
       },
       zoom,
     });
+    // Le centre part au parent : c'est lui qui sait quoi en faire — pour
+    // l'instant, y chercher la commune dont on affichera la qualité de l'air.
+    const center = mapRef.current.getCenter();
+    onCenterChangeRef.current?.(center.lat, center.lng);
   }, []);
 
   const handleMapMove = useCallback(throttle(updateViewport, 300), [updateViewport]);
@@ -893,6 +930,10 @@ const MapComponentBase = (
         stopId: stop.id,
         selected: selectedStop?.id === stop.id,
         endpoint: selectedRouteStopIds.has(stop.id),
+        // Couleur du tracé sur lequel l'arrêt a été calé — la même que celle du
+        // trait, puisqu'elle en vient. Vide si l'arrêt n'est sur aucun tracé
+        // affiché ; la couche `circle` ne lit que des propriétés.
+        lineColor: (stop as Stop & { lineColor?: string }).lineColor || '',
       },
       geometry: { type: 'Point' as const, coordinates: [stop.lon, stop.lat] },
     })),
@@ -1222,6 +1263,53 @@ const MapComponentBase = (
     map.moveLayer(STOPS_LAYER_ID);
   }, []);
 
+  /**
+   * Appui long : MapLibre en fait un `contextmenu`, qu'il émet aussi bien sur un
+   * clic droit que sur un doigt maintenu. Le menu natif du navigateur est
+   * écarté, il s'ouvrirait par-dessus la fiche.
+   */
+  const handleMapContextMenu = useCallback((event: MapLayerMouseEvent) => {
+    if (!onLongPress) return;
+    event.preventDefault?.();
+    event.originalEvent?.preventDefault?.();
+    const { lat, lng } = event.lngLat ?? {};
+    if (Number.isFinite(lat) && Number.isFinite(lng)) onLongPress(lat, lng);
+  }, [onLongPress]);
+
+  /**
+   * Doigt maintenu sur la carte.
+   *
+   * `contextmenu` suffirait sur Android, mais Safari ne l'émet pas sur un
+   * canevas : on chronomètre donc le contact nous-mêmes. Tout mouvement annule
+   * — c'est alors un déplacement de carte, pas une désignation de point.
+   */
+  const longPressTimerRef = useRef<number | null>(null);
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current === null) return;
+    window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  }, []);
+
+  const handleTouchStart = useCallback((event: MapLayerTouchEvent) => {
+    cancelLongPress();
+    // Deux doigts : c'est un zoom qui commence.
+    if (!onLongPress || (event.points?.length ?? 1) > 1) return;
+
+    const { lat, lng } = event.lngLat ?? {};
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      // Une vibration brève confirme que le point est pris, sans avoir à
+      // regarder l'écran remonter la fiche.
+      navigator.vibrate?.(15);
+      onLongPress(lat, lng);
+    }, LONG_PRESS_MS);
+  }, [cancelLongPress, onLongPress]);
+
+  useEffect(() => cancelLongPress, [cancelLongPress]);
+
   useEffect(() => {
     const map = mapRef.current?.getMap?.();
     if (!map) return;
@@ -1378,7 +1466,11 @@ const MapComponentBase = (
         // d'écouteurs empilés. Un seul abonnement, posé au premier passage.
         onStyleData={(evt: any) => {
           const map = evt.target;
-          if (!map || styleImageHookRef.current) return;
+          if (!map) return;
+          // `styledata` se déclenche aussi à l'ajout de la couche des arrêts :
+          // c'est le signal que les couches secondaires peuvent s'y référer.
+          setStopsLayerReady(Boolean(map.getLayer?.(STOPS_LAYER_ID)));
+          if (styleImageHookRef.current) return;
           styleImageHookRef.current = true;
           map.on('styleimagemissing', (event: any) => handleStyleImageMissing(map, event));
         }}
@@ -1404,6 +1496,11 @@ const MapComponentBase = (
         onMouseMove={handleMapMouseMove}
         onMouseLeave={resetStopHover}
         onClick={handleMapClick}
+        onContextMenu={handleMapContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchMove={cancelLongPress}
+        onTouchEnd={cancelLongPress}
+        onTouchCancel={cancelLongPress}
       >
         {/* ─── Arrêts (couche GPU) ───────────────────────────────────────
             Déclarée en premier : c'est la seule source jamais démontée, donc
@@ -1424,14 +1521,31 @@ const MapComponentBase = (
                 13, ['case', ['get', 'selected'], 11, 7],
                 16, ['case', ['get', 'selected'], 12, 8],
               ] as any,
+              /* Un arrêt posé sur un tracé se dessine comme les pastilles d'un
+                 itinéraire : le disque reste clair, c'est l'anneau qui porte la
+                 couleur de la ligne. Un disque plein l'aurait fait disparaître
+                 dans le trait qu'il chevauche ; l'anneau, lui, se détache.
+                 Le jaune commun ne vaut plus que pour les arrêts qui ne sont
+                 sur aucun tracé affiché. */
               'circle-color': [
                 'case',
                 ['get', 'endpoint'], '#ffffff',
                 ['get', 'selected'], '#6B7280',
+                ['!=', ['get', 'lineColor'], ''], isDarkMode ? '#0f172a' : '#ffffff',
                 '#facc15',
               ] as any,
-              'circle-stroke-color': ['case', ['get', 'endpoint'], '#111827', '#ffffff'] as any,
-              'circle-stroke-width': ['case', ['get', 'selected'], 3, 2] as any,
+              'circle-stroke-color': [
+                'case',
+                ['get', 'endpoint'], '#111827',
+                ['!=', ['get', 'lineColor'], ''], ['get', 'lineColor'],
+                '#ffffff',
+              ] as any,
+              'circle-stroke-width': [
+                'case',
+                ['get', 'selected'], 3,
+                ['!=', ['get', 'lineColor'], ''], 3,
+                2,
+              ] as any,
             }}
           />
         </Source>
@@ -1606,7 +1720,7 @@ const MapComponentBase = (
         {/* ─── Mobilités partagées (couches GPU) ─────────────────────────
             Placées sous les arrêts via `beforeId` : le réseau structurant
             reste prioritaire à la lecture. */}
-        {sharedMobility.citiz.length > 0 && (
+        {stopsLayerReady && sharedMobility.citiz.length > 0 && (
           <Source
             id="citiz"
             type="geojson"
@@ -1626,7 +1740,7 @@ const MapComponentBase = (
           </Source>
         )}
 
-        {sharedMobility.voi.length > 0 && (
+        {stopsLayerReady && sharedMobility.voi.length > 0 && (
           <Source
             id="voi"
             type="geojson"

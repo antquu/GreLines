@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
-import { Sheet } from 'react-modal-sheet';
-import { XMarkIcon } from '@heroicons/react/24/solid';
+import { MapSheet } from './MapSheet';
+import { PaperAirplaneIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import type { Stop } from '../types';
 import type { AddressResult } from '../services/geocoding';
 import { findClosestStops, formatDistance } from '../utils/geo';
@@ -17,6 +17,8 @@ interface AddressSidebarProps {
   onStopClick: (stop: Stop) => void;
   isMobile: boolean;
   language: 'fr' | 'en';
+  /** Ouvre le planificateur avec ce point pour destination. */
+  onOpenItinerary?: () => void;
 }
 
 
@@ -39,6 +41,7 @@ const getText = (language: 'fr' | 'en') => ({
       ? 'Aucun arrêt trouvé autour de cette adresse. Déplacez le repère ou cherchez une autre adresse.'
       : 'No stop found around this address. Move the pin or search another address.',
   close: language === 'fr' ? 'Fermer' : 'Close',
+  goThere: language === 'fr' ? 'Y aller' : 'Go there',
 });
 
 /** Au-delà, les pastilles chassent le nom de l'arrêt hors de la carte. */
@@ -138,6 +141,7 @@ export const AddressSidebar = ({
   onStopClick,
   isMobile,
   language,
+  onOpenItinerary,
 }: AddressSidebarProps) => {
   const text = getText(language);
 
@@ -191,6 +195,19 @@ export const AddressSidebar = ({
         </button>
       </div>
 
+      {/* Depuis un point posé sur la carte, la question suivante est presque
+          toujours « comment j'y vais ? » : le trajet part d'ici. */}
+      {onOpenItinerary && (
+        <button
+          type="button"
+          onClick={onOpenItinerary}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-blue-500 active:bg-blue-700"
+        >
+          <PaperAirplaneIcon className="h-4 w-4" />
+          {text.goThere}
+        </button>
+      )}
+
       <div className="mt-7 flex items-baseline justify-between border-b border-slate-800 pb-2">
         <p className="signal-label text-slate-400">{text.onFoot}</p>
         <p className="tabular text-xs text-slate-500">{text.stopsCount(nearbyStops.length)}</p>
@@ -236,24 +253,8 @@ export const AddressSidebar = ({
 
   // ── Téléphone : feuille remontant du bas ────────────────────────────────
   return (
-    <Sheet
-      style={{ zIndex: 100 }}
-      isOpen={isOpen}
-      onClose={onClose}
-      snapPoints={[0, 0.6, 1]}
-      initialSnap={2}
-    >
-      <Sheet.Container style={{ borderRadius: '24px 24px 0 0', backgroundColor: '#0f172a', zIndex: 100 }}>
-        <Sheet.Header>
-          <div className="flex justify-center pt-3 pb-1">
-            <div className="h-1.5 w-16 rounded-full bg-white/20" />
-          </div>
-        </Sheet.Header>
-        <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
+    <MapSheet initialSnap={3} isOpen={isOpen} onClose={onClose} isLight={false} zIndex={100}>
           <div className="flex-1 overflow-y-auto px-5 pb-10 pt-2">{body}</div>
-        </Sheet.Content>
-      </Sheet.Container>
-      <Sheet.Backdrop onTap={onClose} style={{ zIndex: 99 }} />
-    </Sheet>
+    </MapSheet>
   );
 };

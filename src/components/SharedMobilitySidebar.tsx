@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sheet } from 'react-modal-sheet';
+import { MapSheet } from './MapSheet';
 import { getSharedPricing, formatEuro, type SharedPricing } from '../services/sharedPricing';
 import { XMarkIcon, BoltIcon, MapPinIcon } from '@heroicons/react/24/solid';
 import { VehicleGlyph } from './VehicleGlyph';
@@ -703,27 +703,11 @@ export function SharedMobilitySidebar({
   }
 
   return (
-    <Sheet
-      style={{ zIndex: 100 }}
-      isOpen={isOpen}
-      onClose={onClose}
-      snapPoints={[0, 0.6, 1]}
-      initialSnap={1}
-    >
-      <Sheet.Container style={{ borderRadius: '24px 24px 0 0', backgroundColor: 'var(--gl-sheet-bg)', zIndex: 100 }}>
-        <Sheet.Header>
-          <div className="flex justify-center pt-3 pb-1">
-            <div className="h-1.5 w-16 rounded-full bg-slate-400/50" />
-          </div>
-        </Sheet.Header>
-        <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
+    <MapSheet initialSnap={2} isOpen={isOpen} onClose={onClose} isLight={false} zIndex={100}>
           <div className="flex-1 overflow-y-auto px-5 pb-6 pt-2">{body}</div>
           {/* Sur mobile, le pied prend la marge du bas : sur un écran sans
               bouton physique, un bouton collé au bord est intouchable. */}
           {footer && <div className="pb-[env(safe-area-inset-bottom)]">{footer}</div>}
-        </Sheet.Content>
-      </Sheet.Container>
-      <Sheet.Backdrop onTap={onClose} style={{ zIndex: 99 }} />
-    </Sheet>
+    </MapSheet>
   );
 }

@@ -70,6 +70,18 @@ export interface SharedMobilityData {
 
 export const EMPTY_SHARED_MOBILITY: SharedMobilityData = { citiz: [], voi: [] };
 
+/** Couleur d'identification de chaque opérateur, reprise de la carte. */
+export const SHARED_OPERATOR_COLORS: Record<SharedOperator, string> = {
+  citiz: '#2563eb',
+  voi: '#ec4899',
+};
+
+/** Nom commercial de l'opérateur. */
+export const SHARED_OPERATOR_LABELS: Record<SharedOperator, string> = {
+  citiz: 'Citiz',
+  voi: 'Voi',
+};
+
 
 const AREA = { minLat: 44.9, maxLat: 45.5, minLon: 5.2, maxLon: 6.3 };
 

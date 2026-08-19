@@ -92,11 +92,14 @@ export const isSncfLine = (value?: string | null): boolean => {
 
 export const normalizeLineId = (value?: string | null): string | null => {
   if (!value) return null;
+  // Le séparateur se retire dans la même passe. En deux temps, `SEM_C1` perdait
+  // son préfixe au premier remplacement — la seconde règle, qui attendait
+  // encore « SEM_ », ne trouvait plus que « _C1 » et le laissait tel quel. Le
+  // code ne correspondait alors à aucune couleur officielle.
   const code = String(value)
     .trim()
     .toUpperCase()
-    .replace(/^(?:SEM|SE2):?/, '')
-    .replace(/^(?:SEM|SE2)_/, '');
+    .replace(/^(?:SEM|SE2)[:_]?/, '');
   return code || null;
 };
 

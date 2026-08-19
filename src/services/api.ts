@@ -20,6 +20,71 @@ export interface RouteLocation {
   raw?: any;
 }
 
+/**
+ * Trajet en véhicule partagé attaché à un itinéraire (Voi, Citiz).
+ *
+ * Renseigné uniquement pour les options construites par `sharedJourneys` : un
+ * itinéraire en transport en commun laisse ce champ vide.
+ */
+export interface SharedJourneyInfo {
+  operator: 'citiz' | 'voi';
+  formFactor: string;
+  /** Distance à pied jusqu'au véhicule. */
+  accessMeters: number;
+  /** Durée et distance à bord. */
+  rideMinutes: number;
+  rideMeters: number;
+  /** Nom du point de prise en charge (station Citiz), sinon l'adresse. */
+  pickupName?: string;
+  batteryPercent?: number;
+  batteryEstimated?: boolean;
+  model?: string;
+  rentalUrl?: string;
+  /** Coût estimé de la course, `null` quand l'opérateur ne publie pas sa grille. */
+  price: {
+    total: number;
+    unlock: number | null;
+    usageRate: number | null;
+    usageIntervalMinutes: number;
+    perKmRate: number | null;
+  } | null;
+}
+
+/**
+ * Course VTC attachée à un itinéraire. Renseigné uniquement pour l'option Uber.
+ */
+export interface UberJourneyInfo {
+  /** Nom du produit retenu (« UberX »). */
+  productName: string | null;
+  /** Fourchette déjà mise en forme par Uber, dans la devise locale. */
+  priceLabel: string | null;
+  lowEstimate: number | null;
+  highEstimate: number | null;
+  currency: string | null;
+  rideMinutes: number;
+  rideMeters: number;
+  /** Lien universel qui ouvre l'application avec le trajet pré-rempli. */
+  deeplink: string;
+}
+
+/**
+ * Course en taxi attachée à un itinéraire. Le prix est une estimation, pas un
+ * tarif : c'est le compteur qui fait foi.
+ */
+export interface TaxiJourneyInfo {
+  company: string;
+  lowEstimate: number;
+  highEstimate: number;
+  /** Tarif de nuit, dimanche ou jour férié. */
+  nightRate: boolean;
+  rideMinutes: number;
+  rideMeters: number;
+  /** Délai d'approche compté avant le départ. */
+  pickupDelayMinutes: number;
+  phone: string;
+  bookingUrl: string;
+}
+
 export interface RouteItinerary {
   dep: string;
   arr: string;
@@ -41,6 +106,12 @@ export interface RouteItinerary {
   routePath: Array<[number, number]>;
   rawDep?: string;
   rawArr?: string;
+  /** Présent seulement sur les options en véhicule partagé. */
+  shared?: SharedJourneyInfo;
+  /** Présent seulement sur l'option VTC. */
+  uber?: UberJourneyInfo;
+  /** Présent seulement sur l'option taxi. */
+  taxi?: TaxiJourneyInfo;
 }
 
 function decodePolyline(encoded: string): Array<[number, number]> {
@@ -183,6 +254,69 @@ export async function planItineraries(options: {
     const itineraries = Array.isArray(data?.plan?.itineraries) ? data.plan.itineraries : [];
     return itineraries.map((it: any) => parseOtpItinerary(it, options.fromName, options.toName));
   } catch (error) {    return [];
+  }
+}
+
+/**
+ * Trajet direct dans un seul mode (marche, vélo/trottinette, voiture).
+ *
+ * Sert à composer les options en véhicule partagé : le routeur sait tracer un
+ * itinéraire cyclable ou routier, il suffit de lui demander le bon mode. On ne
+ * garde que la première proposition — sans transport en commun, les suivantes
+ * ne sont que des variantes du même chemin.
+ */
+export async function planDirectItinerary(options: {
+  fromLatitude: number;
+  fromLongitude: number;
+  toLatitude: number;
+  toLongitude: number;
+  mode: 'WALK' | 'BICYCLE' | 'CAR';
+  walkSpeed?: number;
+}): Promise<{
+  durationSeconds: number;
+  distanceMeters: number;
+  /** Tracé encodé, prêt à être posé dans `legGeometry.points`. */
+  points: string;
+  coordinates: Array<[number, number]>;
+} | null> {
+  const params = new URLSearchParams({
+    fromPlace: `${options.fromLatitude},${options.fromLongitude}`,
+    toPlace: `${options.toLatitude},${options.toLongitude}`,
+    mode: options.mode,
+    numItineraries: '1',
+    locale: 'fr',
+    routerId: 'default',
+  });
+  if (options.mode === 'WALK' && options.walkSpeed) {
+    params.set('walkSpeed', String(options.walkSpeed));
+  }
+
+  try {
+    const response = await axios.get(`${TAG_API_BASE}/plan?${params.toString()}`, { headers: TAG_HEADERS });
+    const itinerary = response.data?.plan?.itineraries?.[0];
+    if (!itinerary) return null;
+
+    const legs: any[] = Array.isArray(itinerary.legs) ? itinerary.legs : [];
+    // Un trajet mono-mode tient presque toujours en un seul tronçon ; on garde
+    // le plus long comme tracé de référence et on concatène le reste pour le
+    // cadrage de la carte.
+    const encoded = legs
+      .map(leg => String(leg?.legGeometry?.points ?? ''))
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+    const coordinates = legs.flatMap(leg => {
+      const points = String(leg?.legGeometry?.points ?? '');
+      return points ? decodePolyline(points) : [];
+    });
+
+    return {
+      durationSeconds: Number(itinerary.duration ?? 0),
+      distanceMeters: legs.reduce((total, leg) => total + Number(leg?.distance ?? 0), 0),
+      points: encoded[0] ?? '',
+      coordinates,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -1053,8 +1187,67 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
       }),
     );
 
-    for (const { clusterId, data } of responses) {
-      if (!Array.isArray(data)) {        continue;
+    for (const { data } of responses) {
+      collectDepartures(data, departures, seen);
+    }
+
+    setCache(cacheKey, departures);
+    return departures;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Les prochains passages à un poteau précis.
+ *
+ * Le planificateur d'itinéraires ne rend jamais le cluster d'un arrêt : il rend
+ * le poteau — « SEM:2109 » pour le quai de La Poya. Le cluster porte un
+ * mnémonique (« SEM:GENLAPOYA »), le poteau un numéro, et l'un ne se déduit pas
+ * de l'autre. On a longtemps cherché à faire le pont par le nom de l'arrêt, ce
+ * qui marchait mal.
+ *
+ * Il se trouve que le réseau expose la même ressource à l'échelle du poteau. On
+ * interroge donc directement avec ce que le calculateur a donné, sans pont ni
+ * devinette. `/index/stops/:id` renvoie 404 sur ce serveur, mais son
+ * sous-chemin `/stoptimes` répond — et rend les deux directions, comme le
+ * cluster.
+ */
+export async function getStopPointDepartures(
+  stopPointId: string,
+  skipCache: boolean = false
+): Promise<Departure[]> {
+  if (!stopPointId) return [];
+  const cacheKey = `departures_point_${stopPointId}`;
+
+  if (!skipCache) {
+    const cached = getFromCache<Departure[]>(cacheKey, DEPARTURES_CACHE_DURATION);
+    if (cached) return cached;
+  }
+
+  try {
+    const url = `${TAG_API_BASE}/index/stops/${encodeURIComponent(stopPointId)}/stoptimes`;
+    const response = await axios.get(url, { headers: TAG_HEADERS });
+    const departures: Departure[] = [];
+    collectDepartures(response.data, departures, new Set<string>());
+    setCache(cacheKey, departures);
+    return departures;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Transforme la réponse `stoptimes` du réseau en départs exploitables.
+ *
+ * La même charge utile arrive du cluster et du poteau : un seul lecteur pour
+ * les deux, sans quoi les deux chemins finiraient par diverger sur des détails
+ * — la déduplication, le mode, le rattrapage du nom de ligne.
+ */
+function collectDepartures(data: any, departures: Departure[], seen: Set<string>): void {
+  {
+    {
+      if (!Array.isArray(data)) {        return;
       }
 
       const now = Date.now() / 1000;
@@ -1085,7 +1278,11 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
 
           if (depUnix < now - 300) continue;
 
-          const key = `${clusterId}|${lineId}|${destination}|${depUnix}|${pattern.mode}`;
+          // La clé ne porte pas le cluster : un arrêt fusionné couvre plusieurs
+          // poteaux, et le même passage remonte une fois par poteau interrogé.
+          // Le compter deux fois donnait un « prochain » et un « suivant »
+          // identiques à la minute près — c'était le même véhicule.
+          const key = `${lineId}|${destination}|${depUnix}|${pattern.mode}`;
           if (seen.has(key)) continue;
           seen.add(key);
 
@@ -1109,12 +1306,9 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
         }
       }
     }
-
-    departures.sort((a, b) => a.departureTime - b.departureTime);
-
-    setCache(cacheKey, departures);    return departures;
-  } catch (err: any) {return [];
   }
+
+  departures.sort((a, b) => a.departureTime - b.departureTime);
 }
 
 

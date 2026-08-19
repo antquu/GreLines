@@ -1,5 +1,15 @@
 ﻿import { motion } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
+import {
+  MapSheetShell,
+  MapSheetBody,
+  mapSheetSnapPoints,
+  collapsedNavPadding,
+  readSafeAreaBottom,
+  NAVBAR_SNAP,
+  LAST_SNAP,
+} from './MapSheet';
+import { NAV_ITEM_WIDTH } from './MobileNavBar';
 import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon, ClockIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/solid';
 import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
 import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
@@ -16,7 +26,7 @@ import { TclSidebar } from './TclSidebar';
 import { isTclId } from '../services/tclNetwork';
 import { getTimetable, isLastDeparture, toTimetableRouteId, type Timetable } from '../services/timetable';
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { getStopTrafficAlerts } from '../utils/stopTrafficMatcher';
+import { getStopTrafficAlerts, filterAlertsBySelectedLines } from '../utils/stopTrafficMatcher';
 
 interface SidebarMobileProps {
   stop: StopDetail | null;
@@ -119,7 +129,6 @@ const isRoundLine = (lineId: string): boolean => {
   return !!match && parseInt(match[1], 10) >= 1 && parseInt(match[1], 10) <= 14;
 };
 
-const getBadgeShapeClass = (isRound: boolean): string => isRound ? 'rounded-full' : 'rounded-2xl';
 
 const getLineSortKey = (lineShortName?: string | null, lineId?: string): [number, string] => {
   const code = (lineShortName || lineId || '').toUpperCase().trim();
@@ -151,14 +160,6 @@ const OccupancyDisplay = ({ occupancy, showError = false }: { occupancy?: string
   );
 };
 
-const getLineColor = (lineId: string): string => {
-  const colors: Record<string, string> = {
-    '1': 'bg-red-500', '2': 'bg-green-500', '3': 'bg-blue-500', '4': 'bg-pink-500',
-    '5': 'bg-yellow-400', '6': 'bg-purple-500', '7': 'bg-orange-500', '8': 'bg-indigo-500',
-    '9': 'bg-teal-500', '10': 'bg-rose-500',
-  };
-  return colors[lineId] || 'bg-slate-500';
-};
 
 
 
@@ -167,13 +168,19 @@ const getLineColor = (lineId: string): string => {
 interface StopTrafficAlertsProps {
   stop: Pick<StopDetail, 'id' | 'name' | 'lines'>;
   language: 'fr' | 'en';
+  /** Le filtre de la fiche : vide, tout l'arrêt est concerné. */
+  selectedLines: Set<string>;
 }
 
-const StopTrafficAlerts = ({ stop, language }: StopTrafficAlertsProps) => {
+const StopTrafficAlerts = ({ stop, language, selectedLines }: StopTrafficAlertsProps) => {
   const text = getSidebarText(language);
   const alerts = useMemo(
-    () => getStopTrafficAlerts({ name: stop.name }, stop.lines),
-    [stop.id, stop.name, stop.lines]
+    () =>
+      filterAlertsBySelectedLines(
+        getStopTrafficAlerts({ name: stop.name }, stop.lines),
+        selectedLines,
+      ),
+    [stop.id, stop.name, stop.lines, selectedLines]
   );
 
   if (alerts.length === 0) return null;
@@ -186,10 +193,10 @@ const StopTrafficAlerts = ({ stop, language }: StopTrafficAlertsProps) => {
       <div className="space-y-2.5">
         {alerts.map((alert, idx) => {
           const lines: Line[] = [...alert.matchedLines].sort(sortLinesByPriority);
-          const headerLabel =
-            lines.length === 1
-              ? `${text.disruptedTraffic} ${lines[0].shortName || lines[0].id}`
-              : text.ongoingDisruption;
+          // Le nom de la ligne n'est plus dans l'en-tête : les badges le disent
+          // en dessous, et une perturbation regroupée en touche souvent
+          // plusieurs. « Trafic perturbé sur la ligne C1 » ne vaudrait plus.
+          const headerLabel = text.ongoingDisruption;
           return (
             <motion.div
               key={`${alert.detail.titre}-${idx}`}
@@ -213,22 +220,25 @@ const StopTrafficAlerts = ({ stop, language }: StopTrafficAlertsProps) => {
                   {text.estimatedEnd} {alert.detail.dateFin}
                 </p>
               )}
-              {lines.length > 1 && (
+              {/* Les lignes concernées, avec les pictogrammes du réseau. Elles
+                  s'affichent dès qu'il y en a une : une perturbation regroupée
+                  ne dit plus dans son titre quelle ligne elle touche, ce sont
+                  les badges qui le disent. */}
+              {lines.length > 0 && (
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                   <span className="text-xs text-amber-300/60">{text.affecting}</span>
-                  {lines.map(line => {
-                    const lineStyle = resolveLineStyle(line.id, line.color, line.textColor);
-                    return (
-                      <span
-                        key={line.id}
-                        className={`${getBadgeShapeClass(isRoundLine(line.shortName || line.id))} w-6 h-6 flex items-center justify-center text-[10px] font-bold ${!lineStyle.backgroundColor ? getLineColor(line.id) + ' text-white' : ''}`}
-                        style={lineStyle}
-                        title={line.name}
-                      >
-                        {line.shortName || line.id}
-                      </span>
-                    );
-                  })}
+                  {lines.map(line => (
+                    <LineBadge
+                      key={line.id}
+                      line={{
+                        id: line.id,
+                        shortName: line.shortName || line.id,
+                        color: line.color,
+                        textColor: line.textColor,
+                      }}
+                      size="xs"
+                    />
+                  ))}
                 </div>
               )}
             </motion.div>
@@ -313,25 +323,39 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
   const text = getSidebarText(language);
   const isLight = theme === 'light';
 
-  /**
-   * Bottom-sheet snap control. The snap-points array changes shape depending
-   * on whether a line filter is active:
-   *   no filter         → [0, 0.6, 1]         (closed, peek 60%, full)
-   *   filter active     → [0, 0.25, 0.6, 1]   (closed, mini 25%, peek 60%, full)
-   * The mini snap lets the user push the sheet down to glance at the map
-   * (with the line trace) without losing the open stop. We also track the
-   * current snap index so we can know when to hide the backdrop / let the
-   * map receive pointer events.
-   */
   const sheetRef = useRef<SheetRef>(null);
-  const hasFilter = selectedLines.size > 0;
-  const snapPoints = hasFilter ? [0, 0.25, 0.6, 1] : [0, 0.6, 1];
-  // Index of "peek" (~60%) and "mini" (~25%) within the chosen array — used
-  // by the snap-on-filter-change effect below.
-  const peekIndex = hasFilter ? 2 : 1;
-  const miniIndex = hasFilter ? 1 : -1; // -1 = no mini snap available
-  const fullIndex = snapPoints.length - 1; // always the last one
-  const [snapIdx, setSnapIdx] = useState<number>(fullIndex);
+
+  /*
+   * La fiche d'arrêt est la feuille d'accueil — la même, avec un autre contenu.
+   *
+   * Mêmes paliers, même coque, même largeur de pastille : c'est ce qui fait
+   * qu'on ne voit pas le relais. Ouvrir un arrêt ne pose pas une feuille sur
+   * une autre, ça remplace ce que la feuille montre. Et le palier bas, celui
+   * qui a la taille de la barre d'onglets, n'est pas une position de repos :
+   * y descendre, c'est refermer l'arrêt et rendre la barre.
+   *
+   * Elle s'ouvre au palier du milieu et non en grand : on vient de toucher un
+   * point sur la carte, la carte doit rester visible autour de lui.
+   */
+  const safeBottom = useMemo(readSafeAreaBottom, []);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === 'undefined' ? 375 : window.innerWidth,
+  );
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const snapPoints = useMemo(() => mapSheetSnapPoints({ bottomInset: safeBottom }), [safeBottom]);
+  const collapsedPadding = useMemo(
+    () => collapsedNavPadding(viewportWidth, NAV_ITEM_WIDTH),
+    [viewportWidth],
+  );
+  const peekIndex = 2;
+  const fullIndex = LAST_SNAP;
+  /** La feuille a atteint sa position d'ouverture : ses paliers comptent enfin. */
+  const hasSettledRef = useRef(false);
+  useEffect(() => { hasSettledRef.current = false; }, [isOpen]);
 
   useEffect(() => {
     setCurrentStopId(stop?.id || null);
@@ -437,28 +461,13 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
   })();
 
   /**
-   * Auto-snap on filter change. When the user toggles a line on, we slide the
-   * sheet down to the mini (~25%) snap so they can see the trace on the map
-   * without closing the stop. When they clear the filter, we restore to peek.
-   * We track the previous filter count to only react on the *transition*.
+   * Filtrer une ligne ne fait plus redescendre la feuille.
+   *
+   * Elle le faisait pour dégager la carte, que le voile masquait. Le voile est
+   * parti : au palier du milieu la carte est déjà visible et vivante, et le
+   * palier bas ne sert plus qu'à refermer. Y envoyer la feuille parce qu'on
+   * vient de cocher une ligne fermerait l'arrêt qu'on est en train de filtrer.
    */
-  const prevFilterCountRef = useRef<number>(selectedLines.size);
-  useEffect(() => {
-    const prev = prevFilterCountRef.current;
-    const next = selectedLines.size;
-    prevFilterCountRef.current = next;
-    if (!isOpen) return;
-    // Going from no filter → has filter: snap down to mini.
-    if (prev === 0 && next > 0 && miniIndex >= 0) {
-      sheetRef.current?.snapTo(miniIndex);
-    }
-    // Going from has filter → no filter: snap up to peek (so the user sees
-    // the full stop info again, not stuck at the now-defunct 25% snap).
-    else if (prev > 0 && next === 0) {
-      sheetRef.current?.snapTo(peekIndex);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLines.size, isOpen]);
 
   // L'avertissement se lit par-dessus la fiche : autant qu'elle soit déjà
   // dépliée en dessous quand on l'acquitte.
@@ -486,29 +495,31 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
     )}
     <Sheet
       ref={sheetRef}
-      style={{ zIndex: 100 }}
+      style={{ zIndex: 10 }}
       isOpen={isOpen}
       onClose={onClose}
       snapPoints={snapPoints}
-      initialSnap={fullIndex}
-      onSnap={setSnapIdx}
+      initialSnap={peekIndex}
+      // Descendre au palier de la barre d'onglets n'est pas se poser, c'est
+      // rendre la place : la fiche se referme et l'accueil reparaît, à la même
+      // hauteur et à la même largeur. Le relais ne se voit pas.
+      //
+      // On n'écoute qu'une fois la feuille arrivée : la bibliothèque annonce
+      // les paliers traversés pendant l'ouverture, et la fiche se serait
+      // refermée avant d'avoir paru.
+      onSnap={index => {
+        if (index > NAVBAR_SNAP) { hasSettledRef.current = true; return; }
+        if (hasSettledRef.current) onClose();
+      }}
     >
-      <Sheet.Container
-        style={{
-          borderRadius: '24px 24px 0 0',
-          background: isLight
-            ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.98))'
-            : '#0f172a',
-          border: isLight ? '1px solid rgba(203,213,225,0.75)' : undefined,
-          zIndex: 100,
-        }}
-      >
+      <MapSheetShell isLight={isLight} bottomInset={safeBottom} collapsedPadding={collapsedPadding}>
         <Sheet.Header>
           <div className="flex justify-center pt-2 pb-1">
             <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
           </div>
         </Sheet.Header>
         <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
+          <MapSheetBody>
           {currentStopDetail && (
           <div className="overflow-y-auto flex-1 pb-24">
             {/* Header */}
@@ -518,13 +529,17 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                 {currentStopDetail.city && <p className="text-sm text-slate-400 mt-0.5">{currentStopDetail.city}</p>}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                {/* « GO » : le bouton mène à l'arrêt, il ne le montre pas.
+                    Repris de GreGo à l'identique. */}
                 <button
+                  type="button"
                   onClick={() => onPlanRouteFromStop?.(currentStopDetail)}
-                  className="w-9 h-9 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-full hover:bg-slate-700 transition"
+                  className="flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-500 active:scale-95"
+                  style={{ color: '#ffffff' }}
                   aria-label={text.planRouteFromStop}
                   title={text.planRouteFromStop}
                 >
-                  <MapIcon className="w-4 h-4 text-white" />
+                  GO
                 </button>
                 <button
                   onClick={() => {
@@ -634,7 +649,7 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
             )}
 
             {/* Stop-level traffic alerts (above departures) */}
-            <StopTrafficAlerts stop={currentStopDetail} language={language} />
+            <StopTrafficAlerts stop={currentStopDetail} language={language} selectedLines={selectedLines} />
 
             {/* Departures */}
             <div className="px-5">
@@ -864,15 +879,14 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
             </div>
           </div>
           )}
+          </MapSheetBody>
         </Sheet.Content>
-      </Sheet.Container>
-      {/* Backdrop. We hide it entirely when the sheet is at the mini (25%)
-          snap so the user can freely pan/zoom the map underneath without the
-          backdrop swallowing taps or closing the sheet. At peek and full we
-          render the normal backdrop (tap-to-close). */}
-      {!(hasFilter && snapIdx === miniIndex) && (
-        <Sheet.Backdrop onTap={onClose} style={{ zIndex: 99 }} />
-      )}
+      </MapSheetShell>
+      {/* Pas de voile. C'est ce qui sépare une feuille de Plans d'une boîte de
+          dialogue : la carte reste vivante derrière, on la déplace, on la
+          zoome, on touche un autre arrêt sans avoir à refermer celui-ci. La
+          feuille se ferme en la tirant vers le bas — jusqu'à la barre
+          d'onglets, qui reprend alors sa place. */}
     </Sheet>
     <AddFavoriteModal
       isOpen={isFavoriteModalOpen}

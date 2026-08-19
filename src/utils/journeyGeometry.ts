@@ -187,6 +187,11 @@ function magnetize(coords: Coordinate[], stops: JourneyStopRef[]): Coordinate[] 
 export interface JourneyLegGeometry {
   index: number;
   isWalk: boolean;
+  /**
+   * Tronçon qui ne suit ni ligne ni arrêt (marche, véhicule partagé, VTC) :
+   * son tracé est celui du routeur et ne doit être recalé sur rien.
+   */
+  freeform: boolean;
   lineKey: string;
   color: string;
   coordinates: Coordinate[];
@@ -206,12 +211,21 @@ export interface JourneyBadge {
 }
 
 export interface JourneyGeometry {
-  
+
   lines: GeoJSON.FeatureCollection;
-  
+
   points: GeoJSON.FeatureCollection;
-  
+
   badges: JourneyBadge[];
+  /**
+   * Le tracé tronçon par tronçon, tel qu'il a été corrigé.
+   *
+   * La carte n'en a pas besoin — elle dessine la collection `lines` — mais le
+   * guidage, si : il suit un tronçon à la fois pour dire où tourner. Sans cela
+   * il redécodait la polyligne brute du routeur de son côté, et suivait donc un
+   * chemin différent de celui qu'on lui montrait à l'écran.
+   */
+  legGeometries: JourneyLegGeometry[];
 }
 
 export interface BuildJourneyGeometryOptions {
@@ -261,19 +275,24 @@ export function buildJourneyGeometry({
     const otpCoords = typeof points === 'string' && points.length > 0 ? decodePolyline(points) : [];
 
     const isWalk = leg?.mode === 'WALK';
-    const boarding = resolve(leg?.from);
-    const alighting = resolve(leg?.to);
-    const intermediates = Array.isArray(leg?.intermediateStops)
+    // Une trottinette n'est pas un tramway : elle part d'un trottoir, pas d'un
+    // quai. Rabattre ses extrémités sur l'arrêt le plus proche faisait faire au
+    // tracé un aller-retour jusqu'à cet arrêt.
+    const freeform =
+      isWalk || Boolean(leg?.sharedOperator) || Boolean(leg?.uberProduct) || Boolean(leg?.taxiCompany);
+    const boarding = freeform ? toStopRef(leg?.from) : resolve(leg?.from);
+    const alighting = freeform ? toStopRef(leg?.to) : resolve(leg?.to);
+    const intermediates = !freeform && Array.isArray(leg?.intermediateStops)
       ? (leg.intermediateStops.map(resolve).filter(Boolean) as JourneyStopRef[])
       : [];
 
-    const lineKey = isWalk ? '' : getLineKey(leg);
+    const lineKey = freeform ? '' : getLineKey(leg);
     const color = isWalk ? '#94a3b8' : getLineColor(leg);
 
     let coordinates = otpCoords;
     let precise = false;
 
-    if (!isWalk && boarding && alighting) {
+    if (!freeform && boarding && alighting) {
       const reference = referenceGeometries?.get(lineKey);
       if (reference) {
         const segment = cutReferenceSegment(extractVariants(reference), boarding, alighting, intermediates);
@@ -286,13 +305,18 @@ export function buildJourneyGeometry({
 
     if (coordinates.length < 2) return;
 
-    coordinates = magnetize(coordinates, [...intermediates, ...(boarding ? [boarding] : []), ...(alighting ? [alighting] : [])]);
-    if (boarding) coordinates[0] = [boarding.lon, boarding.lat];
-    if (alighting) coordinates[coordinates.length - 1] = [alighting.lon, alighting.lat];
+    // Aimantation et recalage des extrémités n'ont de sens que sur un tronçon
+    // qui dessert des arrêts : ailleurs, le tracé du routeur est déjà exact.
+    if (!freeform) {
+      coordinates = magnetize(coordinates, [...intermediates, ...(boarding ? [boarding] : []), ...(alighting ? [alighting] : [])]);
+      if (boarding) coordinates[0] = [boarding.lon, boarding.lat];
+      if (alighting) coordinates[coordinates.length - 1] = [alighting.lon, alighting.lat];
+    }
 
     legGeometries.push({
       index,
       isWalk,
+      freeform,
       lineKey,
       color,
       coordinates,
@@ -341,7 +365,9 @@ export function buildJourneyGeometry({
     });
   };
 
-  const transitLegs = legGeometries.filter(leg => !leg.isWalk);
+  // Les pastilles de montée/descente et les badges de ligne ne concernent que
+  // les tronçons en transport en commun.
+  const transitLegs = legGeometries.filter(leg => !leg.freeform);
 
   // Les arrêts simplement desservis ne sont plus affichés : sur un tronçon de
   // vingt arrêts, le collier de pastilles noyait le tracé plus qu'il ne le
@@ -379,5 +405,6 @@ export function buildJourneyGeometry({
     lines: { type: 'FeatureCollection', features: lines },
     points: { type: 'FeatureCollection', features: [...pointsByKey.values()] },
     badges,
+    legGeometries,
   };
 }

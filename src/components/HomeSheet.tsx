@@ -1,19 +1,112 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { resolveLineStyle } from '../utils/lineColors';
-import { motion } from 'framer-motion';
+// `react-modal-sheet` déclare `motion` en pair, mais `motion/react` n'est qu'un
+// réexport de `framer-motion` — la même instance, donc les mêmes `MotionValue`.
+// On importe depuis `framer-motion`, seul paquet que ce projet déclare.
+import { motion, useMotionTemplate, AnimatePresence } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
+import {
+  MapSheetShell,
+  MapSheetBody,
+  mapSheetSnapPoints,
+  collapsedNavPadding,
+  readSafeAreaBottom,
+  useSnapValue,
+  COMPACT_ITEM_WIDTH,
+  LAST_SNAP,
+} from './MapSheet';
 import {
   MapPinIcon,
   ExclamationTriangleIcon,
-  Cog6ToothIcon,
-  EllipsisHorizontalIcon,
   ChevronRightIcon,
-  MapIcon,
+  ClockIcon,
+  ArrowsRightLeftIcon,
+  StarIcon,
+  UserCircleIcon,
 } from '@heroicons/react/24/solid';
+import { MobileNavBar, NAV_ITEM_WIDTH, type MobileNavItem } from './MobileNavBar';
+import { loadRecentStops, type RecentStop } from '../utils/recentStops';
+
+/**
+ * Les visages du nuage de profil.
+ *
+ * Anonymes, et ils doivent le rester : personne n'a demandé à figurer sur l'écran
+ * d'accueil d'un inconnu. Ce sont des émojis tirés au sort, qui représentent un
+ * nombre sans désigner quiconque — le nombre exact est écrit juste en dessous.
+ *
+ * Ce sont les mêmes que ceux qu'on peut se choisir comme avatar : une liste à part
+ * ne donnait que des têtes, et le nuage ne ressemblait alors pas aux profils de
+ * l'application.
+ */
+const HOME_FACES = AVATARS;
+
+/** Durée d'un tour, partagée avec la contre-rotation des visages. */
+const HOME_SPIN_MS = 110000;
+
+/**
+ * Écart minimal entre deux visages, de centre à centre.
+ *
+ * Le diamètre d'un visage plus cinq pixels : deux émojis tirés au hasard
+ * tombaient parfois presque au même endroit, se chevauchaient, et donnaient une
+ * tache au lieu de deux personnes. Cinq pixels suffisent à les séparer sans
+ * imposer une grille — le nuage doit rester irrégulier.
+ */
+const HOME_FACE_SIZE = 32;
+const HOME_MIN_GAP = HOME_FACE_SIZE + 5;
+
+/**
+ * Convertit une place de l'anneau en coordonnées, pour mesurer les écarts.
+ *
+ * Deux visages proches en angle mais éloignés en rayon ne se touchent pas : on ne
+ * peut donc pas comparer les angles, il faut passer par le plan.
+ */
+function homeFacePoint(angle: number, radius: number): { x: number; y: number } {
+  const radians = (angle * Math.PI) / 180;
+  return { x: Math.cos(radians) * radius, y: Math.sin(radians) * radius };
+}
+
+/**
+ * Cherche une place assez à l'écart des autres.
+ *
+ * Vingt essais, puis on garde le meilleur trouvé : une couronne pleine rendrait
+ * la recherche sans issue, et un nuage un peu serré vaut mieux qu'une image qui
+ * se figera.
+ */
+function homeSpacedSlot(
+  taken: Array<{ angle: number; radius: number }>
+): { angle: number; radius: number } {
+  let best = { angle: 0, radius: 0 };
+  let bestDistance = -1;
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = { angle: Math.random() * 360, radius: 58 + Math.random() * 22 };
+    const point = homeFacePoint(candidate.angle, candidate.radius);
+    let nearest = Infinity;
+    for (const other of taken) {
+      const otherPoint = homeFacePoint(other.angle, other.radius);
+      nearest = Math.min(nearest, Math.hypot(point.x - otherPoint.x, point.y - otherPoint.y));
+    }
+    if (nearest >= HOME_MIN_GAP) return candidate;
+    if (nearest > bestDistance) {
+      bestDistance = nearest;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+interface HomeFace {
+  key: number;
+  emoji: string;
+  angle: number;
+  radius: number;
+  /** Où en était l'anneau à son apparition, pour démarrer droit. */
+  spunBy: number;
+}
+import { AVATARS, type Account } from '../services/account';
 import type { Stop, Line } from '../types';
-import { findClosestStops, formatDistance } from '../utils/geo';
+import { findClosestStops } from '../utils/geo';
 import { getStopLines } from '../services/api';
-import { FavoriteCard } from './FavoriteCard';
 import type { Favorite } from '../services/favorites';
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import { AtmoPanel } from './AtmoPanel';
@@ -21,6 +114,82 @@ import type { AtmoReport, Commune } from '../services/atmo';
 
 /** Le strict nécessaire pour dessiner une pastille de ligne. */
 type MarqueeLine = Pick<Line, 'id' | 'shortName' | 'color' | 'textColor'>;
+/** Hauteur de la case que se partagent la barre d'onglets et la recherche. */
+const HEADER_SWAP_HEIGHT = 76;
+
+/**
+ * Barre d'onglets et barre de recherche, superposées et croisées en fondu.
+ *
+ * Repliée, la feuille montre ses onglets ; dès qu'on la tire, ils s'effacent au
+ * profit de la recherche, qui prend toute la largeur gagnée. Les deux occupent
+ * la même case, si bien que rien ne saute : c'est un seul objet qui change de
+ * visage. Chacun cesse d'écouter les gestes dès qu'il n'est plus le visage
+ * affiché.
+ */
+function SheetHeaderSwap({
+  navBar,
+  searchBar,
+}: {
+  navBar: React.ReactNode;
+  searchBar?: React.ReactNode;
+}) {
+  const navOpacity = useSnapValue([1, 1, 0, 0], 1);
+  const searchOpacity = useSnapValue([0, 0, 1, 1], 0);
+  const { currentSnap } = Sheet.useContext();
+  const searchTakesOver = (currentSnap ?? 1) > 1;
+
+  if (!searchBar) return <>{navBar}</>;
+
+  return (
+    // La case se hisse au-dessus du contenu : la liste de résultats de la
+    // recherche déborde de l'en-tête, et le corps de la feuille — qui porte une
+    // opacité animée, donc son propre contexte d'empilement — passerait sinon
+    // par-dessus elle.
+    <div className="relative z-30" style={{ height: HEADER_SWAP_HEIGHT }}>
+      <motion.div
+        className="absolute inset-x-0 top-0"
+        style={{ opacity: navOpacity, pointerEvents: searchTakesOver ? 'none' : 'auto' }}
+      >
+        {navBar}
+      </motion.div>
+      <motion.div
+        className="absolute inset-x-0 top-0 z-30 flex h-full items-center px-4"
+        style={{ opacity: searchOpacity, pointerEvents: searchTakesOver ? 'auto' : 'none' }}
+      >
+        {searchBar}
+      </motion.div>
+    </div>
+  );
+}
+
+/**
+ * Fond assombri.
+ *
+ * Il n'apparaît qu'à partir du deuxième palier et s'assombrit à mesure que la
+ * feuille monte : repliée sur la carte, la barre d'onglets ne doit rien voiler
+ * ni intercepter le moindre geste.
+ */
+function SheetBackdrop({ onTap, snapIdx }: { onTap: () => void; snapIdx: number }) {
+  const opacity = useSnapValue([0, 0, 0, 0.5], 0);
+  const backgroundColor = useMotionTemplate`rgba(2, 6, 23, ${opacity})`;
+
+  return (
+    <Sheet.Backdrop
+      // Le voile n'écoute la tape qu'à partir du deuxième palier. C'est aussi ce
+      // qui le rend traversant : la bibliothèque n'active `pointer-events` que
+      // sur un voile cliquable, et impose cette règle après nos styles. Repliée
+      // sur la carte, la feuille laisse donc passer tous les gestes.
+      {...(snapIdx > 1 ? { onTap } : {})}
+      style={{
+        backgroundColor,
+        // L'opacité par défaut suit l'ouverture de la feuille ; ici c'est la
+        // couleur qui porte le fondu, sur les seuls paliers hauts.
+        opacity: 1,
+        zIndex: 9,
+      }}
+    />
+  );
+}
 
 interface HomeSheetProps {
   isOpen: boolean;
@@ -30,6 +199,22 @@ interface HomeSheetProps {
   onStopClick: (stop: Stop, lineFilter?: string[]) => void;
   onOpenTraffic: () => void;
   onOpenSettings: () => void;
+  /** Ouvre l'écran Compte, qui glisse sous la barre d'onglets. */
+  onOpenAccount: () => void;
+  /** Ouvre l'écran Favoris, page pleine comme le Compte. */
+  onOpenFavorites: () => void;
+  /**
+   * Verrouille la feuille sur sa barre d'onglets : c'est l'état qu'elle prend
+   * quand un écran occupe la page en dessous. La barre reste la même — c'est
+   * elle qu'on garde — mais elle ne se tire plus.
+   */
+  locked?: boolean;
+  /** Quitte l'écran Compte : tout autre onglet le referme. */
+  onLeaveAccount?: () => void;
+  /** Quitte l'écran Favoris : tout autre onglet le referme. */
+  onLeaveFavorites?: () => void;
+  /** Resserre la barre d'onglets : l'écran du dessous est en train de défiler. */
+  navCompact?: boolean;
   onOpenItinerary: () => void;
   /** Ouvre l'explorateur de lignes (recherche mobile focalisée). */
   onOpenLines?: () => void;
@@ -48,37 +233,39 @@ interface HomeSheetProps {
   openToMidSignal?: number;
   language: 'fr' | 'en';
   theme?: 'light' | 'dark';
+  /**
+   * Le compte, et de quoi montrer son visage.
+   *
+   * La feuille ne connaît ni la base ni les cartes : elle reçoit ce qu'il faut
+   * pour dessiner, et un rappel pour ouvrir le profil.
+   */
+  account?: Account | null;
+  accountPhotoUrl?: string | null;
+  /**
+   * Combien de cartes contient le portefeuille.
+   *
+   * La vignette en empile autant, décalées : voir trois cartes plutôt qu'une dit
+   * combien on en a sans avoir à ouvrir l'écran, et c'est la question qu'on se
+   * pose en cherchant celle du mois.
+   */
+  walletCardCount?: number;
+  onOpenProfile?: () => void;
   favorites: Favorite[];
   favoriteDetails: FavoriteDetail[];
   
   atmoReport: AtmoReport | null;
   atmoLoading: boolean;
   onAtmoCommuneChange: (commune: Commune) => void;
-}
-
-function getGreeting(language: 'fr' | 'en'): string {
-  const h = new Date().getHours();
-  const isFr = language === 'fr';
-  if (h < 5) {
-    return isFr ? 'Bonne nuit, repose-toi bien' : 'Good night, sleep tight';
-  }
-  if (h < 12) {
-    return isFr ? 'Bonjour, prêt à partir ?' : 'Good morning, ready to go?';
-  }
-  if (h < 14) {
-    return isFr ? 'Bon appétit, bonne pause' : 'Enjoy your lunch break';
-  }
-  if (h < 18) {
-    return isFr ? 'Bon après-midi, en route !' : 'Good afternoon, off you go!';
-  }
-  if (h < 22) {
-    return isFr ? 'Bonsoir, bonne soirée' : 'Good evening, have a nice one';
-  }
-  return isFr ? 'Bonne nuit, à demain' : 'Good night, see you tomorrow';
+  /** L'indice suit la carte : le panneau n'affiche pas sa recherche. */
+  atmoFollowMap?: boolean;
+  /**
+   * Barre de recherche du parent, affichée à la place des onglets dès que la
+   * feuille quitte son palier bas.
+   */
+  searchBar?: React.ReactNode;
 }
 
 const getText = (language: 'fr' | 'en') => ({
-  title: getGreeting(language),
   nearbyTitle: language === 'fr' ? 'Arrêts à proximité' : 'Nearby stops',
   noLocation: language === 'fr' ? 'Position non disponible' : 'Location unavailable',
   noLocationHint:
@@ -92,6 +279,10 @@ const getText = (language: 'fr' | 'en') => ({
   loading: language === 'fr' ? 'Chargement…' : 'Loading…',
   noDepartures: language === 'fr' ? 'Aucun passage prévu' : 'No upcoming departures',
   quickAccess: language === 'fr' ? 'Accès rapide' : 'Quick access',
+  navHome: language === 'fr' ? 'Autour' : 'Nearby',
+  navRoute: language === 'fr' ? 'Itinéraire' : 'Route',
+  navFavorites: language === 'fr' ? 'Favoris' : 'Favorites',
+  navAccount: language === 'fr' ? 'Compte' : 'Account',
   placesTitle: language === 'fr' ? 'Lieux' : 'Places',
   recentTitle: language === 'fr' ? 'Récents' : 'Recents',
   homeLabel: language === 'fr' ? 'Domicile' : 'Home',
@@ -101,6 +292,7 @@ const getText = (language: 'fr' | 'en') => ({
   trafficLabel: language === 'fr' ? 'Infotrafic' : 'Traffic info',
   itineraryLabel: language === 'fr' ? 'Itinéraire' : 'Itinerary',
   settingsLabel: language === 'fr' ? 'Réglages' : 'Settings',
+  walletLabel: language === 'fr' ? 'GreLines Wallet' : 'GreLines Wallet',
   linesLabel: language === 'fr' ? 'Explorer les lignes' : 'Explore lines',
   remove: language === 'fr' ? 'Retirer' : 'Remove',
   direction: language === 'fr' ? 'Direction' : 'To',
@@ -249,66 +441,7 @@ function LinesMarquee({ lines }: { lines: MarqueeLine[] }) {
   );
 }
 
-const MAX_BADGES = 3;
 
-const NearbyStopCard = ({
-  stop,
-  meters,
-  lines,
-  onClick,
-  language,
-  delay,
-}: {
-  stop: Stop;
-  meters: number;
-  lines: Line[] | undefined;
-  onClick: () => void;
-  language: 'fr' | 'en';
-  delay: number;
-}) => {
-  const sorted = lines ? sortLinesForBadge(lines) : [];
-  const visible = sorted.slice(0, MAX_BADGES);
-  const overflow = sorted.length > MAX_BADGES;
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay }}
-      onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-left transition last:border-0 hover:bg-white/5 active:bg-white/10"
-    >
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-slate-800">
-          <MapPinIcon className="h-5 w-5 text-white" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold leading-tight text-white">{stop.name}</p>
-          <div className="flex items-center gap-2 mt-0.5">
-            {stop.city && (
-              <p className="truncate text-xs text-slate-400">{stop.city}</p>
-            )}
-            <span className="text-xs font-mono font-semibold text-slate-500">·</span>
-            <span className="text-sm font-semibold text-slate-400">
-              {formatDistance(meters, language)}
-            </span>
-          </div>
-        </div>
-      </div>
-      {/* Line badges on the right. If more than MAX_BADGES, the last slot is
-          replaced with an ellipsis icon to keep the row compact. */}
-      <div className="flex items-center gap-1 flex-shrink-0">
-        {visible.map(line => (
-          <MiniLineBadge key={line.id} line={line} />
-        ))}
-        {overflow && (
-          <div className="h-6 w-6 flex items-center justify-center rounded-md bg-slate-700">
-            <EllipsisHorizontalIcon className="w-4 h-4 text-slate-300" />
-          </div>
-        )}
-      </div>
-    </motion.button>
-  );
-};
 
 
 /* Note: QuickCircle component is defined but not currently used
@@ -345,7 +478,12 @@ export const HomeSheet = ({
   currentLocation,
   onStopClick,
   onOpenTraffic,
-  onOpenSettings,
+  onOpenAccount,
+  onOpenFavorites,
+  locked = false,
+  onLeaveAccount,
+  onLeaveFavorites,
+  navCompact = false,
   onOpenItinerary,
   onSnapChange,
   onSheetProgress,
@@ -353,16 +491,85 @@ export const HomeSheet = ({
   openToMidSignal,
   language,
   theme = 'dark',
-  favorites,
-  favoriteDetails,
+  account,
+  accountPhotoUrl,
+  walletCardCount = 0,
+  onOpenProfile,
   atmoReport,
   atmoLoading,
   onAtmoCommuneChange,
+  atmoFollowMap = false,
   onOpenLines,
   allLines = [],
+  searchBar,
 }: HomeSheetProps) => {
   const text = getText(language);
   const isLight = theme === 'light';
+
+  /*
+   * Les arrêts récemment ouverts, relus à chaque venue de la feuille.
+   *
+   * Relus et non écoutés : la liste ne change que lorsqu'on ouvre un arrêt, ce
+   * qui referme la feuille de toute façon. Un abonnement n'aurait rien apporté
+   * qu'une mécanique de plus.
+   */
+  const [recents, setRecents] = useState<RecentStop[]>([]);
+  useEffect(() => {
+    if (isOpen) setRecents(loadRecentStops());
+  }, [isOpen]);
+
+  /*
+   * Le nuage du profil : cinq visages qui flottent, et se renouvellent.
+   *
+   * Cinq, comme sur l'écran de fin : ils disent qu'il y a du monde, et le nombre
+   * exact est écrit juste en dessous, là où il ne peut pas être pris pour une
+   * illustration.
+   *
+   * Un anneau figé aurait été un décor. Chacun paraît, reste quelques secondes,
+   * s'en va, et un autre prend une place différente — on remplace un seul visage
+   * à la fois, sinon le nuage entier clignoterait au même rythme.
+   */
+  const [homeCloud, setHomeCloud] = useState<HomeFace[]>([]);
+  const homeSeedRef = useRef(0);
+
+  useEffect(() => {
+    if (!isOpen || !account) {
+      setHomeCloud([]);
+      return;
+    }
+    const startedAt = Date.now();
+    const draw = (taken: Array<{ angle: number; radius: number }>): HomeFace => {
+      const slot = homeSpacedSlot(taken);
+      return {
+        key: homeSeedRef.current++,
+        emoji: HOME_FACES[Math.floor(Math.random() * HOME_FACES.length)],
+        angle: slot.angle,
+        radius: slot.radius,
+        spunBy: (((Date.now() - startedAt) % HOME_SPIN_MS) / HOME_SPIN_MS) * 360,
+      };
+    };
+
+    // Le remplissage initial se fait de proche en proche : chaque visage voit
+    // ceux déjà posés, sinon rien ne les empêcherait de tomber au même endroit.
+    const initial: HomeFace[] = [];
+    for (let i = 0; i < 5; i++) initial.push(draw(initial));
+    setHomeCloud(initial);
+
+    const timer = window.setInterval(() => {
+      setHomeCloud((current) => {
+        if (current.length === 0) return current;
+        const next = [...current];
+        const index = Math.floor(Math.random() * next.length);
+        // Le nouveau visage évite tous les autres, celui qu'il remplace excepté :
+        // sa place se libère à l'instant même.
+        next[index] = draw(current.filter((_, i) => i !== index));
+        return next;
+      });
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, account?.cardCode]);
   const surfaceClass = isLight
     ? 'bg-white border border-slate-200 shadow-[0_20px_50px_rgba(148,163,184,0.18)]'
     : 'bg-[#2c2d31]/90 border-white/10 shadow-xl';
@@ -382,6 +589,7 @@ export const HomeSheet = ({
     if (!currentLocation) return [];
     return findClosestStops(stops, currentLocation.lat, currentLocation.lon, 5);
   }, [stops, currentLocation?.lat, currentLocation?.lon]);
+
 
   /**
    * Pre-fetch the lines serving each nearby stop so the cards can show line
@@ -410,6 +618,26 @@ export const HomeSheet = ({
   const sheetRef = useRef<SheetRef>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [snapIdx, setSnapIdx] = useState<number>(1);
+  const safeBottom = useMemo(readSafeAreaBottom, []);
+  /**
+   * Section affichée. « Autour » est la feuille elle-même ; les autres ouvrent
+   * un écran plein, où la poignée de la feuille n'a plus lieu d'être.
+   */
+  const [activeTab, setActiveTab] = useState('home');
+
+
+  /**
+   * Largeur de l'écran, suivie pour recalculer la pastille : elle doit rester
+   * centrée et à la largeur de ses onglets quelle que soit l'orientation.
+   */
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === 'undefined' ? 375 : window.innerWidth,
+  );
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // Hold the latest `onSheetProgress` in a ref so the ProgressWatcher's RAF
   // loop never sees a stale closure AND we don't have to put the callback in
@@ -421,12 +649,90 @@ export const HomeSheet = ({
   const handleSnapChange = (idx: number) => {
     setSnapIdx(idx);
     onSnapChange?.(idx);
+    // Quitter le palier haut ramène la liste en tête : redescendre sur une page
+    // à moitié défilée laisserait voir un morceau de contenu sans son titre.
+    if (idx !== LAST_SNAP && scrollRef.current) {
+      scrollRef.current.scrollTo({ top: 0, behavior: 'instant' });
+    }
   };
 
   const collapseToMini = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
     sheetRef.current?.snapTo(1);
   };
+
+  /**
+   * Onglets de la barre de navigation.
+   *
+   * « Autour de moi » ne mène nulle part : il déplie la feuille, qui *est*
+   * l'accueil — et la replie si elle l'est déjà. Les autres ouvrent leur écran.
+   */
+  const navItems: MobileNavItem[] = useMemo(() => [
+    {
+      key: 'home',
+      label: text.navHome,
+      Icon: MapPinIcon,
+      onSelect: () => {
+        setActiveTab('home');
+        onLeaveAccount?.();
+        onLeaveFavorites?.();
+        if (snapIdx > 1) collapseToMini();
+        else sheetRef.current?.snapTo(2);
+      },
+    },
+    {
+      key: 'route',
+      label: text.navRoute,
+      Icon: ArrowsRightLeftIcon,
+      onSelect: () => {
+        setActiveTab('route');
+        onLeaveAccount?.();
+        onLeaveFavorites?.();
+        onOpenItinerary();
+      },
+    },
+    {
+      key: 'favorites',
+      label: text.navFavorites,
+      Icon: StarIcon,
+      // Les favoris sont une page eux aussi : arrêts et trajets s'y consultent
+      // pour eux-mêmes, pas du coin de l'œil au-dessus de la carte.
+      onSelect: () => {
+        setActiveTab('favorites');
+        onOpenFavorites();
+      },
+    },
+    {
+      key: 'account',
+      label: text.navAccount,
+      Icon: UserCircleIcon,
+      // Le compte est une page, pas une section de la feuille : on la quitte
+      // pour lui, comme pour l'itinéraire.
+      onSelect: () => {
+        setActiveTab('account');
+        onLeaveFavorites?.();
+        onOpenAccount();
+      },
+    },
+  ], [text, onOpenItinerary, onOpenAccount, onOpenFavorites, onLeaveAccount, onLeaveFavorites, snapIdx]);
+
+  /**
+   * Marge latérale de la pastille repliée.
+   *
+   * La barre ne s'étale pas sur toute la largeur quand elle est seule sur la
+   * carte : elle ne fait que la largeur de ses onglets, centrée. Deux onglets
+   * donnent une pastille deux fois plus étroite que quatre. Elle ne dépasse
+   * jamais l'écran moins une marge de sécurité.
+   */
+  const collapsedPadding = useMemo(
+    () =>
+      collapsedNavPadding(
+        viewportWidth,
+        navCompact ? COMPACT_ITEM_WIDTH : NAV_ITEM_WIDTH,
+        navItems.length,
+      ),
+    [navItems.length, viewportWidth, navCompact],
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -446,9 +752,37 @@ export const HomeSheet = ({
    * mini snap and reset the scroll position. The first render is skipped so
    * we don't reset on mount.
    */
+  /**
+   * Verrouillée, la feuille redescend sur sa barre et y reste.
+   *
+   * Elle s'y recale aussi quand la barre se resserre : le palier bas a changé
+   * de hauteur, et sans ce rappel la pastille gardait son ancien fond — une
+   * bande vide sous les icônes, par où l'on voyait la barre de recherche.
+   */
+  useEffect(() => {
+    if (!locked) return;
+    const timer = window.setTimeout(() => sheetRef.current?.snapTo(1), 30);
+    return () => window.clearTimeout(timer);
+  }, [locked, navCompact]);
+
+  /**
+   * La feuille qui revient revient sur « Autour ».
+   *
+   * Elle ne s'efface que pour laisser la place à autre chose — le
+   * planificateur, la fiche d'un arrêt. Ce qu'on retrouve en la refermant,
+   * c'est la carte et ses arrêts : c'est de là qu'on était parti, et l'onglet
+   * doit le dire.
+   */
+  useEffect(() => {
+    if (!isOpen) return;
+    // Une carte Oura se referme sur l'écran Compte : la barre garde cet onglet.
+    setActiveTab(locked ? 'account' : 'home');
+  }, [isOpen, locked]);
+
   useEffect(() => {
     if (snapToMiniSignal === undefined) return;
     if (!isOpen) return;
+    setActiveTab('home');
     collapseToMini();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapToMiniSignal]);
@@ -468,8 +802,11 @@ export const HomeSheet = ({
       style={{ zIndex: 10 }}
       isOpen={isOpen}
       onClose={onClose}
-      snapPoints={[0, 0.15, 0.6, 1]}
+      // Le premier palier vaut la hauteur de la barre d'onglets, en pixels : la
+      // pastille doit tenir dedans exactement, sans marge vide au-dessous.
+      snapPoints={mapSheetSnapPoints({ bottomInset: safeBottom, noHandle: locked, compact: navCompact })}
       initialSnap={1}
+      disableDrag={locked}
       disableDismiss
       onSnap={handleSnapChange}
       // Live drag progress. The lib calls this on every animation frame
@@ -479,20 +816,36 @@ export const HomeSheet = ({
       // parent so it can animate elements that should follow the sheet.
       onOpenStart={() => {/* no-op, lib hook */}}
     >
-	    <Sheet.Container
-	        style={{
-	          borderRadius: '32px 32px 0 0',
-	          background: isLight
-	            ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.98))'
-	            : 'linear-gradient(180deg, rgba(31,41,55,0.96), rgba(15,23,42,0.98))',
-	          border: isLight ? '1px solid rgba(203,213,225,0.75)' : '1px solid rgba(148,163,184,0.18)',
-	          zIndex: 10,
-	        }}
-	      >
-	        <Sheet.Header>
-	          <div className="flex justify-center pt-2 pb-1">
-	            <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
+	    <MapSheetShell isLight={isLight} bottomInset={safeBottom} collapsedPadding={collapsedPadding}>
+	        <Sheet.Header style={{ position: 'relative', zIndex: 30 }}>
+	          {/* La poignée n'a de sens que là où il y a une feuille à tirer :
+	              elle s'efface sur les pages qui occupent tout l'écran. */}
+	          <div
+	            className={`flex justify-center overflow-hidden transition-all duration-300 ${
+	              locked ? 'h-0 pt-0 pb-0' : 'pt-2 pb-1'
+	            }`}
+	          >
+	            <div
+	              className={`h-1.5 w-16 rounded-full transition-opacity duration-200 ${
+	                isLight ? 'bg-slate-300' : 'bg-white/30'
+	              } ${activeTab === 'home' ? 'opacity-100' : 'opacity-0'}`}
+	            />
 	          </div>
+	          {/* Barre d'onglets et barre de recherche occupent le même espace et
+	              se croisent en fondu : repliée, la feuille montre ses onglets ;
+	              dès qu'on la tire, ils cèdent la place à la recherche. */}
+	          <SheetHeaderSwap
+	            navBar={<MobileNavBar items={navItems} activeKey={activeTab} isLight={isLight} compact={navCompact} />}
+	            /* Verrouillée, la feuille ne s'ouvre pas : sa recherche n'a
+	               aucune chance d'être atteinte, et transparaissait derrière la
+	               barre d'onglets. */
+	            searchBar={locked ? undefined : searchBar}
+	          />
+	          <div
+	            className={`mx-5 border-t transition-opacity duration-300 ${
+	              isLight ? 'border-slate-200' : 'border-white/10'
+	            } ${snapIdx > 1 ? 'opacity-100' : 'opacity-0'}`}
+	          />
 	        </Sheet.Header>
         <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
           {/* Live progress watcher — we mount a tiny invisible component that
@@ -500,84 +853,171 @@ export const HomeSheet = ({
               sheet openness back up to the parent. This is the cleanest way
               to subscribe to per-frame drag updates without forking the lib. */}
           <ProgressWatcher onSheetProgressRef={onSheetProgressRef} />
-	          <div ref={scrollRef} className="overflow-y-auto flex-1 pb-12">
-	            <div className="px-6 pt-2 pb-5">
-	              <motion.h2
-	                initial={{ opacity: 0, y: 8 }}
-	                animate={{ opacity: 1, y: 0 }}
-                  className={`text-sm font-semibold leading-tight ${titleClass}`}
-                  style={isLight ? { color: '#0f172a' } : undefined}
-	              >
-	                {text.title}
-	              </motion.h2>
-                
-	            </div>
-
-	            <div className="px-5 space-y-7">
-	              <section>
-	                <div className="mb-3 flex items-center gap-2 px-1">
-                    <h3 className={`text-sm font-semibold leading-none ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.recentTitle}</h3>
-	                  <ChevronRightIcon className={`h-6 w-6 ${mutedClass}`} />
-	                </div>
-	                {!currentLocation ? (
-	                  <div className={`rounded-[28px] p-6 text-center ${surfaceClass}`}>
-	                    <p className={`text-sm font-semibold mb-1 ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.noLocation}</p>
-	                    <p className={`text-xs ${mutedClass}`}>{text.noLocationHint}</p>
-	                  </div>
-                ) : nearby.length === 0 ? (
-                  <p className={`text-sm py-4 text-center ${mutedClass}`}>{text.noLocation}</p>
+	        <MapSheetBody>
+	          {/* Le contenu ne défile qu'au palier haut : plus bas, le geste
+	              vertical appartient à la feuille, pas à la liste. */}
+	          <div
+	            ref={scrollRef}
+	            className={`flex-1 pb-12 ${snapIdx === LAST_SNAP ? 'overflow-y-auto' : 'overflow-hidden'}`}
+	          >
+	            <div className="px-5 pt-3 space-y-7">
+              {/* Les arrêts consultés récemment.
+                  La section montrait les arrêts *proches*, ce qui est déjà l'objet
+                  de la carte au-dessus. Or ce qu'on rouvre le plus n'est pas le
+                  plus près : c'est celui d'hier, celui du travail, celui qu'on a
+                  regardé trois fois ce matin. */}
+              <section>
+                <div className="mb-3 flex items-center gap-2 px-1">
+                  <h3
+                    className={`text-sm font-semibold leading-none ${titleClass}`}
+                    style={isLight ? { color: '#0f172a' } : undefined}
+                  >
+                    {text.recentTitle}
+                  </h3>
+                </div>
+                {recents.length === 0 ? (
+                  <div className={`rounded-[28px] p-6 text-center ${surfaceClass}`}>
+                    <p className={`text-sm ${mutedClass}`}>
+                      {language === 'fr'
+                        ? 'Les arrêts que vous ouvrez apparaîtront ici.'
+                        : 'Stops you open will show up here.'}
+                    </p>
+                  </div>
                 ) : (
-	                  <div className={`overflow-hidden rounded-[28px] ${surfaceClass}`}>
-	                    {nearby.map(({ stop, meters }, idx) => (
-                      <NearbyStopCard
-                        key={stop.id}
-                        stop={stop}
-                        meters={meters}
-                        lines={nearbyLines[stop.id]}
-                        onClick={() => onStopClick(stop)}
-                        language={language}
-                        delay={idx * 0.03}
-                      />
+                  <div className={`overflow-hidden rounded-[28px] ${surfaceClass}`}>
+                    {recents.map((entry, idx) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() =>
+                          onStopClick({
+                            id: entry.id,
+                            name: entry.name,
+                            city: entry.city,
+                            lat: entry.lat,
+                            lon: entry.lon,
+                          } as Stop)
+                        }
+                        className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition active:bg-black/5 ${
+                          idx > 0 ? (isLight ? 'border-t border-slate-200' : 'border-t border-white/5') : ''
+                        }`}
+                      >
+                        <ClockIcon className={`h-5 w-5 flex-shrink-0 ${mutedClass}`} />
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={`block truncate text-[15px] font-semibold ${titleClass}`}
+                            style={isLight ? { color: '#0f172a' } : undefined}
+                          >
+                            {entry.name}
+                          </span>
+                          {entry.city && (
+                            <span className={`block truncate text-xs ${mutedClass}`}>{entry.city}</span>
+                          )}
+                        </span>
+                        <ChevronRightIcon className={`h-4 w-4 flex-shrink-0 ${mutedClass}`} />
+                      </button>
                     ))}
                   </div>
                 )}
               </section>
 
-	              <section>
-	                <div className="mb-3 flex items-center gap-2 px-1">
-	                  <h3 className={`text-[24px] font-extrabold leading-none ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.favoritesTitle}</h3>
-	                  <ChevronRightIcon className={`h-6 w-6 ${mutedClass}`} />
-	                </div>
-	                {favorites.length === 0 ? (
-	                  <div className={`rounded-[28px] p-5 ${surfaceClass}`}>
-	                    <p className={`text-sm leading-relaxed ${mutedClass}`}>{text.noFavorites}</p>
-	                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {favoriteDetails.map(({ favorite, detail, loading }) => (
-                        <FavoriteCard
-                        key={favorite.stopId}
-                        stopName={favorite.stopName}
-                        city={favorite.city}
-                        lineFilter={favorite.lines}
-                        detail={detail}
-                        loading={loading}
-                        onOpen={() => {
-                          const lineFilter =
-                            favorite.lines === 'all' ? undefined : favorite.lines;
-                          const stub: Stop = detail
-                            ? (detail as any)
-                            : { id: favorite.stopId, name: favorite.stopName, lat: 0, lon: 0, city: favorite.city };
-                          onStopClick(stub, lineFilter);
-                        }}
-                        
-                        language={language}
-                        theme={theme}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
+              {/* Le profil, sous les récents.
+                  Le même nuage que l'écran de fin de trajet : c'est le même
+                  propos — voici les gens que vos relevés ont renseignés — et le
+                  revoir en ouvrant l'application rappelle à quoi sert de laisser le
+                  guidage tourner. */}
+              {account && onOpenProfile && (
+                <section>
+                  <button
+                    type="button"
+                    onClick={onOpenProfile}
+                    className={`w-full overflow-hidden rounded-[28px] p-5 text-left transition active:scale-[0.99] ${surfaceClass}`}
+                  >
+                    <div className="relative mx-auto flex h-40 w-40 items-center justify-center">
+                      <motion.div
+                        className="absolute inset-0 z-10"
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: HOME_SPIN_MS / 1000, repeat: Infinity, ease: 'linear' }}
+                      >
+                        <AnimatePresence>
+                          {homeCloud.map((face) => (
+                            <motion.span
+                              key={face.key}
+                              className="absolute flex h-8 w-8 items-center justify-center rounded-full bg-white text-base shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+                              style={{
+                                left: `calc(50% + ${
+                                  Math.cos((face.angle * Math.PI) / 180) * face.radius
+                                }px - 1rem)`,
+                                top: `calc(50% + ${
+                                  Math.sin((face.angle * Math.PI) / 180) * face.radius
+                                }px - 1rem)`,
+                              }}
+                              initial={{ opacity: 0, scale: 0.5 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.5 }}
+                              transition={{ duration: 1.1, ease: 'easeInOut' }}
+                              aria-hidden
+                            >
+                              {/* Le visage tient droit pendant que l'anneau tourne :
+                                  il défait exactement la rotation du parent, en
+                                  partant de là où l'anneau était quand il est
+                                  apparu. Sans ça, un émoji finit la tête en bas au
+                                  bout d'un demi-tour. */}
+                              <motion.span
+                                className="block"
+                                animate={{ rotate: [-face.spunBy, -face.spunBy - 360] }}
+                                transition={{
+                                  duration: HOME_SPIN_MS / 1000,
+                                  repeat: Infinity,
+                                  ease: 'linear',
+                                }}
+                              >
+                                {face.emoji}
+                              </motion.span>
+                            </motion.span>
+                          ))}
+                        </AnimatePresence>
+                      </motion.div>
+
+                      <span className="relative z-0 flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white text-[42px] shadow-[0_6px_20px_rgba(0,0,0,0.3)]">
+                        {account.avatarEmoji ? (
+                          <span aria-hidden>{account.avatarEmoji}</span>
+                        ) : accountPhotoUrl ? (
+                          <img src={accountPhotoUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <span aria-hidden>{'\u{1F642}'}</span>
+                        )}
+                      </span>
+                    </div>
+
+                    <p
+                      className={`mt-4 text-[20px] font-extrabold leading-none ${titleClass}`}
+                      style={isLight ? { color: '#0f172a' } : undefined}
+                    >
+                      {account.pseudo}
+                    </p>
+
+                    <div
+                      className={`mt-3 rounded-2xl px-4 py-3.5 ${
+                        isLight ? 'bg-slate-100' : 'bg-white/5'
+                      }`}
+                    >
+                      <p
+                        className={`tabular text-[28px] font-extrabold leading-none ${titleClass}`}
+                        style={isLight ? { color: '#0f172a' } : undefined}
+                      >
+                        {account.travellersHelped.toLocaleString('fr-FR')}
+                      </p>
+                      <p className={`mt-1 text-sm ${mutedClass}`}>
+                        {language === 'fr'
+                          ? 'personnes que vous avez aidées'
+                          : 'travellers you have helped'}
+                      </p>
+                    </div>
+                  </button>
+                </section>
+              )}
+
 
 	              <section>
 	                <h3 className={`mb-3 px-1 text-xs font-semibold uppercase tracking-wider ${mutedClass}`}>
@@ -595,31 +1035,60 @@ export const HomeSheet = ({
 	                    <ExclamationTriangleIcon className="mb-3 h-7 w-7 text-amber-300" />
 	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.trafficLabel}</span>
 	                  </button>
+	                  {/* Réglages a quitté cette grille : il vit dans l'écran Compte,
+	                      où l'on va déjà pour sa carte.
+
+	                      Favoris et le portefeuille y reviennent, en revanche. Ce
+	                      sont les deux écrans qu'on ouvre en arrivant — reprendre un
+	                      arrêt qu'on suit, montrer sa carte au valideur — et les
+	                      atteindre depuis la feuille évite de traverser la barre
+	                      d'onglets pour deux gestes quotidiens. */}
 	                  <button
-	                    onClick={onOpenSettings}
+	                    onClick={onOpenFavorites}
 	                    className={`rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
 	                      isLight
 	                        ? 'border border-slate-200 bg-white shadow-[0_12px_30px_rgba(148,163,184,0.14)]'
 	                        : 'border border-white/10 bg-white/5'
 	                    }`}
 	                  >
-	                    <Cog6ToothIcon className="mb-3 h-7 w-7 text-blue-300" />
-	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.settingsLabel}</span>
+	                    <StarIcon className="mb-3 h-7 w-7 text-amber-400" />
+	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.favoritesTitle}</span>
 	                  </button>
+
 	                  <button
-	                    onClick={onOpenItinerary}
+	                    onClick={onOpenAccount}
 	                    className={`rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
 	                      isLight
-	                        ? 'border border-emerald-200 bg-emerald-50 shadow-[0_12px_30px_rgba(16,185,129,0.12)]'
-	                        : 'border border-emerald-400/20 bg-emerald-500/10'
+	                        ? 'border border-slate-200 bg-white shadow-[0_12px_30px_rgba(148,163,184,0.14)]'
+	                        : 'border border-white/10 bg-white/5'
 	                    }`}
 	                  >
-	                    <MapIcon className="mb-3 h-7 w-7 text-emerald-300" />
-	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.itineraryLabel}</span>
+	                    {/* Les cartes elles-mêmes en guise d'icône, de face et
+	                        empilées.
+
+	                        Un pictogramme de portefeuille aurait dit « portefeuille » ;
+	                        les cartes disent « vos cartes », qui est ce qu'on vient
+	                        chercher — et leur nombre répond du même coup à la question
+	                        qu'on se pose en ouvrant l'écran.
+
+	                        Trois au plus : au-delà, le décalage sortirait de la
+	                        vignette, et « beaucoup » se lit aussi bien sur trois. */}
+	                    <span className="relative mb-3 block h-7">
+	                      {Array.from({ length: Math.min(3, Math.max(1, walletCardCount)) }).map(
+	                        (_, index) => (
+	                          <img
+	                            key={index}
+	                            src="/assets/oura.png"
+	                            alt=""
+	                            draggable={false}
+	                            className="absolute top-0 h-7 w-auto rounded-[3px] shadow-[0_1px_4px_rgba(0,0,0,0.3)]"
+	                            style={{ left: index * 9, zIndex: index }}
+	                          />
+	                        ),
+	                      )}
+	                    </span>
+	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.walletLabel}</span>
 	                  </button>
-	                  {/* Explorer les lignes : même gabarit que la vignette
-	                      Infotrafic, mais l'icône est remplacée par toutes les
-	                      icônes du réseau qui défilent de droite à gauche. */}
 	                  {onOpenLines && marqueeLines.length > 0 && (
 	                    <button
 	                      onClick={onOpenLines}
@@ -644,17 +1113,18 @@ export const HomeSheet = ({
 	                      loading={atmoLoading}
 	                      onCommuneChange={onAtmoCommuneChange}
 	                      language={language}
+	                      followMap={atmoFollowMap}
 	                    />
 	                  </div>
 	                </div>
 	              </section>
             </div>
           </div>
+        </MapSheetBody>
         </Sheet.Content>
-      </Sheet.Container>
-      {snapIdx > 1 && (
-        <Sheet.Backdrop onTap={collapseToMini} style={{ zIndex: 9 }} />
-      )}
+      </MapSheetShell>
+      <SheetBackdrop onTap={collapseToMini} snapIdx={snapIdx} />
+
     </Sheet>
   );
 };

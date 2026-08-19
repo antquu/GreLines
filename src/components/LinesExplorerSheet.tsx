@@ -1,5 +1,5 @@
 import { XMarkIcon } from '@heroicons/react/24/solid';
-import { Sheet } from 'react-modal-sheet';
+import { MapSheet } from './MapSheet';
 import { LineBadge } from './LineBadge';
 import type { AllLinesLine } from '../services/allLines';
 
@@ -75,29 +75,7 @@ export const LinesExplorerSheet = ({
   const title = language === 'fr' ? 'Explorer les lignes' : 'Explore lines';
 
   return (
-    <Sheet
-      style={{ zIndex: 100 }}
-      isOpen={isOpen}
-      onClose={onClose}
-      snapPoints={[0, 0.6, 1]}
-      initialSnap={2}
-    >
-      <Sheet.Container
-        style={{
-          borderRadius: '24px 24px 0 0',
-          background: isLight
-            ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.98))'
-            : '#0f172a',
-          border: isLight ? '1px solid rgba(203,213,225,0.75)' : undefined,
-          zIndex: 100,
-        }}
-      >
-        <Sheet.Header>
-          <div className="flex justify-center pt-2 pb-1">
-            <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
-          </div>
-        </Sheet.Header>
-        <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
+    <MapSheet initialSnap={3} isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={100}>
           <div className="flex items-center justify-between px-5 py-3 flex-shrink-0">
             <h3 className={`text-base font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{title}</h3>
             <button
@@ -142,9 +120,6 @@ export const LinesExplorerSheet = ({
               </div>
             ))}
           </div>
-        </Sheet.Content>
-      </Sheet.Container>
-      <Sheet.Backdrop onTap={onClose} style={{ zIndex: 99 }} />
-    </Sheet>
+    </MapSheet>
   );
 };

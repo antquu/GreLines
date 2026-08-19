@@ -1,23 +1,37 @@
 @import "tailwindcss";
 
-
-
-
-
-
-
-
-
-@font-face {
-  font-family: 'Canaro Medium';
-  src: url('/fonts/Canaro W00 Medium.ttf') format('truetype');
-  font-weight: 500;
-  font-display: swap;
+/*
+ * Inter comme police par défaut.
+ *
+ * Elle était déclarée dans `tailwind.config.js`, que Tailwind 4 n'ouvre plus :
+ * sans directive `@config`, ce fichier est ignoré entièrement. Les dix
+ * `@font-face` ci-dessous chargeaient donc Inter pour personne, et toute
+ * l'application s'affichait dans la police système — visible surtout sur les
+ * chiffres, qui n'ont ni la même largeur ni le même dessin.
+ *
+ * En Tailwind 4, la valeur se déclare ici : `--font-sans` alimente à la fois
+ * l'utilitaire `font-sans` et la règle que le préambule applique à `html`.
+ */
+@theme {
+  --font-sans: 'Inter', 'Helvetica Neue', system-ui, sans-serif;
 }
 
-.font-canaro {
-  font-family: 'Canaro Medium', 'Inter', 'Helvetica Neue', sans-serif;
-}
+
+
+
+
+
+
+
+
+/*
+ * Canaro a été retirée : plus qu'Inter, partout.
+ *
+ * Elle n'avait aucun usage dans le code — la classe `font-canaro` n'était
+ * appliquée nulle part — mais son fichier restait téléchargé par le navigateur,
+ * qui suit les `@font-face` déclarés. Un TrueType de plusieurs centaines de
+ * kilooctets pour une police que personne ne demandait.
+ */
 
 @font-face {
   font-family: 'Inter';
@@ -204,6 +218,61 @@ body {
  */
 .install-slide-right { animation: install-slide-from-right 0.24s ease-out forwards; }
 .install-slide-left  { animation: install-slide-from-left  0.24s ease-out forwards; }
+
+/*
+ * Bandeaux du planificateur d'itinéraire sur téléphone : celui qui remonte du
+ * bas (rappel du trajet quand la page est repliée sur la carte) et celui qui
+ * descend du haut (choix d'un point sur la carte). Même parti pris que
+ * ci-dessus : l'état final est la position naturelle, si bien qu'une animation
+ * qui ne démarre jamais laisse le bandeau à sa place plutôt qu'hors de l'écran.
+ */
+@keyframes gl-rise-from-bottom {
+  from { opacity: 0; transform: translateY(90px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes gl-drop-from-top {
+  from { opacity: 0; transform: translateY(-60px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.gl-rise { animation: gl-rise-from-bottom 0.26s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+.gl-drop { animation: gl-drop-from-top 0.24s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+
+/*
+ * Arrivée en cascade du contenu du planificateur : chaque bloc monte à son
+ * tour, très vite, si bien que la page se remplit de bas en haut au lieu
+ * d'apparaître d'un coup. Le décalage est porté par `animation-delay`, posé en
+ * style en ligne par le composant.
+ */
+@keyframes gl-stagger-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.gl-stagger { animation: gl-stagger-in 0.26s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+/*
+ * Lecture d'une carte en cours.
+ *
+ * Un pourcentage ne dit rien à personne — surtout celui d'une reconnaissance de
+ * texte, qui avance par à-coups. La carte s'assombrit puis s'éclaircit, en
+ * boucle : on voit qu'il se passe quelque chose, sans prétendre savoir où l'on
+ * en est.
+ */
+@keyframes gl-scanning {
+  0%, 100% { opacity: 0.62; }
+  50%      { opacity: 0.16; }
+}
+
+.gl-scanning { animation: gl-scanning 1.1s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gl-rise,
+  .gl-drop,
+  .gl-stagger,
+  .gl-scanning { animation: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .install-slide-right,

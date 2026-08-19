@@ -28,12 +28,14 @@ interface SearchBarMobileProps {
   theme?: 'light' | 'dark';
   
   calculateItineraryWith?: string;
+  /** Rend la barre dans le flux, pour l'en-tête de la feuille d'accueil. */
+  inline?: boolean;
 }
 
 export const SearchBarMobile = ({
   searchQuery, onSearchChange, matchedStops, matchedLines, allLines, matchedStopLines, stops, searchHistoryItems,
   searchPlaceholder, unknownCityLabel, onStopClick, onLineClick, isFocused, onFocus,
-  addressResults = [], onAddressClick, language = 'fr', theme = 'dark',
+  addressResults = [], onAddressClick, language = 'fr', theme = 'dark', inline = false,
 }: SearchBarMobileProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const isLight = theme === 'light';
@@ -144,7 +146,13 @@ export const SearchBarMobile = ({
   const mobilePlaceholder = language === 'fr' ? 'On va où ?' : 'Where to?';
 
   return (
-    <div className="fixed left-4 right-4 top-[max(0.75rem,env(safe-area-inset-top))]" style={{ zIndex: 5 }}>
+    // `inline` : la barre vit dans l'en-tête de la feuille d'accueil, où elle
+    // remplace la barre d'onglets quand on tire la feuille vers le haut. Sinon
+    // elle flotte en haut de la carte, comme avant.
+    <div
+      className={inline ? 'relative w-full' : 'fixed left-4 right-4 top-[max(0.75rem,env(safe-area-inset-top))]'}
+      style={inline ? undefined : { zIndex: 5 }}
+    >
       <div className="relative transition-all duration-300 ease-out">
 
         {/* Search input — wider on mobile, fixed at top */}

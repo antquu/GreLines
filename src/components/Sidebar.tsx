@@ -13,7 +13,7 @@ import { TransportModeIcon } from './TransportModeIcon';
 import { normalizeMode } from '../utils/transportMode';
 import { LineBadge } from './LineBadge';
 import { DepartureLineBadge } from './DepartureLineBadge';
-import { getStopTrafficAlerts } from '../utils/stopTrafficMatcher';
+import { getStopTrafficAlerts, filterAlertsBySelectedLines } from '../utils/stopTrafficMatcher';
 import { getTimetable, isLastDeparture, toTimetableRouteId, type Timetable } from '../services/timetable';
 import { LastRunRibbon } from './LastRunRibbon';
 
@@ -121,7 +121,6 @@ const isRoundLine = (lineId: string): boolean => {
   return !!m && parseInt(m[1], 10) >= 1 && parseInt(m[1], 10) <= 14;
 };
 
-const getBadgeShapeClass = (isRound: boolean) => isRound ? 'rounded-full' : 'rounded-2xl';
 
 const getLineSortKey = (lineShortName?: string | null, lineId?: string): [number, string] => {
   const code = (lineShortName || lineId || '').toUpperCase().trim();
@@ -159,14 +158,6 @@ const renderDepartureTime = (timeString: string) => {
   return timeString;
 };
 
-const getLineColor = (lineId: string): string => {
-  const colors: Record<string, string> = {
-    '1': 'bg-red-500', '2': 'bg-green-500', '3': 'bg-blue-500', '4': 'bg-pink-500',
-    '5': 'bg-yellow-400', '6': 'bg-purple-500', '7': 'bg-orange-500', '8': 'bg-indigo-500',
-    '9': 'bg-teal-500', '10': 'bg-rose-500',
-  };
-  return colors[lineId] || 'bg-slate-500';
-};
 
 const ExportModal = ({ isOpen, onClose, exportUrl, position, language }: { isOpen: boolean; onClose: () => void; exportUrl: string; position?: { x: number; y: number } | null; language: 'fr' | 'en' }) => {
   const [copied, setCopied] = useState(false);
@@ -362,11 +353,11 @@ export const Sidebar = ({
   // ─────────────────────────────────────────────────────────────────────────────
   const stopTrafficAlerts = useMemo(() => {
     if (!currentStopDetail) return [];
-    return getStopTrafficAlerts(
-      { name: currentStopDetail.name },
-      currentStopDetail.lines || [],
+    return filterAlertsBySelectedLines(
+      getStopTrafficAlerts({ name: currentStopDetail.name }, currentStopDetail.lines || []),
+      selectedLines,
     );
-  }, [currentStopDetail?.id, currentStopDetail?.name, currentStopDetail?.lines]);
+  }, [currentStopDetail?.id, currentStopDetail?.name, currentStopDetail?.lines, selectedLines]);
 
   // Reset expanded alerts when stop changes
   useEffect(() => {
@@ -457,13 +448,18 @@ export const Sidebar = ({
               )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              {/* « GO » plutôt qu'une carte : le bouton ne montre pas l'arrêt,
+                  il calcule le trajet pour s'y rendre. Repris de GreGo, à
+                  l'identique — c'est le même geste dans les deux applications. */}
               <button
+                type="button"
                 onClick={() => currentStopDetail && onPlanRouteFromStop?.(currentStopDetail)}
-                className="w-9 h-9 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-full hover:bg-slate-700 transition"
+                className="flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-500 active:scale-95"
+                style={{ color: '#ffffff' }}
                 aria-label={text.planRouteFromStop}
                 title={text.planRouteFromStop}
               >
-                <MapIcon className="w-4 h-4 text-white" />
+                GO
               </button>
               <button
                 onClick={() => {
@@ -627,22 +623,25 @@ export const Sidebar = ({
                             </button>
                           )}
 
-                          {/* Affected lines */}
+                          {/* Les lignes concernées, avec les pictogrammes du
+                              réseau — les mêmes que partout ailleurs dans
+                              l'application. Le badge dessiné à la main ici
+                              ignorait les logogrammes TCL, le TER et les bus
+                              relais, et arrondissait mal les Chrono. */}
                           {alert.matchedLines.length > 0 && (
                             <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-                              {[...alert.matchedLines].sort(sortLinesByPriority).map(line => {
-                                const lineStyle = resolveLineStyle(line.id, line.color, line.textColor);
-                                return (
-                                  <div
-                                    key={line.id}
-                                    className={`${getBadgeShapeClass(isRoundLine(line.shortName || line.id))} flex items-center justify-center text-[11px] font-bold w-7 h-7 ${!lineStyle.backgroundColor ? getLineColor(line.id) + ' text-white' : ''}`}
-                                    style={lineStyle}
-                                    title={line.name}
-                                  >
-                                    {line.shortName || line.id}
-                                  </div>
-                                );
-                              })}
+                              {[...alert.matchedLines].sort(sortLinesByPriority).map(line => (
+                                <LineBadge
+                                  key={line.id}
+                                  line={{
+                                    id: line.id,
+                                    shortName: line.shortName || line.id,
+                                    color: line.color,
+                                    textColor: line.textColor,
+                                  }}
+                                  size="xs"
+                                />
+                              ))}
                             </div>
                           )}
 

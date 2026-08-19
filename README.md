@@ -30,6 +30,10 @@
 * **Informations TCL**
 * **Lignes et itinéraires**
 * **Navigation**
+* **Reprise du guidage après actualisation**
+* **Détection automatique des correspondances par géolocalisation**
+* **Suivi GPS avec recentrage manuel animé**
+* **Avatar bus/tram animé pendant l'étape de transport**
 * **Recherche d'adresses**
 * **Favoris**
 * **Informations trafic**
@@ -38,6 +42,8 @@
 * **Horaires et prochains départs**
 * **Interface mobile complète**
 * **Mode clair et sombre**
+* **Réglages adaptés au mobile et au PC**
+* **Préférences de marche persistantes**
 * **Écrans voyageurs**
 * **Géolocalisation**
 * **Sondage après un trajet**
@@ -45,7 +51,7 @@
 
 ## Note de mise à jour
 
-* **Version** : `3.2.2`
+* **Version** : `3.3.0`
 * **Principales nouveautés** :
 
   * Carte MapLibre
@@ -53,6 +59,10 @@
   * TCL
   * Lignes et itinéraires
   * Navigation
+  * Reprise de l'étape active après actualisation de la page
+  * Détection de la correspondance et du véhicule par géolocalisation
+  * Recentrage manuel animé sans recentrage permanent à l'arrêt
+  * Marqueur de position transformé en avatar bus ou tram avec fondu
   * Recherche d’adresses
   * Favoris
   * Trafic
@@ -61,6 +71,9 @@
   * Horaires
   * Interface mobile complète
   * Mode clair/sombre
+  * Contrastes et boutons corrigés pour le mode clair
+  * Préférences de marche et de vitesse conservées localement
+  * Réglages de compte et notifications réservés au mobile
   * Écrans voyageurs
   * Géolocalisation
   * Sondage trajet
@@ -205,6 +218,32 @@ Une copie de la GNU GPL v3 doit être fournie avec le projet. La licence complè
 * Affichage des différentes étapes d'un trajet
 * Prévisualisation d'un trajet avant le lancement de la navigation
 * Mode navigation
+
+### Guidage et géolocalisation
+
+Le guidage conserve désormais sa progression afin de reprendre le bon tronçon
+après une actualisation de la page ou une interruption du navigateur.
+
+* Sauvegarde locale de l'itinéraire et de l'étape active
+* Détection d'un bus ou d'un tram déjà rejoint après une correspondance
+* Passage automatique à l'étape suivante grâce à la position GPS
+* Recentrage manuel animé sur la position courante
+* Reprise automatique du suivi après une interaction avec la carte
+* Marqueur de position transformé progressivement en avatar coloré bus/tram
+* Tracé de transport conservé dans la couleur de sa ligne
+* Portions à pied et points du trajet toujours visibles
+
+### Réglages et thèmes
+
+Les réglages sont adaptés à l'appareil utilisé et leurs préférences utiles sont
+conservées localement.
+
+* Préférences de marche et vitesse enregistrées pour les prochains itinéraires
+* Feuille de préférence de marche adaptée aux résultats mobiles
+* Contraste corrigé des boutons, titres et sélections en mode clair
+* Cartes et groupes de réglages sans fond sombre superflu en mode clair
+* Connexion au compte et notifications disponibles uniquement sur mobile
+* Interface disponible en français et en anglais
 
 ### Recherche
 

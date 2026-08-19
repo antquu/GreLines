@@ -7,6 +7,17 @@ export interface Stop {
   clusterGtfsId?: string;
 }
 
+/**
+ * Arrêt desservi entre la montée et la descente d'un tronçon d'itinéraire, tel
+ * que le planificateur le renvoie.
+ */
+export interface JourneyIntermediateStop {
+  name?: string;
+  stopId?: string;
+  arrival?: number;
+  departure?: number;
+}
+
 export interface TrafficDetail {
   titre: string;
   description: string;
