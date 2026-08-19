@@ -2573,13 +2573,6 @@ function App() {
           legPaths={navigationLegPaths}
           itineraryOptions={routeItineraryOptions}
           onItinerarySelected={setSelectedRouteItinerary}
-          onBoardVehicle={({ lineShortName, boardingStop }) =>
-            setSurveyContext({
-              lineId: lineShortName,
-              boardingStop,
-              boardingTime: new Date().toISOString(),
-            })
-          }
           /*
            * Arriver crédite le trajet et ouvre l'écran de fin. Le questionnaire
            * de descente ne se déclenche plus ici : les questions se posent
@@ -3743,6 +3736,7 @@ function App() {
           theme={effectiveTheme}
           onCardFocusChange={setIsCardFocused}
           onScrolledChange={setIsNavCompact}
+          onCardsChange={setWalletCards}
           settings={(
             <SettingsPanel
               variant="inline"

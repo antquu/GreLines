@@ -43,8 +43,8 @@ import {
 } from '../services/tripNotifications';
 import { StepSlider } from './StepSlider';
 import { TripQuestions } from './TripQuestions';
-import { MapSheet } from './MapSheet';
 import type { TripSurveyLeg } from '../services/cms';
+import { MapSheet } from './MapSheet';
 import {
   WALK_SPEEDS,
   WALK_PRIORITIES,
@@ -1517,11 +1517,6 @@ export function NavigationMode({
     );
   };
 
-  /**
-   * Le voyage tel qu'il part avec un avis : les tronçons en transport, jamais
-   * la marche. Les premiers et derniers pas partent de chez les gens et y
-   * reviennent ; les enregistrer reviendrait à connaître leur adresse.
-   */
   const surveyJourney = useMemo<TripSurveyLeg[]>(
     () =>
       ((itinerary.allLegs as any[]) ?? [])
@@ -1614,14 +1609,6 @@ export function NavigationMode({
   const delayMinutes = lineDelay ? Math.round(lineDelay.seconds / 60) : 0;
   const showDelay = Boolean(lineDelay) && delayMinutes !== 0;
 
-  /**
-   * L'arrêt où l'on patiente, quand on patiente.
-   *
-   * On y est quand l'étape courante est une marche qui mène à un quai : c'est le
-   * moment où l'on a l'afficheur sous les yeux, et le seul où l'on peut dire s'il
-   * marche. Hors de ce cas — en marchant vers son domicile, par exemple — il n'y
-   * a pas d'arrêt à noter, et l'on ne demande rien.
-   */
   const waitingStop = (() => {
     if (step?.kind !== 'walk') return null;
     const next = steps[index + 1];
@@ -2347,12 +2334,6 @@ export function NavigationMode({
               })}
               </div>
 
-              {/* Les questions, dans le bandeau plutôt qu'à la descente.
-                  À bord, elles portent sur le véhicule ; en attendant sur le
-                  quai, sur le quai lui-même — un afficheur éteint ne se constate
-                  qu'en étant là, et l'attente est le seul moment où la question
-                  a un sens. Le bandeau s'étire vers le bas pour les accueillir et
-                  se rétracte quand elles s'en vont. */}
               <AnimatePresence initial={false}>
                 {step?.kind === 'transit' && step.lineShortName ? (
                   <TripQuestions
@@ -2388,6 +2369,7 @@ export function NavigationMode({
                   )
                 )}
               </AnimatePresence>
+
             </div>
 
           </div>

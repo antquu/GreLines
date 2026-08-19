@@ -6,6 +6,7 @@ import { OuraCardFace } from './OuraCardFace';
 import type { OuraCard } from '../services/ouraCard';
 import {
   createAccount,
+  loadAccountForCard,
   isPseudoFree,
   randomAvatar,
   randomPseudo,
@@ -47,6 +48,8 @@ export function AccountSetupScreen({
   const [pseudo, setPseudo] = useState('');
   const [saving, setSaving] = useState(false);
   const [taken, setTaken] = useState(false);
+  const [existingAccount, setExistingAccount] = useState<Account | null>(null);
+  const [checkingExistingAccount, setCheckingExistingAccount] = useState(false);
   /**
    * Compteurs de tours, un par bouton de tirage.
    *
@@ -65,6 +68,8 @@ export function AccountSetupScreen({
       setAvatar(null);
       setPseudo('');
       setTaken(false);
+      setExistingAccount(null);
+      setCheckingExistingAccount(false);
     }
   }, [isOpen]);
 
@@ -75,12 +80,21 @@ export function AccountSetupScreen({
     setAvatar(null);
     setPseudo(suggestedPseudo(card.firstName, card.lastName));
     setTaken(false);
+    setExistingAccount(null);
+    setCheckingExistingAccount(true);
+    void loadAccountForCard(card.cardCode).then(existing => {
+      if (existing) {
+        setExistingAccount(existing);
+        setPseudo(existing.pseudo);
+        setAvatar(existing.avatarEmoji);
+      }
+    }).finally(() => setCheckingExistingAccount(false));
   };
 
   const confirm = async () => {
-    if (!picked || saving) return;
+    if (!picked || saving || checkingExistingAccount) return;
     setSaving(true);
-    const free = await isPseudoFree(pseudo);
+    const free = await isPseudoFree(pseudo, existingAccount?.cardCode);
     if (!free) {
       setTaken(true);
       setSaving(false);
@@ -293,11 +307,17 @@ export function AccountSetupScreen({
         <button
           type="button"
           onClick={confirm}
-          disabled={saving}
+          disabled={saving || checkingExistingAccount}
           className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50"
         >
           <CheckIcon className="h-5 w-5" />
-          {saving ? (isFr ? 'Création…' : 'Creating…') : isFr ? 'Continuer' : 'Continue'}
+          {saving
+            ? (isFr ? 'Création…' : 'Creating…')
+            : checkingExistingAccount
+            ? (isFr ? 'Recherche…' : 'Checking…')
+            : isFr
+            ? 'Continuer'
+            : 'Continue'}
         </button>
       </div>
 

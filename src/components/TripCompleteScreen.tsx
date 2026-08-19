@@ -381,7 +381,8 @@ export function TripCompleteScreen({
                 Le visage ne bouge pas : c'est le point d'ancrage, et le voir
                 dériver donnerait le sentiment de flotter. Ce sont les autres qui
                 passent. */}
-            <div className="relative mt-8 flex h-64 w-64 items-center justify-center">
+            <div className={`relative mt-8 flex h-64 w-64 items-center justify-center ${account ? '' : 'pointer-events-none'}`}>
+              {account && (
               <motion.div
                 className="absolute inset-0 z-10"
                 // Un tour en cent secondes : assez pour qu'on le remarque en
@@ -424,6 +425,7 @@ export function TripCompleteScreen({
                   ))}
                 </AnimatePresence>
               </motion.div>
+              )}
 
               <motion.div
                 className="relative z-0 flex h-36 w-36 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white text-[64px] shadow-[0_8px_28px_rgba(0,0,0,0.45)]"

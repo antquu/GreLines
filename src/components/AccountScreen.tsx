@@ -31,9 +31,10 @@ interface AccountScreenProps {
   onCardFocusChange?: (focused: boolean) => void;
   /** L'écran défile : la barre d'onglets se resserre sur ses icônes. */
   onScrolledChange?: (scrolled: boolean) => void;
+  onCardsChange?: (cards: OuraCard[]) => void;
 }
 
-export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCardFocusChange, onScrolledChange }: AccountScreenProps) {
+export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCardFocusChange, onScrolledChange, onCardsChange }: AccountScreenProps) {
   const isFr = language === 'fr';
   const isLight = theme === 'light';
   const [cards, setCards] = useState<OuraCard[]>([]);
@@ -148,7 +149,10 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
             theme={theme}
             disabled={!isSupabaseConfigured}
             onAddCard={() => setIsAddCardOpen(true)}
-            onCardsChange={setCards}
+            onCardsChange={next => {
+              setCards(next);
+              onCardsChange?.(next);
+            }}
             onFocusChange={focused => {
               setIsCardFocused(focused);
               onCardFocusChange?.(focused);
@@ -175,7 +179,13 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
         language={language}
         theme={theme}
         onClose={() => setIsAddCardOpen(false)}
-        onSaved={card => setCards(current => [...current.filter(entry => entry.id !== card.id), card])}
+        onSaved={card => {
+          setCards(current => {
+            const next = [...current.filter(entry => entry.id !== card.id), card];
+            onCardsChange?.(next);
+            return next;
+          });
+        }}
       />
     </>
   );

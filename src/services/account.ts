@@ -162,6 +162,22 @@ export async function loadAccount(): Promise<Account | null> {
   }
 }
 
+/** Charge le compte porté par une carte, même s'il appartient à un autre appareil. */
+export async function loadAccountForCard(cardCode: string): Promise<Account | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('oura_accounts')
+      .select('*')
+      .eq('card_code', cardCode)
+      .maybeSingle();
+    if (error || !data) return null;
+    return fromRow(data);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Crée le compte et l'attache à l'appareil.
  *
