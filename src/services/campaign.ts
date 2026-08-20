@@ -23,6 +23,17 @@ export interface CampaignVisit {
   medium?: string;
 }
 
+const CAMPAIGN_STOP_ALIASES: Record<string, string> = {
+  'SEM:GARES': 'SEM:GAR',
+  'SEM:CHAVANT': 'SEM:CHV',
+};
+
+function normalizeCampaignStopId(stopId: string | undefined): string | undefined {
+  if (!stopId) return undefined;
+  const normalized = stopId.toUpperCase();
+  return CAMPAIGN_STOP_ALIASES[normalized] || stopId;
+}
+
 /**
  * Lit les paramètres de campagne d'une URL.
  *
@@ -49,7 +60,7 @@ export function readCampaign(search: string): CampaignVisit | null {
 
   return {
     source,
-    stopId: stopId || undefined,
+    stopId: normalizeCampaignStopId(stopId),
     campaign: params.get('utm_campaign') || undefined,
     medium: params.get('utm_medium') || undefined,
   };

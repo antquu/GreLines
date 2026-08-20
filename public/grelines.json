@@ -1,5 +1,5 @@
 {
-  "version": "3.3.0",
+  "version": "3.3.2",
 
   "credits": [
     {
@@ -13,9 +13,14 @@
       "link": "https://github.com/Palmine38/"
     },
     {
-      "role": "Thanks to MReso for providing us with the data free of charge! / Merci a MReso de nous fournir les données gratuitement!",
-      "name": "M - OpenData",
-      "link": "https://data.mobilites-m.fr/"
+      "role": "Marketing and Communication",
+      "name": "Jeanne Wolozan",
+      "link": "https://instagram.com/jeanne_wlz"
+    },
+    {
+      "role": "Thanks to Metropole Grand Lyon for providing us with the data free of charge! / Merci a Metropole Grand Lyon de nous fournir les données gratuitement!",
+      "name": "GrandLyon - data",
+      "link": "https://data.grandlyon.com/portail/fr/accueil"
     },
     {
       "role": "Thanks to Metropole Grand Lyon for providing us with the data free of charge! / Merci a Metropole Grand Lyon de nous fournir les données gratuitement!",
