@@ -2,7 +2,8 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/flavicon.png" />
+    <!-- Vérifie que l'image s'appelle bien flavicon.png dans public/ (ou renomme-la en favicon.png partout) -->
+    <link rel="icon" type="image/png" href="/flavicon.png" sizes="192x192" />
     <link rel="apple-touch-icon" href="/flavicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GreLines — Horaires en temps réel des transports de Grenoble (Tag, TER, Citiz)</title>
@@ -18,43 +19,36 @@
     <meta name="apple-mobile-web-app-title" content="GreLines" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    
-
-
 
     <meta
       name="keywords"
       content="Grenoble, transports en commun Grenoble, horaires bus Grenoble, tram Grenoble, temps réel, Tag, M réso, SMMAG, Mobilités M, TER Grenoble, itinéraire Grenoble, prochains passages, info trafic, Chrono, Proximo, Flexo, Citiz, Voi"
     />
 
+    <!-- Open Graph remis sur www.grelines.fr -->
     <meta property="og:site_name" content="GreLines" />
     <meta property="og:locale" content="fr_FR" />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://grelines.vercel.app/" />
+    <meta property="og:url" content="https://www.grelines.fr/" />
     <meta property="og:title" content="GreLines — Horaires en temps réel des transports de Grenoble" />
     <meta
       property="og:description"
       content="Prochains passages en temps réel à chaque arrêt de Grenoble : trams, Chrono, Proximo, Flexo, TER. Itinéraires, info-trafic et plan interactif."
     />
-    <meta property="og:image" content="https://grelines.vercel.app/assets/GreLinesLOGO.png" />
+    <meta property="og:image" content="https://www.grelines.fr/assets/GreLinesLOGO.png" />
     <meta property="og:image:alt" content="GreLines" />
 
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="GreLines — Horaires en temps réel des transports de Grenoble" />
     <meta
       name="twitter:description"
       content="Prochains passages en temps réel à chaque arrêt de Grenoble : trams, Chrono, Proximo, Flexo, TER. Itinéraires, info-trafic et plan interactif."
     />
-    <meta name="twitter:image" content="https://grelines.vercel.app/assets/GreLinesLOGO.png" />
-
-    
-
+    <meta name="twitter:image" content="https://www.grelines.fr/assets/GreLinesLOGO.png" />
 
     <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
     <link rel="preconnect" href="https://data.mobilites-m.fr" crossorigin />
-
-
-    
 
     <link rel="preload" href="/fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/Inter-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
@@ -63,10 +57,6 @@
   </head>
   <body>
     <div id="root"></div>
-
-    
-
-
 
     <noscript>
       <h1>GreLines — transports en commun de Grenoble en temps réel</h1>
@@ -88,23 +78,24 @@
       </p>
     </noscript>
 
+    <!-- Schema.org mis à jour sur www.grelines.fr -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@graph": [
           {
             "@type": "WebSite",
-            "@id": "https://grelines.vercel.app/#website",
-            "url": "https://grelines.vercel.app/",
+            "@id": "https://www.grelines.fr/#website",
+            "url": "https://www.grelines.fr/",
             "name": "GreLines",
             "inLanguage": "fr-FR",
             "description": "Horaires en temps réel des transports en commun de Grenoble : trams, Chrono, Proximo, Flexo, TER, itinéraires et info-trafic."
           },
           {
             "@type": "WebApplication",
-            "@id": "https://grelines.vercel.app/#app",
+            "@id": "https://www.grelines.fr/#app",
             "name": "GreLines",
-            "url": "https://grelines.vercel.app/",
+            "url": "https://www.grelines.fr/",
             "applicationCategory": "TravelApplication",
             "operatingSystem": "Web",
             "inLanguage": "fr-FR",
