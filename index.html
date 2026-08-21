@@ -2,7 +2,6 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <!-- Vérifie que l'image s'appelle bien flavicon.png dans public/ (ou renomme-la en favicon.png partout) -->
     <link rel="icon" type="image/png" href="/flavicon.png" sizes="192x192" />
     <link rel="apple-touch-icon" href="/flavicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,7 +12,7 @@
     />
     <link rel="canonical" href="https://www.grelines.fr/" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
-    <meta name="author" content="antqu" />
+    <meta name="author" content="Antoine ADAM" />
     <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="apple-mobile-web-app-title" content="GreLines" />
@@ -25,7 +24,7 @@
       content="Grenoble, transports en commun Grenoble, horaires bus Grenoble, tram Grenoble, temps réel, Tag, M réso, SMMAG, Mobilités M, TER Grenoble, itinéraire Grenoble, prochains passages, info trafic, Chrono, Proximo, Flexo, Citiz, Voi"
     />
 
-    <!-- Open Graph remis sur www.grelines.fr -->
+    <!-- Open Graph -->
     <meta property="og:site_name" content="GreLines" />
     <meta property="og:locale" content="fr_FR" />
     <meta property="og:type" content="website" />
@@ -78,7 +77,7 @@
       </p>
     </noscript>
 
-    <!-- Schema.org mis à jour sur www.grelines.fr -->
+    <!-- Schema.org enrichi avec Wikidata -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -89,7 +88,11 @@
             "url": "https://www.grelines.fr/",
             "name": "GreLines",
             "inLanguage": "fr-FR",
-            "description": "Horaires en temps réel des transports en commun de Grenoble : trams, Chrono, Proximo, Flexo, TER, itinéraires et info-trafic."
+            "description": "Horaires en temps réel des transports en commun de Grenoble : trams, Chrono, Proximo, Flexo, TER, itinéraires et info-trafic.",
+            "sameAs": [
+              "https://github.com/antquu/GreLines",
+              "https://www.wikidata.org/wiki/Q141143367"
+            ]
           },
           {
             "@type": "WebApplication",
@@ -101,8 +104,19 @@
             "inLanguage": "fr-FR",
             "isAccessibleForFree": true,
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
-            "author": { "@type": "Person", "name": "antqu", "url": "https://github.com/antquu" },
+            "author": {
+              "@type": "Person",
+              "name": "Antoine ADAM",
+              "url": "https://github.com/antquu",
+              "sameAs": [
+                "https://www.wikidata.org/wiki/Q141143396"
+              ]
+            },
             "description": "Prochains passages en temps réel à chaque arrêt de Grenoble et de sa métropole, itinéraires, info-trafic, fiches horaires et plan interactif du réseau.",
+            "sameAs": [
+              "https://github.com/antquu/GreLines",
+              "https://www.wikidata.org/wiki/Q_DE_GRELINES"
+            ],
             "featureList": [
               "Prochains passages en temps réel",
               "Calcul d'itinéraire porte à porte",
