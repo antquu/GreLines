@@ -25,7 +25,30 @@ const root = createRoot(document.getElementById('root')!)
 
 
 
-if (window.location.pathname.startsWith('/app/screen')) {
+/**
+ * La vitrine, sur `/fr` et `/en` — et sur elles seules.
+ *
+ * Le routage se fait ici, avant tout le reste : `App` réécrit toute adresse
+ * inconnue en `/app`, si bien qu'une vitrine montée à l'intérieur serait
+ * renvoyée à l'application avant d'avoir paru. `/` continue donc de mener
+ * droit à l'app, ce qui reste la porte d'entrée par défaut.
+ */
+const landingLang = /^\/(fr|en)\/?$/.exec(window.location.pathname)?.[1] as
+  | 'fr'
+  | 'en'
+  | undefined;
+
+if (landingLang) {
+  void import('./landing/LandingApp').then(({ LandingApp }) => {
+    root.render(
+      <StrictMode>
+        <LandingApp lang={landingLang} />
+        <Analytics />
+        <SpeedInsights />
+      </StrictMode>,
+    )
+  })
+} else if (window.location.pathname.startsWith('/app/screen')) {
   void import('./screen/ScreenApp').then(({ ScreenApp }) => {
     root.render(
       <StrictMode>

@@ -53,7 +53,13 @@ import {
 } from './services/sharedMobility';
 import { toTimetableRouteId } from './services/timetable';
 import { usePerfSettings } from './hooks/usePerfSettings';
-import { canShowInstallGuide, shouldAutoOpenInstallGuide } from './utils/pwa';
+import {
+  canShowInstallGuide,
+  hasSeenInstallGuide,
+  isInstallGuideUpdate,
+  markInstallGuideSeen,
+  shouldAutoOpenInstallGuide,
+} from './utils/pwa';
 import { shouldAutoOpenMobileNotificationPrompt, markMobileNotificationPromptDismissed } from './utils/mobileNotificationPrompt';
 import { requestNotificationPermission, setNotificationsEnabled } from './services/tripNotifications';
 
@@ -112,6 +118,7 @@ import type { MapRef } from './components/Map';
 import { useStopUrlSync } from './hooks/useStopUrlSync';
 import { screenFromPath, useScreenUrl } from './hooks/useScreenUrl';
 import { readCampaign, recordCampaignVisit } from './services/campaign';
+import { resolveStopFromUrlId } from './services/stopAliases';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import type { LineFamily } from './services/allLines';
 import { stripHtml } from './utils/stripHtml';
@@ -524,9 +531,40 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * La langue de l'application.
+   *
+   * Un choix déjà fait ne se rediscute pas : c'est toujours lui qui l'emporte,
+   * y compris sur la langue du téléphone. Quelqu'un qui a mis GreLines en
+   * français sur un téléphone anglais l'a fait exprès.
+   *
+   * À la toute première visite, en revanche, il n'y a rien à respecter : on
+   * suit alors ce que le navigateur annonce, dans son ordre de préférence.
+   * `navigator.languages` peut valoir `['en-GB', 'fr']` — on prend le premier
+   * des deux qu'on sache parler, pas le premier tout court.
+   *
+   * Ni l'un ni l'autre, et l'on reste en français : les noms d'arrêts, les
+   * messages d'infotrafic et les fiches horaires viennent du réseau, et sont
+   * français quoi qu'il arrive.
+   */
   const [language, setLanguage] = useState<'fr' | 'en'>(() => {
     const saved = localStorage.getItem('greLines_language');
-    return saved === 'en' ? 'en' : 'fr';
+    if (saved === 'en' || saved === 'fr') return saved;
+
+    const preferred =
+      typeof navigator === 'undefined'
+        ? []
+        : navigator.languages?.length
+          ? navigator.languages
+          : [navigator.language];
+
+    for (const tag of preferred) {
+      // « fr-CA », « FR », « fr » : seule la sous-étiquette de langue compte.
+      const base = tag?.toLowerCase().split('-')[0];
+      if (base === 'fr') return 'fr';
+      if (base === 'en') return 'en';
+    }
+    return 'fr';
   });
 
   /**
@@ -1166,12 +1204,6 @@ function App() {
     };
   }, [settingsState]);
 
-  const normalizeStopId = (id: string | null | undefined): string | null => {
-    if (!id) return null;
-    if (/^SEM:/.test(id)) return id;
-    return `SEM:${id}`;
-  };
-
   /**
    * Parse a single T<n>= value. Stop ids contain ":" (e.g. "SEM:CHAVANT") so we
    * split on the *first* "_" only.
@@ -1197,9 +1229,9 @@ function App() {
       return null;
     }
 
-    const stop = kind === 'stop'
-      ? stops.find(candidate => normalizeStopId(candidate.id) === normalizeStopId(id))
-      : null;
+    // Un trajet partagé par message vit aussi longtemps que le message : son
+    // arrêt de départ se retrouve par le même chemin que celui d'une affiche.
+    const stop = kind === 'stop' ? resolveStopFromUrlId(id, stops) ?? null : null;
 
     return {
       id,
@@ -1375,8 +1407,9 @@ function App() {
     });
     if (selectedLinesFromUrl.size > 0) setInitialSelectedLines(selectedLinesFromUrl);
     if (targetStopId && stops.length > 0) {
-      const normalizedId = normalizeStopId(targetStopId);
-      const targetStop = stops.find(stop => normalizeStopId(stop.id) === normalizedId);
+      // Même résolution que pour les affiches : un lien de configuration écrit
+      // il y a six mois désigne un arrêt que le réseau a pu renommer depuis.
+      const targetStop = resolveStopFromUrlId(targetStopId, stops);
       if (targetStop) {
         try {
           const stopDetail = await getStopDetail(targetStop.id);
@@ -1414,7 +1447,7 @@ function App() {
     if (!visit) return;
     void recordCampaignVisit(visit);
     if (visit.stopId) {
-      const stop = stops.find(entry => entry.id === visit.stopId);
+      const stop = resolveStopFromUrlId(visit.stopId, stops);
       if (stop) handleStopClick(stop);
     }
     const url = new URL(window.location.href);
@@ -1539,12 +1572,29 @@ function App() {
   useEffect(() => { localStorage.setItem('greLines_autoSync', autoSync ? 'true' : 'false'); }, [autoSync]);
   useEffect(() => { localStorage.setItem('greLines_autoLocation', autoLocation ? 'true' : 'false'); }, [autoLocation]);
 
-  // Ouverture automatique du tutoriel d'installation, une fois par appareil.
-  // Le petit délai laisse la carte s'afficher avant de recouvrir l'écran.
+  /*
+   * Ouverture automatique du tutoriel d'installation.
+   *
+   * Une fois par appareil — et une fois de plus à chaque version du tutoriel,
+   * pour que ceux qui l'ont écarté il y a six mois découvrent les nouvelles
+   * captures et le guide Android. Le numéro de version vit dans `pwa.ts`.
+   *
+   * Le rappel après mise à jour est noté comme vu dès l'ouverture, sans
+   * attendre qu'on l'écarte : c'est une annonce, elle ne se répète pas. Un
+   * tutoriel jamais vu, lui, garde l'ancien comportement et revient tant qu'on
+   * ne l'a pas écarté — quelqu'un qui découvre l'application n'a pas encore eu
+   * l'occasion de dire non.
+   *
+   * Le petit délai laisse la carte s'afficher avant de recouvrir l'écran.
+   */
   useEffect(() => {
     if (!autoOpenInstallGuide) return;
-    if (localStorage.getItem('greLines_installGuideDismissed') === 'true') return;
-    const timer = window.setTimeout(() => setIsInstallSheetOpen(true), 1200);
+    if (hasSeenInstallGuide()) return;
+    const isAnnouncement = isInstallGuideUpdate();
+    const timer = window.setTimeout(() => {
+      if (isAnnouncement) markInstallGuideSeen();
+      setIsInstallSheetOpen(true);
+    }, 1200);
     return () => window.clearTimeout(timer);
   }, [autoOpenInstallGuide]);
 
@@ -1558,7 +1608,7 @@ function App() {
   }, []);
 
   const dismissInstallGuide = useCallback(() => {
-    localStorage.setItem('greLines_installGuideDismissed', 'true');
+    markInstallGuideSeen();
     setIsInstallSheetOpen(false);
   }, []);
 
@@ -2571,6 +2621,11 @@ function App() {
           /* Le guidage suit exactement le tracé que la carte dessine : c'est le
              même calcul, fait une seule fois. */
           legPaths={navigationLegPaths}
+          /* Les prochains passages du guidage se rafraîchissent au rythme que
+             l'usager a réglé pour les fiches d'arrêt : c'est la même
+             information, il n'y a pas de raison qu'elle vieillisse autrement
+             ici. */
+          refreshIntervalMs={parseRefreshInterval(refreshInterval)}
           itineraryOptions={routeItineraryOptions}
           onItinerarySelected={setSelectedRouteItinerary}
           /*
@@ -3484,6 +3539,10 @@ function App() {
              entièrement à autre chose qu'à la carte du réseau. */
           isOpen={isNearbySheetOpen && !isRouteSidebarOpen && !isCardFocused && !(isMobile && isSidebarOpen)}
           locked={isAccountOpen || isFavoritesOpen}
+          /* La liste de résultats vit dans l'en-tête, qui est la poignée de la
+             feuille : tant qu'elle est ouverte, le glissement vertical lui
+             appartient. */
+          searchOpen={isSearchFocused}
           onClose={() => {
             setIsNearbySheetOpen(false);
             setHasUserClosedHome(true);

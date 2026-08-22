@@ -1,12 +1,16 @@
 /**
  * Ajouter une carte OURA.
  *
- * Deux chemins mènent au même endroit : la photographier, ou taper son numéro.
- * Le premier lit le carton et propose ce qu'il a compris ; le second demande à
- * l'API si le numéro existe, puis laisse le voyageur se présenter. Dans les
- * deux cas, on finit par le même écran de confirmation — c'est lui qui décide
- * de ce qui sera enregistré, et il glisse par la droite comme la suite d'une
- * même conversation.
+ * Trois étapes, annoncées d'avance : la carte, le visage, le nom. La première
+ * lit le carton — par l'appareil photo, qui déclenche tout seul, ou en tapant
+ * les dix chiffres. La deuxième demande un portrait, présenté pour ce qu'il est
+ * du point de vue du voyageur : la vérification que la carte est bien la
+ * sienne. La troisième lui demande comment il s'appelle, en lui montrant à
+ * côté ce que la carte dit déjà de lui — grisé, impossible à corriger, mais
+ * visible : c'est ce qui prouve qu'on parle bien de sa carte.
+ *
+ * Rien ne s'enregistre sans photo ni sans nom : une carte à moitié remplie ne
+ * vaut rien au contrôle.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -14,8 +18,8 @@ import {
   ArrowLeftIcon,
   CameraIcon,
   CheckCircleIcon,
+  LockClosedIcon,
   PencilSquareIcon,
-  PhotoIcon,
   XMarkIcon,
 } from '@heroicons/react/24/solid';
 import { attachKnownCard, findKnownCard, saveTestCard, lookupOuraCard, saveOuraCard, type OuraCard, type OuraCardLookup } from '../services/ouraCard';
@@ -34,6 +38,7 @@ interface AddCardSheetProps {
    * proposer un chemin qui ne mène nulle part vaut moins que de ne pas le
    * proposer. Il ne reste alors que la saisie du numéro — et comme c'est le
    * seul chemin, on y entre directement, sans écran de choix à une option.
+   * L'étape du portrait tombe avec lui, pour la même raison.
    */
   allowScan?: boolean;
   /**
@@ -41,7 +46,7 @@ interface AddCardSheetProps {
    *
    * `sheet` : une feuille qui monte du bas, celle du téléphone, qu'on referme
    * en la tirant. `dialog` : une boîte posée au centre, celle du bureau — sur
-   * un grand écran, une feuille pleine hauteur pour trois champs est une porte
+   * un grand écran, une feuille pleine hauteur laisse la moitié de la fenêtre
    * ouverte sur rien.
    */
   variant?: 'sheet' | 'dialog';
@@ -57,7 +62,21 @@ interface AddCardSheetProps {
   linkOnly?: boolean;
 }
 
-type Step = 'choice' | 'scan' | 'manual' | 'confirm';
+type Step = 'choice' | 'scan' | 'manual' | 'selfie' | 'identity';
+
+/**
+ * Où en est la lecture de la carte.
+ *
+ * `aiming` : la caméra tourne, on cadre. `reading` : la photo est prise et
+ * figée à l'écran, Tesseract la lit. `ok` / `fail` : le verdict, affiché une
+ * seconde par-dessus la photo avant de passer à la suite.
+ */
+type ScanPhase = 'aiming' | 'reading' | 'ok' | 'fail';
+
+/** Au-delà, on cesse d'insister et l'on propose la saisie à la main. */
+const MAX_SCAN_ATTEMPTS = 3;
+
+const wait = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
 const getText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
@@ -69,9 +88,10 @@ const getText = (language: 'fr' | 'en') => {
     manualHint: isFr ? 'Les dix chiffres au dos de la carte' : 'The ten digits on the back',
     close: isFr ? 'Fermer' : 'Close',
     back: isFr ? 'Retour' : 'Back',
-    capture: isFr ? 'Prendre la photo' : 'Take the photo',
-    retake: isFr ? 'Reprendre' : 'Retake',
     reading: isFr ? 'Lecture de la carte…' : 'Reading the card…',
+    aiming: isFr
+      ? 'Présentez la carte dans le cadre, la lecture se lance toute seule.'
+      : 'Hold the card inside the frame, reading starts on its own.',
     cameraDenied: isFr
       ? "L'appareil photo n'est pas accessible. Saisissez le numéro à la main."
       : 'The camera is unavailable. Enter the number by hand.',
@@ -82,9 +102,35 @@ const getText = (language: 'fr' | 'en') => {
       ? "Ce numéro n'existe pas sur le réseau."
       : 'This number does not exist on the network.',
     scanFailed: isFr
-      ? "Le numéro n'a pas été lu. Reprenez la photo ou saisissez-le."
-      : 'The number could not be read. Retake the photo or type it.',
+      ? "Le numéro n'a pas été lu. Saisissez-le à la main."
+      : 'The number could not be read. Type it by hand.',
+    scanRetry: isFr ? 'Carte non reconnue, on recommence…' : 'Card not recognised, trying again…',
     found: isFr ? 'Carte reconnue' : 'Card recognised',
+    typeInstead: isFr ? 'Saisir le numéro à la main' : 'Type the number instead',
+
+    // Les trois étapes
+    stepCard: isFr ? 'La carte' : 'The card',
+    stepIdentity: isFr ? 'Votre identité' : 'Your identity',
+    stepName: isFr ? 'Votre nom' : 'Your name',
+    stepOf: isFr ? 'Étape' : 'Step',
+
+    // Le portrait
+    selfieTitle: isFr ? 'Vérifions votre identité' : "Let's verify your identity",
+    selfieBody: isFr
+      ? "Prenez-vous en photo : ce portrait figure sur votre carte OURA dans l'application, et confirme qu'elle est bien la vôtre."
+      : 'Take a photo of yourself: this portrait appears on your OURA card in the app, and confirms the card is really yours.',
+    selfieHint: isFr
+      ? 'Regardez l’objectif, visage bien éclairé, sans lunettes de soleil.'
+      : 'Look at the lens, face well lit, no sunglasses.',
+    selfieCapture: isFr ? 'Prendre la photo' : 'Take the photo',
+    selfieRetake: isFr ? 'Reprendre' : 'Retake',
+    selfieContinue: isFr ? 'C’est bien moi' : "That's me",
+    selfieDenied: isFr
+      ? "L'appareil photo n'est pas accessible. La vérification demande une photo."
+      : 'The camera is unavailable. Verification requires a photo.',
+    selfieRequired: isFr ? 'La photo est obligatoire.' : 'The photo is required.',
+
+    // L'identité
     yourInfo: isFr ? 'Sont-ce bien vos informations ?' : 'Are these your details?',
     known: isFr
       ? 'Cette carte est déjà connue. Quel est votre nom de famille ?'
@@ -93,15 +139,18 @@ const getText = (language: 'fr' | 'en') => {
       ? "Ce nom ne correspond pas à celui de la carte."
       : 'That name does not match the one on the card.',
     knownImport: isFr ? 'Importer la carte' : 'Import the card',
-    fillInfo: isFr ? 'Renseignez vos informations' : 'Fill in your details',
+    fillInfo: isFr ? 'Comment vous appelez-vous ?' : 'What is your name?',
+    nameBody: isFr
+      ? 'Le prénom et le nom doivent être ceux imprimés sur la carte.'
+      : 'First and last name must match the ones printed on the card.',
     firstName: isFr ? 'Prénom' : 'First name',
     lastName: isFr ? 'Nom' : 'Last name',
-    photo: isFr ? 'Photo' : 'Photo',
-    addPhoto: isFr ? 'Ajouter une photo' : 'Add a photo',
-    changePhoto: isFr ? 'Changer la photo' : 'Change the photo',
-    photoHint: isFr
-      ? "De préférence une photo d'identité — ou prenez-vous sur fond blanc, bien éclairé."
-      : 'Preferably an ID photo — or take one against a white wall, well lit.',
+    required: isFr ? 'obligatoire' : 'required',
+    nameRequired: isFr ? 'Prénom et nom sont obligatoires.' : 'First and last name are required.',
+    fromNetworkHint: isFr
+      ? 'Déjà lues sur votre carte, elles ne se modifient pas ici.'
+      : 'Already read from your card, they cannot be edited here.',
+    verified: isFr ? 'Identité vérifiée' : 'Identity verified',
     save: isFr ? 'Enregistrer' : 'Save',
     saving: isFr ? 'Enregistrement…' : 'Saving…',
     saveFailed: isFr ? "L'enregistrement a échoué." : 'Saving failed.',
@@ -110,8 +159,8 @@ const getText = (language: 'fr' | 'en') => {
     validUntil: isFr ? 'Valide jusqu’au' : 'Valid until',
     mobileOnlyTitle: isFr ? 'Carte à créer sur mobile' : 'Set this card up on mobile',
     mobileOnlyBody: isFr
-      ? "Ce numéro n'est rattaché à aucun porteur. Sur ordinateur, le portefeuille ne fait que retrouver des cartes déjà déclarées — le nom et la photo se saisissent depuis l'application mobile, où l'on peut photographier le carton."
-      : 'This number is not linked to any holder yet. On desktop the wallet only finds cards that already exist — name and photo are entered from the mobile app, where the card can be photographed.',
+      ? "Ce numéro n'est rattaché à aucun porteur. Sur ordinateur, le portefeuille ne fait que retrouver des cartes déjà déclarées. Le nom et la photo se saisissent depuis l'application mobile, où l'on peut photographier le carton."
+      : 'This number is not linked to any holder yet. On desktop the wallet only finds cards that already exist. Name and photo are entered from the mobile app, where the card can be photographed.',
     mobileOnlyClose: isFr ? 'Compris' : 'Got it',
   };
 };
@@ -121,6 +170,31 @@ function formatDate(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/**
+ * La coche qui se trace.
+ *
+ * Le tracé de Lucide — deux segments, bouts arrondis — dessiné par un
+ * `stroke-dashoffset` qui se résorbe. La version animée de la bibliothèque
+ * s'installe par shadcn, que ce projet n'utilise pas ; le trait, lui, tient en
+ * six lignes.
+ */
+function DrawnCheck({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={3}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M20 6 9 17l-5-5" className="gl-check-path" />
+    </svg>
+  );
 }
 
 export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSaved, allowScan = true, variant = 'sheet', linkOnly = false }: AddCardSheetProps) {
@@ -145,6 +219,15 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
   const [known, setKnown] = useState<OuraCard | null>(null);
   /** Numéro d'une carte d'essai en cours d'ajout : elle ne passe pas par le réseau. */
   const [testCode, setTestCode] = useState<string | null>(null);
+  /** Vrai dès que le portrait a été validé : l'étape 2 est franchie. */
+  const [identityDone, setIdentityDone] = useState(false);
+
+  // Lecture automatique de la carte.
+  const [scanPhase, setScanPhase] = useState<ScanPhase>('aiming');
+  /** La photo qu'on est en train de lire, figée à l'écran pendant la lecture. */
+  const [frozenCard, setFrozenCard] = useState<string | null>(null);
+  const scanRunRef = useRef(0);
+
   /**
    * L'annonce « carte reconnue » descend du haut de l'écran, comme celle qui
    * confirme une adresse copiée : c'est une nouvelle, pas une ligne de plus
@@ -189,11 +272,22 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
   };
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const selfieVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const surface = isLight ? 'border-slate-200 bg-white' : 'border-slate-800 bg-slate-900';
   const strong = isLight ? 'text-slate-900' : 'text-white';
+  const field = isLight
+    ? 'border-slate-200 bg-white text-slate-900'
+    : 'border-slate-800 bg-slate-900 text-white';
+  /**
+   * Les libellés se lisent comme le reste : Inter, casse normale.
+   *
+   * Les petites capitales espacées qu'on trouve partout dans les interfaces
+   * bricolées n'apportent rien ici — elles hurlent au-dessus de champs qui
+   * n'ont rien d'urgent, et rompent avec le reste de l'application.
+   */
+  const label = 'mb-1.5 block px-1 text-sm font-semibold text-slate-500';
 
   /** Referme la caméra dès qu'on quitte l'écran qui l'utilise. */
   const stopCamera = () => {
@@ -205,6 +299,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
 
   useEffect(() => {
     if (!isOpen) {
+      scanRunRef.current += 1;
       stopCamera();
       return;
     }
@@ -223,33 +318,11 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     setKnownPhotoUrl(undefined);
     setKnown(null);
     setTestCode(null);
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (step !== 'scan') {
-      stopCamera();
-      return;
-    }
-    let cancelled = false;
-    void navigator.mediaDevices
-      ?.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 } } })
-      .then(stream => {
-        if (cancelled) {
-          stream.getTracks().forEach(track => track.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play();
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError(text.cameraDenied);
-      });
-    return () => { cancelled = true; };
+    setIdentityDone(false);
+    setFrozenCard(null);
+    setScanPhase('aiming');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!photo) {
@@ -261,8 +334,29 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     return () => URL.revokeObjectURL(url);
   }, [photo]);
 
-  /** Vérifie un numéro auprès du réseau, et passe à la confirmation. */
-  const verify = async (rawCode: string, scanned: boolean) => {
+  /**
+   * Où l'on va une fois le numéro reconnu.
+   *
+   * Une carte déjà déclarée porte déjà son visage : la vérification a eu lieu
+   * ailleurs, on ne la redemande pas. Sur ordinateur non plus — il n'y a rien
+   * à photographier avec une webcam.
+   */
+  const advanceAfterVerify = (existing: OuraCard | null) => {
+    const skipSelfie = existing !== null || !allowScan;
+    setIdentityDone(skipSelfie);
+    setStep(skipSelfie ? 'identity' : 'selfie');
+  };
+
+  /**
+   * Vérifie un numéro auprès du réseau.
+   *
+   * Renseigne tout ce qu'on sait de la carte, mais ne change pas d'écran :
+   * c'est à l'appelant de le faire, une fois son animation terminée.
+   */
+  const verify = async (
+    rawCode: string,
+    scanned: boolean,
+  ): Promise<{ ok: false } | { ok: true; existing: OuraCard | null }> => {
     setBusy(true);
     setError(null);
     const found = await lookupOuraCard(rawCode);
@@ -275,18 +369,19 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
       if (test?.isTest) {
         announce(text.found);
         setTestCode(test.cardCode);
+        setLookup(null);
+        setWasScanned(scanned);
         if (test.lastName) {
           setKnown(test);
           if (test.firstName) setFirstName(test.firstName);
           setKnownPhotoPath(test.photoPath);
           setKnownPhotoUrl(test.photoUrl);
+          return { ok: true, existing: test };
         }
-        setWasScanned(scanned);
-        setStep('confirm');
-        return true;
+        return { ok: true, existing: null };
       }
       setError(text.unknown);
-      return false;
+      return { ok: false };
     }
     setBusy(false);
     setTestCode(null);
@@ -298,8 +393,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     // les redemander. Ce que la lecture avait cru comprendre cède la place.
     const existing = await findKnownCard(found.code);
     if (existing) {
-      // Le visage déjà enregistré vaut mieux que celui qu'on vient de
-      // découper d'une photo prise de travers.
+      // Le visage déjà enregistré vaut mieux que celui qu'on vient de prendre.
       setPhoto(null);
       // On ne redemande pas tout : le porteur est déjà là. Il ne reste qu'à
       // s'assurer que c'est bien la même personne, par son nom de famille.
@@ -308,41 +402,205 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
       setKnownPhotoPath(existing.photoPath);
       setKnownPhotoUrl(existing.photoUrl);
     }
-
-    setStep('confirm');
-    return true;
+    return { ok: true, existing: existing ?? null };
   };
 
-  const handleCapture = async () => {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return;
-    setBusy(true);
-    setError(null);
-    const canvas = toCanvas(video, video.videoWidth, video.videoHeight);
-    stopCamera();
-    try {
-      // La progression ne sert plus à rien : le voile qui respire dit tout
-      // ce qu'il y a à dire, et un pourcentage d'OCR n'avance jamais droit.
-      const result = await scanCard(canvas);
-      if (result.firstName) setFirstName(result.firstName);
-      if (result.lastName) setLastName(result.lastName);
-      if (result.photo) setPhoto(result.photo);
-      if (!result.cardCode) {
-        setBusy(false);
-        setError(text.scanFailed);
-        setCode('');
-        setStep('manual');
+  /**
+   * La lecture de la carte, qui se déclenche seule.
+   *
+   * Personne n'appuie sur rien : la caméra s'ouvre, on laisse le temps de
+   * cadrer, puis une image est prise et lue. Ratée, on recommence — trois fois,
+   * après quoi la saisie à la main vaut mieux qu'un quatrième essai. Pendant la
+   * lecture, l'image prise reste à l'écran sous un voile qui respire : c'est
+   * elle qu'on lit, autant la montrer.
+   */
+  useEffect(() => {
+    if (!isOpen || step !== 'scan') {
+      scanRunRef.current += 1;
+      stopCamera();
+      return;
+    }
+
+    const run = ++scanRunRef.current;
+    const stale = () => scanRunRef.current !== run;
+
+    const loop = async () => {
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1920 } },
+        });
+      } catch {
+        if (!stale()) {
+          setError(text.cameraDenied);
+          setStep('manual');
+        }
         return;
       }
-      setCode(result.cardCode);
-      setBusy(false);
-      const ok = await verify(result.cardCode, true);
-      if (!ok) setStep('manual');
-    } catch {
-      setBusy(false);
+      if (stale()) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+
+      for (let attempt = 1; attempt <= MAX_SCAN_ATTEMPTS; attempt += 1) {
+        if (stale()) return;
+        setScanPhase('aiming');
+        setFrozenCard(null);
+
+        // Le temps de présenter la carte — un peu plus au premier essai, où
+        // l'on découvre l'écran.
+        await wait(attempt === 1 ? 1600 : 900);
+
+        // L'image met parfois une seconde de plus à arriver que la promesse.
+        for (let tick = 0; tick < 12 && !videoRef.current?.videoWidth; tick += 1) {
+          await wait(200);
+          if (stale()) return;
+        }
+        const video = videoRef.current;
+        if (stale()) return;
+        if (!video?.videoWidth) continue;
+
+        const canvas = toCanvas(video, video.videoWidth, video.videoHeight);
+        setFrozenCard(canvas.toDataURL('image/jpeg', 0.85));
+        setScanPhase('reading');
+
+        let read: Awaited<ReturnType<typeof scanCard>> | null = null;
+        try {
+          read = await scanCard(canvas);
+        } catch {
+          read = null;
+        }
+        if (stale()) return;
+
+        if (read?.cardCode) {
+          // Ce que la carte dit du porteur n'est qu'un brouillon : il le
+          // corrigera à l'étape du nom, où rien ne part sans son accord.
+          if (read.firstName) setFirstName(read.firstName);
+          if (read.lastName) setLastName(read.lastName);
+          setCode(read.cardCode);
+          const result = await verify(read.cardCode, true);
+          if (stale()) return;
+          if (result.ok) {
+            setScanPhase('ok');
+            stopCamera();
+            await wait(950);
+            if (stale()) return;
+            advanceAfterVerify(result.existing);
+            return;
+          }
+        }
+
+        setScanPhase('fail');
+        await wait(1300);
+        if (stale()) return;
+      }
+
+      if (stale()) return;
       setError(text.scanFailed);
+      setCode('');
       setStep('manual');
+    };
+
+    void loop();
+    return () => {
+      scanRunRef.current += 1;
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, isOpen]);
+
+  /**
+   * La caméra frontale, pour la vérification d'identité.
+   *
+   * `exact` et non le simple souhait : `facingMode: 'user'` n'est qu'une
+   * préférence, qu'un navigateur est libre d'ignorer — et il l'ignore volontiers
+   * quand un autre flux vient de tourner sur l'objectif arrière, qu'il se
+   * contente alors de resservir. On demande donc la caméra avant sans échappée
+   * possible, quitte à retomber sur le souhait si l'appareil n'en a pas (une
+   * webcam d'ordinateur, qui n'a qu'un objectif, refuse l'`exact`).
+   *
+   * Le flux précédent est coupé avant, pas après : sur téléphone, les deux
+   * objectifs ne filment pas en même temps, et demander l'avant pendant que
+   * l'arrière tourne rend l'arrière une seconde fois.
+   */
+  useEffect(() => {
+    if (!isOpen || step !== 'selfie' || photo) {
+      if (step !== 'selfie') stopCamera();
+      return;
     }
+    let cancelled = false;
+    stopCamera();
+
+    const open = async () => {
+      const size = { width: { ideal: 1280 }, height: { ideal: 1280 } };
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: 'user' }, ...size },
+        });
+      } catch {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', ...size },
+          });
+        } catch {
+          if (!cancelled) setError(text.selfieDenied);
+          return;
+        }
+      }
+      if (cancelled) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      streamRef.current = stream;
+      if (selfieVideoRef.current) {
+        selfieVideoRef.current.srcObject = stream;
+        void selfieVideoRef.current.play();
+      }
+    };
+
+    void open();
+    return () => {
+      cancelled = true;
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, isOpen, photo]);
+
+  /** Prend le portrait : un cadre trois quarts, centré sur le visage. */
+  const handleSelfie = async () => {
+    const video = selfieVideoRef.current;
+    if (!video?.videoWidth) return;
+    const width = Math.round(Math.min(video.videoWidth, video.videoHeight * 0.75));
+    const height = Math.round(width * 4 / 3);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.drawImage(
+      video,
+      Math.round((video.videoWidth - width) / 2),
+      Math.round((video.videoHeight - height) / 2),
+      width,
+      height,
+      0,
+      0,
+      width,
+      height,
+    );
+    const blob = await new Promise<Blob | null>(resolve => {
+      canvas.toBlob(result => resolve(result), 'image/jpeg', 0.9);
+    });
+    if (!blob) return;
+    stopCamera();
+    setError(null);
+    setPhoto(blob);
   };
 
   const handleSave = async () => {
@@ -374,7 +632,140 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     onClose();
   };
 
-  const stepIndex = step === 'choice' ? 0 : step === 'confirm' ? 2 : 1;
+  const stepIndex =
+    step === 'choice' ? 0
+    : step === 'identity' ? 3
+    : step === 'selfie' ? 2
+    : 1;
+
+  /** Le formulaire ne se valide pas à moitié : visage et nom, ou rien. */
+  const hasFace = Boolean(photo || knownPhotoPath || knownPhotoUrl);
+  const canSave = known
+    ? lastName.trim().length > 0
+    : Boolean(firstName.trim() && lastName.trim() && hasFace);
+
+  const goBack = () => {
+    setError(null);
+    if (step === 'identity') {
+      setStep(identityDone && allowScan && !known ? 'selfie' : wasScanned ? 'scan' : 'manual');
+      return;
+    }
+    if (step === 'selfie') {
+      setStep(wasScanned ? 'scan' : 'manual');
+      return;
+    }
+    setStep('choice');
+    // Sans écran de choix, reculer depuis la saisie ferme la feuille : il n'y
+    // a rien derrière.
+    if (!allowScan && step === 'manual') onClose();
+  };
+
+  const steps = [text.stepCard, text.stepIdentity, text.stepName];
+  /** L'étape en cours, comptée pour le voyageur : 1, 2, 3. */
+  const humanStep = stepIndex <= 1 ? 1 : stepIndex === 2 ? 2 : 3;
+
+  /** Numéro valide, porteur inconnu, poste qui ne crée pas de carte. */
+  const isMobileOnly = Boolean((lookup || testCode) && linkOnly && !known);
+
+  const primary = 'w-full rounded-2xl bg-blue-600 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50';
+
+  /**
+   * Ce qui fait avancer d'une étape reste au bas de la feuille.
+   *
+   * Sorti des panneaux qui défilent : un bouton posé à la suite d'un formulaire
+   * descend hors de l'écran dès que le clavier monte ou que le contenu
+   * s'allonge, et il faut alors chercher en faisant défiler ce qu'on vient de
+   * remplir. Ici il est toujours au même endroit, sous le pouce.
+   */
+  const action = (() => {
+    if (step === 'choice') return null;
+    if (step === 'scan') {
+      return (
+        <button
+          type="button"
+          onClick={() => { setError(null); setStep('manual'); }}
+          className="w-full py-2 text-sm font-semibold text-blue-500"
+        >
+          {text.typeInstead}
+        </button>
+      );
+    }
+    if (step === 'manual') {
+      return (
+        <button
+          type="button"
+          onClick={async () => {
+            const result = await verify(code, false);
+            if (result.ok) advanceAfterVerify(result.existing);
+          }}
+          disabled={busy || code.length < 8}
+          className={primary}
+        >
+          {busy ? text.checking : text.check}
+        </button>
+      );
+    }
+    if (step === 'selfie') {
+      return photoUrl ? (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setPhoto(null)}
+            className={`flex-1 rounded-2xl border py-3.5 text-sm font-bold transition active:scale-[0.98] ${surface} ${strong}`}
+          >
+            {text.selfieRetake}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setIdentityDone(true); setStep('identity'); }}
+            className={`flex-1 ${primary}`}
+          >
+            {text.selfieContinue}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void handleSelfie()}
+          className={`flex items-center justify-center gap-2 ${primary}`}
+        >
+          <CameraIcon className="h-5 w-5" />
+          {text.selfieCapture}
+        </button>
+      );
+    }
+    if (!lookup && !testCode) return null;
+    if (isMobileOnly) {
+      return (
+        <button type="button" onClick={onClose} className={primary}>
+          {text.mobileOnlyClose}
+        </button>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          if (!canSave) {
+            setError(known || hasFace ? text.nameRequired : text.selfieRequired);
+            return;
+          }
+          if (known) {
+            const expected = (known.lastName ?? '').trim().toLowerCase();
+            if (expected && lastName.trim().toLowerCase() !== expected) {
+              setError(text.knownMismatch);
+              return;
+            }
+          }
+          void handleSave();
+        }}
+        disabled={busy || !canSave}
+        className={primary}
+      >
+        {busy ? text.saving : known ? text.knownImport : text.save}
+      </button>
+    );
+  })();
 
   return (
     <>
@@ -435,13 +826,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
               {step !== 'choice' && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setError(null);
-                    setStep(step === 'confirm' ? (wasScanned ? 'scan' : 'manual') : 'choice');
-                    // Sans écran de choix, reculer depuis la saisie ferme la
-                    // feuille : il n'y a rien derrière.
-                    if (!allowScan && step === 'manual') onClose();
-                  }}
+                  onClick={goBack}
                   className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition active:scale-90 ${
                     isLight ? 'text-slate-600' : 'text-slate-300'
                   }`}
@@ -450,7 +835,14 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                   <ArrowLeftIcon className="h-5 w-5" />
                 </button>
               )}
-              <div className={`min-w-0 flex-1 text-base font-bold ${strong}`}>{text.title}</div>
+              <div className="min-w-0 flex-1">
+                <div className={`truncate text-base font-bold ${strong}`}>{text.title}</div>
+                {step !== 'choice' && (
+                  <div className="truncate text-xs font-semibold text-slate-500">
+                    {text.stepOf} {humanStep}/3 · {steps[humanStep - 1]}
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={onClose}
@@ -463,15 +855,30 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
               </button>
             </div>
 
+            {/* Le chemin parcouru, montré plutôt que deviné : trois traits qui
+                se remplissent l'un après l'autre. */}
+            {step !== 'choice' && (
+              <div className="flex gap-1.5 px-4 pb-3" aria-hidden>
+                {steps.map((label, index) => (
+                  <div
+                    key={label}
+                    className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+                      index < humanStep ? 'bg-blue-500' : isLight ? 'bg-slate-200' : 'bg-slate-800'
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
+
             {/* Les écrans défilent latéralement dans la feuille : on avance
                 dans une même conversation, on ne change pas d'endroit. */}
             <div className="min-h-0 flex-1 overflow-hidden">
               <div
-                className="flex h-full w-[300%] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
-                style={{ transform: `translateX(-${(stepIndex * 100) / 3}%)` }}
+                className="flex h-full w-[400%] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                style={{ transform: `translateX(-${(stepIndex * 100) / 4}%)` }}
               >
                 {/* 1 — le choix */}
-                <div className="h-full w-1/3 overflow-y-auto px-4 pb-10">
+                <div className="h-full w-1/4 overflow-y-auto px-5 pb-8">
                   {allowScan && (
                   <button
                     type="button"
@@ -498,212 +905,261 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                   </button>
                 </div>
 
-                {/* 2 — la caméra, ou la saisie */}
-                <div className="h-full w-1/3 overflow-y-auto px-4 pb-10">
+                {/* 2 — la carte : la caméra qui lit toute seule, ou la saisie */}
+                <div className="h-full w-1/4 overflow-y-auto px-5 pb-8">
                   {step === 'scan' ? (
                     <>
                       <div className="relative overflow-hidden rounded-3xl bg-black" style={{ aspectRatio: '1024 / 630' }}>
                         <video ref={videoRef} playsInline muted className="h-full w-full object-cover" />
-                        {/* Le guide cadre la carte : la découpe du portrait en
-                            dépend, elle se fait par proportions. */}
+
+                        {/* La photo prise reste sous les yeux pendant qu'on la
+                            lit : c'est elle le sujet, pas un écran noir. */}
+                        {frozenCard && (
+                          <img src={frozenCard} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                        )}
+
+                        {/* Le guide cadre la carte. Il ne change pas de couleur :
+                            c'est le voile posé sur la photo qui dit que ça
+                            travaille. */}
                         <div className="pointer-events-none absolute inset-3 rounded-2xl border-2 border-white/70" />
-                        {/* La carte s'assombrit et s'éclaircit tant qu'on la
-                            lit : le voile respire, sans chiffre à interpréter. */}
-                        {busy && (
+
+                        {scanPhase === 'reading' && (
                           <>
-                            <div className="gl-scanning absolute inset-0 bg-black" />
-                            <div className="absolute inset-0 flex items-end justify-center pb-4">
+                            <div className="gl-scanning pointer-events-none absolute inset-0 bg-black" />
+                            <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-4">
                               <span className="text-sm font-semibold text-white drop-shadow">
                                 {text.reading}
                               </span>
                             </div>
                           </>
                         )}
+
+                        {(scanPhase === 'ok' || scanPhase === 'fail') && (
+                          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55">
+                            {scanPhase === 'ok' ? (
+                              <span className="gl-verdict flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 ring-2 ring-emerald-400/70">
+                                <DrawnCheck className="h-10 w-10" />
+                              </span>
+                            ) : (
+                              <span className="gl-fade flex h-20 w-20 items-center justify-center rounded-full bg-rose-500/15 text-rose-400 ring-2 ring-rose-400/60">
+                                <XMarkIcon className="h-10 w-10" />
+                              </span>
+                            )}
+                            <span className="gl-fade text-sm font-semibold text-white drop-shadow">
+                              {scanPhase === 'ok' ? text.found : text.scanRetry}
+                            </span>
+                          </div>
+                        )}
+
+                        {scanPhase === 'aiming' && (
+                          <div className="pointer-events-none absolute inset-0 flex items-end justify-center px-6 pb-4">
+                            <span className="text-center text-xs font-semibold text-white drop-shadow">
+                              {text.aiming}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleCapture}
-                        disabled={busy}
-                        className="mt-4 w-full rounded-2xl bg-blue-600 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50"
-                      >
-                        {text.capture}
-                      </button>
+
                     </>
                   ) : (
                     <>
-                      <label className="mb-2 block px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        {text.numberLabel}
-                      </label>
+                      <label className={label}>{text.numberLabel}</label>
                       <input
                         value={code}
                         onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 12))}
                         inputMode="numeric"
                         enterKeyHint="go"
                         placeholder="0000000000"
-                        className={`h-14 w-full rounded-2xl border px-4 text-base tabular outline-none focus:border-blue-500 ${
-                          isLight
-                            ? 'border-slate-200 bg-white text-slate-900'
-                            : 'border-slate-800 bg-slate-900 text-white'
-                        }`}
+                        className={`h-14 w-full rounded-2xl border px-4 text-base tabular outline-none focus:border-blue-500 ${field}`}
                       />
-                      <button
-                        type="button"
-                        onClick={() => verify(code, false)}
-                        disabled={busy || code.length < 8}
-                        className="mt-4 w-full rounded-2xl bg-blue-600 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50"
-                      >
-                        {busy ? text.checking : text.check}
-                      </button>
+                      <p className="mt-2 px-1 text-sm leading-relaxed text-slate-500">{text.manualHint}</p>
                     </>
                   )}
                 </div>
 
-                {/* 3 — ce que l'on va enregistrer */}
-                <div className="h-full w-1/3 overflow-y-auto px-4 pb-10">
+                {/* 3 — la vérification d'identité */}
+                <div className="h-full w-1/4 overflow-y-auto px-5 pb-8">
+                  <p className={`text-lg font-bold ${strong}`}>{text.selfieTitle}</p>
+                  <p className="mb-5 mt-2 text-sm leading-relaxed text-slate-500">{text.selfieBody}</p>
+
+                  {/* Un visage se cadre mal dans une vignette : le cadre prend
+                      toute la largeur disponible, et ne se bride que sur les
+                      écrans larges, où il finirait par occuper la fenêtre. */}
+                  <div className="mx-auto w-full max-w-[22rem]">
+                    <div className="relative overflow-hidden rounded-3xl bg-black" style={{ aspectRatio: '3 / 4' }}>
+                      {photoUrl ? (
+                        <img src={photoUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <video
+                          ref={selfieVideoRef}
+                          playsInline
+                          muted
+                          className="h-full w-full object-cover"
+                          /* Miroir à l'écran : on se regarde comme dans une
+                             glace. L'image enregistrée, elle, ne l'est pas. */
+                          style={{ transform: 'scaleX(-1)' }}
+                        />
+                      )}
+                      {/* L'ovale place le visage là où la découpe l'attend. */}
+                      {!photoUrl && (
+                        <div className="pointer-events-none absolute inset-x-[16%] inset-y-[8%] rounded-[50%] border-2 border-dashed border-white/70" />
+                      )}
+                      {photoUrl && (
+                        <span className="gl-verdict absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg">
+                          <DrawnCheck className="h-5 w-5" />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4 — le nom, et ce que la carte dit déjà */}
+                <div className="h-full w-1/4 overflow-y-auto px-5 pb-8">
                   {/* Numéro valide mais porteur inconnu, et l'on est sur un
                       poste qui ne crée pas de carte : on le dit et l'on s'arrête
                       là. Ouvrir un formulaire de nom et de photo ici donnerait
                       une carte à moitié remplie, que le téléphone devrait
                       corriger ensuite. */}
-                  {(lookup || testCode) && linkOnly && !known ? (
+                  {isMobileOnly ? (
                     <div className="pt-2">
-                      <p className={`mb-2 text-base font-bold ${strong}`}>{text.mobileOnlyTitle}</p>
-                      <p className="mb-6 text-sm leading-relaxed text-slate-500">{text.mobileOnlyBody}</p>
-                      <button
-                        type="button"
-                        onClick={onClose}
-                        className="w-full rounded-2xl bg-blue-600 py-3.5 text-sm font-bold text-white transition active:scale-[0.98]"
-                      >
-                        {text.mobileOnlyClose}
-                      </button>
+                      <p className={`mb-3 text-lg font-bold ${strong}`}>{text.mobileOnlyTitle}</p>
+                      <p className="text-sm leading-relaxed text-slate-500">{text.mobileOnlyBody}</p>
                     </div>
                   ) : (lookup || testCode) && (
                     <>
-                      <p className={`mb-5 text-sm font-semibold ${strong}`}>
+                      <p className={`text-lg font-bold ${strong}`}>
                         {known ? text.known : wasScanned ? text.yourInfo : text.fillInfo}
                       </p>
+                      <p className="mb-6 mt-2 text-sm leading-relaxed text-slate-500">{text.nameBody}</p>
 
-                      <div className="mb-4 flex items-start gap-3">
-                        <button
-                          type="button"
-                          disabled={known !== null}
-                          onClick={() => fileInputRef.current?.click()}
-                          className={`flex h-24 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border ${surface}`}
-                        >
-                          {photoUrl || knownPhotoUrl
-                            ? <img src={photoUrl ?? knownPhotoUrl} alt="" className="h-full w-full object-cover" />
-                            : <PhotoIcon className="h-7 w-7 text-slate-400" />}
-                        </button>
-                        {!known && (
+                      {/* Le visage qu'on vient de vérifier reste visible ici :
+                          c'est lui qu'on est en train d'enregistrer. */}
+                      {(photoUrl || knownPhotoUrl) && (
+                        <div className="mb-6 flex items-center gap-4">
+                          <img
+                            src={photoUrl ?? knownPhotoUrl}
+                            alt=""
+                            className="h-20 w-16 flex-shrink-0 rounded-xl object-cover"
+                          />
                           <span className="min-w-0 flex-1">
-                            <button
-                              type="button"
-                              onClick={() => fileInputRef.current?.click()}
-                              className="text-sm font-semibold text-blue-500"
-                            >
-                              {photoUrl || knownPhotoUrl ? text.changePhoto : text.addPhoto}
-                            </button>
-                            {/* Le conseil se lit sous le bouton qu'il concerne,
-                                pas au bas du formulaire. */}
-                            <span className="mt-1 block text-xs leading-snug text-slate-500">
-                              {text.photoHint}
+                            <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-500">
+                              <CheckCircleIcon className="h-4 w-4 flex-shrink-0" />
+                              {text.verified}
                             </span>
+                            {!known && allowScan && (
+                              <button
+                                type="button"
+                                onClick={() => setStep('selfie')}
+                                className="mt-1.5 block text-sm font-semibold text-blue-500"
+                              >
+                                {text.selfieRetake}
+                              </button>
+                            )}
                           </span>
-                        )}
-                        {known?.firstName && (
-                          <span className={`text-lg font-semibold ${strong}`}>{known.firstName}</span>
-                        )}
-                      </div>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={event => {
-                          const file = event.target.files?.[0];
-                          if (file) setPhoto(file);
-                        }}
-                      />
+                        </div>
+                      )}
 
                       {/* Carte connue : seul le nom de famille est demandé, et
                           il sert de vérification — le reste est déjà là. */}
                       {!known && (
-                        <input
-                          value={firstName}
-                          onChange={event => setFirstName(event.target.value)}
-                          placeholder={text.firstName}
-                          className={`mb-2 h-14 w-full rounded-2xl border px-4 text-base outline-none focus:border-blue-500 ${
-                            isLight ? 'border-slate-200 bg-white text-slate-900' : 'border-slate-800 bg-slate-900 text-white'
-                          }`}
-                        />
-                      )}
-                      {/* Le nom est en capitales sur le carton : il l'est ici
-                          aussi, à la saisie comme à l'affichage. */}
-                      <input
-                        value={lastName}
-                        onChange={event => setLastName(event.target.value.toUpperCase())}
-                        placeholder={text.lastName}
-                        style={{ textTransform: 'uppercase' }}
-                        className={`mb-4 h-14 w-full rounded-2xl border px-4 text-base outline-none focus:border-blue-500 ${
-                          isLight ? 'border-slate-200 bg-white text-slate-900' : 'border-slate-800 bg-slate-900 text-white'
-                        }`}
-                      />
-
-                      {/* Ce que le réseau sait, lui, ne se corrige pas. Une
-                          carte d'essai n'ayant rien à en dire, elle n'annonce
-                          que son numéro. */}
-                      <div className={`mb-4 space-y-1.5 rounded-2xl border px-4 py-3 text-sm ${surface}`}>
-                        <div className="flex justify-between gap-3">
-                          <span className="text-slate-500">{text.numberLabel}</span>
-                          <span className={`tabular font-semibold ${strong}`}>
-                            {lookup?.code ?? testCode}
-                          </span>
+                        <div className="mb-5">
+                          <label className={label}>
+                            {text.firstName} · {text.required}
+                          </label>
+                          <input
+                            value={firstName}
+                            onChange={event => setFirstName(event.target.value)}
+                            placeholder={text.firstName}
+                            className={`h-14 w-full rounded-2xl border px-4 text-base outline-none focus:border-blue-500 ${field}`}
+                          />
                         </div>
-                        {lookup?.contracts[0] && (
-                          <div className="flex justify-between gap-3">
-                            <span className="text-slate-500">{text.contract}</span>
-                            <span className={`truncate font-semibold ${strong}`}>{lookup.contracts[0].label}</span>
-                          </div>
-                        )}
-                        {lookup && (
-                          <>
-                            <div className="flex justify-between gap-3">
-                              <span className="text-slate-500">{text.birthDate}</span>
-                              <span className={`font-semibold ${strong}`}>{formatDate(lookup.birthDate)}</span>
-                            </div>
-                            <div className="flex justify-between gap-3">
-                              <span className="text-slate-500">{text.validUntil}</span>
-                              <span className={`font-semibold ${strong}`}>{formatDate(lookup.expiresAt)}</span>
-                            </div>
-                          </>
-                        )}
+                      )}
+                      <div className="mb-5">
+                        <label className={label}>
+                          {text.lastName} · {text.required}
+                        </label>
+                        {/* Le nom est en capitales sur le carton : il l'est ici
+                            aussi, à la saisie comme à l'affichage. */}
+                        <input
+                          value={lastName}
+                          onChange={event => setLastName(event.target.value.toUpperCase())}
+                          placeholder={text.lastName}
+                          style={{ textTransform: 'uppercase' }}
+                          className={`h-14 w-full rounded-2xl border px-4 text-base outline-none focus:border-blue-500 ${field}`}
+                        />
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (known) {
-                            const expected = (known.lastName ?? '').trim().toLowerCase();
-                            if (expected && lastName.trim().toLowerCase() !== expected) {
-                              setError(text.knownMismatch);
-                              return;
-                            }
-                          }
-                          void handleSave();
-                        }}
-                        disabled={busy}
-                        className="w-full rounded-2xl bg-blue-600 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50"
-                      >
-                        {busy ? text.saving : known ? text.knownImport : text.save}
-                      </button>
+                      {/* Ce que la carte dit, elle, ne se corrige pas — mais se
+                          montre, sous la même forme que ce qu'on demande de
+                          remplir : des champs, simplement grisés et cadenassés.
+                          Rien n'annonce la section : on voit tout de suite que
+                          ces lignes-là sont déjà remplies. Une carte d'essai
+                          n'ayant rien à en dire, elle n'affiche que son numéro. */}
+                      {[
+                        { key: text.numberLabel, value: lookup?.code ?? testCode ?? '—', tabular: true },
+                        ...(lookup?.contracts[0]
+                          ? [{ key: text.contract, value: lookup.contracts[0].label, tabular: false }]
+                          : []),
+                        ...(lookup
+                          ? [
+                              { key: text.birthDate, value: formatDate(lookup.birthDate), tabular: true },
+                              { key: text.validUntil, value: formatDate(lookup.expiresAt), tabular: true },
+                            ]
+                          : []),
+                      ].map(row => (
+                        <div key={row.key} className="mb-5">
+                          <label className={label}>{row.key}</label>
+                          <div className="relative">
+                            <input
+                              value={row.value}
+                              readOnly
+                              disabled
+                              tabIndex={-1}
+                              className={`h-14 w-full cursor-not-allowed rounded-2xl border pl-4 pr-11 text-base ${
+                                row.tabular ? 'tabular' : ''
+                              } ${
+                                isLight
+                                  ? 'border-slate-200 bg-slate-100 text-slate-500'
+                                  : 'border-slate-800 bg-slate-900/60 text-slate-400'
+                              }`}
+                            />
+                            <LockClosedIcon className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                          </div>
+                        </div>
+                      ))}
+
+                      <p className="px-1 text-sm leading-relaxed text-slate-500">{text.fromNetworkHint}</p>
                     </>
                   )}
                 </div>
               </div>
             </div>
 
-            {error && (
-              <p className="px-4 pb-4 text-center text-sm font-semibold text-rose-400">{error}</p>
+            {/* Le conseil de cadrage se tient juste au-dessus du trait qui
+                sépare la photo de son bouton : c'est la dernière chose qu'on
+                lit avant d'appuyer. Il ne vaut que tant qu'il y a quelque chose
+                à cadrer, et s'en va donc avec la caméra, une fois le portrait
+                pris. */}
+            {step === 'selfie' && !photoUrl && (
+              <p className="flex-shrink-0 px-5 pb-4 text-center text-sm leading-relaxed text-pretty text-slate-500">
+                {text.selfieHint}
+              </p>
+            )}
+
+            {/* Le pied de la feuille : ce qui fait avancer, et ce qui bloque.
+                Toujours visible, quoi qu'il y ait au-dessus. */}
+            {(action || error) && (
+              <div
+                className={`flex-shrink-0 border-t px-5 pt-4 ${
+                  isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950'
+                }`}
+                style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 1rem)' }}
+              >
+                {error && (
+                  <p className="mb-3 text-center text-sm font-semibold text-rose-400">{error}</p>
+                )}
+                {action}
+              </div>
             )}
           </div>
       </div>

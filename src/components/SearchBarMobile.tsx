@@ -40,6 +40,56 @@ export const SearchBarMobile = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const isLight = theme === 'light';
 
+  /**
+   * Le doigt posé sur un résultat : d'où il est parti, et s'il est toujours là.
+   *
+   * Les lignes de la liste s'ouvraient sur `pointerdown`, c'est-à-dire à la
+   * seconde où le doigt touchait l'écran. Faire défiler les résultats était donc
+   * impossible : le geste commençait par ouvrir l'arrêt qu'on effleurait en
+   * passant, et l'on n'atteignait jamais le suivant.
+   *
+   * Ce n'était pas gratuit — `pointerdown` agissait avant que le champ perde le
+   * focus, donc avant que la liste se referme sous le doigt. On garde cette
+   * propriété autrement : on retient le point de départ à l'appui, et l'on
+   * n'ouvre qu'au relâché, si le doigt n'a pas bougé.
+   */
+  const tapRef = useRef<{ x: number; y: number } | null>(null);
+
+  /**
+   * Combien de pixels séparent un appui d'un glissement.
+   *
+   * Dix : un doigt posé sur un écran bouge toujours d'un ou deux pixels, et
+   * personne ne fait défiler une liste sur dix. En dessous c'est un choix, au
+   * delà c'est un défilement.
+   */
+  const TAP_SLOP = 10;
+
+  /**
+   * Les trois écouteurs d'une ligne de résultat : appui, relâché, abandon.
+   *
+   * `pointercancel` est celui qui compte le plus : c'est ce que le navigateur
+   * envoie à la ligne quand il décide que le geste lui appartient — quand le
+   * défilement démarre, précisément.
+   */
+  const startTap = (event: React.PointerEvent) => {
+    tapRef.current = { x: event.clientX, y: event.clientY };
+    // À la souris, l'appui déplace le focus et referme la liste avant le
+    // relâché. Au doigt, non : y toucher casserait le défilement natif.
+    if (event.pointerType === 'mouse') event.preventDefault();
+  };
+
+  const endTap = (event: React.PointerEvent, action: () => void) => {
+    const start = tapRef.current;
+    tapRef.current = null;
+    if (!start) return;
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_SLOP) return;
+    action();
+  };
+
+  const cancelTap = () => {
+    tapRef.current = null;
+  };
+
   const renderTerminusPair = (longName: string) => {
     const parts = longName.split('/').map(part => part.trim()).filter(Boolean);
     if (parts.length >= 2) {
@@ -174,7 +224,17 @@ export const SearchBarMobile = ({
             value={searchQuery}
             onChange={e => onSearchChange(e.target.value)}
             onFocus={() => onFocus(true)}
-            onBlur={() => { if (!searchQuery) onFocus(false); }}
+            onBlur={() => {
+              /*
+               * Un doigt posé sur la liste n'est pas un abandon de la recherche.
+               *
+               * Toucher un résultat retire le focus du champ ; refermer là-dessus
+               * ferait disparaître la liste avant le relâché, et le choix serait
+               * perdu — c'est justement ce que l'ancien `pointerdown` évitait.
+               */
+              if (tapRef.current) return;
+              if (!searchQuery) onFocus(false);
+            }}
             placeholder={isFocused ? searchPlaceholder : mobilePlaceholder}
             className={`min-w-0 flex-1 border-none bg-transparent text-[18px] font-semibold outline-none ${
               isLight ? 'text-slate-900 placeholder-slate-400' : 'text-white placeholder-slate-400'
@@ -204,11 +264,22 @@ export const SearchBarMobile = ({
 
         {/* Dropdown */}
         {showDropdown && (
-          <div className={`absolute left-0 right-0 top-[66px] max-h-[68vh] overflow-y-auto rounded-[28px] border backdrop-blur-xl shadow-2xl ${
-            isLight
-              ? 'border-slate-200 bg-white/95 shadow-slate-300/50'
-              : 'border-white/10 bg-[#15161a]/96 shadow-black/40'
-          }`}>
+          <div
+            /*
+             * Le geste vertical appartient à la liste, pas à la feuille.
+             *
+             * `pan-y` le dit au navigateur, et `overscroll-contain` l'empêche
+             * de repasser la main à ce qu'il y a derrière une fois la liste
+             * arrivée en bout. La feuille d'accueil, elle, suspend sa propre
+             * poignée tant que la recherche est ouverte — c'est son affaire,
+             * pas celle de cette liste, qui sert aussi flottante sur la carte.
+             */
+            className={`absolute left-0 right-0 top-[66px] max-h-[68vh] touch-pan-y overflow-y-auto overscroll-contain rounded-[28px] border backdrop-blur-xl shadow-2xl ${
+              isLight
+                ? 'border-slate-200 bg-white/95 shadow-slate-300/50'
+                : 'border-white/10 bg-[#15161a]/96 shadow-black/40'
+            }`}
+          >
 
             {searchQuery.trim() !== '' ? (
               <>
@@ -222,10 +293,9 @@ export const SearchBarMobile = ({
                       <button
                         key={line.id}
                         type="button"
-                        onPointerDown={e => {
-                          e.preventDefault();
-                          onLineClick(line);
-                        }}
+                        onPointerDown={startTap}
+                        onPointerUp={e => endTap(e, () => onLineClick(line))}
+                        onPointerCancel={cancelTap}
                         className={`flex w-full items-center gap-3 border-b px-5 py-4 text-left transition last:border-0 ${
                           isLight
                             ? 'border-slate-100 hover:bg-slate-50 active:bg-slate-100'
@@ -254,10 +324,9 @@ export const SearchBarMobile = ({
                       <button
                         key={stop.id}
                         type="button"
-                        onPointerDown={e => {
-                          e.preventDefault();
-                          handleSelectStop(stop);
-                        }}
+                        onPointerDown={startTap}
+                        onPointerUp={e => endTap(e, () => handleSelectStop(stop))}
+                        onPointerCancel={cancelTap}
 	                        className={`flex w-full items-center gap-3 border-b px-5 py-4 text-left transition last:border-0 ${
 	                          isLight
 	                            ? 'border-slate-100 hover:bg-slate-50 active:bg-slate-100'
@@ -289,10 +358,9 @@ export const SearchBarMobile = ({
                       <button
                         key={addr.id}
                         type="button"
-                        onPointerDown={e => {
-                          e.preventDefault();
-                          handleSelectAddress(addr);
-                        }}
+                        onPointerDown={startTap}
+                        onPointerUp={e => endTap(e, () => handleSelectAddress(addr))}
+                        onPointerCancel={cancelTap}
 	                        className={`flex w-full items-center gap-3 border-b px-5 py-4 text-left transition last:border-0 ${
 	                          isLight
 	                            ? 'border-slate-100 hover:bg-slate-50 active:bg-slate-100'
@@ -322,10 +390,9 @@ export const SearchBarMobile = ({
                     <button
                       key={`h-${i}`}
                       type="button"
-                      onPointerDown={e => {
-                        e.preventDefault();
-                        handleSelectHistoryItem(item);
-                      }}
+                      onPointerDown={startTap}
+                      onPointerUp={e => endTap(e, () => handleSelectHistoryItem(item))}
+                      onPointerCancel={cancelTap}
 	                      className={`w-full border-b px-5 py-4 text-left transition last:border-0 ${
 	                        isLight
 	                          ? 'border-slate-100 hover:bg-slate-50 active:bg-slate-100'

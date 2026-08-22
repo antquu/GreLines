@@ -626,6 +626,22 @@ export function SettingsPanel({
         </Group>
       )}
 
+      {/* La vitrine : une page à part, hors de l'application. On y va par un
+          vrai lien plutôt que par une navigation interne — c'est un autre
+          site, servi à une autre adresse, et le bouton « précédent » du
+          navigateur doit ramener ici. */}
+      <Group>
+        <a
+          href={language === 'fr' ? '/fr' : '/en'}
+          className="flex w-full items-center justify-between rounded-2xl px-4 py-3 transition hover:bg-slate-700/40"
+        >
+          <span className="text-left text-[15px] font-medium text-blue-400">
+            {language === 'fr' ? 'Découvrir GreLines' : 'Discover GreLines'}
+          </span>
+          <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-slate-500" />
+        </a>
+      </Group>
+
       {devAvailable && (
         <>
           <Group>

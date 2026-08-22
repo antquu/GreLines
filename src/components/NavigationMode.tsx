@@ -25,6 +25,7 @@ import type { Departure } from '../types';
 import type { AllLinesLine } from '../services/allLines';
 import { resolveRouteLine } from '../utils/routeLineResolver';
 import { publishObservation, getLineDelay, type LineDelay } from '../services/liveTiming';
+import { getCrowdConfidence, type CrowdConfidence } from '../services/crowdSignals';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { getLineReputation, type LineReputation } from '../services/lineReputation';
 import { loadOccupancy, getOccupancyAt, occupancyLevel } from '../services/stopOccupancy';
@@ -117,6 +118,16 @@ interface NavigationModeProps {
    * pas les compter lui-même puisqu'ils naissent ici.
    */
   onArrived?: (contributions: { observations: number; answers: number; travellersHelped: number }) => void;
+  /**
+   * Le rythme de rafraîchissement des prochains passages, en millisecondes.
+   *
+   * Le guidage interrogeait l'arrêt une seule fois, à l'ouverture : dix minutes
+   * de marche plus tard, le carrousel affichait encore les minutes calculées au
+   * départ, et le « dans 3 minutes » qu'on lisait sur le quai datait du salon.
+   * C'est le même réglage que celui des fiches d'arrêt — l'usager l'a déjà
+   * choisi dans les paramètres, il n'y a pas de raison qu'il ne vaille pas ici.
+   */
+  refreshIntervalMs?: number;
   isMobile?: boolean;
   
   theme?: 'light' | 'dark';
@@ -142,6 +153,65 @@ interface NavStep {
 
 
 
+
+/** Vert, orange, rouge : la pastille des prochains passages. */
+const CONFIDENCE_COLOR: Record<CrowdConfidence['level'], string> = {
+  good: '#22c55e',
+  fair: '#f59e0b',
+  poor: '#ef4444',
+};
+
+/**
+ * Ce que la pastille veut dire, en une phrase.
+ *
+ * On nomme la raison, pas la note. « Rouge » ne se décide pas ; « des voyageurs
+ * signalent un passage qui n'est pas venu », si. On retient donc le motif le
+ * plus grave parmi ceux qui sont documentés — un fantôme prime un bus plein,
+ * qui prime un retard — et l'on dit sur combien d'avis il repose, pour qu'on
+ * sache si l'on croit une personne ou vingt.
+ */
+function confidenceLabel(confidence: CrowdConfidence, isFr: boolean): string {
+  const count = confidence.sample;
+  const voices = isFr
+    ? `${count} avis${confidence.fresh ? ' récents' : ''}`
+    : `${count} report${count > 1 ? 's' : ''}${confidence.fresh ? ' just in' : ''}`;
+
+  let reason: string;
+  if (confidence.ghostRate !== null && confidence.ghostRate >= 0.34) {
+    reason = isFr ? 'passage annoncé parfois absent' : 'announced run sometimes missing';
+  } else if (confidence.crowding !== null && confidence.crowding < 1.7) {
+    reason = isFr ? 'véhicule bondé' : 'packed vehicle';
+  } else if (confidence.punctuality !== null && confidence.punctuality < 1.7) {
+    reason = isFr ? 'retard ressenti' : 'running late';
+  } else if (confidence.accessible === false) {
+    reason = isFr ? 'accès en panne signalé' : 'access reported out of order';
+  } else if (confidence.level === 'good') {
+    reason = isFr ? 'rien à signaler' : 'nothing reported';
+  } else {
+    reason = isFr ? 'avis partagés' : 'mixed reports';
+  }
+
+  return `${reason} · ${voices}`;
+}
+
+/**
+ * À quelle distance du poteau on considère qu'on y est.
+ *
+ * Quatre mètres : la longueur d'un abribus. En deçà, on est dessous ou juste à
+ * côté, et l'on voit ce que les questions de quai demandent — l'afficheur, le
+ * banc, l'état du mobilier.
+ */
+const STOP_ARRIVAL_M = 4;
+
+/**
+ * Et en dessous de quelle allure on considère qu'on attend.
+ *
+ * 0,7 m/s, soit un quart de l'allure de marche : on ne franchit pas ce seuil en
+ * traversant l'arrêt, seulement en s'y arrêtant. Le seuil n'est pas à zéro parce
+ * que la vitesse est déduite de positions successives, et qu'elle ne l'atteint
+ * jamais tout à fait, même immobile.
+ */
+const STOP_STILL_MPS = 0.7;
 
 const PANEL_BG = '#0f172a';
 const PANEL_BG_LIGHT = '#f1f5f9';
@@ -728,6 +798,7 @@ export function NavigationMode({
   legPaths,
   onBoardVehicle,
   onArrived,
+  refreshIntervalMs = 30000,
   isMobile = false,
   theme = 'dark',
 }: NavigationModeProps) {
@@ -820,6 +891,14 @@ export function NavigationMode({
   const notifiedRef = useRef<Set<string>>(new Set());
   /** L'arrivée ne se solde qu'une fois, même si la position oscille au bout. */
   const arrivedRef = useRef(false);
+  /**
+   * L'arrêt où l'on a constaté qu'on attendait.
+   *
+   * Une fois qu'on y est, on y reste : le GPS oscille de quelques mètres à
+   * l'arrêt, et sans cette mémoire les questions de quai clignoteraient au
+   * rythme du bruit de position.
+   */
+  const atStopRef = useRef<string | null>(null);
   /**
    * L'allure et le goût pour la marche, relus au navigateur.
    *
@@ -1391,7 +1470,7 @@ export function NavigationMode({
     // source la plus directe, elle ne dépend d'aucun rapprochement de noms. Le
     // cluster retrouvé par le nom ne sert plus que de secours, pour les réseaux
     // dont le planificateur ne rend pas d'identifiant d'arrêt.
-    (async () => {
+    const load = async () => {
       const attempts: Array<() => Promise<Departure[]>> = [];
       if (rawBoardingStopId) {
         attempts.push(() => getStopPointDepartures(rawBoardingStopId));
@@ -1414,12 +1493,66 @@ export function NavigationMode({
         }
       }
       if (!cancelled) setRuns([]);
-    })();
+    };
+
+    void load();
+
+    /*
+     * Puis au rythme choisi dans les paramètres.
+     *
+     * Les minutes du carrousel comptent à rebours depuis l'instant de la
+     * requête : sans relance, elles décrivaient un passage qui, dix minutes de
+     * marche plus tard, était parti depuis longtemps. On reprend donc le même
+     * réglage que les fiches d'arrêt — quinze secondes à deux minutes, au
+     * choix — plutôt qu'un rythme fixe imposé ici.
+     *
+     * La borne basse n'est pas de la prudence : un intervalle mal transmis
+     * (zéro, NaN) déclencherait une requête par image.
+     */
+    const period = Number.isFinite(refreshIntervalMs) ? Math.max(5000, refreshIntervalMs) : 30000;
+    const timer = window.setInterval(() => void load(), period);
 
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
-  }, [isOpen, currentLine, boardingStopId, rawBoardingStopId]);
+  }, [isOpen, currentLine, boardingStopId, rawBoardingStopId, refreshIntervalMs]);
+
+  /**
+   * La confiance qu'on peut accorder aux prochains passages, ici et maintenant.
+   *
+   * Le réseau publie des horaires et une affluence moyenne. Il ne dit ni si le
+   * véhicule qui arrive sera plein, ni si la course annoncée existe vraiment —
+   * ces passages fantômes qu'on attend dix minutes pour rien. Personne ne le
+   * sait à part ceux qui sont sur le quai, et ceux-là répondent déjà aux
+   * questions du bandeau : leurs réponses reviennent ici en une pastille.
+   *
+   * Rien ne s'affiche tant que deux personnes au moins n'ont rien dit. Une
+   * pastille sur un seul avis serait une rumeur affichée comme une mesure.
+   */
+  const [confidence, setConfidence] = useState<CrowdConfidence | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !currentLine) {
+      setConfidence(null);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      getCrowdConfidence(rawBoardingStopId ?? boardingStopId ?? null, currentLine).then((value) => {
+        if (!cancelled) setConfidence(value);
+      });
+    };
+    load();
+    // Au rythme choisi pour les passages : la pastille les commente, elle ne
+    // doit pas décrire un autre instant qu'eux.
+    const period = Number.isFinite(refreshIntervalMs) ? Math.max(15000, refreshIntervalMs) : 30000;
+    const timer = window.setInterval(load, period);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isOpen, currentLine, rawBoardingStopId, boardingStopId, refreshIntervalMs]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -1609,6 +1742,23 @@ export function NavigationMode({
   const delayMinutes = lineDelay ? Math.round(lineDelay.seconds / 60) : 0;
   const showDelay = Boolean(lineDelay) && delayMinutes !== 0;
 
+  /**
+   * L'arrêt où l'on attend — et seulement quand on y attend vraiment.
+   *
+   * Les questions de quai partaient dès que l'étape était une marche vers un
+   * arrêt : on les recevait donc en marchant, huit cents mètres avant d'y être,
+   * alors qu'elles portent sur un abri et un afficheur qu'on n'a pas encore
+   * sous les yeux. On ne peut pas y répondre, et on ne peut même pas les lire.
+   *
+   * Il faut donc deux conditions, pas une : être arrivé — quelques mètres du
+   * poteau, la distance en deçà de laquelle le GPS ne distingue plus rien — et
+   * s'être arrêté de marcher. La seconde compte autant que la première : passer
+   * devant un arrêt n'est pas y attendre.
+   *
+   * Une fois posé, on reste posé. Le GPS oscille de quelques mètres à l'arrêt,
+   * et un questionnaire qui apparaît et disparaît au gré du bruit serait pire
+   * que celui qui arrivait trop tôt.
+   */
   const waitingStop = (() => {
     if (step?.kind !== 'walk') return null;
     const next = steps[index + 1];
@@ -1616,7 +1766,28 @@ export function NavigationMode({
     const leg: any = (itinerary.allLegs as any)?.[index + 1];
     const id = leg?.from?.stopId;
     if (!id) return null;
-    return { id: String(id), name: String(leg?.from?.name ?? '') };
+    const stop = {
+      id: String(id),
+      name: String(leg?.from?.name ?? ''),
+      // La ligne qu'on attend : « le passage est-il passé ? » ne se range nulle
+      // part sans elle.
+      lineId: next.lineShortName ?? null,
+    };
+
+    if (atStopRef.current === stop.id) return stop;
+
+    const lat = Number(leg?.from?.lat);
+    const lon = Number(leg?.from?.lon);
+    // Sans position ni coordonnées, il n'y a rien à mesurer : on s'en remet au
+    // comportement d'avant plutôt que de museler les questions pour tout le
+    // monde à cause d'un GPS coupé.
+    if (!currentLocation || !Number.isFinite(lat) || !Number.isFinite(lon)) return stop;
+
+    const metres = coordinateDistance([currentLocation.lon, currentLocation.lat], [lon, lat]);
+    if (metres > STOP_ARRIVAL_M || speedMps > STOP_STILL_MPS) return null;
+
+    atStopRef.current = stop.id;
+    return stop;
   })();
 
   const handleClose = () => {
@@ -2360,6 +2531,7 @@ export function NavigationMode({
                       subject="stop"
                       targetId={waitingStop.id}
                       targetName={waitingStop.name}
+                      lineId={waitingStop.lineId}
                       language={language}
                       onAnswered={() => {
                         setAnswerCount((n) => n + 1);
@@ -2579,7 +2751,7 @@ export function NavigationMode({
                                   block: 'nearest',
                                 });
                               }}
-                              className="flex flex-shrink-0 snap-start flex-col items-center justify-center rounded-2xl shadow-[0_4px_14px_rgba(0,0,0,0.25)]"
+                              className="relative flex flex-shrink-0 snap-start flex-col items-center justify-center rounded-2xl shadow-[0_4px_14px_rgba(0,0,0,0.25)]"
                               style={{
                                 width: RUN_CARD_WIDTH,
                                 height: 128,
@@ -2611,6 +2783,31 @@ export function NavigationMode({
                                     }),
                               }}
                             >
+                              {/* ── La pastille de confiance ────────────────
+                                  Ce que les voyageurs ont signalé sur cette
+                                  ligne à cet arrêt, à cette tranche horaire :
+                                  vert, on y va ; orange, ça se discute ; rouge,
+                                  c'est plein, en retard, ou ça n'est pas venu.
+
+                                  Un point, pas un texte : la carte porte déjà
+                                  deux nombres et un bandeau, et l'information
+                                  tient dans une couleur. Le détail est écrit
+                                  une seule fois sous le carrousel, où il y a la
+                                  place de le dire en toutes lettres. */}
+                              {!empty && i === activeTransitIndex && confidence && (
+                                <span
+                                  className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full"
+                                  style={{
+                                    backgroundColor: CONFIDENCE_COLOR[confidence.level],
+                                    // Un liseré de la couleur de la carte : sur
+                                    // un aplat clair, un point vert seul se
+                                    // confondait avec la ligne elle-même.
+                                    boxShadow: '0 0 0 2px rgba(0,0,0,0.18)',
+                                  }}
+                                  aria-label={confidenceLabel(confidence, isFr)}
+                                  title={confidenceLabel(confidence, isFr)}
+                                />
+                              )}
                               <span
                                 className={`tabular font-black leading-none ${
                                   asClock ? 'text-[30px]' : 'text-[44px]'
@@ -2706,6 +2903,25 @@ export function NavigationMode({
                           className="flex-shrink-0"
                           style={{ width: `calc(100% - ${RUN_CARD_WIDTH}px - 2.25rem)` }}
                         />
+                      </div>
+                    )}
+
+                    {/* ── Ce que la pastille raconte ────────────────────────
+                        La couleur seule ne se lit pas : on saurait que quelque
+                        chose ne va pas sans savoir quoi, et l'on ne peut rien
+                        décider avec ça. La phrase est écrite une fois, sous le
+                        carrousel, et vaut pour toutes ses cartes — elles
+                        parlent de la même ligne au même arrêt. */}
+                    {i === activeTransitIndex && confidence && (
+                      <div className="relative z-10 -mt-1 mb-1 flex items-center gap-2 pl-9 pr-4">
+                        <span
+                          aria-hidden
+                          className="h-2 w-2 flex-shrink-0 rounded-full"
+                          style={{ backgroundColor: CONFIDENCE_COLOR[confidence.level] }}
+                        />
+                        <span className="truncate text-[11px] font-semibold" style={{ color: ink }}>
+                          {confidenceLabel(confidence, isFr)}
+                        </span>
                       </div>
                     )}
 

@@ -209,6 +209,18 @@ interface HomeSheetProps {
    * elle qu'on garde — mais elle ne se tire plus.
    */
   locked?: boolean;
+  /**
+   * La recherche est ouverte : la liste de résultats a le geste vertical.
+   *
+   * Cette liste est posée dans l'en-tête de la feuille, c'est-à-dire dans la
+   * poignée par laquelle on la tire. Sans cette exception, tout glissement dans
+   * les résultats faisait descendre la feuille au lieu de faire défiler la
+   * liste — on ne pouvait donc pas atteindre le quatrième arrêt trouvé.
+   *
+   * On rend la poignée le temps de la recherche : fermer la liste rend la
+   * feuille à son geste, et l'on n'a rien perdu en route.
+   */
+  searchOpen?: boolean;
   /** Quitte l'écran Compte : tout autre onglet le referme. */
   onLeaveAccount?: () => void;
   /** Quitte l'écran Favoris : tout autre onglet le referme. */
@@ -481,6 +493,7 @@ export const HomeSheet = ({
   onOpenAccount,
   onOpenFavorites,
   locked = false,
+  searchOpen = false,
   onLeaveAccount,
   onLeaveFavorites,
   navCompact = false,
@@ -806,7 +819,7 @@ export const HomeSheet = ({
       // pastille doit tenir dedans exactement, sans marge vide au-dessous.
       snapPoints={mapSheetSnapPoints({ bottomInset: safeBottom, noHandle: locked, compact: navCompact })}
       initialSnap={1}
-      disableDrag={locked}
+      disableDrag={locked || searchOpen}
       disableDismiss
       onSnap={handleSnapChange}
       // Live drag progress. The lib calls this on every animation frame

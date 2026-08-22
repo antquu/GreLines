@@ -15,23 +15,14 @@
  */
 
 import { supabase } from './supabase';
+import { normalizeStopId, printableStopId } from './stopAliases';
+import type { Stop } from '../types';
 
 export interface CampaignVisit {
   source: string;
   stopId?: string;
   campaign?: string;
   medium?: string;
-}
-
-const CAMPAIGN_STOP_ALIASES: Record<string, string> = {
-  'SEM:GARES': 'SEM:GAR',
-  'SEM:CHAVANT': 'SEM:CHV',
-};
-
-function normalizeCampaignStopId(stopId: string | undefined): string | undefined {
-  if (!stopId) return undefined;
-  const normalized = stopId.toUpperCase();
-  return CAMPAIGN_STOP_ALIASES[normalized] || stopId;
 }
 
 /**
@@ -58,9 +49,17 @@ export function readCampaign(search: string): CampaignVisit | null {
     }
   }
 
+  /*
+   * L'identifiant est gardé tel qu'il est écrit sur l'affiche, sans être
+   * traduit en celui du réseau d'aujourd'hui : c'est une affiche qu'on
+   * mesure, et elle doit compter sous le même nom d'un bout à l'autre de sa
+   * vie, même quand le réseau renomme la station derrière. C'est au moment
+   * d'ouvrir l'arrêt, et là seulement, qu'on cherche à quoi il correspond
+   * maintenant.
+   */
   return {
     source,
-    stopId: normalizeCampaignStopId(stopId),
+    stopId: normalizeStopId(stopId) ?? undefined,
     campaign: params.get('utm_campaign') || undefined,
     medium: params.get('utm_medium') || undefined,
   };
@@ -81,10 +80,24 @@ export async function recordCampaignVisit(visit: CampaignVisit): Promise<void> {
   }
 }
 
-/** L'adresse à imprimer sur une affiche, pour un arrêt et une source donnés. */
-export function buildCampaignUrl(stopId: string, source: string, origin = 'https://grelines.fr'): string {
+/**
+ * L'adresse à imprimer sur une affiche, pour un arrêt et une source donnés.
+ *
+ * L'arrêt est désigné par son identifiant durable quand il en a un, et non par
+ * celui que le réseau lui donne aujourd'hui : les deux ouvriraient la bonne
+ * page ce matin, mais un seul l'ouvrira encore après le prochain renommage, et
+ * une affiche ne se réimprime pas.
+ */
+export function buildCampaignUrl(
+  stop: Stop | string,
+  source: string,
+  origin = 'https://grelines.fr',
+): string {
   const url = new URL('/', origin);
   url.searchParams.set('utm_source', source);
-  url.searchParams.set('utm_stops', stopId);
+  url.searchParams.set(
+    'utm_stops',
+    typeof stop === 'string' ? (normalizeStopId(stop) ?? stop) : printableStopId(stop),
+  );
   return url.toString();
 }
