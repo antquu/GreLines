@@ -1,11 +1,13 @@
 ﻿import { XMarkIcon, ExclamationTriangleIcon, FunnelIcon } from '@heroicons/react/24/solid';
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { MapSheet } from './MapSheet';
 import { LineBadge } from './LineBadge';
+import { categoryRank, trafficCategory, trafficFilters } from '../utils/trafficFilters';
+import { useWheelScroll } from '../hooks/useWheelScroll';
+import { TrafficAlertCard } from './TrafficAlertCard';
 import type { AllLinesLine } from '../services/allLines';
 import type { TrafficDetail } from '../types';
-import { stripHtml } from '../utils/stripHtml';
 
 interface TrafficPanelMobileProps {
   isOpen: boolean;
@@ -24,55 +26,44 @@ const getTrafficPanelText = (language: 'fr' | 'en') => {
     incidentSingular: isFr ? 'incident' : 'incident',
     incidentPlural: isFr ? 'incidents' : 'incidents',
     endPrefix: isFr ? 'Fin :' : 'End:',
-    filterAll: isFr ? 'Tout' : 'All',
-    filterTram: isFr ? 'Trams' : 'Trams',
-    filterChrono: 'Chrono',
-    filterProximo: 'Proximo',
-    filterFlexo: 'Flexo',
   };
 };
 
-type FilterType = 'all' | 'tram' | 'chrono' | 'proximo' | 'flexo';
-
-const getLineCategory = (line: string): 'tram' | 'chrono' | 'proximo' | 'flexo' | 'other' => {
-  const n = line.trim().toUpperCase();
-  if (['A', 'B', 'C', 'D', 'E'].includes(n)) return 'tram';
-  if (/^C\d+$/.test(n)) {
-    const num = Number(n.substring(1));
-    return num >= 1 && num <= 14 ? 'chrono' : 'other';
-  }
-  const asNum = Number(n);
-  if (!isNaN(asNum)) {
-    if (asNum >= 11 && asNum <= 29) return 'proximo';
-    if (asNum >= 30 && asNum <= 99) return 'flexo';
-  }
-  return 'other';
-};
+type FilterType = string;
 
 export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, theme = 'dark', lineLookup }: TrafficPanelMobileProps) => {
   const text = getTrafficPanelText(language);
   const [filter, setFilter] = useState<FilterType>('all');
+  /* La même barre s'ouvre sur ordinateur, où l'on n'a que la molette. */
+  const filtersRef = useWheelScroll<HTMLDivElement>();
   const isLight = theme === 'light';
 
+  /*
+   * La catégorie d'une ligne : sa famille dans la Métropole, ou son réseau.
+   *
+   * Auparavant, tout ce qui n'entrait pas dans les quatre familles urbaines
+   * était écarté — pas seulement des onglets, mais de la liste entière. Les
+   * perturbations du Grésivaudan, du Pays Voironnais, des Cars Région et du TER
+   * n'apparaissaient nulle part, y compris sous « Tout ».
+   */
+  const categoryOf = useCallback(
+    (line: string) => trafficCategory(line, lineLookup),
+    [lineLookup],
+  );
+
   const filteredEntries = Array.from(trafficInfo.entries())
-    .filter(([line]) => {
-      const cat = getLineCategory(line);
-      if (cat === 'other') return false;
-      if (filter === 'all') return true;
-      return cat === filter;
-    })
+    .filter(([line]) => filter === 'all' || categoryOf(line) === filter)
     .sort(([a], [b]) => {
-      const rank: Record<string, number> = { tram: 0, chrono: 1, proximo: 2, flexo: 3, other: 99 };
-      return (rank[getLineCategory(a)] ?? 99) - (rank[getLineCategory(b)] ?? 99);
+      const ra = categoryRank(categoryOf(a));
+      const rb = categoryRank(categoryOf(b));
+      if (ra !== rb) return ra - rb;
+      return a.localeCompare(b, undefined, { numeric: true });
     });
 
-  const filters: { key: FilterType; label: string }[] = [
-    { key: 'all',     label: text.filterAll },
-    { key: 'tram',    label: text.filterTram },
-    { key: 'chrono',  label: text.filterChrono },
-    { key: 'proximo', label: text.filterProximo },
-    { key: 'flexo',   label: text.filterFlexo },
-  ];
+  /* Un onglet de réseau ne paraît que s'il a des perturbations à montrer. */
+  const presentCategories = new Set(Array.from(trafficInfo.keys()).map(categoryOf));
+
+  const filters = trafficFilters(presentCategories, language);
 
   return (
     <MapSheet initialSnap={3} isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={100}>
@@ -103,7 +94,7 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, the
           </div>
 
           {/* Filter tabs */}
-          <div className="flex gap-2 px-5 pb-3 flex-shrink-0 overflow-x-auto scrollbar-hide">
+          <div ref={filtersRef} className="flex gap-2 px-5 pb-3 flex-shrink-0 overflow-x-auto scrollbar-hide">
             {filters.map(f => (
               <button
                 key={f.key}
@@ -168,19 +159,22 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, the
                           </span>
                         </div>
                       </div>
-                      <div className={`divide-y ${isLight ? 'divide-slate-100' : 'divide-slate-700/50'}`}>
+                      {/* La même carte que dans la fiche d'un arrêt, d'une
+                          ligne ou d'un trajet. Le regroupement par ligne reste,
+                          lui : c'est ce qui fait de cet écran un répertoire
+                          plutôt qu'une liste. */}
+                      <div className="space-y-2 p-3">
                         {sortedDetails.map((detail, index) => (
-                          <div key={`${line}-${index}`} className="px-4 py-3">
-                            <p className={`text-sm font-semibold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                              {stripHtml(detail.titre)}
-                            </p>
-                            <p className={`text-xs leading-relaxed whitespace-pre-line ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                              {stripHtml(detail.description)}
-                            </p>
-                            <p className={`text-xs mt-2 ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
-                              {text.endPrefix} {detail.dateFin || 'N/A'}
-                            </p>
-                          </div>
+                          <TrafficAlertCard
+                            key={`${line}-${index}`}
+                            detail={detail}
+                            language={language}
+                            isLight={isLight}
+                            /* Cet écran ne montre que des perturbations : les
+                               replier obligerait à ouvrir une à une des cartes
+                               dont la lecture est le seul objet de la page. */
+                            expandable={false}
+                          />
                         ))}
                       </div>
                     </motion.div>

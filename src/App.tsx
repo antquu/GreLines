@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy } from 'react';
 import { AnimatePresence, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
-import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, PlusIcon } from '@heroicons/react/24/solid';
+import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon } from '@heroicons/react/24/solid';
 import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
 import { useFavoriteDetails } from './hooks/useFavoriteDetails';
@@ -17,6 +17,8 @@ import { Map as TransitMap } from './components/Map';
 import { Sidebar } from './components/Sidebar';
 import { SearchBarMobile } from './components/SearchBarMobile';
 import { TrafficPanelMobile } from './components/TrafficPanelMobile';
+import { TrafficAlertCard } from './components/TrafficAlertCard';
+import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
 import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
 import { SidebarMobile } from './components/SidebarMobile';
@@ -24,8 +26,6 @@ import { HomeSheet } from './components/HomeSheet';
 import { AccountScreen } from './components/AccountScreen';
 import { FavoritesScreen } from './components/FavoritesScreen';
 import { Toast } from './components/Toast';
-import { OuraWallet } from './components/OuraWallet';
-import { AddCardSheet } from './components/AddCardSheet';
 import { listOuraCards, subscribeToCards, verifyCards, isSupabaseConfigured, type OuraCard } from './services/ouraCard';
 import { awardTrip, type TripAward } from './services/greLinesPoints';
 import { loadAccount, creditAccount, recordTrip, type Account } from './services/account';
@@ -109,6 +109,9 @@ import {
   type FooterConfig,
   type TripSurveyLeg,
 } from './services/cms';
+import { isCarpoolStop, isCarpoolLine } from './components/CarpoolStopPanel';
+import { getMcoLines, type McoLine } from './services/mcoLines';
+import { categoryRank, trafficCategory, trafficFilters } from './utils/trafficFilters';
 import { getCachedStopLines, getStopDetail, getStopLines, getStopsByPrefixes, getTrafficLines, getDepartures, refreshStopLines, setActiveNetworks, type RouteLocation, type RouteItinerary } from './services/api';
 import { getTclStopDetail, getTclStops, isTclId, TCL_NETWORK } from './services/tclNetwork';
 import { searchAddresses, reverseGeocode, type AddressResult } from './services/geocoding';
@@ -117,11 +120,10 @@ import type { Line, SearchHistoryItem, Stop, StopDetail, TrafficDetail } from '.
 import type { MapRef } from './components/Map';
 import { useStopUrlSync } from './hooks/useStopUrlSync';
 import { screenFromPath, useScreenUrl } from './hooks/useScreenUrl';
+import { MapLayersButton } from './components/MapLayersButton';
 import { readCampaign, recordCampaignVisit } from './services/campaign';
 import { resolveStopFromUrlId } from './services/stopAliases';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
-import type { LineFamily } from './services/allLines';
-import { stripHtml } from './utils/stripHtml';
 import { buildJourneyGeometry, type JourneyStopRef } from './utils/journeyGeometry';
 import { AtmoPanel, atmoColor, atmoPicto } from './components/AtmoPanel';
 import { getCommuneAtCoords, getAtmoReportByPostalCode, getAtmoReportForCommune, DEFAULT_ATMO_POSTAL_CODE, type AtmoReport, type Commune } from './services/atmo';
@@ -138,6 +140,14 @@ function App() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSearchHovered, setIsSearchHovered] = useState(false);
   const [selectedStop, setSelectedStop] = useState<StopDetail | null>(null);
+  /*
+   * Les liaisons de covoiturage tracées sur la carte.
+   *
+   * Seulement pour un point M'Covoit ouvert, et seulement celles qu'il dessert :
+   * ce sont de longs axes qui traversent toute la cuvette, et les laisser en
+   * permanence barrerait la carte sans rien apprendre à qui cherche un tram.
+   */
+  const [carpoolMapLines, setCarpoolMapLines] = useState<McoLine[]>([]);
   const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
   const [selectedLine, setSelectedLine] = useState<AllLinesLine | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -217,10 +227,6 @@ function App() {
    * quitte donc la zone de survol. Sans épingle, le portefeuille se refermerait
    * derrière elle et l'on reviendrait sur la carte routière.
    */
-  const [isWalletBtnHovered, setIsWalletBtnHovered] = useState(false);
-  const [isWalletPanelHovered, setIsWalletPanelHovered] = useState(false);
-  const [isWalletPinned, setIsWalletPinned] = useState(false);
-  const [isDesktopAddCardOpen, setIsDesktopAddCardOpen] = useState(false);
   const [walletCards, setWalletCards] = useState<OuraCard[]>([]);
   const [isAtmoBtnHovered, setIsAtmoBtnHovered] = useState(false);
   const [isAtmoPanelHovered, setIsAtmoPanelHovered] = useState(false);
@@ -281,7 +287,7 @@ function App() {
   }, []);
   
   
-  const [desktopTrafficFilter, setDesktopTrafficFilter] = useState<'all' | LineFamily>('all');
+  const [desktopTrafficFilter, setDesktopTrafficFilter] = useState<string>('all');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   /**
    * L'écran affiché, écrit dans la barre d'adresse — et relu au chargement,
@@ -399,6 +405,11 @@ function App() {
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
     return `${Math.round(p * vh + 12)}px`;
   });
+  /* Un cran plus haut que le recentrage : 48 px de bouton et 8 px d'écart. */
+  const layersButtonBottom = useTransform(sheetProgress, p => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    return `${Math.round(p * vh + 12 + 56)}px`;
+  });
   const geolocButtonOpacity = useTransform(sheetProgress, [0, 0.85, 1], [1, 1, 0]);
   const geolocButtonScale = useTransform(sheetProgress, [0, 0.85, 1], [1, 1, 0.85]);
   /**
@@ -410,6 +421,54 @@ function App() {
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
   /** Voitures Citiz et trottinettes Voi superposées à la carte. */
   const [sharedMobility, setSharedMobility] = useState<SharedMobilityData>(EMPTY_SHARED_MOBILITY);
+  /**
+   * Les calques que l'on a choisi de masquer.
+   *
+   * Retenus d'une visite à l'autre : quelqu'un qui ne se déplace jamais en
+   * trottinette n'a pas à les éteindre à chaque ouverture. On ne garde que ce
+   * qui est masqué, si bien qu'un opérateur ajouté plus tard apparaît par
+   * défaut plutôt que de rester invisible sans qu'on comprenne pourquoi.
+   */
+  const [hiddenSharedLayers, setHiddenSharedLayers] = useState<Set<SharedOperator>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('greLines_hiddenSharedLayers') ?? '[]');
+      return new Set(Array.isArray(saved) ? (saved as SharedOperator[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const [isMapLayersOpen, setIsMapLayersOpen] = useState(false);
+
+  /**
+   * Ce qui reste à afficher une fois les calques masqués retirés.
+   *
+   * Le filtrage se fait ici et non au chargement : les données continuent
+   * d'être récupérées, si bien que rallumer un calque est instantané et que le
+   * panneau peut annoncer combien de véhicules il rendrait visibles.
+   */
+  const visibleSharedMobility = useMemo<SharedMobilityData>(() => ({
+    citiz: hiddenSharedLayers.has('citiz') ? [] : sharedMobility.citiz,
+    voi: hiddenSharedLayers.has('voi') ? [] : sharedMobility.voi,
+  }), [sharedMobility, hiddenSharedLayers]);
+
+  const toggleSharedLayer = useCallback((operator: SharedOperator) => {
+    setHiddenSharedLayers(current => {
+      const next = new Set(current);
+      if (next.has(operator)) next.delete(operator);
+      else next.add(operator);
+      try {
+        localStorage.setItem('greLines_hiddenSharedLayers', JSON.stringify([...next]));
+      } catch {
+        // Stockage refusé : le choix ne tiendra que le temps de la visite.
+      }
+      // Masquer un opérateur dont la fiche est ouverte fermerait la carte sur
+      // un véhicule qu'on ne voit plus : on referme la fiche avec le calque.
+      setSharedSelection(selection =>
+        selection && next.has(selection.operator) ? null : selection,
+      );
+      return next;
+    });
+  }, []);
   /** Station de mobilité partagée ouverte dans sa fiche. */
   const [sharedSelection, setSharedSelection] = useState<
     { operator: SharedOperator; points: SharedVehiclePoint[] } | null
@@ -582,9 +641,9 @@ function App() {
    * imposer sur un réglage que l'utilisateur a déjà pris ailleurs. Ce qui est
    * réellement appliqué vit dans `effectiveTheme`.
    */
-  const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => {
+  const [theme, setTheme] = useState<'light' | 'dark' | 'blue' | 'auto'>(() => {
     const stored = localStorage.getItem('greLines_theme');
-    return stored === 'light' || stored === 'dark' ? stored : 'auto';
+    return stored === 'light' || stored === 'dark' || stored === 'blue' ? stored : 'auto';
   });
   /**
    * Le thème réellement appliqué, une fois « auto » résolu.
@@ -674,6 +733,18 @@ function App() {
 
   // Reset selectedLines when the user opens a different stop, unless we just
   // hydrated from URL params (initialSelectedLines).
+  useEffect(() => {
+    if (!isCarpoolStop(selectedStop?.id)) { setCarpoolMapLines([]); return; }
+    let active = true;
+    const served = new Set((selectedStop?.lines ?? []).filter(isCarpoolLine).map(l => l.id.toUpperCase()));
+    getMcoLines().then(lines => {
+      if (!active) return;
+      const kept = served.size > 0 ? lines.filter(l => served.has(l.code.toUpperCase())) : lines;
+      setCarpoolMapLines(kept.length > 0 ? kept : lines);
+    });
+    return () => { active = false; };
+  }, [selectedStop?.id, selectedStop?.lines]);
+
   useEffect(() => {
     if (!selectedStop) {
       setSelectedLines(new Set());
@@ -995,16 +1066,39 @@ function App() {
     const root = document.documentElement;
     const body = document.body;
 
-    const applyMode = (isDark: boolean) => {
+    /*
+     * Deux choses à poser, pas une.
+     *
+     * `dark` dit qu'on est dans le sombre — c'est ce que lisent tous les
+     * composants. `theme-blue` dit lequel des deux sombres : celui d'origine,
+     * bleu nuit, ou le noir qui est devenu le sombre par défaut. Les deux
+     * partagent le même `effectiveTheme`, si bien qu'aucun composant n'a à
+     * connaître la différence.
+     */
+    const applyMode = (isDark: boolean, isBlue: boolean) => {
       root.classList.toggle('dark', isDark);
       body.classList.toggle('dark', isDark);
+      root.classList.toggle('theme-blue', isDark && isBlue);
+      body.classList.toggle('theme-blue', isDark && isBlue);
       root.style.colorScheme = isDark ? 'dark' : 'light';
       body.style.colorScheme = isDark ? 'dark' : 'light';
     };
 
+    /*
+     * Sur téléphone, le sombre est le bleu nuit, et lui seul.
+     *
+     * Le noir franc a été dessiné pour un grand écran, où il fait profond. Sur
+     * une dalle de téléphone tenue à bout de bras, il avale les séparations
+     * entre les feuilles et la carte, qui ne se distinguent plus les unes des
+     * autres. Le téléphone n'a donc qu'un sombre — celui d'origine — et il
+     * s'appelle simplement « Sombre » : la distinction n'existe pas là où il
+     * n'y a pas de choix à faire.
+     */
+    const darkIsBlue = isMobile || theme === 'blue';
+
     if (theme !== 'auto') {
-      applyMode(theme === 'dark');
-      setEffectiveTheme(theme);
+      applyMode(theme !== 'light', darkIsBlue);
+      setEffectiveTheme(theme === 'light' ? 'light' : 'dark');
       return;
     }
 
@@ -1014,14 +1108,16 @@ function App() {
      * soleil. On écoute donc la requête média au lieu de la lire une fois.
      */
     const query = window.matchMedia('(prefers-color-scheme: dark)');
+    /* En automatique sur ordinateur, le sombre est le noir : le bleu nuit ne
+       s'y obtient qu'en le demandant. Sur téléphone, c'est l'inverse. */
     const sync = () => {
-      applyMode(query.matches);
+      applyMode(query.matches, darkIsBlue);
       setEffectiveTheme(query.matches ? 'dark' : 'light');
     };
     sync();
     query.addEventListener('change', sync);
     return () => query.removeEventListener('change', sync);
-  }, [theme]);
+  }, [theme, isMobile]);
 
   const handleSidebarClose = useCallback(() => {
     setSidebarState('closed');
@@ -1042,7 +1138,6 @@ function App() {
 
   const isTrafficPanelOpen = isTrafficButtonHovered || isTrafficPanelHovered || isTrafficPanelPinned;
   const isFavPanelOpen = isFavBtnHovered || isFavPanelHovered;
-  const isWalletPanelOpen = isWalletBtnHovered || isWalletPanelHovered || isWalletPinned;
   const isAtmoPanelOpen = isAtmoBtnHovered || isAtmoPanelHovered;
 
   /**
@@ -1109,8 +1204,16 @@ function App() {
    * rien recharger.
    */
   const [walletLoaded, setWalletLoaded] = useState(false);
+  /*
+   * Les cartes se chargent quand même sur ordinateur.
+   *
+   * Le portefeuille n'y paraît plus, mais le compte s'appuie dessus : c'est la
+   * carte qui porte le prénom, le nom et la photo affichés dans le profil. Sans
+   * ce chargement, un compte créé sur téléphone se retrouvait sans visage sur
+   * l'ordinateur, ce qui ressemblait à une perte de données.
+   */
   useEffect(() => {
-    if (isMobile || !isWalletPanelOpen || walletLoaded || !isSupabaseConfigured) return;
+    if (isMobile || walletLoaded || !isSupabaseConfigured) return;
     let active = true;
     void listOuraCards().then(async list => {
       if (!active) return;
@@ -1120,7 +1223,7 @@ function App() {
       if (active) setWalletCards(checked);
     });
     return () => { active = false; };
-  }, [isMobile, isWalletPanelOpen, walletLoaded]);
+  }, [isMobile, walletLoaded]);
 
   useEffect(() => {
     if (isMobile || !walletLoaded) return;
@@ -1139,31 +1242,9 @@ function App() {
   const disruptedLineCodes = useMemo(() => new Set(trafficInfo.keys()), [trafficInfo]);
   const firstFavoriteLoading = favoritesList.length > 0 && (favoritesDetails[0]?.loading ?? true);
 
-  /**
-   * Resolve a raw traffic-info line name ("A", "C1", "16", "TPV") to its
-   * family. Primary source is the MTAG route catalogue (`allLinesLookup`),
-   * which has the exact MTAG type. Fallback to a regex-based guess so the
-   * filter still works during the brief window where the catalogue hasn't
-   * loaded yet.
-   */
-  const getLineCategory = useCallback(
-    (line: string): LineFamily => {
-      const n = line.trim().toUpperCase();
-      const resolved = allLinesLookup.get(n);
-      if (resolved) return resolved.family;
-      // Catalogue not loaded yet — best-effort guess based on the line code
-      // shape. Same buckets as the catalogue uses.
-      if (['A', 'B', 'C', 'D', 'E'].includes(n)) return 'tram';
-      if (/^C\d+$/.test(n)) return 'chrono';
-      const asNum = Number(n);
-      if (!isNaN(asNum)) {
-        if (asNum >= 11 && asNum <= 29) return 'proximo';
-        if (asNum >= 30 && asNum <= 99) return 'flexo';
-      }
-      return 'other';
-    },
-    [allLinesLookup]
-  );
+  /* La molette pousse la barre de filtres de côté : sans souris tactile, les
+     derniers onglets restaient hors de vue sans que rien ne le dise. */
+  const trafficFiltersRef = useWheelScroll<HTMLDivElement>();
 
   const mapRef = useRef<MapRef>(null);
   /**
@@ -2136,7 +2217,7 @@ function App() {
         aboutDescription2: 'Construit avec React, Tailwind CSS et Leaflet/MapTiler.',
         versionLabel: 'Version :', dataSourceLabel: 'Source :', designLabel: 'Design :',
         pleaseReload: 'Veuillez recharger la page.',
-        calculateItineraryWith: 'Calculez votre itinéraire avec',
+        calculateItinerary: 'Calculer un itinéraire',
         planRoute: 'Planifier un itinéraire',
       },
       onboarding: { title: 'Sélectionnez vos réseaux', description: 'Choisissez les opérateurs à afficher.', action: 'Voir les arrêts', noSelection: 'Sélectionnez au moins un réseau' },
@@ -2196,7 +2277,7 @@ function App() {
         aboutDescription2: 'Built with React, Tailwind CSS, and Leaflet/MapTiler.',
         versionLabel: 'Version:', dataSourceLabel: 'Data source:', designLabel: 'Design:',
         pleaseReload: 'Please reload the page.',
-        calculateItineraryWith: 'Calculate your itinerary with',
+        calculateItinerary: 'Plan a journey',
         planRoute: 'Route planner',
       },
       onboarding: { title: 'Select your networks', description: 'Choose the operators to show.', action: 'Show stops', noSelection: 'Pick at least one network' },
@@ -2421,7 +2502,6 @@ function App() {
   const routeLineBadges = journeyGeometry?.badges ?? null;
 
   const isDarkMode = effectiveTheme === 'dark';
-  const greGoLogoSrc = isDarkMode ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png';
 
   const mapElement = useMemo(() => (
     <TransitMap
@@ -2456,7 +2536,7 @@ function App() {
       }}
       selectedAddress={selectedAddress}
       alwaysLabelledStopIds={addressNearbyStopIds}
-      sharedMobility={sharedMobility}
+      sharedMobility={visibleSharedMobility}
       focusedShared={sharedSelection}
       highlightedVehicleId={highlightedVehicleId}
       onSharedSelect={selection => {
@@ -2472,6 +2552,7 @@ function App() {
       routeStops={routeStopsGeoJSON}
       routeLineBadges={routeLineBadges}
       lineGeometries={lineGeometries}
+      carpoolLines={carpoolMapLines}
       onCenterChange={handleMapCenterChange}
       pickMode={mapPickTarget}
       onLongPress={isMobile ? handleMapLongPress : undefined}
@@ -2503,7 +2584,7 @@ function App() {
       ) : servedStopPoints}
       isDarkMode={isDarkMode}
     />
-  ), [stops, selectedStop, currentLocation, handleStopClick, selectedAddress, addressNearbyStopIds, lineGeometries, servedStopPoints, routeFrom, routeTo, routeLineGeoJSON, routeStopsGeoJSON, routeLineBadges, selectedRouteItinerary, mapPickTarget, isDarkMode, sharedMobility, sharedSelection, highlightedVehicleId]);
+  ), [stops, selectedStop, currentLocation, handleStopClick, selectedAddress, addressNearbyStopIds, lineGeometries, servedStopPoints, routeFrom, routeTo, routeLineGeoJSON, routeStopsGeoJSON, routeLineBadges, selectedRouteItinerary, mapPickTarget, isDarkMode, visibleSharedMobility, sharedSelection, highlightedVehicleId]);
 
   useEffect(() => {
     if (!selectedRouteItinerary || !routeLineGeoJSON) return;
@@ -2587,12 +2668,34 @@ function App() {
       </div>
 
       {isLoadingOverlayVisible && !error && (
-        <div className="fixed inset-0 z-[9999] h-screen w-screen flex flex-col items-center justify-center bg-black bg-opacity-95">
+        /*
+         * L'écran de chargement, et son logo réellement au milieu.
+         *
+         * Deux corrections, dont la première pèse le plus lourd :
+         *
+         *   * `100dvh` au lieu de `100vh`. Sur téléphone, `vh` vaut la hauteur
+         *     de l'écran *sans* la barre d'adresse : centrer dedans place le
+         *     contenu au milieu d'un cadre plus grand que ce qu'on voit, et
+         *     tout paraît poussé vers le bas. `dvh` suit la hauteur réellement
+         *     visible.
+         *
+         *   * Le fichier lui-même est déséquilibré. Sur une toile de 800 × 400,
+         *     le tracé occupe les lignes 164 à 256 : 164 pixels de vide au
+         *     dessus, 144 en dessous. Son centre tombe donc à 52,5 % de la
+         *     hauteur, et non à 50 %. On remonte l'image de ces 2,5 % pour que
+         *     ce soit l'encre qui soit centrée, et non la boîte qui la contient.
+         */
+        <div
+          className="fixed inset-0 z-[9999] w-screen flex flex-col items-center justify-center bg-black bg-opacity-95"
+          style={{ height: '100dvh' }}
+        >
           <div className="flex-1 flex items-center justify-center">
-            <img src="/assets/GreLinesLOGO.png" alt="GreLines Loading" className="w-80 h-auto animate-pulse-opacity" />
-          </div>
-          <div className="pb-16">
-            <img src="/assets/M-Reso.png" alt="M-Reso" className="w-28 h-auto" />
+            <img
+              src="/assets/GreLinesLOGO.png"
+              alt="GreLines Loading"
+              className="w-80 h-auto animate-pulse-opacity"
+              style={{ transform: 'translateY(-2.5%)' }}
+            />
           </div>
         </div>
       )}
@@ -2804,6 +2907,7 @@ function App() {
         atmoFollowMap={atmoFollowMap}
         setAtmoFollowMap={setAtmoFollowMap}
         showInstallGuide={/* mobile uniquement : inutile dans les réglages PC */ isMobile && canOfferInstallGuide}
+        compactThemes={isMobile}
         onOpenInstallGuide={() => {
           setSettingsState('closed');
           setIsInstallSheetOpen(true);
@@ -2955,6 +3059,22 @@ function App() {
             >
               <MapPinIcon className="w-5 h-5 text-white" />
             </motion.button>
+
+            {/* Les calques, juste au-dessus. Mêmes conditions d'affichage que
+                le recentrage : ces deux boutons vont ensemble et disparaissent
+                ensemble quand une feuille prend l'écran. */}
+            <MapLayersButton
+              language={language}
+              isOpen={isMapLayersOpen}
+              onToggle={() => setIsMapLayersOpen(open => !open)}
+              onClose={() => setIsMapLayersOpen(false)}
+              hidden={hiddenSharedLayers}
+              onToggleLayer={toggleSharedLayer}
+              counts={{ citiz: sharedMobility.citiz.length, voi: sharedMobility.voi.length }}
+              bottom={layersButtonBottom}
+              opacity={geolocButtonOpacity}
+              scale={geolocButtonScale}
+            />
             </>
           )}
 
@@ -3121,8 +3241,7 @@ function App() {
                             }}
                             className="flex w-full items-center justify-center gap-2 px-0 py-0 cursor-pointer text-xs text-slate-400 transition hover:text-slate-200"
                           >
-                            <span>{text.misc.calculateItineraryWith}</span>
-                            <img src={greGoLogoSrc} alt="GreGo" className="h-4 w-auto" />
+                            <span>{text.misc.calculateItinerary}</span>
                           </button>
                         )}
                       </div>
@@ -3210,105 +3329,19 @@ function App() {
                 </div>
               </div>
 
-              {/* ── Portefeuille OURA (ordinateur) ───────────────────
-                  Replié, le bouton porte le recto du carton : on reconnaît sa
-                  carte de transport à ses couleurs avant d'avoir lu quoi que ce
-                  soit. Ouvert, c'est le même portefeuille que sur téléphone —
-                  même pile, mêmes gestes, mêmes messages — posé dans le carré
-                  des panneaux voisins. */}
-              <div
-                onMouseEnter={() => setIsWalletBtnHovered(true)}
-                onMouseLeave={() => setIsWalletBtnHovered(false)}
-                className="relative z-50"
-              >
-                <div
-                  /* Plus haut que ses voisins, et c'est voulu : les autres
-                     panneaux sont des listes qu'on parcourt, celui-ci porte un
-                     objet — une carte au format bancaire, qui mange à elle
-                     seule la moitié d'un carré de 384 px. Ce qui se lit dessous
-                     n'avait alors plus la place d'exister, et le texte passait
-                     sous la pile. La largeur, elle, reste celle des autres :
-                     c'est la rangée de pastilles qui doit rester régulière. */
-                  className={`flex items-center justify-center cursor-pointer border transition-all duration-300 overflow-hidden ${
-                    isWalletPanelOpen
-                      ? 'w-96 h-[34rem] rounded-2xl bg-slate-900/95 border-slate-700'
-                      : 'w-10 h-10 rounded-full bg-slate-900 border-slate-700 shadow-lg'
-                  }`}
-                  title={language === 'fr' ? 'Portefeuille GreLines' : 'GreLines Wallet'}
-                >
-                  {!isWalletPanelOpen && (
-                    <img
-                      src="/assets/oura.png"
-                      alt="OURA"
-                      className="h-6 w-6 rounded-[3px] object-cover"
-                      draggable={false}
-                    />
-                  )}
-                  <div
-                    onMouseEnter={() => setIsWalletPanelHovered(true)}
-                    onMouseLeave={() => setIsWalletPanelHovered(false)}
-                    className={`absolute top-0 left-0 z-50 transition-all duration-300 ease-out ${
-                      isWalletPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                    }`}
-                    style={{ width: '100%', height: '100%' }}
-                  >
-                    <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
-                      {/* Le titre et l'ajout partagent la ligne : ajouter une
-                          carte est l'action de ce panneau, elle se tient à
-                          côté de son nom. */}
-                      <div className="flex flex-shrink-0 items-center justify-between px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <img
-                            src="/assets/oura.png"
-                            alt=""
-                            className="h-8 w-8 rounded-lg object-cover"
-                            draggable={false}
-                          />
-                          <span className="text-sm font-bold text-white">
-                            {language === 'fr' ? 'Portefeuille' : 'Wallet'}
-                          </span>
-                        </div>
-                        {isSupabaseConfigured && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              // On épingle avant d'ouvrir : la souris part vers
-                              // la fenêtre, hors de la zone de survol.
-                              setIsWalletPinned(true);
-                              setIsDesktopAddCardOpen(true);
-                            }}
-                            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-slate-200 transition hover:bg-slate-700"
-                            aria-label={language === 'fr' ? 'Ajouter une carte' : 'Add a card'}
-                          >
-                            <PlusIcon className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
+              {/*
+                Le portefeuille OùRA ne paraît plus sur ordinateur.
 
-                      {/* `relative` : c'est ce cadre que la carte dépliée prend
-                          pour référence. Sans lui, elle remonterait chercher le
-                          premier ancêtre positionné et déborderait du panneau.
-                          Et pas de défilement — la couche dépliée se pose au
-                          pixel, elle n'a rien à faire dans un conteneur qui
-                          glisse sous elle. */}
-                      <div className="relative min-h-0 flex-1 overflow-hidden px-4 pb-4">
-                        <OuraWallet
-                          variant="panel"
-                          cards={walletCards}
-                          language={language}
-                          theme={effectiveTheme}
-                          disabled={!isSupabaseConfigured}
-                          onAddCard={() => {
-                            setIsWalletPinned(true);
-                            setIsDesktopAddCardOpen(true);
-                          }}
-                          onCardsChange={setWalletCards}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                Ajouter une carte demande de la scanner et de se prendre en
+                photo : deux gestes qui n'ont de sens qu'avec un téléphone en
+                main. Sur un écran de bureau, le panneau ne pouvait que montrer
+                des cartes ajoutées ailleurs, et proposer un parcours qui
+                s'interrompt à la première étape.
+
+                La pastille disparaît donc entièrement, plutôt que d'ouvrir sur
+                une impasse. Les cartes existent toujours, et le téléphone les
+                affiche comme avant.
+              */}
 
               {/* ── Indice ATMO (desktop) ─────────────────────────────
                   Même mécanique de survol que les deux panneaux voisins. Replié,
@@ -3387,12 +3420,10 @@ function App() {
                             // Count entries after the filter so the badge
                             // matches what the user actually sees below.
                             const visibleCount = Array.from(trafficInfo.entries())
-                              .filter(([line]) => {
-                                const cat = getLineCategory(line);
-                                if (cat === 'other') return false;
-                                if (desktopTrafficFilter === 'all') return true;
-                                return cat === desktopTrafficFilter;
-                              }).length;
+                              .filter(([line]) =>
+                                desktopTrafficFilter === 'all' ||
+                                trafficCategory(line, allLinesLookup) === desktopTrafficFilter,
+                              ).length;
                             return (
                               <span className="text-xs bg-amber-500 text-white font-bold px-2 py-0.5 rounded-full">
                                 {visibleCount}
@@ -3403,14 +3434,15 @@ function App() {
                       </div>
 
                       {/* Filter tabs — Tout / Trams / Chrono / Proximo / Flexo */}
-                      <div className="flex gap-1.5 px-4 pb-2 flex-shrink-0 overflow-x-auto scrollbar-hide">
-                        {([
-                          { key: 'all',     label: language === 'fr' ? 'Tout'    : 'All' },
-                          { key: 'tram',    label: language === 'fr' ? 'Trams'   : 'Trams' },
-                          { key: 'chrono',  label: language === 'fr' ? 'Chrono'  : 'Chrono' },
-                          { key: 'proximo', label: language === 'fr' ? 'Proximo' : 'Proximo' },
-                          { key: 'flexo',   label: language === 'fr' ? 'Flexo'   : 'Flexo' },
-                        ] as const).map(f => (
+                      <div ref={trafficFiltersRef} className="flex gap-1.5 px-4 pb-2 flex-shrink-0 overflow-x-auto scrollbar-hide">
+                        {trafficFilters(
+                          new Set(
+                            Array.from(trafficInfo.keys()).map(line =>
+                              trafficCategory(line, allLinesLookup),
+                            ),
+                          ),
+                          language,
+                        ).map(f => (
                           <button
                             key={f.key}
                             onClick={() => setDesktopTrafficFilter(f.key)}
@@ -3432,18 +3464,16 @@ function App() {
                           // Sort order in the list: trams first, then chrono,
                           // then proximo, then flexo. Within each category
                           // we let the natural string order do the job.
-                          const sortRank: Record<LineFamily, number> = {
-                            tram: 0, chrono: 1, proximo: 2, flexo: 3, other: 99,
-                          };
                           const filteredEntries = Array.from(trafficInfo.entries())
-                            .filter(([line]) => {
-                              const cat = getLineCategory(line);
-                              if (cat === 'other') return false;
-                              if (desktopTrafficFilter === 'all') return true;
-                              return cat === desktopTrafficFilter;
-                            })
+                            .filter(([line]) =>
+                              desktopTrafficFilter === 'all' ||
+                              trafficCategory(line, allLinesLookup) === desktopTrafficFilter,
+                            )
                             .sort(([a], [b]) => {
-                              return sortRank[getLineCategory(a)] - sortRank[getLineCategory(b)];
+                              const ra = categoryRank(trafficCategory(a, allLinesLookup));
+                              const rb = categoryRank(trafficCategory(b, allLinesLookup));
+                              if (ra !== rb) return ra - rb;
+                              return a.localeCompare(b, undefined, { numeric: true });
                             });
 
                           if (filteredEntries.length === 0) {
@@ -3491,15 +3521,18 @@ function App() {
                                         </span>
                                       </div>
                                     </div>
-                                    <div className="divide-y divide-slate-700/50">
+                                    {/* La même carte que partout ailleurs : elle
+                                        traduit, retire les balises et se déplie.
+                                        Ce panneau avait son propre dessin, sans
+                                        rien de tout cela. */}
+                                    <div className="space-y-2 p-3">
                                       {sortedDetails.map((detail, i) => (
-                                        <div key={i} className="px-3 py-2">
-                                          <p className="text-xs font-semibold text-white mb-0.5">{stripHtml(detail.titre)}</p>
-                                          <p className="text-[11px] text-slate-400 leading-relaxed whitespace-pre-line">{stripHtml(detail.description)}</p>
-                                          <p className="text-[10px] text-slate-500 mt-1">
-                                            {text.misc.endPrefix} {detail.dateFin || 'N/A'}
-                                          </p>
-                                        </div>
+                                        <TrafficAlertCard
+                                          key={i}
+                                          detail={detail}
+                                          language={language}
+                                          expandable={false}
+                                        />
                                       ))}
                                     </div>
                                   </div>
@@ -3825,6 +3858,7 @@ function App() {
               setAtmoFollowMap={setAtmoFollowMap}
               onOpenInstallGuide={() => setIsInstallSheetOpen(true)}
               showInstallGuide={isMobile && canOfferInstallGuide}
+              compactThemes={isMobile}
               appData={appData}
               text={text}
               uiTheme={effectiveTheme}
@@ -3919,7 +3953,6 @@ function App() {
         autoSync={autoSync}
         refreshIntervalMs={parseRefreshInterval(refreshInterval)}
         theme={effectiveTheme}
-        onPlanRoute={() => setIsRouteSidebarOpen(true)}
         onOpenTimetable={() => {
           if (!selectedLine) return;
           setTimetableTarget({
@@ -3998,6 +4031,7 @@ function App() {
           overrideMessage={footerConfig.message}
           overrideColor={footerConfig.color}
           showClock={footerConfig.showClock}
+          language={language}
         />
       )}
 
@@ -4007,6 +4041,7 @@ function App() {
           <Spotlight
             isOpen={isSpotlightOpen}
             onClose={() => setIsSpotlightOpen(false)}
+            onPlanRoute={() => setIsRouteSidebarOpen(true)}
             language={language}
             stops={stops}
             lines={allLines}
@@ -4024,8 +4059,7 @@ function App() {
               setSettingsState('open');
             }}
             onOpenTraffic={() => setIsTrafficPanelPinned(true)}
-            onPlanRoute={() => setIsRouteSidebarOpen(true)}
-            onOpenNearby={handleLocationClick}
+                onOpenNearby={handleLocationClick}
           />
         </DeferredPanel>
       )}
@@ -4105,29 +4139,6 @@ function App() {
         )}
       </DeferredPanel>
 
-      {/* La fenêtre d'ajout, sur ordinateur. Elle sort du panneau, qui reste
-          épinglé tant qu'elle est là : on revient au portefeuille en la fermant,
-          pas à la carte routière. Pas de lecture par l'appareil photo — une
-          webcam ne cadre pas un carton tenu à la main. */}
-      {!isMobile && (
-        <AddCardSheet
-          isOpen={isDesktopAddCardOpen}
-          language={language}
-          theme={effectiveTheme}
-          allowScan={false}
-          variant="dialog"
-          linkOnly
-          onClose={() => {
-            setIsDesktopAddCardOpen(false);
-            setIsWalletPinned(false);
-          }}
-          onSaved={card => {
-            setWalletCards(current => [...current.filter(entry => entry.id !== card.id), card]);
-            setIsDesktopAddCardOpen(false);
-            setIsWalletPinned(false);
-          }}
-        />
-      )}
 
       {/* Overlay de performance — mode développeur, ordinateur uniquement */}
       {/* Un message reçu sur une carte du portefeuille. On l'annonce là où l'on

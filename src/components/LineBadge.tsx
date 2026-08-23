@@ -65,15 +65,27 @@ export function LineBadge({
   const label = line.shortName || line.id;
   const normalizedLabel = label.toUpperCase().replace(/^SEM[:_]/, '');
   const isRelay = RELAY_LINES.has(normalizedLabel);
+  /*
+   * Les liaisons de covoiturage portent un mot, pas un numéro.
+   *
+   * « GRES », « VERC », « VOIR » : quatre lettres dans un carré taillé pour
+   * deux chiffres, et le texte débordait de sa pastille sur la carte. La
+   * pastille s'étire donc pour ces lignes-là, en gardant sa hauteur : elle
+   * reste alignée sur les autres, elle est simplement plus large.
+   *
+   * Seulement pour elles. Un numéro de ligne tient dans un carré, et des
+   * pastilles de largeurs inégales feraient une rangée bancale.
+   */
+  const isCarpool = String(line.routeId ?? line.id ?? '').toUpperCase().startsWith('MCO');
   const dim =
     size === 'xs'
-      ? 'w-6 h-6 text-[10px]'
+      ? (isCarpool ? 'h-6 min-w-6 px-1.5 text-[10px]' : 'w-6 h-6 text-[10px]')
       : size === 'sm'
-      ? 'w-9 h-9 text-sm'
+      ? (isCarpool ? 'h-9 min-w-9 px-2 text-sm' : 'w-9 h-9 text-sm')
       : size === 'lg'
-      ? 'w-12 h-12 text-base'
-      : 'w-11 h-11 text-sm';
-  const round = isRoundLine(label);
+      ? (isCarpool ? 'h-12 min-w-12 px-2.5 text-base' : 'w-12 h-12 text-base')
+      : (isCarpool ? 'h-11 min-w-11 px-2.5 text-sm' : 'w-11 h-11 text-sm');
+  const round = !isCarpool && isRoundLine(label);
   const activeClass = active ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-900' : '';
   const opacityClass = selected ? 'opacity-100' : 'opacity-25';
 

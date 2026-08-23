@@ -112,6 +112,13 @@ export interface RouteItinerary {
   uber?: UberJourneyInfo;
   /** Présent seulement sur l'option taxi. */
   taxi?: TaxiJourneyInfo;
+  /**
+   * Vrai quand le trajet mêle le vélo et le transport en commun.
+   *
+   * Posé à la lecture plutôt que déduit à l'affichage : c'est ce drapeau qui
+   * range l'itinéraire dans « GreLines Trip » au lieu de la liste ordinaire.
+   */
+  bikeTransit?: boolean;
 }
 
 function decodePolyline(encoded: string): Array<[number, number]> {
@@ -159,6 +166,8 @@ async function buildOtpParams(
     time?: string;
     walkReluctance?: number;
     walkSpeed?: number;
+    /** Modes autorisés, tels qu'OTP les attend. Marche et transport par défaut. */
+    mode?: string;
   },
 ): Promise<URLSearchParams> {
   const queryTime = new Date();
@@ -172,7 +181,7 @@ async function buildOtpParams(
     optimize: 'QUICK',
     walkReluctance: String(options?.walkReluctance ?? 5),
     locale: 'fr',
-    mode: 'WALK,TRANSIT',
+    mode: options?.mode ?? 'WALK,TRANSIT',
     showIntermediateStops: 'true',
     minTransferTime: '20',
     transferPenalty: '60',
@@ -185,15 +194,43 @@ async function buildOtpParams(
   return params;
 }
 
+/**
+ * Les modes qu'on emprunte par soi-même, sans horaire ni ligne.
+ *
+ * OTP les renvoie comme des étapes ordinaires ; ce sont les seules qui n'ont
+ * jamais de ligne, et qu'il faut donc écarter avant de fabriquer des pastilles.
+ */
+const SELF_POWERED_MODES = new Set([
+  'BICYCLE',
+  'BICYCLE_RENT',
+  'CAR',
+  'CAR_PARK',
+  'CAR_POOL',
+  'SCOOTER',
+  'MICROMOBILITY',
+  'MICROMOBILITY_RENT',
+]);
+
 function parseOtpItinerary(it: any, depName: string, arrName: string): RouteItinerary {
   const depTime = new Date(it.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const arrTime = new Date(it.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const duration = Math.round((it.duration ?? 0) / 60);
   const transitLegs = Array.isArray(it.legs) ? it.legs.filter((leg: any) => leg.mode !== 'WALK') : [];
-  const lineKeys = transitLegs.map((leg: any) => {
-    const routeShortName = String(leg.routeShortName || leg.route || leg.routeId || '').replace(/^SEM:/, '').toUpperCase();
-    return routeShortName || '?';
-  });
+  /*
+   * Les pastilles de ligne ne concernent que les lignes.
+   *
+   * Une étape à vélo ou en voiture n'a pas de nom de ligne : elle en produisait
+   * une pastille « ? », qui apparaissait au milieu des lignes du trajet et ne
+   * désignait rien. Un trajet combiné vélo + tram affichait ainsi « ? N62 ? ».
+   * Ces modes-là se lisent à leur pictogramme dans le détail des étapes, pas à
+   * une plaque de ligne.
+   */
+  const lineKeys = transitLegs
+    .filter((leg: any) => !SELF_POWERED_MODES.has(String(leg.mode ?? '').toUpperCase()))
+    .map((leg: any) => {
+      const routeShortName = String(leg.routeShortName || leg.route || leg.routeId || '').replace(/^SEM:/, '').toUpperCase();
+      return routeShortName || '?';
+    });
 
   const routePath: Array<[number, number]> = [];
   if (Array.isArray(it.legs)) {
@@ -232,6 +269,15 @@ export async function planItineraries(options: {
   time?: string;
   walkReluctance?: number;
   walkSpeed?: number;
+  /**
+   * Modes autorisés.
+   *
+   * `WALK,TRANSIT` par défaut. `BICYCLE,TRANSIT` demande au planificateur de
+   * rabattre à vélo vers l'arrêt, ce qui donne des trajets sensiblement plus
+   * courts dès que le premier kilomètre est le plus lent — c'est ce que le
+   * « GreLines Trip » propose.
+   */
+  mode?: string;
 }): Promise<RouteItinerary[]> {
   const params = await buildOtpParams(
     options.fromLatitude,
@@ -244,6 +290,7 @@ export async function planItineraries(options: {
       time: options.time,
       walkReluctance: options.walkReluctance,
       walkSpeed: options.walkSpeed,
+      mode: options.mode,
     },
   );
 
@@ -252,7 +299,17 @@ export async function planItineraries(options: {
     const response = await axios.get(url, { headers: TAG_HEADERS });
     const data = response.data;
     const itineraries = Array.isArray(data?.plan?.itineraries) ? data.plan.itineraries : [];
-    return itineraries.map((it: any) => parseOtpItinerary(it, options.fromName, options.toName));
+    return itineraries.map((it: any) => {
+      const parsed = parseOtpItinerary(it, options.fromName, options.toName);
+      const legs: any[] = Array.isArray(it.legs) ? it.legs : [];
+      // Un trajet n'est « vélo + transport » que s'il contient les deux : le
+      // planificateur renvoie aussi, dans la même réponse, des trajets tout à
+      // vélo, qui appartiennent aux autres options et non au GreLines Trip.
+      parsed.bikeTransit =
+        legs.some(leg => leg?.mode === 'BICYCLE') &&
+        legs.some(leg => leg?.mode && leg.mode !== 'BICYCLE' && leg.mode !== 'WALK');
+      return parsed;
+    });
   } catch (error) {    return [];
   }
 }
@@ -480,6 +537,44 @@ export function getActiveNetworks(): string[] {
  * rangés avec le tramway, dont ils partagent le principe — une voie dédiée,
  * des horaires cadencés.
  */
+/**
+ * Le mode de chaque ligne, retenu au passage.
+ *
+ * Les prochains passages arrivent par « pattern », et le pattern n'annonce plus
+ * son mode : il ne porte qu'un identifiant, « SEM:A:0:1907073374 », un libellé
+ * de direction et son dernier arrêt. Faute de mode, tout retombait sur le cas
+ * par défaut, et les cinq tramways de l'agglomération s'affichaient en bus.
+ *
+ * Le mode existe pourtant, sur la ligne elle-même, dans la ressource des routes
+ * qu'on charge déjà pour dresser la liste des lignes d'un arrêt. On le retient
+ * ici au passage, indexé sur l'identifiant complet de la ligne, et les passages
+ * le retrouvent en découpant leur identifiant de pattern.
+ */
+const routeModes = new Map<string, string>();
+
+/** Retient le mode des lignes d'une réponse `routes`. */
+function rememberRouteModes(routes: any[]): void {
+  for (const route of routes) {
+    const id = String(route?.id ?? '');
+    const mode = route?.mode ?? route?.type;
+    if (id && typeof mode === 'string') routeModes.set(id, mode);
+  }
+}
+
+/**
+ * L'identifiant de ligne que porte un pattern.
+ *
+ * « SEM:A:0:1907073374 » désigne la ligne « SEM:A » : les deux premiers
+ * segments, et rien de plus — le troisième est le sens, le quatrième la
+ * variante de parcours.
+ */
+function routeIdOfPattern(pattern: any): string | null {
+  if (pattern?.routeId) return String(pattern.routeId);
+  const id = typeof pattern?.id === 'string' ? pattern.id : '';
+  const parts = id.split(':');
+  return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : null;
+}
+
 function modeToDepartureType(mode: string | undefined): 'BUS' | 'TRAM' | 'RAIL' | 'METRO' {
   switch (String(mode ?? '').toUpperCase()) {
     case 'SUBWAY':
@@ -882,7 +977,10 @@ async function loadRoutes(): Promise<Line[]> {
 
 async function loadClusterRoutes(clusterId: string): Promise<any[]> {
   const cached = getCachedClusterRoutes(clusterId);
-  if (cached) return cached;
+  if (cached) {
+    rememberRouteModes(cached);
+    return cached;
+  }
   if (clusterRoutesInflight.has(clusterId)) {
     return clusterRoutesInflight.get(clusterId)!;
   }
@@ -894,6 +992,7 @@ async function loadClusterRoutes(clusterId: string): Promise<any[]> {
         { headers: TAG_HEADERS }
       );
       const routes = Array.isArray(response.data) ? response.data : [];
+      rememberRouteModes(routes);
       setCachedClusterRoutes(clusterId, routes);
       return routes;
     } catch {
@@ -1178,8 +1277,14 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
     const responses = await Promise.all(
       clusterIds.map(async (clusterId) => {
         try {
-          const url = `${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes`;
-          const res = await axios.get(url, { headers: TAG_HEADERS });
+          // Les routes du cluster voyagent avec les passages : c'est d'elles
+          // que vient le mode de chaque ligne, et sans elles un tramway se
+          // présente en bus. La ressource est mise en cache, donc l'appel ne
+          // coûte rien après le premier arrêt ouvert sur ce cluster.
+          const [res] = await Promise.all([
+            axios.get(`${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes`, { headers: TAG_HEADERS }),
+            loadClusterRoutes(clusterId).catch(() => []),
+          ]);
           return { clusterId, data: res.data };
         } catch {
           return { clusterId, data: null };
@@ -1258,6 +1363,8 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
 
         if (!Array.isArray(times)) continue;
 
+        const patternRouteId = routeIdOfPattern(pattern);
+
         let lineId = '??';
         if (pattern.routeId) {
           lineId = normalizeRouteCode(String(pattern.routeId));
@@ -1282,7 +1389,7 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
           // poteaux, et le même passage remonte une fois par poteau interrogé.
           // Le compter deux fois donnait un « prochain » et un « suivant »
           // identiques à la minute près — c'était le même véhicule.
-          const key = `${lineId}|${destination}|${depUnix}|${pattern.mode}`;
+          const key = `${lineId}|${destination}|${depUnix}|${patternRouteId ?? ''}`;
           if (seen.has(key)) continue;
           seen.add(key);
 
@@ -1298,9 +1405,13 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
             // des autocars de substitution, qui restent des bus.
             // Un TER reste un train même si l'API annonce l'autocar de
             // substitution : le voyageur va en gare, pas à un arrêt de bus.
-            type: pattern.routeId && isSncfLine(String(pattern.routeId))
+            type: patternRouteId && isSncfLine(patternRouteId)
               ? 'RAIL'
-              : modeToDepartureType(pattern.mode),
+              // Le registre d'abord, le pattern ensuite : celui-ci n'annonce
+              // plus son mode, mais rien ne dit qu'il ne le refera pas.
+              : modeToDepartureType(
+                  (patternRouteId ? routeModes.get(patternRouteId) : undefined) ?? pattern.mode,
+                ),
             occupancy: getTramOccupancy(lineId, destination),
           });
         }

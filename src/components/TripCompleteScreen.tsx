@@ -433,7 +433,9 @@ export function TripCompleteScreen({
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: 'spring', stiffness: 240, damping: 20, delay: 0.2 }}
               >
-                {account?.avatarEmoji ? (
+                {account?.avatarUrl ? (
+                  <img src={account.avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : account?.avatarEmoji ? (
                   <span aria-hidden>{account.avatarEmoji}</span>
                 ) : photoUrl ? (
                   <img src={photoUrl} alt="" className="h-full w-full object-cover" />

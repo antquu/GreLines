@@ -16,6 +16,44 @@ import { supabase, isSupabaseConfigured } from './supabase';
 
 const LINK_KEY = 'greLines_accountCard';
 
+/**
+ * Le seau des portraits.
+ *
+ * Le même que celui des cartes : il est déjà public en lecture et ouvert en
+ * écriture à l'anonyme, et les avatars y vivent sous leur propre préfixe. Un
+ * second seau aurait demandé un second jeu de règles pour la même chose.
+ */
+const PHOTO_BUCKET = 'oura-photos';
+const AVATAR_PREFIX = 'avatars';
+
+/** L'adresse publique d'un avatar déposé, ou `null` s'il n'y en a pas. */
+function avatarUrlOf(path?: string | null): string | null {
+  if (!path || !supabase) return null;
+  return supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/**
+ * Dépose une photographie de profil et renvoie son chemin.
+ *
+ * Le nom porte l'instant du dépôt : deux avatars successifs ne se recouvrent
+ * pas, et aucun cache n'a de raison de servir l'ancien à la place du nouveau.
+ */
+export async function uploadAccountAvatar(
+  cardCode: string,
+  photo: Blob,
+): Promise<string | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const path = `${AVATAR_PREFIX}/${cardCode}-${Date.now()}.jpg`;
+  try {
+    const { error } = await supabase.storage
+      .from(PHOTO_BUCKET)
+      .upload(path, photo, { contentType: photo.type || 'image/jpeg', upsert: true });
+    return error ? null : path;
+  } catch {
+    return null;
+  }
+}
+
 export interface Account {
   cardCode: string;
   firstName?: string | null;
@@ -23,6 +61,15 @@ export interface Account {
   pseudo: string;
   /** Émoji choisi, ou `null` pour la photo de la carte. */
   avatarEmoji: string | null;
+  /**
+   * Photographie déposée, dans le seau `oura-photos` sous `avatars/`.
+   *
+   * Elle prime sur l'émoji et sur la photo de la carte : c'est le choix le plus
+   * délibéré des trois, il passe donc devant.
+   */
+  avatarPath: string | null;
+  /** L'adresse publique de cette photographie, calculée à la lecture. */
+  avatarUrl: string | null;
   points: number;
   trips: number;
   travellersHelped: number;
@@ -138,6 +185,8 @@ function fromRow(row: any): Account {
     lastName: row.last_name ?? null,
     pseudo: String(row.pseudo),
     avatarEmoji: row.avatar_emoji ?? null,
+    avatarPath: row.avatar_path ?? null,
+    avatarUrl: avatarUrlOf(row.avatar_path),
     points: Number(row.points) || 0,
     trips: Number(row.trips) || 0,
     travellersHelped: Number(row.travellers_helped) || 0,
@@ -191,24 +240,43 @@ export async function createAccount(input: {
   lastName?: string | null;
   pseudo: string;
   avatarEmoji: string | null;
+  avatarPath?: string | null;
 }): Promise<Account | null> {
   if (!isSupabaseConfigured || !supabase) return null;
+  const base = {
+    card_code: input.cardCode,
+    first_name: input.firstName ?? null,
+    last_name: input.lastName ?? null,
+    pseudo: input.pseudo,
+    avatar_emoji: input.avatarEmoji,
+    updated_at: new Date().toISOString(),
+  };
+
   try {
-    const { data, error } = await supabase
-      .from('oura_accounts')
-      .upsert(
-        {
-          card_code: input.cardCode,
-          first_name: input.firstName ?? null,
-          last_name: input.lastName ?? null,
-          pseudo: input.pseudo,
-          avatar_emoji: input.avatarEmoji,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'card_code' }
-      )
-      .select()
-      .maybeSingle();
+    const write = (row: Record<string, unknown>) =>
+      supabase!
+        .from('oura_accounts')
+        .upsert(row, { onConflict: 'card_code' })
+        .select()
+        .maybeSingle();
+
+    let { data, error } = await write({ ...base, avatar_path: input.avatarPath ?? null });
+
+    /*
+     * La base peut être en retard d'une migration.
+     *
+     * `avatar_path` a été ajouté avec la photographie de profil ; entre le
+     * déploiement du code et l'exécution de `supabase/accounts.sql`, la colonne
+     * n'existe pas encore et l'écriture entière échoue. Plutôt que de rendre la
+     * création de compte impossible pendant ce laps de temps, on réessaie sans
+     * elle : le compte se crée, avec l'émoji ou la photo de la carte, et la
+     * photographie déposée est perdue — ce qui se répare en la redéposant une
+     * fois la colonne en place.
+     */
+    if (error && /avatar_path/.test(error.message)) {
+      ({ data, error } = await write(base));
+    }
+
     if (error || !data) return null;
     rememberCard(input.cardCode);
     return fromRow(data);
@@ -219,14 +287,21 @@ export async function createAccount(input: {
 
 export async function updateAccount(
   cardCode: string,
-  changes: { pseudo?: string; avatarEmoji?: string | null }
+  changes: { pseudo?: string; avatarEmoji?: string | null; avatarPath?: string | null }
 ): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return false;
   try {
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (changes.pseudo !== undefined) patch.pseudo = changes.pseudo;
     if (changes.avatarEmoji !== undefined) patch.avatar_emoji = changes.avatarEmoji;
-    const { error } = await supabase.from('oura_accounts').update(patch).eq('card_code', cardCode);
+    if (changes.avatarPath !== undefined) patch.avatar_path = changes.avatarPath;
+    let { error } = await supabase.from('oura_accounts').update(patch).eq('card_code', cardCode);
+    // Même précaution qu'à la création : une base en retard d'une migration ne
+    // doit pas empêcher de renommer son compte.
+    if (error && /avatar_path/.test(error.message)) {
+      delete patch.avatar_path;
+      ({ error } = await supabase.from('oura_accounts').update(patch).eq('card_code', cardCode));
+    }
     return !error;
   } catch {
     return false;

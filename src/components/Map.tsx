@@ -10,6 +10,7 @@ import { getCachedStopLines, getStopLines } from '../services/api';
 import { resolveLineBackgroundColor } from '../utils/lineColors';
 import type { JourneyBadge } from '../utils/journeyGeometry';
 import { LineBadge } from './LineBadge';
+import { midpointOf, type McoLine } from '../services/mcoLines';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 import { motion } from 'framer-motion';
 import { VehicleGlyph } from './VehicleGlyph';
@@ -57,6 +58,14 @@ interface MapProps {
   routeStops?: GeoJSON.FeatureCollection | null;
   
   routeLineBadges?: JourneyBadge[] | null;
+  /**
+   * Les liaisons de covoiturage à tracer.
+   *
+   * Elles n'apparaissent que pour un point M'Covoit ouvert : ce sont de longs
+   * axes qui traversent toute la cuvette, et les laisser en permanence
+   * barrerait la carte sans rien apprendre à qui cherche un tram.
+   */
+  carpoolLines?: McoLine[];
   
   lineGeometries?: LineGeometry[];
   
@@ -504,7 +513,7 @@ const animateFeatureCollectionProgress = (
 };
 
 const MapComponentBase = (
-  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, lineGeometries = [], visibleStopPoints, onCenterChange, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
+  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
   ref: ForwardedRef<MapRef>
 ) => {
   const { settings: perf } = usePerfSettings();
@@ -1246,6 +1255,33 @@ const MapComponentBase = (
    * d'avant étaient au-dessus du canvas par nature ; il faut désormais le
    * rétablir explicitement à chaque changement de couches.
    */
+  /*
+   * Le tracé des liaisons de covoiturage, et où poser leur étiquette.
+   *
+   * Une étiquette par liaison, au milieu de son parcours — pas au centre de son
+   * rectangle englobant, qui tombe souvent en pleine montagne pour une liaison
+   * qui contourne un massif. Elle ne demande pas de zoomer : on ouvre un point
+   * de covoiturage précisément pour savoir où mènent ses liaisons.
+   */
+  const carpoolFeatureCollection = useMemo<GeoJSON.FeatureCollection>(() => ({
+    type: 'FeatureCollection',
+    features: carpoolLines
+      .filter(line => line.geometry)
+      .map(line => ({
+        type: 'Feature' as const,
+        geometry: line.geometry as GeoJSON.Geometry,
+        properties: { color: line.color, code: line.code },
+      })),
+  }), [carpoolLines]);
+
+  const carpoolLabels = useMemo(
+    () =>
+      carpoolLines
+        .map(line => ({ line, at: midpointOf(line.geometry) }))
+        .filter((entry): entry is { line: McoLine; at: [number, number] } => entry.at !== null),
+    [carpoolLines],
+  );
+
   const raiseStopsLayer = useCallback(() => {
     const map = mapRef.current?.getMap?.();
     if (!map || typeof map.getLayer !== 'function') return;
@@ -1549,6 +1585,47 @@ const MapComponentBase = (
             }}
           />
         </Source>
+
+        {/* ─── Liaisons de covoiturage ─────────────────────────────────── */}
+        {carpoolFeatureCollection.features.length > 0 && (
+          <Source id="carpool-lines" type="geojson" data={carpoolFeatureCollection}>
+            <Layer
+              id="carpool-lines-casing"
+              beforeId={STOPS_LAYER_ID}
+              type="line"
+              layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+              paint={{ 'line-color': '#ffffff', 'line-width': 10, 'line-opacity': 0.55 }}
+            />
+            <Layer
+              id="carpool-lines-line"
+              beforeId={STOPS_LAYER_ID}
+              type="line"
+              layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+              paint={{
+                'line-color': ['get', 'color'] as any,
+                'line-width': 5,
+                'line-opacity': 0.95,
+              }}
+            />
+          </Source>
+        )}
+
+        {/* L'étiquette de chaque liaison, au milieu de son tracé. */}
+        {carpoolLabels.map(({ line, at }) => (
+          <Marker key={`carpool-${line.code}`} longitude={at[0]} latitude={at[1]} anchor="center">
+            <div
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold text-white"
+              style={{
+                backgroundColor: line.color,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Ligne {line.shortName}
+            </div>
+          </Marker>
+        ))}
 
         {/* ─── Line shapes ─────────────────────────────────────────────────
             Two layers per line: a white "casing" underneath for legibility,

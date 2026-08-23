@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronRightIcon } from '@heroicons/react/24/solid';
 import { MinimalScreen } from './MinimalScreen';
 import { OuraCardFace } from './OuraCardFace';
-import { TripHistoryScreen } from './TripHistoryScreen';
 import type { OuraCard } from '../services/ouraCard';
-import { AVATARS, listTrips, type Account, type AccountTrip } from '../services/account';
+import { AVATARS, type Account } from '../services/account';
 
 const PROFILE_ORBIT_MS = 110000;
 const PROFILE_ORBIT_SIZE = 28;
@@ -59,19 +57,43 @@ export function ProfileScreen({
   const muted = isLight ? 'text-slate-500' : 'text-slate-400';
   const tile = isLight ? 'bg-slate-200/70' : 'bg-slate-800';
 
-  const [trips, setTrips] = useState<AccountTrip[]>([]);
-  const [openTrip, setOpenTrip] = useState<AccountTrip | null>(null);
+  /**
+   * Les visages qui tournent autour du portrait.
+   *
+   * Un par voyageur aidé, jusqu'à huit — au-delà, la couronne devient une
+   * guirlande et l'on ne distingue plus rien.
+   *
+   * Ce sont des visages anonymes, et ce n'est pas un raccourci : l'application
+   * compte **combien** de voyageurs on a aidés, jamais **lesquels**. Ce que l'on
+   * rend aux autres — un signalement d'affluence, une réponse à une question sur
+   * une ligne — part sans numéro de carte, et c'est ce qui permet de le donner
+   * sans y réfléchir. Afficher ici de vrais profils demanderait de rattacher
+   * chaque contribution à son bénéficiaire, donc de renoncer à cet anonymat.
+   *
+   * Le tirage est fixe pour un compte donné : il dépend du numéro de carte, si
+   * bien que la couronne reste la même d'une visite à l'autre au lieu de
+   * changer de têtes à chaque ouverture.
+   */
   const helpedFaces = useMemo(() => {
-    const count = Math.min(Math.max(account?.travellersHelped ?? 0, 0), 5);
+    const helped = Math.max(account?.travellersHelped ?? 0, 0);
+    const count = Math.min(helped, 8);
+    if (count === 0) return [];
+
+    // Une graine tirée du numéro de carte : deux comptes n'ont pas la même
+    // couronne, et le même compte retrouve toujours la sienne.
+    const seed = [...(account?.cardCode ?? '')].reduce(
+      (total, char) => total + char.charCodeAt(0),
+      0,
+    );
+
     return Array.from({ length: count }, (_, index) => ({
-      emoji: AVATARS[index % AVATARS.length],
+      emoji: AVATARS[(seed + index * 7) % AVATARS.length],
       angle: (index * 360) / count - 90,
     }));
-  }, [account?.travellersHelped]);
+  }, [account?.travellersHelped, account?.cardCode]);
 
   useEffect(() => {
     if (!isOpen || !account) return;
-    void listTrips(account.cardCode).then(setTrips);
   }, [isOpen, account?.cardCode]);
 
   const stats = [
@@ -136,7 +158,9 @@ export function ProfileScreen({
               isLight ? 'border-slate-300 bg-white' : 'border-slate-700 bg-white'
             }`}
           >
-            {account?.avatarEmoji ? (
+            {account?.avatarUrl ? (
+              <img src={account.avatarUrl} alt="" className="h-full w-full object-cover" />
+            ) : account?.avatarEmoji ? (
               <span aria-hidden>{account.avatarEmoji}</span>
             ) : card?.photoUrl ? (
               <img src={card.photoUrl} alt="" className="h-full w-full object-cover" />
@@ -146,12 +170,22 @@ export function ProfileScreen({
            </div>
            </div>
 
-          <p className={`mt-4 text-[26px] font-extrabold leading-none ${ink}`}>
-            {account?.pseudo ?? ''}
-          </p>
-          <p className={`mt-1.5 text-sm ${muted}`}>
-            {[account?.firstName, account?.lastName].filter(Boolean).join(' ')}
-          </p>
+          {/* Le nom d'état civil au-dessus du pseudonyme : il vient de la carte
+              et dit à qui appartient le compte, tandis que le pseudonyme dit
+              sous quel nom on se montre. Le plus petit passe devant, comme une
+              mention posée au-dessus du titre. */}
+          {/* Mêmes précautions : les marges sont portées par des div, sinon la
+              règle `p { margin: 0 }` d'index.css les efface. */}
+          <div className="mt-5 text-center">
+            <p className={`text-sm font-medium ${muted}`}>
+              {[account?.firstName, account?.lastName].filter(Boolean).join(' ')}
+            </p>
+          </div>
+          <div className="mt-1.5 text-center">
+            <p className={`text-[26px] font-extrabold leading-none ${ink}`}>
+              {account?.pseudo ?? ''}
+            </p>
+          </div>
         </div>
 
         {/* Émoji puis étiquette sur deux lignes à gauche, le nombre à droite sur
@@ -167,13 +201,18 @@ export function ProfileScreen({
                 <p className="text-xl leading-none" aria-hidden>
                   {stat.emoji}
                 </p>
-                <p
-                  className={`mt-1.5 text-sm leading-snug ${
-                    isLight ? 'text-slate-600' : 'text-slate-300'
-                  }`}
-                >
-                  {stat.label}
-                </p>
+                {/* L'écart est porté par une div : `p { margin: 0 }` est déclaré
+                    hors layer dans index.css et annule tout `mt-*` posé sur un
+                    paragraphe — l'émoji et son étiquette restaient collés. */}
+                <div className="mt-3">
+                  <p
+                    className={`text-sm leading-snug ${
+                      isLight ? 'text-slate-600' : 'text-slate-300'
+                    }`}
+                  >
+                    {stat.label}
+                  </p>
+                </div>
               </div>
               <span
                 className={`tabular flex-shrink-0 font-extrabold leading-none ${numberSize(
@@ -205,55 +244,8 @@ export function ProfileScreen({
           </div>
         )}
 
-        {/* L'historique. Un compteur qu'on ne peut pas ouvrir ne veut rien dire :
-            on ne sait pas s'il compte juste, ni ce qu'il a compté. */}
-        <div className="mt-8 px-4 pb-6">
-          <p className={`mb-5 px-1 text-sm font-bold ${ink}`}>
-            {isFr ? 'Historique des trajets' : 'Trip history'}
-          </p>
-
-          {trips.length === 0 ? (
-            <p className={`rounded-2xl px-4 py-6 text-center text-sm ${tile} ${muted}`}>
-              {isFr
-                ? 'Aucun trajet pour l’instant. Ils apparaîtront ici à mesure.'
-                : 'No trips yet. They will show up here as you go.'}
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {trips.map((trip) => (
-                <button
-                  key={trip.id}
-                  type="button"
-                  onClick={() => setOpenTrip(trip)}
-                  className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left ${tile}`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className={`truncate text-sm font-bold ${ink}`}>
-                      {trip.destination || (isFr ? 'Trajet' : 'Trip')}
-                    </p>
-                    <p className={`tabular mt-0.5 truncate text-xs ${muted}`}>
-                      {new Date(trip.createdAt).toLocaleDateString(isFr ? 'fr-FR' : 'en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                      {trip.legs.length > 0 && ` · ${trip.legs.map((leg) => leg.line).join(' → ')}`}
-                    </p>
-                  </div>
-                  <ChevronRightIcon className={`h-4 w-4 flex-shrink-0 ${muted}`} />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       </MinimalScreen>
 
-      <TripHistoryScreen
-        trip={openTrip}
-        language={language}
-        isLight={isLight}
-        onBack={() => setOpenTrip(null)}
-      />
     </>
   );
 }

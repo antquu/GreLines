@@ -88,3 +88,17 @@ create or replace function public.credit_oura_account(
          updated_at = now()
    where card_code = p_card_code;
 $$ language sql;
+
+-- ---------------------------------------------------------------------------
+-- L'avatar choisi.
+--
+-- Le compte n'acceptait qu'un émoji tiré au sort, faute de pouvoir modérer une
+-- image déposée. On ouvre la photographie : `avatar_path` désigne un fichier du
+-- seau `oura-photos`, sous le préfixe `avatars/`, à côté des portraits de
+-- cartes qui y vivent déjà.
+--
+-- Les trois possibilités se lisent dans cet ordre : un chemin s'il y en a un,
+-- sinon un émoji, sinon la photo de la carte. Un compte ancien n'a ni l'un ni
+-- l'autre et continue donc de montrer sa carte, sans migration.
+-- ---------------------------------------------------------------------------
+alter table public.oura_accounts add column if not exists avatar_path text;

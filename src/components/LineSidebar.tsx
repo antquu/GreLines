@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { MapSheet } from './MapSheet';
-import { XMarkIcon, MapIcon, ChevronDownIcon, ExclamationTriangleIcon, StarIcon, ArrowsRightLeftIcon, ClockIcon, PaperClipIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, MapIcon, ChevronDownIcon, StarIcon, ArrowsRightLeftIcon, ClockIcon, PaperClipIcon } from '@heroicons/react/24/solid';
 import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
 import { LineBadge } from './LineBadge';
+import { TrafficAlertCard } from './TrafficAlertCard';
 import { formatDepartureTime, getDepartures } from '../services/api';
 import { getStopsServedByLines, type ServedStopPoint } from '../services/lineShapes';
 import type { Stop, TrafficDetail, Departure } from '../types';
@@ -27,7 +28,6 @@ interface LineSidebarProps {
   autoSync: boolean;
   refreshIntervalMs: number;
   theme?: 'light' | 'dark';
-  onPlanRoute?: () => void;
   
   onOpenTimetable?: () => void;
   
@@ -101,12 +101,11 @@ const buildDepartureGroups = (departures: Departure[], language: 'fr' | 'en') =>
   return Array.from(groups.values()).sort((a, b) => a.destination.localeCompare(b.destination, undefined, { sensitivity: 'base' }));
 };
 
-export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, language, onStopClick, autoSync, refreshIntervalMs, theme = 'dark', onPlanRoute, onOpenTimetable, onOpenLineMap }: LineSidebarProps) => {
+export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, language, onStopClick, autoSync, refreshIntervalMs, theme = 'dark', onOpenTimetable, onOpenLineMap }: LineSidebarProps) => {
   const [servedStopPoints, setServedStopPoints] = useState<ServedStopPoint[] | null>(null);
   const [loadingStops, setLoadingStops] = useState(false);
   const [expandedStops, setExpandedStops] = useState<Set<string>>(new Set());
   const [stopDepartures, setStopDepartures] = useState<Map<string, { departures: Departure[]; loading: boolean; error: boolean }>>(new Map());
-  const [expandedTraffic, setExpandedTraffic] = useState<Set<number>>(new Set());
 
   const text = getSidebarText(language);
   const normalizedLineKey = line ? normalizeLineKey(line.id) : null;
@@ -139,7 +138,6 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
   useEffect(() => {
     setExpandedStops(new Set());
     setStopDepartures(new Map());
-    setExpandedTraffic(new Set());
   }, [line?.id]);
 
   useEffect(() => {
@@ -288,63 +286,13 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
             <p className="tabular text-xs text-amber-500/70">{lineTraffic.length}</p>
           </div>
           <div className="space-y-2">
-            {lineTraffic.map((detail, index) => {
-              const isExpanded = expandedTraffic.has(index);
-              return (
-                <div key={`${detail.titre}-${index}`} className="overflow-hidden rounded-xl border border-amber-700/50 bg-amber-950/20">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExpandedTraffic(prev => {
-                        const next = new Set(prev);
-                        next.has(index) ? next.delete(index) : next.add(index);
-                        return next;
-                      });
-                    }}
-                    className="w-full px-3.5 py-3 flex items-start justify-between gap-3 text-left hover:bg-amber-950/30 transition"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 text-amber-400" />
-                        <p className="truncate text-sm font-semibold text-amber-200">{detail.titre || text.trafficInfo}</p>
-                      </div>
-                      {detail.dateFin && (
-                        <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-amber-400/60">
-                          {text.estimatedEnd} {detail.dateFin}
-                        </p>
-                      )}
-                    </div>
-                    <ChevronDownIcon className={`mt-0.5 w-4 h-4 flex-shrink-0 text-amber-300/70 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: isExpanded ? 'auto' : 0, opacity: isExpanded ? 1 : 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <AnimatePresence initial={false}>
-                      {isExpanded && (
-                        <motion.div
-                          key="traffic-details"
-                          initial={{ opacity: 0, y: -4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -4 }}
-                          transition={{ duration: 0.18, ease: 'easeOut' }}
-                          className="border-t border-amber-700/30 px-3.5 py-3"
-                        >
-                          {detail.description ? (
-                            <p className="text-sm text-amber-100/85 whitespace-pre-line">{detail.description}</p>
-                          ) : (
-                            <p className="text-sm text-amber-100/85">{detail.titre || 'Détails indisponibles'}</p>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                </div>
-              );
-            })}
+            {lineTraffic.map((detail, index) => (
+              <TrafficAlertCard
+                key={`${detail.titre}-${index}`}
+                detail={detail}
+                language={language}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -515,20 +463,6 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
         )}
       </div>
 
-      <div className="border-t border-slate-800 mt-6 pt-4">
-        <button
-          type="button"
-          onClick={onPlanRoute}
-          className="flex w-full items-center justify-center gap-2 px-0 py-0 cursor-pointer text-xs text-slate-400 transition hover:text-slate-200"
-        >
-          <span>{language === 'fr' ? 'Calculer votre itinéraire avec' : 'Calculate your itinerary with'}</span>
-          <img
-            src={isDark ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png'}
-            alt="GreGo"
-            className="h-4 w-auto"
-          />
-        </button>
-      </div>
     </div>
   );
 

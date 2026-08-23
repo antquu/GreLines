@@ -15,7 +15,14 @@ import type React from 'react';
 import { MobileNotificationPrompt } from './MobileNotificationPrompt';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 import { idbClear } from '../services/persistentCache';
-import { NETWORKS } from '../services/api';
+import {
+  NETWORK_ASSETS,
+  NETWORK_TILES,
+  OPERATOR_TILES,
+  SECONDARY_NETWORKS,
+  SHARED_TILES,
+  toggleNetworkCodes,
+} from './networkTiles';
 import {
   notificationPermission,
   notificationsEnabled,
@@ -51,10 +58,18 @@ interface SettingsPanelProps {
   accountAvatar?: string | null;
   onOpenAccount?: () => void;
   /** Le theme choisi, « auto » compris — c'est lui que les vignettes montrent. */
-  theme?: 'light' | 'dark' | 'auto';
+  theme?: 'light' | 'dark' | 'blue' | 'auto';
   /** Le theme reellement applique, une fois « auto » resolu. */
   uiTheme?: 'light' | 'dark';
-  setTheme?: (t: 'light' | 'dark' | 'auto') => void;
+  /**
+   * Vrai sur telephone, ou le noir franc n'existe pas.
+   *
+   * Il n'y a alors qu'un sombre — le bleu nuit — et il s'appelle « Sombre ».
+   * La quatrieme vignette disparait : proposer un choix entre deux sombres
+   * dont un seul existe ne ferait qu'embrouiller.
+   */
+  compactThemes?: boolean;
+  setTheme?: (t: 'light' | 'dark' | 'blue' | 'auto') => void;
   fontSize: 'small' | 'normal' | 'large';
   setFontSize: (f: 'small' | 'normal' | 'large') => void;
   compactMode: boolean;
@@ -248,54 +263,6 @@ const GroupSurface = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-/**
- * Autorités organisatrices, présentées par leur identité visuelle.
- *
- * Chaque vignette pilote un ou plusieurs codes réseau : « Tag » regroupe SEM et
- * SE2, qui sont le même réseau découpé en deux jeux de données côté MTAG.
- */
-/*
- * Les logos vivent dans `/assets/network/`, à part du reste.
- *
- * Le pictogramme du TER s'appelle `ter.png` et sert déjà au badge de ligne :
- * deux fichiers du même nom pour deux usages différents finissent par se
- * marcher dessus. Un dossier propre au sélecteur règle la question une fois.
- *
- * Les suffixes d'état sélectionné ne sont pas uniformes — `-selectioned`,
- * `-selectionned`, `-selected` selon le fichier — alors on les écrit en toutes
- * lettres plutôt que de les déduire : une convention qu'on invente ici ne
- * renommerait pas les fichiers pour autant.
- */
-const NETWORK_ASSETS = '/assets/network';
-
-type NetworkTile = { asset: string; selectedAsset: string; codes: string[]; label: string };
-
-/** Les autorités organisatrices, celles qui portent le réseau structurant. */
-const NETWORK_TILES: NetworkTile[] = [
-  { asset: 'Metropole', selectedAsset: 'Metropole-selectioned', codes: ['SEM', 'SE2'], label: 'Métropole' },
-  { asset: 'Gresivaudan', selectedAsset: 'Gresivaudan-selectioned', codes: ['GSV'], label: 'Grésivaudan' },
-  { asset: 'Voironnais', selectedAsset: 'Voironnais-selected', codes: ['TPV'], label: 'Pays Voironnais' },
-  { asset: 'Region', selectedAsset: 'Region-selectioned', codes: ['C38'], label: 'Cars Région' },
-];
-
-/** Les opérateurs qui s'ajoutent aux précédents, chacun avec sa plaque. */
-const OPERATOR_TILES: NetworkTile[] = [
-  { asset: 'Bulle', selectedAsset: 'Bulle-selectionned', codes: ['BUL'], label: 'Bulles' },
-  { asset: 'Transaltitude', selectedAsset: 'Transaltitude-selectionned', codes: ['TRA'], label: 'Transaltitude' },
-  { asset: 'MCovoit', selectedAsset: 'MCovoit-selectionned', codes: ['MCO'], label: "M'Covoit" },
-  { asset: 'TER', selectedAsset: 'TER-selectionned', codes: ['SNC'], label: 'TER' },
-  { asset: 'TCL', selectedAsset: 'TCL-selectionned', codes: ['TCL'], label: 'TCL' },
-];
-
-/** Les véhicules en libre-service, qui ne sont pas des réseaux de lignes. */
-const SHARED_TILES: Array<{ asset: string; selectedAsset: string; setting: 'citiz' | 'voi'; label: string }> = [
-  { asset: 'citiz', selectedAsset: 'Citiz-selectionned', setting: 'citiz', label: 'Citiz' },
-  { asset: 'voi', selectedAsset: 'voi-selectionned', setting: 'voi', label: 'Voi' },
-];
-
-/** Codes couverts par une vignette : le reste garde son interrupteur. */
-const TILE_CODES = new Set([...NETWORK_TILES, ...OPERATOR_TILES].flatMap(tile => tile.codes));
-const SECONDARY_NETWORKS = NETWORKS.filter(network => !TILE_CODES.has(network.code));
 
 /**
  * Une grille de plaques à cocher.
@@ -378,6 +345,7 @@ export function SettingsPanel({
   setAtmoFollowMap,
   setAutoLocation,
   onOpenInstallGuide,
+  compactThemes = false,
   showInstallGuide = false,
   appData,
   text,
@@ -432,11 +400,7 @@ export function SettingsPanel({
    * sans aucun arrêt, donc Tag est toujours conservé en dernier recours.
    */
   const toggleNetwork = (codes: string[]) => {
-    const active = codes.every(code => perf.networks.includes(code));
-    const next = active
-      ? perf.networks.filter(code => !codes.includes(code))
-      : [...new Set([...perf.networks, ...codes])];
-    setSetting('networks', next.length > 0 ? next : ['SEM', 'SE2']);
+    setSetting('networks', toggleNetworkCodes(perf.networks, codes));
   };
 
   // Tab metadata used by both mobile and desktop. Each tab has an icon (only
@@ -677,20 +641,26 @@ export function SettingsPanel({
    */
   const themePicker = (() => {
     const isFr = language === 'fr';
-    /* « Auto » en premier : c'est le défaut, et le seul des trois qui n'impose
-       rien. Les deux autres sont des dérogations à ce que dit l'appareil. */
-    const options: Array<{ value: 'light' | 'dark' | 'auto'; label: string }> = [
+    /* « Auto » en premier : c'est le défaut, et le seul des quatre qui n'impose
+       rien. Les autres sont des dérogations à ce que dit l'appareil.
+       « Bleu » est l'ancien sombre, au fond bleu nuit ; « Sombre » est
+       désormais le noir franc. */
+    const options: Array<{ value: 'light' | 'dark' | 'blue' | 'auto'; label: string }> = [
       { value: 'auto', label: 'Auto' },
       { value: 'light', label: isFr ? 'Clair' : 'Light' },
       { value: 'dark', label: isFr ? 'Sombre' : 'Dark' },
+      ...(compactThemes
+        ? []
+        : ([{ value: 'blue', label: isFr ? 'Bleu' : 'Blue' }] as const)),
     ];
 
     return (
       <div className="px-4 py-3">
         <p className="mb-3 text-[15px] text-slate-200">{isFr ? 'Thème' : 'Theme'}</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className={`grid gap-3 ${compactThemes ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-4'}`}>
           {options.map((option) => {
-            const selected = (theme ?? 'auto') === option.value;
+            const current = compactThemes && theme === 'blue' ? 'dark' : (theme ?? 'auto');
+            const selected = current === option.value;
             return (
               <button
                 key={option.value}
@@ -901,7 +871,7 @@ export function SettingsPanel({
       <div className="flex items-center justify-center mb-5 pt-2">
         <div className="rounded-2xl px-4 py-3">
           <img
-            src={theme === 'dark' ? '/assets/GreLinesLOGO.png' : '/assets/GreLinesLOGO_dark.png'}
+            src={resolvedTheme === 'dark' ? '/assets/GreLinesLOGO.png' : '/assets/GreLinesLOGO_dark.png'}
             alt="GreLines"
             className="h-28 w-auto"
           />
@@ -970,7 +940,7 @@ export function SettingsPanel({
           }`}
         >
           <img
-            src={theme === 'dark' ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png'}
+            src={resolvedTheme === 'dark' ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png'}
             alt="GreGo"
             className="h-9 w-auto"
           />
@@ -986,7 +956,7 @@ export function SettingsPanel({
           }`}
         >
           <img
-            src={theme === 'dark' ? '/assets/og_dark.png' : '/assets/og_light.png'}
+            src={resolvedTheme === 'dark' ? '/assets/og_dark.png' : '/assets/og_light.png'}
             alt="OG"
             className="h-6 w-auto"
           />

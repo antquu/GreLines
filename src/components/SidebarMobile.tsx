@@ -1,5 +1,10 @@
 ﻿import { motion } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
+import { TrafficAlertCard } from './TrafficAlertCard';
+import { CarpoolStopPanel, isCarpoolStop, isCarpoolLine } from './CarpoolStopPanel';
+import { getMcoLines, type McoLine } from '../services/mcoLines';
+import { RealtimeWifi } from './RealtimeWifi';
+import { sortLinesByPriority } from '../utils/lineOrder';
 import {
   MapSheetShell,
   MapSheetBody,
@@ -16,12 +21,12 @@ import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../serv
 import { AddFavoriteModal } from './AddFavoriteModal';
 import { TransportModeIcon } from './TransportModeIcon';
 import { normalizeMode } from '../utils/transportMode';
-import type { StopDetail, Departure, Line } from '../types';
+import type { StopDetail, Departure } from '../types';
 import { formatDepartureTime, refreshStopDepartures } from '../services/api';
 import { resolveLineStyle, isGrenobleNetworkLine } from '../utils/lineColors';
 import { LineBadge } from './LineBadge';
 import { DepartureLineBadge } from './DepartureLineBadge';
-import { LastRunRibbon } from './LastRunRibbon';
+import { LastRunRibbon, LAST_RUN_TEXT } from './LastRunRibbon';
 import { TclSidebar } from './TclSidebar';
 import { isTclId } from '../services/tclNetwork';
 import { getTimetable, isLastDeparture, toTimetableRouteId, type Timetable } from '../services/timetable';
@@ -73,7 +78,7 @@ const getSidebarText = (language: 'fr' | 'en') => {
     metro: isFr ? 'Métro' : 'Metro',
     bus: 'Bus',
     live: isFr ? 'Direct' : 'Live',
-    nextDeparture: isFr ? 'Prochain départ' : 'Next departure',
+    nextDeparture: isFr ? 'Second passage' : 'Second departure',
     direction: isFr ? 'Direction' : 'Direction',
     time: isFr ? 'Heure' : 'TIME',
     occupancy: isFr ? 'Affluence' : 'OCCUPANCY',
@@ -81,7 +86,7 @@ const getSidebarText = (language: 'fr' | 'en') => {
     disruptedTraffic: isFr ? 'Trafic perturbé sur la ligne' : 'Disrupted traffic on line',
     ongoingDisruption: isFr ? 'Perturbation en cours' : 'Ongoing disruption',
     estimatedEnd: isFr ? 'Fin estimée :' : 'Estimated end:',
-    calculateItineraryWith: isFr ? 'Calculez votre itinéraire avec' : 'Calculate your itinerary with',
+    calculateItinerary: isFr ? 'Calculer un itinéraire' : 'Plan a journey',
     nextLabel: isFr ? 'PROCHAIN' : 'NEXT',
     noDeparturesAvailable: isFr ? 'Aucun départ disponible' : 'No departures available',
     stopAlerts: isFr ? 'Cet arrêt est concerné' : 'Affecting this stop',
@@ -130,31 +135,40 @@ const isRoundLine = (lineId: string): boolean => {
 };
 
 
-const getLineSortKey = (lineShortName?: string | null, lineId?: string): [number, string] => {
-  const code = (lineShortName || lineId || '').toUpperCase().trim();
-  if (code === 'A') return [0, '']; if (code === 'B') return [1, '']; if (code === 'C') return [2, ''];
-  if (code === 'D') return [3, '']; if (code === 'E') return [4, ''];
-  const cMatch = /^C(\d+)$/.exec(code);
-  if (cMatch) { const n = parseInt(cMatch[1], 10); return n >= 1 && n <= 14 ? [5, n.toString().padStart(3,'0')] : [8, code]; }
-  const nMatch = /^(\d+)$/.exec(code);
-  if (nMatch) { const n = parseInt(nMatch[1], 10); return n >= 15 && n <= 92 ? [6, n.toString().padStart(3,'0')] : [7, n.toString().padStart(3,'0')]; }
-  return [9, code];
-};
 
-const sortLinesByPriority = (a: { shortName?: string | null; id: string }, b: { shortName?: string | null; id: string }) => {
-  const [wa, ka] = getLineSortKey(a.shortName, a.id);
-  const [wb, kb] = getLineSortKey(b.shortName, b.id);
-  if (wa !== wb) return wa - wb;
-  return ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' });
-};
-
-const OccupancyDisplay = ({ occupancy, showError = false }: { occupancy?: string | null; showError?: boolean }) => {
+/**
+ * L'affluence, en trois silhouettes.
+ *
+ * Posée en petit à droite d'un horaire, elle se lit du coin de l'œil ; posée
+ * dans la case du passage suivant, elle avait la taille d'une note de bas de
+ * page et se perdait sous son libellé. La case lui donne donc sa vraie taille,
+ * et l'y centre : c'est la réponse à « est-ce que ça va être plein ? », pas
+ * une décoration d'angle.
+ */
+const OccupancyDisplay = ({
+  occupancy,
+  showError = false,
+  size = 'sm',
+}: {
+  occupancy?: string | null;
+  showError?: boolean;
+  size?: 'sm' | 'lg';
+}) => {
   const level = occupancy === 'LIGHT' ? 1 : occupancy === 'MODERATE' ? 2 : occupancy === 'CROWDED' ? 3 : 0;
-  if (level === 0) return showError ? <div className="text-xs text-slate-500">–</div> : null;
+  const isLarge = size === 'lg';
+  if (level === 0) {
+    return showError ? (
+      <div className={`text-slate-500 ${isLarge ? 'flex justify-center text-2xl font-bold' : 'text-xs'}`}>–</div>
+    ) : null;
+  }
   return (
-    <div className="flex items-center gap-0.5">
+    <div className={`flex items-center ${isLarge ? 'justify-center gap-1' : 'gap-0.5'}`}>
       {Array.from({ length: 3 }).map((_, i) => (
-        <UserIcon key={i} className="w-4 h-4 text-slate-300" style={{ opacity: i < level ? 1 : 0.3 }} />
+        <UserIcon
+          key={i}
+          className={`text-slate-300 ${isLarge ? 'w-6 h-6' : 'w-4 h-4'}`}
+          style={{ opacity: i < level ? 1 : 0.3 }}
+        />
       ))}
     </div>
   );
@@ -187,63 +201,28 @@ const StopTrafficAlerts = ({ stop, language, selectedLines }: StopTrafficAlertsP
 
   return (
     <div className="px-5 mb-6">
-      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+      <h3 className="section-caps text-slate-400 mb-3">
         {text.stopAlerts}
       </h3>
       <div className="space-y-2.5">
-        {alerts.map((alert, idx) => {
-          const lines: Line[] = [...alert.matchedLines].sort(sortLinesByPriority);
-          // Le nom de la ligne n'est plus dans l'en-tête : les badges le disent
-          // en dessous, et une perturbation regroupée en touche souvent
-          // plusieurs. « Trafic perturbé sur la ligne C1 » ne vaudrait plus.
-          const headerLabel = text.ongoingDisruption;
-          return (
-            <motion.div
-              key={`${alert.detail.titre}-${idx}`}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.04 }}
-              className="bg-amber-950 border border-amber-700 rounded-2xl p-3"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <ExclamationTriangleIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                <p className="text-xs font-semibold text-amber-300">{headerLabel}</p>
-              </div>
-              <p className="text-xs text-amber-200">{alert.detail.titre}</p>
-              {alert.detail.description && (
-                <p className="text-xs text-amber-300/70 mt-1 whitespace-pre-line">
-                  {alert.detail.description}
-                </p>
-              )}
-              {alert.detail.dateFin && (
-                <p className="text-xs text-amber-400/60 mt-1">
-                  {text.estimatedEnd} {alert.detail.dateFin}
-                </p>
-              )}
-              {/* Les lignes concernées, avec les pictogrammes du réseau. Elles
-                  s'affichent dès qu'il y en a une : une perturbation regroupée
-                  ne dit plus dans son titre quelle ligne elle touche, ce sont
-                  les badges qui le disent. */}
-              {lines.length > 0 && (
-                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                  <span className="text-xs text-amber-300/60">{text.affecting}</span>
-                  {lines.map(line => (
-                    <LineBadge
-                      key={line.id}
-                      line={{
-                        id: line.id,
-                        shortName: line.shortName || line.id,
-                        color: line.color,
-                        textColor: line.textColor,
-                      }}
-                      size="xs"
-                    />
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          );
-        })}
+        {alerts.map((alert, idx) => (
+          <motion.div
+            key={`${alert.detail.titre}-${idx}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.04 }}
+          >
+            {/* Le nom de la ligne n'est plus dans l'en-tête : les badges le
+                disent une fois dépliée, et une perturbation regroupée en touche
+                souvent plusieurs. « Trafic perturbé sur la ligne C1 » ne
+                vaudrait plus. */}
+            <TrafficAlertCard
+              detail={alert.detail}
+              language={language}
+              lines={[...alert.matchedLines]}
+            />
+          </motion.div>
+        ))}
       </div>
     </div>
   );
@@ -309,6 +288,9 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
    */
   const [showTclWarning, setShowTclWarning] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  /* Les liaisons de covoiturage, chargées seulement pour un point M'Covoit :
+     le reste du réseau n'en a que faire, et le tracé pèse lourd. */
+  const [carpoolLines, setCarpoolLines] = useState<McoLine[]>([]);
   const [isFavoriteModalOpen, setIsFavoriteModalOpen] = useState(false);
   const [isFav, setIsFav] = useState(false);
   useEffect(() => {
@@ -317,6 +299,62 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
     sync();
     return subscribeFavorites(sync);
   }, [currentStopDetail?.id]);
+
+  /* Les liaisons de covoiturage ne se chargent que pour un point M'Covoit. Le
+     service garde le résultat, donc rouvrir un autre point ne recharge rien. */
+  /*
+   * Quand montrer la fiche du covoiturage.
+   *
+   * Un point M'Covoit n'est pas toujours qu'un point M'Covoit : « Grenoble,
+   * Palais de Justice » porte un identifiant MCO et voit pourtant passer deux
+   * tramways et huit lignes de bus. Y masquer les prochains départs aurait
+   * privé les gens de ce qu'ils venaient chercher.
+   *
+   * La fiche du covoiturage remplace donc la fiche ordinaire dans deux cas
+   * seulement : le point ne dessert que des liaisons de covoiturage, ou l'on a
+   * justement trié sur celles-ci. Partout ailleurs, l'arrêt reste un arrêt.
+   */
+  const stopLines = currentStopDetail?.lines ?? [];
+  const carpoolServed = stopLines.filter(isCarpoolLine);
+  const carpoolOnly = stopLines.length > 0 && carpoolServed.length === stopLines.length;
+  const carpoolFiltered =
+    selectedLines.size > 0 &&
+    stopLines.filter(line => selectedLines.has(line.id)).every(isCarpoolLine) &&
+    stopLines.some(line => selectedLines.has(line.id) && isCarpoolLine(line));
+  /*
+   * Deux portées, et non une.
+   *
+   * Un point qui ne dessert que du covoiturage est un point de covoiturage :
+   * il en porte la marque, et sa fiche n'a pas de lignes à cocher.
+   *
+   * Un arrêt ordinaire sur lequel on a trié la liaison de covoiturage reste un
+   * arrêt ordinaire : il garde son nom nu et sa liste de lignes — sans elle on
+   * ne pourrait plus défaire le tri —, et seul le contenu des prochains départs
+   * cède la place au panneau.
+   */
+  const carpoolOnlyStop = isCarpoolStop(currentStopDetail?.id) && carpoolOnly;
+  const carpoolStop = carpoolOnlyStop || carpoolFiltered;
+  /*
+   * Les liaisons qui desservent ce point précis.
+   *
+   * Les quatre du réseau se chargent d'un bloc — c'est une seule requête pour
+   * quatre tracés —, mais un point d'arrêt n'en voit passer qu'une ou deux. On
+   * croise donc avec les lignes que l'arrêt déclare desservir. Si l'arrêt n'en
+   * déclare aucune, on les montre toutes plutôt que rien : mieux vaut une
+   * liaison de trop qu'une fiche muette.
+   */
+  const servedCarpoolLines = useMemo(() => {
+    const served = new Set(carpoolServed.map(line => String(line.id).toUpperCase()));
+    if (served.size === 0) return carpoolLines;
+    const kept = carpoolLines.filter(line => served.has(line.code.toUpperCase()));
+    return kept.length > 0 ? kept : carpoolLines;
+  }, [carpoolLines, carpoolServed]);
+  useEffect(() => {
+    if (!carpoolStop) { setCarpoolLines([]); return; }
+    let active = true;
+    getMcoLines().then(lines => { if (active) setCarpoolLines(lines); });
+    return () => { active = false; };
+  }, [carpoolStop, currentStopDetail?.id]);
   const [exportUrl, setExportUrl] = useState('');
   const exportButtonRef = useRef<HTMLButtonElement>(null);
   const [hasAppliedInitialLines, setHasAppliedInitialLines] = useState(false);
@@ -525,6 +563,17 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
             {/* Header */}
             <div className="flex items-start justify-between px-5 pt-2 pb-4">
               <div className="flex-1 min-w-0 pr-3">
+                {/* La marque du service, au-dessus du nom : on sait à quoi on a
+                    affaire avant d'avoir lu le lieu. Le fichier clair sert aux
+                    thèmes sombres, et l'inverse — c'est l'encre qui doit
+                    contraster, pas le logo qui doit s'accorder. */}
+                {carpoolOnlyStop && (
+                  <img
+                    src={isLight ? '/assets/mco.png' : '/assets/mco_light.png'}
+                    alt="M'Covoit"
+                    className="mb-2 w-auto object-contain object-left" style={{ height: 30 }}
+                  />
+                )}
                 <h2 className="text-2xl font-extrabold text-white leading-tight">{currentStopDetail.name}</h2>
                 {currentStopDetail.city && <p className="text-sm text-slate-400 mt-0.5">{currentStopDetail.city}</p>}
               </div>
@@ -566,10 +615,20 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
               </div>
             </div>
 
+            {/*
+              Un point de covoiturage n'a ni lignes à cocher ni passages à
+              annoncer : les deux sections cèdent la place à la fiche du
+              service. L'infotrafic reste, lui — une route coupée concerne
+              autant ceux qui attendent au bord que ceux qui prennent le bus.
+            */}
+            {carpoolOnlyStop ? (
+              <CarpoolStopPanel lines={servedCarpoolLines} language={language} isLight={isLight} />
+            ) : (
+              <>
             {/* Lines */}
             <div className="px-5 mb-6">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{text.lines}</h3>
+                <h3 className="section-caps text-slate-400">{text.lines}</h3>
                 <button
                   ref={exportButtonRef}
                   onClick={() => {
@@ -648,12 +707,21 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
               </motion.div>
             )}
 
+              </>
+            )}
+
             {/* Stop-level traffic alerts (above departures) */}
             <StopTrafficAlerts stop={currentStopDetail} language={language} selectedLines={selectedLines} />
 
+            {carpoolFiltered && !carpoolOnlyStop ? (
+              /* Le tri porte sur une liaison de covoiturage : les passages
+                 n'ont plus rien à annoncer, le panneau prend leur place. */
+              <CarpoolStopPanel lines={servedCarpoolLines} language={language} isLight={isLight} />
+            ) : carpoolOnlyStop ? null : (
+              <>
             {/* Departures */}
             <div className="px-5">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">{text.nextDepartures}</h3>
+              <h3 className="section-caps text-slate-400 mb-3">{text.nextDepartures}</h3>
               <div className="space-y-3">
                 {groupedDepartures.length > 0 ? groupedDepartures.map((group, index) => {
                   const departure = group.first;
@@ -676,6 +744,9 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                   const departureStyle: any = departureLine ? resolveLineStyle(departureRef, departureLine.color, departureLine.textColor) : resolveLineStyle(departureRef) as any;
                   const secondStyle: any = secondLine ? resolveLineStyle(secondRef, secondLine.color, secondLine.textColor) : {} as any;
                   const hasTrafficAlert = !!(departureLine?.hasTraffic && departureLine?.trafficDetails?.length);
+                  /* La marque se pose aussi sur la pastille du passage suivant :
+                     c'est parfois lui, et non le premier, qui est touche. */
+                  const secondHasTraffic = !!(secondLine?.hasTraffic && secondLine?.trafficDetails?.length);
                   const isLastRun = isLastDeparture(
                     timetables.get(departure.lineShortName || departure.lineId) ?? null,
                     departure.destination,
@@ -698,6 +769,7 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                             style={departureStyle}
                             round={departureIsSem && isRoundLine(departure.lineId)}
                             sizeClass="w-10 h-10 text-sm"
+                            hasTraffic={hasTrafficAlert}
                           />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
@@ -705,14 +777,20 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                                 <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
                                   <TransportModeIcon mode={mode} className="w-3.5 h-3.5" />
                                   <span>{modeLabel(mode, text)}</span>
-                                  {departure.realtime && <span className="text-green-400">• {text.live}</span>}
-                                  {hasTrafficAlert && <span className="text-amber-400">• ⚠</span>}
+                                  {departure.realtime && (
+                                    <RealtimeWifi
+                                      size={13}
+                                      className="text-green-400"
+                                      
+                                      label={text.live}
+                                    />
+                                  )}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                               <div className="text-right">
-                                <p className="text-lg font-bold text-white">{renderDepartureTime(displayTime)}</p>
+                                <p className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`}>{renderDepartureTime(displayTime)}</p>
                                 {!compactMode && (isTram || isChrono) && <OccupancyDisplay occupancy={departure.occupancy} />}
                               </div>
                               {isExpanded ? <ChevronUpIcon className="w-4 h-4 text-slate-400" /> : <ChevronDownIcon className="w-4 h-4 text-slate-400" />}
@@ -722,63 +800,72 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
 
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: isExpanded ? 'auto' : 0, opacity: isExpanded ? 1 : 0 }} transition={{ duration: 0.25 }} className="overflow-hidden border-t border-slate-700">
                           <div className={`${compactMode ? 'p-3' : 'p-4'} bg-slate-800/60 space-y-3`}>
-                            <div className="flex items-center justify-between">
-                              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{text.nextDeparture}</p>
-                              <button onClick={() => toggleExpanded(itemKey)}
-                                className="w-6 h-6 flex items-center justify-center hover:bg-slate-700 rounded-lg transition">
-                                <XMarkIcon className="w-3.5 h-3.5 text-slate-400" />
-                              </button>
+                            {/*
+                              Le passage suivant, à même le panneau.
+
+                              Il vivait dans une carte, elle-même dans une
+                              carte, elle-même dans la ligne dépliée : trois
+                              cadres emboîtés pour un horaire et une
+                              destination. Le libellé « Prochain départ » suffit
+                              à dire où l'on est, et la ligne se lit d'un trait,
+                              de la pastille à l'heure.
+
+                              La croix a disparu avec le cadre : le chevron de
+                              l'en-tête referme déjà, et deux commandes pour un
+                              même geste font douter qu'elles fassent la même
+                              chose.
+                            */}
+                            <p className="pb-3 text-sm font-semibold text-slate-300">{text.nextDeparture}</p>
+                            <div className="flex items-center gap-3">
+                              <DepartureLineBadge
+                                routeRef={secondRef}
+                                label={second.lineShortName || second.lineId}
+                                style={secondStyle}
+                                round={secondIsSem && isRoundLine(second.lineId)}
+                                sizeClass="w-10 h-10 text-sm"
+                                hasTraffic={secondHasTraffic}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold text-white">{second.destination}</p>
+                                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
+                                  <TransportModeIcon mode={second.type} className="w-3 h-3" />
+                                  {second.realtime && (
+                                    <RealtimeWifi
+                                      size={13}
+                                      className="text-green-400"
+                                      
+                                      label={text.live}
+                                    />
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <div className="bg-slate-900 rounded-2xl p-3 border border-slate-700 space-y-3">
-                              <div className="flex items-center gap-3">
-                                <DepartureLineBadge
-                            routeRef={secondRef}
-                            label={second.lineShortName || second.lineId}
-                            style={secondStyle}
-                            round={secondIsSem && isRoundLine(second.lineId)}
-                            sizeClass="w-10 h-10 text-sm"
-                          />
-                                <div>
-                                  <p className="text-sm font-semibold text-white">{second.destination}</p>
-                                  <div className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
-                                    <TransportModeIcon mode={second.type} className="w-3 h-3" />
-                                    {second.realtime && <span className="text-green-400">• {text.live}</span>}
-                                  </div>
-                                </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="bg-slate-900/70 rounded-xl p-3">
+                                <p className="text-xs text-slate-400 font-medium mb-1">{text.time}</p>
+                                <p className="text-2xl font-bold text-white">{renderDepartureTime(getDepartureDisplay(second, language))}</p>
                               </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="bg-slate-800 rounded-xl p-3">
-                                  <p className="text-xs text-slate-400 font-medium mb-1">{text.time}</p>
-                                  <p className="text-2xl font-bold text-white">{renderDepartureTime(getDepartureDisplay(second, language))}</p>
+                              {(isTram || isChrono) && (
+                                <div className="bg-slate-900/70 rounded-xl p-3">
+                                  <p className="text-xs text-slate-400 font-medium mb-2 text-center">{text.occupancy}</p>
+                                  {!compactMode && <OccupancyDisplay occupancy={second.occupancy} showError size="lg" />}
                                 </div>
-                                {(isTram || isChrono) && (
-                                  <div className="bg-slate-800 rounded-xl p-3">
-                                    <p className="text-xs text-slate-400 font-medium mb-2">{text.occupancy}</p>
-                                    {!compactMode && <OccupancyDisplay occupancy={second.occupancy} showError />}
-                                  </div>
-                                )}
-                              </div>
-                              {second.realtime && <p className="text-xs text-green-400 font-semibold flex items-center gap-1">● {text.realTimeData}</p>}
+                              )}
                             </div>
                             {hasTrafficAlert && departureLine?.trafficDetails?.[0] && (
-                              <div className="bg-amber-950 border border-amber-700 rounded-2xl p-3">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <ExclamationTriangleIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                                  <p className="text-xs font-semibold text-amber-300">{text.disruptedTraffic} {departureLine.shortName || departureLine.id}</p>
-                                </div>
-                                <p className="text-xs text-amber-200">{departureLine.trafficDetails[0].titre}</p>
-                                {departureLine.trafficDetails[0].description && (
-                                  <p className="text-xs text-amber-300/70 mt-1">{departureLine.trafficDetails[0].description}</p>
-                                )}
-                                <p className="text-xs text-amber-400/60 mt-1">{text.estimatedEnd} {departureLine.trafficDetails[0].dateFin || 'N/A'}</p>
-                              </div>
+                              <TrafficAlertCard
+                                detail={departureLine.trafficDetails[0]}
+                                language={language}
+                                /* Isolée sous un passage, la carte doit dire de
+                                   quelle ligne elle parle. */
+                                heading={`${text.disruptedTraffic} ${departureLine.shortName || departureLine.id}`}
+                              />
                             )}
-                            {group.count > 2 && <p className="text-xs text-slate-500 text-center">{text.moreDepartures(group.count - 2)}</p>}
 
                             {/* Actions du passage : la fiche horaire répond à la
                                 question « et le prochain, c'est quand ? » que le
                                 temps réel seul ne couvre pas. */}
-                            <div className="flex flex-wrap gap-2 pt-1">
+                            <div className="flex flex-wrap gap-2 border-t border-slate-700/70 pt-4">
                               <button
                                 type="button"
                                 onClick={() => onOpenTimetable?.({
@@ -825,17 +912,18 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                             style={departureStyle}
                             round={departureIsSem && isRoundLine(departure.lineId)}
                             sizeClass="w-10 h-10 text-sm"
+                            hasTraffic={hasTrafficAlert}
                           />
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
                             {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                             <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                              <TransportModeIcon mode={departure.type} className="w-3 h-3" />{modeLabel(normalizeMode(departure.type), text)}{departure.realtime && <span className="text-green-400"> • {text.live}</span>}
+                              <TransportModeIcon mode={departure.type} className="w-3 h-3" />{modeLabel(normalizeMode(departure.type), text)}{departure.realtime && <RealtimeWifi size={13} className="text-green-400" label={text.live} />}
                             </p>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0 ml-2">
-                          <p className="text-lg font-bold text-white">{renderDepartureTime(displayTime)}</p>
+                          <p className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`}>{renderDepartureTime(displayTime)}</p>
                           {!compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
                         </div>
                       </motion.div>
@@ -855,6 +943,7 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                             style={departureStyle}
                             round={departureIsSem && isRoundLine(departure.lineId)}
                             sizeClass="w-10 h-10 text-sm"
+                            hasTraffic={hasTrafficAlert}
                           />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
@@ -862,12 +951,12 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                           <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                             <TransportModeIcon mode={departure.type} className="w-3 h-3" />
                             {modeLabel(normalizeMode(departure.type), text)}
-                            {departure.realtime && <span className="text-green-400"> • {text.live}</span>}
+                            {departure.realtime && <RealtimeWifi size={13} className="text-green-400" label={text.live} />}
                           </p>
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0 ml-2">
-                        <p className="text-lg font-bold text-white">{renderDepartureTime(displayTime)}</p>
+                        <p className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`}>{renderDepartureTime(displayTime)}</p>
                         {second && <p className="text-xs text-slate-500">{renderDepartureTime(getDepartureDisplay(second, language))}</p>}
                       </div>
                     </motion.div>
@@ -877,6 +966,8 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                 )}
               </div>
             </div>
+              </>
+            )}
           </div>
           )}
           </MapSheetBody>

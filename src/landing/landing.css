@@ -1,150 +1,192 @@
 /*
  * La vitrine.
  *
- * Une page sombre, une seule colonne, beaucoup de noir et très peu de couleur —
- * le contraire de l'application, qui est un outil dense. Ici on ne cherche pas
- * l'efficacité mais l'impression : de grandes respirations, un texte large, et
- * des mouvements qui n'arrivent que lorsqu'on les regarde.
+ * Strictement noir et blanc. Pas un bleu, pas un dégradé de couleur, pas un
+ * halo : la hiérarchie tient au contraste, à la graisse et au vide. C'est ce
+ * qui distingue une page qui a l'air chère d'une page qui a l'air décorée.
+ *
+ * Trois familles, trois usages, jamais mélangés :
+ *
+ *   Geist       les grands titres, en graisse 450 et très resserrés. C'est le
+ *               réglage de Vercel : compact, dense, tenu.
+ *   Inter       tout le texte courant. C'est déjà celle de l'application.
+ *   Geist Mono  les intitulés de section, en petites capitales très espacées.
+ *               Le mono sert d'étiquette, jamais de texte.
+ *
+ * La page est entièrement claire ou entièrement sombre, jamais les deux : le
+ * relief vient d'un second niveau de surface et des filets, pas d'un fond qui
+ * bascule en cours de lecture.
  *
  * Feuille de style à part, chargée avec la page : l'application ne la voit
  * jamais, et rien de ce qui suit ne peut déteindre sur elle.
  */
 
+/*
+ * Les encres sont franches.
+ *
+ * Vercel ne fond pas son noir vers le bleu : `#000` exactement, et un blanc de
+ * texte légèrement rabattu à `#ededed` pour que les grandes surfaces ne vibrent
+ * pas. Les valeurs des deux thèmes sont plus bas ; ici, seules les polices et
+ * la mise en page générale.
+ */
 .landing {
-  --ink: #f7f9fc;
-  --ink-soft: #9aa6bd;
-  --ink-faint: #5f6b81;
-  --bg: #05070d;
-  --bg-raised: #0b0f18;
-  --line: rgba(255, 255, 255, 0.09);
-  --line-strong: rgba(255, 255, 255, 0.16);
-  --accent: #3b82f6;
+  --sans: 'Inter', 'Helvetica Neue', system-ui, sans-serif;
+  --display: 'Geist Variable', 'Geist', var(--sans);
+  --mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, 'JetBrains Mono', monospace;
 
   min-height: 100%;
-  background: var(--bg);
-  color: var(--ink);
-  font-family: 'Inter', 'Helvetica Neue', system-ui, sans-serif;
+  font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
 }
 
 /* --------------------------------------------------------------------------
- * Le fond.
+ * Les deux thèmes.
  *
- * Deux halos très larges et une grille fine, tous les deux fixes : le contenu
- * défile par-dessus un décor immobile, ce qui donne de la profondeur sans
- * demander le moindre calcul au défilement.
- * ------------------------------------------------------------------------ */
+ * La page entière est claire, ou entièrement sombre. Il n'y a plus de sections
+ * qui alternent : une vitrine qui passe du noir au blanc en descendant se lit
+ * comme deux sites cousus ensemble, et sur un téléphone réglé en clair elle
+ * éblouit une fois sur deux.
+ *
+ * Le relief vient donc d'un second niveau de surface — `landing-surface-alt` —
+ * qui n'est qu'un ton plus loin du fond, et des filets. Un seul jeu de
+ * variables change ; tout ce qui est posé dessus suit sans rien savoir du
+ * thème.
+ */
 
-.landing-aurora,
-.landing-grid {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
+.landing[data-theme='dark'] {
+  --bg: #000000;
+  --bg-alt: #0a0a0a;
+  --fg: #ededed;
+  --fg-muted: #a1a1a1;
+  --line: #1f1f1f;
+  --line-strong: #333333;
+  --contrast-bg: #ffffff;
+  --contrast-fg: #000000;
+  color-scheme: dark;
 }
 
-.landing-aurora {
-  background:
-    radial-gradient(60rem 40rem at 15% -10%, rgba(59, 130, 246, 0.18), transparent 60%),
-    radial-gradient(50rem 34rem at 85% 8%, rgba(139, 92, 246, 0.14), transparent 60%),
-    radial-gradient(46rem 30rem at 50% 100%, rgba(16, 185, 129, 0.08), transparent 65%);
+.landing[data-theme='light'] {
+  --bg: #ffffff;
+  --bg-alt: #fafafa;
+  --fg: #000000;
+  --fg-muted: #666666;
+  --line: #ebebeb;
+  --line-strong: #d4d4d4;
+  --contrast-bg: #000000;
+  --contrast-fg: #ffffff;
+  color-scheme: light;
 }
 
-.landing-grid {
-  background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
-  background-size: 64px 64px;
-  /* La grille s'efface vers le bas : elle habille le haut de page, elle ne
-     doit pas quadriller tout le site. */
-  -webkit-mask-image: radial-gradient(70rem 50rem at 50% 0%, #000 20%, transparent 75%);
-  mask-image: radial-gradient(70rem 50rem at 50% 0%, #000 20%, transparent 75%);
+.landing {
+  background: var(--bg);
+  color: var(--fg);
 }
 
-.landing-content {
-  position: relative;
-  z-index: 1;
+.landing-surface {
+  background: var(--bg);
+}
+
+/* Un ton plus loin du fond : c'est tout ce qu'il faut pour détacher un bloc. */
+.landing-surface-alt {
+  background: var(--bg-alt);
 }
 
 /* --------------------------------------------------------------------------
  * Le texte.
  * ------------------------------------------------------------------------ */
 
+/*
+ * Le grand titre.
+ *
+ * Graisse 450 et approche à −0,06 em : c'est le réglage de Vercel, et c'est
+ * exactement ce qui fait la différence. Une graisse entre le normal et le demi
+ * gras, resserrée au point que les lettres se touchent presque — un titre
+ * compact, dense, qui tient comme un bloc au lieu de s'étaler.
+ */
 .landing-display {
-  font-size: clamp(2.5rem, 7vw, 5rem);
-  line-height: 1.02;
-  letter-spacing: -0.04em;
-  font-weight: 800;
-  /* Le dégradé s'éteint vers le bas : le titre paraît éclairé par le haut,
-     comme le reste de la page. */
-  background: linear-gradient(180deg, #ffffff 20%, #93a4c0 105%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-family: var(--display);
+  font-weight: 450;
+  font-size: clamp(2.75rem, 7vw, 5.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.06em;
+  color: var(--fg);
 }
 
 .landing-title {
-  font-size: clamp(1.9rem, 4.2vw, 3rem);
+  font-family: var(--display);
+  font-weight: 450;
+  font-size: clamp(2rem, 4.4vw, 3.25rem);
   line-height: 1.08;
-  letter-spacing: -0.03em;
-  font-weight: 800;
+  letter-spacing: -0.05em;
+  color: var(--fg);
 }
 
+.landing-subtitle {
+  font-family: var(--display);
+  font-weight: 450;
+  font-size: clamp(1.15rem, 1.8vw, 1.5rem);
+  line-height: 1.25;
+  letter-spacing: -0.035em;
+  color: var(--fg);
+}
+
+/*
+ * L'intitulé de section.
+ *
+ * Onze pixels, capitales, très espacé : à cette taille, l'espacement est la
+ * seule chose qui rende le mot lisible, et c'est aussi ce qui le fait lire
+ * comme une étiquette et non comme une phrase.
+ */
 .landing-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 0.875rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
-  font-size: 0.8125rem;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
   font-weight: 500;
-  color: var(--ink-soft);
-  backdrop-filter: blur(8px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.landing-lead {
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--fg-muted);
+}
+
+.landing-body {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: var(--fg-muted);
 }
 
 /* --------------------------------------------------------------------------
- * Les surfaces.
+ * Les filets.
+ *
+ * Une page monochrome se structure au trait. Pas d'ombre portée, pas de coin
+ * arrondi généreux : des filets d'un pixel, et des angles presque droits.
  * ------------------------------------------------------------------------ */
 
+.landing-rule {
+  border-color: var(--line);
+}
+
 .landing-card {
-  position: relative;
   border: 1px solid var(--line);
-  border-radius: 1.25rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01));
-  transition: border-color 0.3s ease, transform 0.3s ease;
+  border-radius: 0.5rem;
+  transition: border-color 0.25s ease, background-color 0.25s ease;
 }
 
 .landing-card:hover {
   border-color: var(--line-strong);
-  transform: translateY(-2px);
-}
-
-/*
- * Le liseré lumineux du haut d'une carte.
- *
- * Un trait d'un pixel qui s'éclaire en son milieu : c'est ce qui distingue une
- * carte posée d'une carte allumée, et c'est tout ce qu'il faut.
- */
-.landing-card::before {
-  content: '';
-  position: absolute;
-  inset-inline: 15%;
-  top: -1px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
-  opacity: 0;
-  transition: opacity 0.35s ease;
-}
-
-.landing-card:hover::before {
-  opacity: 1;
 }
 
 /* --------------------------------------------------------------------------
  * Les boutons.
+ *
+ * Un plein et un vide, tous deux dans l'encre de la section. Sur fond sombre
+ * le plein est blanc, sur fond clair il est noir : c'est la même règle, elle
+ * n'a pas besoin d'être écrite deux fois.
  * ------------------------------------------------------------------------ */
 
 .landing-cta {
@@ -152,36 +194,37 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  height: 3rem;
-  padding: 0 1.5rem;
-  border-radius: 999px;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+  height: 2.75rem;
+  padding: 0 1.375rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   white-space: nowrap;
+  transition: opacity 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .landing-cta:active {
-  transform: scale(0.98);
+  transform: translateY(1px);
 }
 
+/* Le bouton plein prend le contraire du fond : blanc sur noir, noir sur blanc. */
 .landing-cta-primary {
-  background: #ffffff;
-  color: #05070d;
+  background: var(--contrast-bg);
+  color: var(--contrast-fg);
 }
 
 .landing-cta-primary:hover {
-  background: #dfe6f2;
+  opacity: 0.86;
 }
 
 .landing-cta-ghost {
-  border: 1px solid var(--line-strong);
-  color: var(--ink);
+  border: 1px solid var(--line);
+  color: var(--fg);
 }
 
 .landing-cta-ghost:hover {
-  border-color: rgba(255, 255, 255, 0.34);
-  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line-strong);
 }
 
 /* --------------------------------------------------------------------------
@@ -194,14 +237,14 @@
  * ------------------------------------------------------------------------ */
 
 .landing-marquee {
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
 }
 
 .landing-marquee-track {
   display: flex;
   width: max-content;
-  animation: landing-marquee 46s linear infinite;
+  animation: landing-marquee 52s linear infinite;
 }
 
 /* Survoler le bandeau l'arrête : on peut vouloir lire un nom au passage. */
@@ -215,112 +258,144 @@
 }
 
 /*
- * Les logos sont blanchis et atténués : quinze chartes graphiques côte à côte
- * font une foire, alors qu'une seule teinte fait une liste de partenaires.
- * Ils reprennent leur éclat au survol.
+ * Les logos, ramenés à une seule encre.
+ *
+ * Onze chartes graphiques côte à côte font une foire ; une seule teinte fait
+ * une liste de partenaires. `brightness(0)` est ce qui donne un monochrome
+ * vraiment monochrome : il écrase toutes les couleurs sur le noir sans toucher
+ * à la transparence, d'où une silhouette pleine plutôt qu'un gris moyen. Sur
+ * fond sombre, `invert(1)` la retourne en blanc.
+ *
+ * `grayscale` seul ne suffirait pas : il ne fait que désaturer, et un logo
+ * jaune resterait clair quand un logo bleu marine resterait sombre — la
+ * rangée paraîtrait alors bancale.
  */
 .landing-logo {
-  height: 1.75rem;
-  width: auto;
-  opacity: 0.55;
-  filter: grayscale(1) brightness(2.2);
-  transition: opacity 0.3s ease, filter 0.3s ease;
+  opacity: 0.45;
+  transition: opacity 0.25s ease;
+}
+
+.landing[data-theme='light'] .landing-logo {
+  filter: brightness(0);
+}
+
+.landing[data-theme='dark'] .landing-logo {
+  filter: brightness(0) invert(1);
 }
 
 .landing-logo-item:hover .landing-logo {
-  opacity: 1;
-  filter: grayscale(0) brightness(1);
+  opacity: 0.9;
 }
 
-/* Le repli quand un fichier manque : le nom, écrit à la même taille. */
+/* Le repli quand un fichier manque : le nom, à la même place. */
 .landing-logo-text {
+  font-family: var(--display);
   font-size: 1.0625rem;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: -0.02em;
-  color: var(--ink-soft);
-  opacity: 0.75;
+  color: var(--fg-muted);
   white-space: nowrap;
-  transition: opacity 0.3s ease, color 0.3s ease;
+  transition: color 0.25s ease;
 }
 
 .landing-logo-item:hover .landing-logo-text {
-  opacity: 1;
-  color: var(--ink);
+  color: var(--fg);
 }
 
 /* --------------------------------------------------------------------------
  * Le cadre du téléphone.
  *
- * Dessiné en CSS plutôt qu'apporté en image : une capture d'écran suffit, et
- * le cadre s'adapte à toutes les tailles sans qu'on ait à redécouper un PNG.
+ * Dessiné en CSS plutôt qu'apporté en image : une capture suffit, et le cadre
+ * s'adapte à toutes les tailles sans qu'on ait à redécouper un PNG. Un simple
+ * filet, pas de reflet ni de biseau — le faux verre fait toujours faux.
  * ------------------------------------------------------------------------ */
 
 .landing-phone {
   position: relative;
   aspect-ratio: 9 / 19.5;
-  border-radius: 2.25rem;
-  padding: 0.5rem;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03));
-  box-shadow:
-    0 2rem 5rem rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  border-radius: 1.75rem;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  background: var(--fg-frame, transparent);
 }
 
 .landing-phone-screen {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  border-radius: 1.85rem;
-  background: #0b0f18;
+  border-radius: 1.45rem;
+  background: var(--bg-alt);
 }
 
-.landing-phone-screen img {
+.landing-phone-screen img,
+.landing-phone-screen video {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* --------------------------------------------------------------------------
+ * Le cadre large : l'emplacement de la vidéo de démonstration.
+ * ------------------------------------------------------------------------ */
+
+.landing-frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--bg-alt);
+}
+
+.landing-frame video,
+.landing-frame img {
+  display: block;
   height: 100%;
   width: 100%;
   object-fit: cover;
 }
 
-/* La barre d'un écran d'accueil de téléphone, purement décorative. */
-.landing-phone::after {
-  content: '';
+/*
+ * En attendant la vidéo : une trame de lignes fines qui glissent lentement.
+ * Ce n'est pas une image volée ailleurs, ce n'est pas un rectangle vide non
+ * plus — juste de quoi tenir la place sans mentir sur ce qu'elle contiendra.
+ */
+.landing-placeholder {
   position: absolute;
-  bottom: 0.9rem;
-  left: 50%;
-  width: 32%;
-  height: 0.25rem;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.25);
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    115deg,
+    transparent 0 22px,
+    currentColor 22px 23px
+  );
+  color: var(--fg);
+  opacity: 0.07;
+  animation: landing-drift 24s linear infinite;
+}
+
+@keyframes landing-drift {
+  from { background-position: 0 0; }
+  to { background-position: 240px 0; }
 }
 
 /* --------------------------------------------------------------------------
  * L'apparition au défilement.
  *
- * Portée par une classe posée en JavaScript quand le bloc entre dans le champ,
- * et non par `animation-timeline`, que Firefox ne connaît pas encore. L'état
- * d'arrivée est la position naturelle : si rien ne se déclenche, le contenu est
- * simplement là.
+ * Visible par défaut, caché seulement lorsqu'on est sûr de pouvoir le montrer :
+ * l'inverse laisse une page entièrement blanche partout où l'observateur ne se
+ * déclenche pas. La classe `landing-anim` n'est posée que si
+ * `IntersectionObserver` existe, et retirée s'il n'a rien révélé en deux
+ * secondes.
  * ------------------------------------------------------------------------ */
 
-/*
- * Visible par défaut, caché seulement si l'on est sûr de pouvoir le montrer.
- *
- * L'inverse — caché par défaut, révélé au défilement — laisse une page
- * entièrement blanche partout où l'observateur ne se déclenche pas : navigateur
- * ancien, onglet non composité, extension trop zélée. Une page de présentation
- * qui ne présente rien est le pire des cas, et il ne doit pas dépendre de
- * l'aboutissement d'une animation.
- *
- * La classe `landing-anim` n'est posée sur la page que lorsque l'observateur
- * existe, et retirée s'il n'a rien révélé au bout de deux secondes.
- */
 .landing-reveal {
-  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .landing-anim .landing-reveal:not(.is-visible) {
   opacity: 0;
-  transform: translateY(24px);
+  transform: translateY(20px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -332,7 +407,10 @@
     transition: none;
   }
   .landing-marquee-track {
-    animation-duration: 240s;
+    animation-duration: 260s;
+  }
+  .landing-placeholder {
+    animation: none;
   }
 }
 
@@ -344,22 +422,297 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  transition: background-color 0.3s ease, border-color 0.3s ease, backdrop-filter 0.3s ease;
   border-bottom: 1px solid transparent;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Le fond n'arrive qu'une fois la page défilée : en haut, l'en-tête flotte. */
 .landing-header.is-stuck {
   border-bottom-color: var(--line);
-  background: rgba(5, 7, 13, 0.72);
-  backdrop-filter: blur(14px);
+  /* `color-mix` plutôt qu'un rgba figé : le voile suit le fond du thème. */
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(12px);
 }
 
 .landing-link {
-  color: var(--ink-soft);
+  color: var(--fg-muted);
   transition: color 0.2s ease;
 }
 
 .landing-link:hover {
-  color: var(--ink);
+  color: var(--fg);
+}
+
+/* --------------------------------------------------------------------------
+ * Le pilier.
+ *
+ * Le motif de Vercel, repris tel quel : une grande affirmation, un visuel qui
+ * occupe la moitié de la largeur, une preuve chiffrée en dessous, puis la liste
+ * des capacités séparées par des filets. Les piliers alternent le côté du
+ * visuel, ce qui suffit à rythmer une page longue sans changer de mise en page.
+ * ------------------------------------------------------------------------ */
+
+.landing-media {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--bg-alt);
+}
+
+.landing-media img,
+.landing-media video {
+  display: block;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+/*
+ * Les photos passent en noir et blanc.
+ *
+ * Un tram rouge et un bus vert dans une page qui n'a pas d'autre couleur, ce
+ * sont deux taches. En les désaturant, la photographie devient une matière de
+ * la page au lieu d'un corps étranger — et l'ensemble tient. Le contraste est
+ * légèrement relevé, sinon un cliché désaturé paraît gris et mou.
+ */
+.landing-photo {
+  filter: grayscale(1) contrast(1.08);
+}
+
+/* La liste des capacités : une ligne, un filet, rien d'autre. */
+.landing-list {
+  border-top: 1px solid var(--line);
+}
+
+.landing-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 1.125rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.landing-list-name {
+  font-family: var(--display);
+  font-weight: 450;
+  font-size: 0.9375rem;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  flex: 0 0 auto;
+  min-width: 11rem;
+}
+
+.landing-list-note {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+@media (max-width: 640px) {
+  .landing-list-item {
+    display: block;
+  }
+  .landing-list-note {
+    margin-top: 0.35rem;
+  }
+}
+
+/*
+ * La preuve.
+ *
+ * Un chiffre dans l'encre pleine, la phrase autour en gris : c'est la façon
+ * dont Vercel écrit ses références clients, et elle se lit d'un coup d'œil
+ * sans avoir l'air d'une publicité.
+ */
+.landing-proof {
+  font-family: var(--display);
+  font-weight: 450;
+  font-size: clamp(1.0625rem, 1.6vw, 1.25rem);
+  line-height: 1.45;
+  letter-spacing: -0.03em;
+  color: var(--fg-muted);
+}
+
+.landing-proof strong {
+  font-weight: 450;
+  color: var(--fg);
+}
+
+/* --------------------------------------------------------------------------
+ * Le menu déroulant « Solutions ».
+ *
+ * Un panneau qui descend sous l'en-tête, pas une liste flottante : c'est ce
+ * qui donne l'impression d'un rayon plutôt que d'un menu contextuel. Il
+ * s'ouvre au survol sur grand écran et au clic partout, parce qu'un menu qui
+ * ne s'ouvre qu'au survol n'existe pas sur un téléphone.
+ * ------------------------------------------------------------------------ */
+
+.landing-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 60;
+  width: 100%;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.landing-menu.is-open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.landing-menu-item {
+  display: block;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.18s ease;
+}
+
+.landing-menu-item:hover {
+  background: var(--bg-alt);
+}
+
+.landing-menu-name {
+  font-family: var(--display);
+  font-weight: 450;
+  font-size: 0.9375rem;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.landing-menu-note {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+/* --------------------------------------------------------------------------
+ * Le pied de page.
+ * ------------------------------------------------------------------------ */
+
+.landing-footer-title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--fg);
+  margin-bottom: 1rem;
+}
+
+.landing-footer-link {
+  display: block;
+  padding: 0.3125rem 0;
+  font-size: 0.8125rem;
+  color: var(--fg-muted);
+  transition: color 0.18s ease;
+}
+
+.landing-footer-link:hover {
+  color: var(--fg);
+}
+
+/*
+ * L'état du service.
+ *
+ * Une pastille et trois mots, tout en bas à droite : c'est la convention, et
+ * elle rassure précisément parce qu'elle est discrète. La pastille bat
+ * lentement — un point vert fixe pourrait être une image, un point qui respire
+ * dit que quelque chose interroge vraiment quelque chose.
+ *
+ * C'est le seul endroit de la page où une couleur est admise, avec le montage
+ * du hero : un état de service qui serait gris ne voudrait plus rien dire.
+ */
+.landing-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  transition: border-color 0.18s ease, color 0.18s ease;
+}
+
+.landing-status:hover {
+  border-color: var(--line-strong);
+  color: var(--fg);
+}
+
+.landing-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #3b82f6;
+  animation: landing-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes landing-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-status-dot {
+    animation: none;
+  }
+}
+
+/* Le sélecteur de thème du pied de page : deux pastilles dans un cadre. */
+.landing-theme {
+  display: inline-flex;
+  padding: 0.1875rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.landing-theme button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  color: var(--fg-muted);
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.landing-theme button[aria-pressed='true'] {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+
+/* --------------------------------------------------------------------------
+ * Le sommaire d'une page légale.
+ *
+ * Une colonne de liens tenus à gauche, dont celui de la section qu'on est en
+ * train de lire se détache. Le trait vertical fait office de repère : sans lui,
+ * on ne voit pas où l'on en est dans un document qui en compte sept.
+ * ------------------------------------------------------------------------ */
+.landing-toc-link {
+  display: block;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--fg-muted);
+  transition: color 0.18s ease;
+}
+
+.landing-toc-link:hover {
+  color: var(--fg);
+}
+
+.landing-toc-link.is-active {
+  color: var(--fg);
+  font-weight: 500;
 }

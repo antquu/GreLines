@@ -4,8 +4,17 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/flavicon.png" sizes="192x192" />
     <link rel="apple-touch-icon" href="/flavicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GreLines — Horaires en temps réel des transports de Grenoble (Tag, TER, Citiz)</title>
+    <!-- Pas d'agrandissement : un double-tap malencontreux sur la liste des
+         itinéraires zoomait la page entière, et l'on se retrouvait à la faire
+         glisser dans tous les sens sans comprendre d'où venait ce cadrage. Les
+         champs sont déjà à 16 px, taille en dessous de laquelle iOS zoome de
+         lui-même à la saisie ; il ne restait que le geste. La carte, elle, gère
+         son propre pincement : c'est MapLibre qui l'écoute, pas le navigateur. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Horaires en temps réel des transports de Grenoble (Tag, TER, Citiz) \ GreLines</title>
     <meta
       name="description"
       content="Prochains passages en temps réel à chaque arrêt de Grenoble et de sa métropole : trams A à E, Chrono, Proximo, Flexo, TER, bus Tag. Itinéraires, info-trafic, fiches horaires, plan interactif et véhicules en libre-service. Gratuit, sans compte et sans publicité."
@@ -29,7 +38,7 @@
     <meta property="og:locale" content="fr_FR" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.grelines.fr/" />
-    <meta property="og:title" content="GreLines — Horaires en temps réel des transports de Grenoble" />
+    <meta property="og:title" content="Horaires en temps réel des transports de Grenoble / GreLines" />
     <meta
       property="og:description"
       content="Prochains passages en temps réel à chaque arrêt de Grenoble : trams, Chrono, Proximo, Flexo, TER. Itinéraires, info-trafic et plan interactif."
@@ -39,7 +48,7 @@
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="GreLines — Horaires en temps réel des transports de Grenoble" />
+    <meta name="twitter:title" content="Horaires en temps réel des transports de Grenoble / GreLines" />
     <meta
       name="twitter:description"
       content="Prochains passages en temps réel à chaque arrêt de Grenoble : trams, Chrono, Proximo, Flexo, TER. Itinéraires, info-trafic et plan interactif."

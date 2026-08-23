@@ -9,13 +9,23 @@
  * l'application : ni carte, ni requêtes réseau, ni service d'horaires. Une page
  * de présentation qui met trois secondes à s'afficher ne présente rien du tout.
  *
+ * La page est entièrement claire ou entièrement sombre. Le thème est celui
+ * choisi dans l'application — la vitrine relit le même réglage — et se change
+ * depuis le pied de page. Les sections n'alternent plus les fonds : elles se
+ * détachent par un second niveau de surface et par les filets.
+ *
  * Aucune image n'est indispensable. Tant que `/assets/homepage` est vide, les
- * logos s'écrivent en toutes lettres et les captures laissent un cadre sombre :
- * la page se tient debout seule, et s'enrichit à mesure qu'on la remplit.
+ * logos s'écrivent en toutes lettres, les captures laissent un cadre vide et
+ * l'emplacement de la vidéo se remplit d'une trame. La page se tient debout
+ * seule, et s'enrichit à mesure qu'on la remplit.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { COPY, PARTNERS, type Lang } from './content';
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
+import { COPY, PARTNERS, type Lang, type Partner } from './content';
+import { LandingHeader } from './LandingHeader';
+import { LandingFooter } from './LandingFooter';
 import './landing.css';
 
 const ASSETS = '/assets/homepage';
@@ -64,7 +74,11 @@ function Reveal({
 }) {
   const ref = useReveal<HTMLDivElement>();
   return (
-    <div ref={ref} className={`landing-reveal ${className}`} style={{ transitionDelay: `${delay}ms` }}>
+    <div
+      ref={ref}
+      className={`landing-reveal ${className}`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
       {children}
     </div>
   );
@@ -77,56 +91,216 @@ function Reveal({
  * vaut un cadre vide qu'une icône brisée. `onError` retire l'image, le parent
  * garde sa place.
  */
-function SoftImage({ src, alt, className = '' }: { src: string; alt: string; className?: string }) {
+function SoftImage({
+  src,
+  alt,
+  className = '',
+  eager = false,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  /**
+   * Vrai pour ce qui est visible d'emblée.
+   *
+   * Le chargement paresseux est une bonne idée partout, sauf sur la plus
+   * grande image du haut de page : le navigateur attend alors d'avoir calculé
+   * la mise en page pour décider de la télécharger, et l'on retarde
+   * précisément ce qu'on voulait montrer en premier.
+   */
+  eager?: boolean;
+}) {
   const [failed, setFailed] = useState(false);
   if (failed) return null;
-  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} loading="lazy" />;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setFailed(true)}
+      loading={eager ? 'eager' : 'lazy'}
+      fetchPriority={eager ? 'high' : undefined}
+      decoding={eager ? 'sync' : 'async'}
+    />
+  );
 }
 
-/** Un logo de réseau, ou son nom quand le fichier n'est pas encore là. */
-function PartnerLogo({ id, name }: { id: string; name: string }) {
+/**
+ * L'emplacement de la démonstration.
+ *
+ * Une vidéo si le fichier est là, une trame de traits obliques sinon. La trame
+ * n'est empruntée à personne : elle est dessinée en CSS, et elle disparaît
+ * d'elle-même le jour où la vidéo arrive.
+ */
+function Demo({ src, poster, ratio }: { src: string; poster?: string; ratio: string }) {
   const [failed, setFailed] = useState(false);
+
   return (
-    <div className="landing-logo-item flex flex-shrink-0 items-center justify-center px-8 py-2 sm:px-10">
+    <div className="landing-frame w-full" style={{ aspectRatio: ratio }}>
       {failed ? (
-        <span className="landing-logo-text">{name}</span>
+        <div className="landing-placeholder" aria-hidden />
       ) : (
-        <img
-          src={`${ASSETS}/logos/${id}.svg`}
-          alt={name}
-          className="landing-logo"
+        <video
+          src={src}
+          poster={poster}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
           onError={() => setFailed(true)}
-          loading="lazy"
         />
       )}
     </div>
   );
 }
 
-/** Le mot-symbole de l'en-tête, avec le même repli. */
-function Wordmark() {
+/** La hauteur d'encre commune à tous les logotypes du bandeau, en pixels. */
+const LOGO_INK_HEIGHT = 26;
+
+/**
+ * Un logo de réseau, cadré sur son tracé.
+ *
+ * Le fichier employé est la version trouée de `svg/mono/`, produite par
+ * `scripts/mono-logos.mjs` : dans les originaux, les contre-formes sont
+ * peintes en blanc et non évidées, si bien qu'une fois ramenées à une seule
+ * encre elles se referment — le « M » disparaît de son rond, la voiture de sa
+ * goutte.
+ *
+ * L'image est agrandie jusqu'à ce que sa zone utile atteigne la hauteur
+ * commune, puis décalée pour que le coin haut-gauche du tracé tombe dans le
+ * coin de la fenêtre, qui rogne le vide. Tous les logotypes se retrouvent donc
+ * à la même hauteur optique, quelle que soit la place qu'ils occupent dans
+ * leur fichier — c'est ce qui fait qu'une rangée de marques paraît alignée.
+ */
+function PartnerLogo({ id, name, box }: Partner) {
   const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <span className="text-lg font-extrabold tracking-tight text-white">GreLines</span>
-    );
-  }
+
+  const width = box.x1 - box.x0;
+  const height = box.y1 - box.y0;
+  // La toile fait 1414 × 849, soit un rapport de 1,665.
+  const canvas = 1414 / 849;
+  const inkWidth = LOGO_INK_HEIGHT * (width / height) * canvas;
+
   return (
-    <img
-      src={`${ASSETS}/logo.svg`}
-      alt="GreLines"
-      className="h-7 w-auto"
-      onError={() => setFailed(true)}
-    />
+    <div className="landing-logo-item flex flex-shrink-0 items-center justify-center px-9 sm:px-12">
+      {failed ? (
+        <span className="landing-logo-text">{name}</span>
+      ) : (
+        <div
+          className="landing-logo relative overflow-hidden"
+          style={{ width: inkWidth, height: LOGO_INK_HEIGHT }}
+        >
+          <img
+            src={`${ASSETS}/svg/mono/${id}.svg`}
+            alt={name}
+            className="absolute max-w-none"
+            style={{
+              width: `${100 / width}%`,
+              left: `${(-box.x0 / width) * 100}%`,
+              top: `${(-box.y0 / height) * 100}%`,
+            }}
+            onError={() => setFailed(true)}
+            /* Pas de chargement différé : le bandeau défile, et ce qui est loin
+               à droite n'entre jamais « dans la vue » au sens où le navigateur
+               l'entend. Les fichiers font quelques kilo-octets, ils arrivent
+               avec la page. */
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
+/**
+ * La pastille GL, en haut et en bas de la page.
+ *
+ * Deux fichiers, un par thème, et le nommage est celui du disque et non celui
+ * du fond : `logo.png` est le disque noir, qu'on pose sur une page claire ;
+ * `logo_light.png` est le disque blanc, pour la page sombre. Le nom du mot
+ * s'écrit à côté, en toutes lettres — la pastille seule ne dit pas GreLines.
+ */
 function ArrowRight() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+      aria-hidden
+    >
       <path d="M5 12h14M13 6l6 6-6 6" />
     </svg>
   );
+}
+
+/** L'intitulé d'une section : deux mots en mono, au-dessus du titre. */
+function Eyebrow({ children }: { children: string }) {
+  return <p className="landing-eyebrow">{children}</p>;
+}
+
+
+
+
+type Theme = 'light' | 'dark';
+type ThemeChoice = 'auto' | Theme;
+
+/** Ce que le système annonce à cet instant. */
+function systemTheme(): Theme {
+  if (typeof window === 'undefined') return 'dark';
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+/**
+ * Le thème de la vitrine.
+ *
+ * Trois choix, comme partout : suivre le système, forcer le clair, forcer le
+ * sombre. Le réglage vit sous la même clé que celui de l'application —
+ * `greLines_theme` — et suit la même convention : « light » ou « dark » écrits
+ * en toutes lettres, tout le reste valant « suivre le système ». Quelqu'un qui
+ * arrive ici depuis les réglages ne voit donc pas la page basculer sous ses
+ * yeux, et ce qu'il change ici vaut aussi pour l'application.
+ */
+function useLandingTheme() {
+  const [choice, setChoice] = useState<ThemeChoice>(() => {
+    try {
+      const stored = localStorage.getItem('greLines_theme');
+      if (stored === 'light' || stored === 'dark') return stored;
+      // « bleu » est l'autre sombre de l'application : la vitrine, qui n'a
+      // qu'un noir, le traite comme du sombre.
+      if (stored === 'blue') return 'dark';
+    } catch {
+      // Stockage refusé : on suivra le système, comme n'importe quel visiteur.
+    }
+    return 'auto';
+  });
+
+  const [system, setSystem] = useState<Theme>(systemTheme);
+
+  /* En automatique, la page suit le système jusque dans ses changements. */
+  useEffect(() => {
+    const media = window.matchMedia?.('(prefers-color-scheme: light)');
+    if (!media) return;
+    const onChange = () => setSystem(media.matches ? 'light' : 'dark');
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  const choose = (next: ThemeChoice) => {
+    setChoice(next);
+    try {
+      if (next === 'auto') localStorage.removeItem('greLines_theme');
+      else localStorage.setItem('greLines_theme', next);
+    } catch {
+      // Le choix ne tiendra que le temps de la visite.
+    }
+  };
+
+  const theme: Theme = choice === 'auto' ? system : choice;
+  return { theme, choice, choose };
 }
 
 /* -------------------------------------------------------------------------
@@ -135,16 +309,84 @@ function ArrowRight() {
 
 export function LandingApp({ lang }: { lang: Lang }) {
   const copy = COPY[lang];
-  const other: Lang = lang === 'fr' ? 'en' : 'fr';
+  /* Basculer depuis le pied de page est un choix : il est retenu, et la
+     détection de langue cesse alors de s'en mêler. */
+  const rememberLang = (next: Lang) => {
+    try { localStorage.setItem('greLines_landingLang', next); } catch { /* ignoré */ }
+  };
   const [stuck, setStuck] = useState(false);
+  const { theme, choice, choose } = useLandingTheme();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  /**
+   * L'animation d'apparition, activée seulement si l'on sait la mener à bien.
+   *
+   * Le contenu est visible par défaut ; ce n'est qu'en posant cette classe
+   * qu'on le cache en attendant qu'il entre dans le champ. Faute
+   * d'`IntersectionObserver`, on ne le cache donc jamais.
+   */
+  const [animated, setAnimated] = useState(() => typeof IntersectionObserver !== 'undefined');
+
+  useEffect(() => {
+    if (!animated) return;
+
+    /*
+     * Le garde-fou.
+     *
+     * Un observateur peut exister sans jamais rien signaler — onglet en
+     * arrière-plan au chargement, rendu non composité, extension qui s'en
+     * mêle. Passé deux secondes sans qu'un seul bloc soit apparu, on renonce à
+     * l'animation et l'on montre tout : une page de présentation vide est bien
+     * pire qu'une page sans effet.
+     */
+    const timer = window.setTimeout(() => {
+      if (document.querySelector('.landing-reveal.is-visible')) return;
+      setAnimated(false);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+    // Une seule mise en place, au montage : `animated` ne passe de vrai à faux
+    // qu'ici même, et relancer la minuterie sur ce changement la ferait tourner
+    // pour rien.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = lang;
+    /*
+     * « Page / Marque », la marque en dernier.
+     *
+     * Un onglet est souvent assez étroit pour ne montrer que ses premiers
+     * caractères : ce qui distingue celui-ci des sept autres doit donc venir en
+     * premier — et dans une rangée d'onglets GreLines, « GreLines » est
+     * précisément ce qui ne distingue rien.
+     */
     document.title =
       lang === 'fr'
-        ? 'GreLines — tous vos transports de Grenoble sur un seul écran'
-        : 'GreLines — every Grenoble transit network on a single screen';
+        ? 'Tous vos transports de Grenoble sur un seul écran \\ GreLines'
+        : 'Every Grenoble transit network on a single screen \\ GreLines';
   }, [lang]);
+
+  /*
+   * Le menu se referme comme on s'y attend : par la touche d'échappement, et
+   * en cliquant ailleurs. Sans quoi il resterait ouvert dans le dos de celui
+   * qui a repris sa lecture plus bas.
+   */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('[data-menu]')) setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('click', onClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('click', onClick);
+    };
+  }, [menuOpen]);
 
   /* L'en-tête ne prend son fond qu'une fois la page défilée. */
   useEffect(() => {
@@ -159,245 +401,218 @@ export function LandingApp({ lang }: { lang: Lang }) {
   const marqueeTrack = [...PARTNERS, ...PARTNERS];
 
   return (
-    <div className="landing">
-      <div className="landing-aurora" aria-hidden />
-      <div className="landing-grid" aria-hidden />
-
-      <div className="landing-content">
-        {/* ------------------------------------------------ en-tête */}
-        <header className={`landing-header ${stuck ? 'is-stuck' : ''}`}>
-          <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-            <a href={`/${lang}`} className="flex items-center gap-2">
-              <Wordmark />
-            </a>
-
-            <nav className="hidden items-center gap-8 text-sm font-medium md:flex">
-              <a href="#features" className="landing-link">{copy.nav.features}</a>
-              <a href="#networks" className="landing-link">{copy.nav.networks}</a>
-              <a href="#screens" className="landing-link">{copy.nav.screens}</a>
-            </nav>
-
-            <div className="flex items-center gap-3">
-              <a href={`/${other}`} className="landing-link hidden text-sm font-medium sm:block">
-                {copy.switchLang}
-              </a>
-              <a href="/app" className="landing-cta landing-cta-primary !h-10 !px-5 !text-sm">
-                {copy.nav.open}
-              </a>
-            </div>
-          </div>
-        </header>
+    <div className={`landing ${animated ? 'landing-anim' : ''}`} data-theme={theme}>
+      {/* ================================================== pièce sombre */}
+      <div className="landing-surface">
+        <LandingHeader lang={lang} theme={theme} stuck={stuck} local />
 
         {/* ------------------------------------------------ hero */}
-        <section className="mx-auto max-w-6xl px-6 pb-20 pt-16 sm:pt-24">
-          <div className="grid items-center gap-16 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="mx-auto max-w-6xl px-6 pb-24 pt-20 sm:pt-28">
+          <div className="grid items-center gap-12 lg:grid-cols-[1fr_0.95fr]">
             <div>
-              <Reveal>
-                <span className="landing-eyebrow">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  {copy.hero.eyebrow}
-                </span>
-              </Reveal>
+          <Reveal>
+            <Eyebrow>{copy.hero.eyebrow}</Eyebrow>
+          </Reveal>
 
-              <Reveal delay={80}>
-                <h1 className="landing-display mt-7">
-                  {copy.hero.title}
-                  <br />
-                  {copy.hero.titleAccent}
-                </h1>
-              </Reveal>
+          <Reveal delay={70}>
+            <h1 className="landing-display mt-6 max-w-4xl">
+              {copy.hero.title}
+              <br />
+              <span className="text-[var(--fg-muted)]">{copy.hero.titleAccent}</span>
+            </h1>
+          </Reveal>
 
-              <Reveal delay={160}>
-                <p className="mt-7 max-w-xl text-[1.0625rem] leading-relaxed text-[var(--ink-soft)]">
-                  {copy.hero.body}
+          {/* Les trois raisons d'ouvrir l'application, empilées sous le titre.
+              Chacune commence par sa proposition en pleine encre, la suite en
+              gris : le regard descend la colonne des amorces sans avoir à lire
+              les phrases entières. */}
+          <Reveal delay={140}>
+            <div className="mt-10 max-w-2xl">
+              {copy.heroLines.map(line => (
+                <p key={line.lead} className="landing-proof border-t border-[var(--line)] py-4">
+                  <strong>{line.lead}</strong> {line.rest}
                 </p>
-              </Reveal>
+              ))}
+            </div>
+          </Reveal>
 
-              <Reveal delay={240}>
-                <div className="mt-10 flex flex-wrap gap-3">
-                  <a href="/app" className="landing-cta landing-cta-primary">
-                    {copy.hero.primary}
-                    <ArrowRight />
-                  </a>
-                  <a href="#features" className="landing-cta landing-cta-ghost">
-                    {copy.hero.secondary}
-                  </a>
-                </div>
-              </Reveal>
+          <Reveal delay={210}>
+            <div className="mt-10 flex flex-wrap gap-3">
+              <a href="/app" className="landing-cta landing-cta-primary">
+                {copy.hero.primary}
+                <ArrowRight />
+              </a>
+              <a href="#features" className="landing-cta landing-cta-ghost">
+                {copy.hero.secondary}
+              </a>
+            </div>
+          </Reveal>
+
             </div>
 
-            <Reveal delay={200}>
-              <div className="mx-auto w-full max-w-[17rem]">
-                <div className="landing-phone">
-                  <div className="landing-phone-screen">
-                    <SoftImage src={`${ASSETS}/app-carte.png`} alt="GreLines" />
-                  </div>
-                </div>
+            {/* Le montage du réseau, à droite du titre.
+                Posé sans cadre ni filet : le fichier est détouré, et
+                l'enfermer dans une boîte rendrait le détourage inutile. C'est
+                aussi la seule image en couleurs de la page — le reste étant
+                d'une neutralité stricte, elle porte tout le regard, et la
+                désaturer reviendrait à éteindre la seule chose qui montre le
+                réseau tel qu'il est. */}
+            <Reveal delay={240}>
+              <div className="mx-auto w-full max-w-[34rem] lg:-mr-8">
+                <SoftImage
+                  src={`${ASSETS}/header.png`}
+                  alt={copy.hero.headerAlt}
+                  className="h-auto w-full"
+                  eager
+                />
               </div>
             </Reveal>
           </div>
         </section>
 
         {/* ------------------------------------------------ réseaux */}
-        <section id="networks" className="border-y border-[var(--line)] py-14">
+        <section id="networks" className="border-t border-[var(--line)] py-16">
           <Reveal>
-            <p className="mb-9 text-center text-sm font-medium text-[var(--ink-faint)]">
-              {copy.marquee}
-            </p>
+            <div className="mx-auto mb-12 max-w-6xl px-6">
+              <Eyebrow>{copy.eyebrows.networks}</Eyebrow>
+              <p className="landing-subtitle mt-4">{copy.marquee}</p>
+            </div>
           </Reveal>
           <div className="landing-marquee">
             <div className="landing-marquee-track">
               {marqueeTrack.map((partner, index) => (
-                <PartnerLogo key={`${partner.id}-${index}`} id={partner.id} name={partner.name} />
+                <PartnerLogo key={`${partner.id}-${index}`} {...partner} />
               ))}
             </div>
           </div>
         </section>
 
         {/* ------------------------------------------------ chiffres */}
-        <section className="mx-auto max-w-6xl px-6 py-20">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-12 lg:grid-cols-4">
+        <section className="border-t border-[var(--line)]">
+          <div className="mx-auto grid max-w-6xl grid-cols-2 lg:grid-cols-4">
             {copy.stats.map((stat, index) => (
-              <Reveal key={stat.label} delay={index * 70}>
-                <div>
-                  <div className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+              <Reveal key={stat.label} delay={index * 60}>
+                {/* Les filets ne se posent qu'entre les cases, jamais au bord :
+                    d'où ces conditions, qui suivent le nombre de colonnes. */}
+                <div
+                  className={`h-full px-6 py-12 ${
+                    index % 2 === 0 ? 'border-r border-[var(--line)]' : ''
+                  } ${index < 2 ? 'border-b border-[var(--line)] lg:border-b-0' : ''} ${
+                    index === 2 ? 'lg:border-r lg:border-[var(--line)]' : ''
+                  }`}
+                >
+                  <div
+                    className="text-4xl sm:text-5xl"
+                    style={{
+                      fontFamily: 'var(--display)',
+                      fontWeight: 300,
+                      letterSpacing: '-0.03em',
+                    }}
+                  >
                     {stat.value}
                   </div>
-                  <div className="mt-2 text-sm text-[var(--ink-soft)]">{stat.label}</div>
+                  <div className="landing-body mt-3">{stat.label}</div>
                 </div>
               </Reveal>
             ))}
           </div>
         </section>
+      </div>
 
-        {/* ------------------------------------------------ fonctionnalités */}
-        <section id="features" className="mx-auto max-w-6xl px-6 py-20">
-          <Reveal>
-            <h2 className="landing-title max-w-2xl">{copy.featuresTitle}</h2>
-            <p className="mt-5 max-w-xl text-[1.0625rem] leading-relaxed text-[var(--ink-soft)]">
-              {copy.featuresBody}
-            </p>
-          </Reveal>
-
-          <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {copy.features.map((feature, index) => (
-              <Reveal key={feature.title} delay={(index % 3) * 80}>
-                <div className="landing-card h-full p-7">
-                  <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--line)] bg-white/5">
+      {/* ================================================== les piliers */}
+      <div id="features" className="landing-surface border-t border-[var(--line)]">
+        {copy.pillars.map((pillar, index) => (
+          <section
+            key={pillar.title}
+            className={`border-b border-[var(--line)] ${index % 2 === 1 ? 'landing-surface-alt' : ''}`}
+          >
+            <div className="mx-auto max-w-6xl px-6 py-24">
+              <div className="grid items-center gap-14 lg:grid-cols-2">
+                {/* Le visuel change de côté d'un pilier à l'autre. `order` et
+                    non deux mises en page : la lecture reste la même sur
+                    téléphone, où tout se remet en colonne. */}
+                <Reveal className={index % 2 === 1 ? 'lg:order-2' : ''}>
+                  <div className="landing-media" style={{ aspectRatio: '4 / 3' }}>
                     <SoftImage
-                      src={`${ASSETS}/icons/${feature.icon}.svg`}
-                      alt=""
-                      className="h-5 w-5 opacity-80"
+                      src={`${ASSETS}/photos/${pillar.photo}`}
+                      alt={pillar.alt}
+                      className="landing-photo"
                     />
                   </div>
-                  <h3 className="text-[1.0625rem] font-bold text-white">{feature.title}</h3>
-                  <p className="mt-2.5 text-sm leading-relaxed text-[var(--ink-soft)]">
-                    {feature.body}
-                  </p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </section>
+                </Reveal>
 
-        {/* ------------------------------------------------ captures */}
-        <section className="mx-auto max-w-6xl px-6 py-20">
-          <Reveal>
-            <h2 className="landing-title max-w-2xl">{copy.showcaseTitle}</h2>
-            <p className="mt-5 max-w-xl text-[1.0625rem] leading-relaxed text-[var(--ink-soft)]">
-              {copy.showcaseBody}
-            </p>
-          </Reveal>
-
-          <div className="mt-16 grid gap-10 sm:grid-cols-3">
-            {copy.showcase.map((item, index) => (
-              <Reveal key={item.title} delay={index * 90}>
-                <div>
-                  <div className="landing-phone">
-                    <div className="landing-phone-screen">
-                      <SoftImage src={`${ASSETS}/${item.image}`} alt={item.title} />
+                <Reveal delay={90}>
+                  <div>
+                    <h2 className="landing-title max-w-lg">{pillar.title}</h2>
+                    <p className="landing-proof mt-8">
+                      <strong>{pillar.proof.strong}</strong> {pillar.proof.rest}
+                    </p>
+                    <div className="landing-list mt-10">
+                      {pillar.items.map(item => (
+                        <div key={item.name} className="landing-list-item">
+                          <span className="landing-list-name">{item.name}</span>
+                          <span className="landing-list-note">{item.note}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <h3 className="mt-7 text-[1.0625rem] font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-[var(--ink-soft)]">{item.body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </section>
-
-        {/* ------------------------------------------------ écrans */}
-        <section id="screens" className="mx-auto max-w-6xl px-6 py-20">
-          <Reveal>
-            <div className="landing-card overflow-hidden p-8 sm:p-12">
-              <div className="grid items-center gap-12 lg:grid-cols-2">
-                <div>
-                  <h2 className="landing-title">{copy.screenTitle}</h2>
-                  <p className="mt-5 text-[1.0625rem] leading-relaxed text-[var(--ink-soft)]">
-                    {copy.screenBody}
-                  </p>
-                  <p className="mt-6 text-sm text-[var(--ink-faint)]">{copy.screenNote}</p>
-                  <a href="/app/screen" className="landing-cta landing-cta-ghost mt-8">
-                    {copy.nav.screens}
-                    <ArrowRight />
-                  </a>
-                </div>
-
-                <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[#0b0f18]">
-                  <div
-                    className="w-full"
-                    style={{ aspectRatio: '16 / 9' }}
-                  >
-                    <SoftImage
-                      src={`${ASSETS}/ecran.png`}
-                      alt="GreLines Screen"
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                </div>
+                </Reveal>
               </div>
             </div>
-          </Reveal>
+          </section>
+        ))}
+      </div>
+
+      {/* ================================================== pièce sombre */}
+      <div className="landing-surface">
+        {/* ------------------------------------------------ écrans */}
+        <section id="screens" className="mx-auto max-w-6xl px-6 py-28">
+          <div className="grid items-center gap-16 lg:grid-cols-2">
+            <Reveal>
+              <div>
+                <Eyebrow>{copy.eyebrows.screens}</Eyebrow>
+                <h2 className="landing-title mt-5">{copy.screenTitle}</h2>
+                <p className="landing-lead mt-6">{copy.screenBody}</p>
+                <p className="landing-eyebrow mt-8">{copy.screenNote}</p>
+                <a href="/app/screen" className="landing-cta landing-cta-ghost mt-8">
+                  {copy.nav.screens}
+                  <ArrowRight />
+                </a>
+              </div>
+            </Reveal>
+
+            <Reveal delay={90}>
+              <Demo src={`${ASSETS}/ecran.mp4`} poster={`${ASSETS}/ecran.png`} ratio="16 / 9" />
+            </Reveal>
+          </div>
         </section>
 
         {/* ------------------------------------------------ appel final */}
-        <section className="mx-auto max-w-6xl px-6 py-24">
-          <Reveal>
-            <div className="landing-card px-8 py-20 text-center sm:px-12">
-              <h2 className="landing-display mx-auto max-w-3xl !text-[clamp(2rem,5vw,3.5rem)]">
-                {copy.finalTitle}
-              </h2>
-              <p className="mx-auto mt-6 max-w-lg text-[1.0625rem] leading-relaxed text-[var(--ink-soft)]">
-                {copy.finalBody}
-              </p>
-              <div className="mt-10 flex justify-center">
+        <section className="border-t border-[var(--line)]">
+          <div className="mx-auto max-w-6xl px-6 py-32 text-center">
+            <Reveal>
+              <Eyebrow>{copy.eyebrows.start}</Eyebrow>
+              <h2 className="landing-display mx-auto mt-6 max-w-3xl">{copy.finalTitle}</h2>
+              <p className="landing-lead mx-auto mt-8 max-w-lg">{copy.finalBody}</p>
+              <div className="mt-12 flex justify-center">
                 <a href="/app" className="landing-cta landing-cta-primary">
                   {copy.finalPrimary}
                   <ArrowRight />
                 </a>
               </div>
-            </div>
-          </Reveal>
+            </Reveal>
+          </div>
         </section>
 
         {/* ------------------------------------------------ pied */}
-        <footer className="border-t border-[var(--line)]">
-          <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-12 sm:flex-row sm:items-start sm:justify-between">
-            <div className="max-w-md">
-              <Wordmark />
-              <p className="mt-4 text-sm leading-relaxed text-[var(--ink-faint)]">
-                {copy.footerNote}
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 text-sm sm:items-end">
-              <a href="/app" className="landing-link">{copy.nav.open}</a>
-              <a href={`/${other}`} className="landing-link">{copy.switchLang}</a>
-              <span className="text-[var(--ink-faint)]">
-                © {new Date().getFullYear()} GreLines · {copy.footerLegal}
-              </span>
-            </div>
-          </div>
-        </footer>
+        {/* ------------------------------------------------ pied de page */}
+        <LandingFooter
+          lang={lang}
+          theme={theme}
+          choice={choice}
+          onChoose={choose}
+          onPickLang={rememberLang}
+        />
       </div>
     </div>
   );

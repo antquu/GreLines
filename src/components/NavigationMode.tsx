@@ -1602,6 +1602,8 @@ export function NavigationMode({
               : undefined);
           if (!stop) continue;
           for (const seconds of stop.times) {
+            // Une course qui ne dessert pas cet arrêt n'a pas d'heure à donner.
+            if (seconds === null) continue;
             minutes.push(Math.round((midnight + seconds * 1000 - now.getTime()) / 60000));
           }
         }

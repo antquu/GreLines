@@ -29,8 +29,17 @@ export interface TimetableStop {
   id: string;
   name: string;
   city?: string;
-  
-  times: number[];
+  /**
+   * Une entrée par course, dans l'ordre des courses du sens.
+   *
+   * `null` quand la course ne dessert pas cet arrêt : l'API écrit alors « | »
+   * là où les autres arrêts ont une heure. Ces trous doivent rester à leur
+   * place. Les retirer décalait tout ce qui suit, et la fiche annonçait alors,
+   * pour un même bus, minuit cinquante-huit à un arrêt et dix-sept heures
+   * cinquante-quatre au suivant — l'erreur passait inaperçue tant qu'on lisait
+   * les heures arrêt par arrêt, elle saute aux yeux dès qu'on lit une course.
+   */
+  times: Array<number | null>;
 }
 
 export interface TimetableDirection {
@@ -53,7 +62,8 @@ interface RawStop {
   name?: string;
   stopName?: string;
   city?: string;
-  trips?: number[];
+  /** Des secondes depuis minuit, ou « | » pour une course qui ne s'arrête pas. */
+  trips?: Array<number | string>;
 }
 
 interface RawDirection {
@@ -82,7 +92,9 @@ function parseTimetable(routeId: string, payload: Record<string, RawDirection>):
       id: String(stop.stopId ?? `${key}-${index}`),
       name: stop.name || stop.stopName || '',
       city: stop.city,
-      times: Array.isArray(stop.trips) ? stop.trips.filter(time => typeof time === 'number') : [],
+      times: Array.isArray(stop.trips)
+        ? stop.trips.map(time => (typeof time === 'number' ? time : null))
+        : [],
     }));
 
     directions.push({
@@ -110,7 +122,10 @@ export async function getTimetable(
   options?: { signal?: AbortSignal },
 ): Promise<Timetable | null> {
   const hourSlot = Math.floor(Date.now() / TIMETABLE_TTL_MS) * TIMETABLE_TTL_MS;
-  const cacheKey = `timetable_v1_${routeId}_${hourSlot}`;
+  // v2 : les fiches mises en cache avant la correction des trous « | » portent
+  // des heures décalées d'un arrêt à l'autre. Changer la clé les périme au lieu
+  // de les servir encore pendant une heure.
+  const cacheKey = `timetable_v2_${routeId}_${hourSlot}`;
 
   const cached = await idbGet<Timetable>(cacheKey);
   if (cached) return cached.value;
@@ -156,7 +171,7 @@ export function lastDepartureSeconds(timetable: Timetable): Map<string, number> 
     let latest = -1;
     for (const stop of direction.stops) {
       for (const time of stop.times) {
-        if (time > latest) latest = time;
+        if (time !== null && time > latest) latest = time;
       }
     }
     if (latest >= 0) last.set(direction.headsign, latest);
@@ -189,7 +204,7 @@ export function isLastDeparture(
   let latest = -1;
   for (const stop of direction.stops) {
     for (const time of stop.times) {
-      if (time > latest) latest = time;
+      if (time !== null && time > latest) latest = time;
     }
   }
   if (latest < 0) return false;

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useTranslated } from '../hooks/useTranslated';
 import { SignalIcon } from '@heroicons/react/24/solid';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 
@@ -109,6 +110,7 @@ export function ClockSignal({
   overrideMessage,
   overrideColor,
   showClock = true,
+  language = 'fr',
 }: {
   closedLabel: string;
   /** Message custom géré depuis le CRM (infotraffic/promo) — remplace le bloc horloge/fermé tant qu'il est actif. */
@@ -117,6 +119,8 @@ export function ClockSignal({
   overrideColor?: string;
   /** Affichage de l'horloge quand aucun message custom n'est actif. */
   showClock?: boolean;
+  /** La langue de lecture : le message du CRM est écrit en français. */
+  language?: 'fr' | 'en';
 }) {
   const { settings } = usePerfSettings();
   const [now, setNow] = useState(new Date());
@@ -131,8 +135,13 @@ export function ClockSignal({
   const networkClosed = isNetworkClosed(now);
   // Réglages > Affichage : le bandeau défilant peut être masqué sans faire
   // disparaître l'horloge ni l'alerte « réseau fermé ».
-  const displayMessage =
+  const rawMessage =
     overrideMessage && !settings.hideFooterTicker ? normalizeFooterMessage(overrideMessage) : null;
+  /* Le message du bandeau est saisi en français depuis le CRM. Traduit une
+     fois, il est ensuite relu gratuitement par tout le monde ; tant qu'il ne
+     l'est pas, le français défile. */
+  const translated = useTranslated(rawMessage, language);
+  const displayMessage = rawMessage ? translated : null;
 
   // Rien à afficher : pas de message, réseau ouvert, horloge désactivée.
   if (!displayMessage && !networkClosed && !showClock) return null;

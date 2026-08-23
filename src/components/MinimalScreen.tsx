@@ -30,6 +30,7 @@ export function MinimalScreen({
   title,
   isLight,
   actions = [],
+  bottomInset = true,
   onBack,
   children,
 }: {
@@ -37,6 +38,15 @@ export function MinimalScreen({
   title: string;
   isLight: boolean;
   actions?: MinimalScreenAction[];
+  /**
+   * Réserver de la place sous le contenu.
+   *
+   * Vraie par défaut : le bouton à trois points flotte en bas à droite, et sans
+   * cette réserve il recouvrirait la dernière ligne. Une page qui pose son
+   * propre bouton en bas d'écran la met à faux — la réserve borne alors son
+   * `sticky`, qui s'arrête cent douze pixels trop haut.
+   */
+  bottomInset?: boolean;
   onBack: () => void;
   children: ReactNode;
 }) {
@@ -76,7 +86,15 @@ export function MinimalScreen({
         <h2 className="min-w-0 flex-1 text-[26px] font-bold leading-tight">{title}</h2>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-28">{children}</div>
+      <div
+        /* `overflow-x-hidden` : le contenu qui entre par la droite déborde le
+           temps de son glissement, et un conteneur qui défile verticalement
+           défile aussi horizontalement dès qu'on lui en donne l'occasion. On
+           se retrouvait alors à pouvoir pousser la page de côté. */
+        className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${bottomInset ? 'pb-28' : ''}`}
+      >
+        {children}
+      </div>
 
       {actions.length > 0 && (
         <>

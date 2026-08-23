@@ -1,17 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronUpIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, MapIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronUpIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, MapIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
 import { ArrowUpOnSquareIcon } from '@heroicons/react/24/outline';
 import { FaWalking } from 'react-icons/fa';
 import { TransportModeIcon } from './TransportModeIcon';
 import { LineBadge } from './LineBadge';
 import { JourneyDetailsPreview } from './JourneyDetailsPreview';
+import { MapSheet } from './MapSheet';
+import { StepSlider } from './StepSlider';
 import { journeyFareChip } from '../utils/journeyFare';
 import { JourneyTimelineList } from './JourneyTimelineList';
 import { journeyOperatorBrand } from '../utils/journeyOperator';
 import { searchAddresses } from '../services/geocoding';
 import { planItineraries, type RouteItinerary, type RouteLocation } from '../services/api';
-import { loadWalkPreferences, saveWalkPreferences, walkSpeedMs, WALK_SPEEDS } from '../services/walkPreferences';
+import { loadWalkPreferences, saveWalkPreferences, walkSpeedMs, WALK_SPEEDS, WALK_PRIORITIES } from '../services/walkPreferences';
+import {
+  ROUTE_NETWORKS,
+  itineraryUsesOnly,
+  loadRouteNetworks,
+  saveRouteNetworks,
+} from '../services/routeNetworks';
 import { planSharedJourneys } from '../services/sharedJourneys';
 import { planUberJourney } from '../services/uberJourney';
 import { planTaxiJourney } from '../services/taxiJourney';
@@ -113,10 +121,13 @@ const getText = (language: 'fr' | 'en') => {
     cancel: isFr ? 'Annuler' : 'Cancel',
     leaveNow: isFr ? 'Partir maintenant' : 'Leave now',
     refreshRoutes: isFr ? 'Rafraîchir les itinéraires' : 'Refresh routes',
+    refresh: isFr ? 'Actualiser' : 'Refresh',
     expectedDeparture: isFr ? 'Départ prévu à' : 'Expected departure',
     estimatedArrival: isFr ? "Heure d'arrivée estimée :" : 'Estimated arrival:',
     extraSteps: (count: number) => isFr ? `+${count} étapes supplémentaires` : `+${count} more steps`,
-    madeBy: isFr ? 'Réalisé par' : 'Made by',
+    walkPriority: isFr ? 'Priorité à la marche' : 'Walking priority',
+    greLinesTrip: 'GreLines Trip',
+    otherOptions: isFr ? 'Autres options' : 'Other options',
     departAt: isFr ? 'Départ' : 'Depart',
     arriveAt: isFr ? 'Arrivée' : 'Arrive',
     now: isFr ? 'Maintenant' : 'Now',
@@ -222,6 +233,28 @@ const formatDurationLabel = (value: string) => {
   return minutes > 0 ? formatMinutesCompact(minutes) : value;
 };
 
+/**
+ * Le trait qui sépare deux familles de résultats.
+ *
+ * Un intitulé, puis un filet qui court jusqu'au bord : c'est ce qui distingue
+ * une nouvelle section d'un simple titre, et cela suffit — il n'y a rien à
+ * expliquer, seulement à dire qu'on change de nature de trajet.
+ */
+function SectionRule({ label, isLight }: { label: string; isLight: boolean }) {
+  return (
+    <div className="px-1 pb-2 pt-6">
+      {/* Casse normale et pas d'interlettrage : les petites capitales très
+          espacées sonnent comme un gabarit, là où un simple intertitre se lit
+          comme une phrase du produit. Le filet passe dessous plutôt qu'à côté —
+          il souligne le titre au lieu de le pousser dans un coin. */}
+      <p className={`text-sm font-semibold ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+        {label}
+      </p>
+      <div className={`mt-2 h-px w-full ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
+    </div>
+  );
+}
+
 export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, onItinerariesUpdated, onStartNavigation, lineLookup, trafficInfo, pickMode, onRequestPickLocation, onCancelPickLocation, recentPlaces = [], sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute, theme, currentLocation, variant = 'planner', onPickJourney }: RouteSidebarProps) => {
   const text = getText(language);
   const isLight = theme === 'light';
@@ -262,6 +295,17 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   const [fromSelection, setFromSelection] = useState<RouteLocation | null>(null);
   const [toSelection, setToSelection] = useState<RouteLocation | null>(null);
   const [routeResults, setRouteResults] = useState<RouteItinerary[]>([]);
+  /** Une recherche est en cours, silencieuse ou non : l'icône tourne. */
+  const [refreshing, setRefreshing] = useState(false);
+  /**
+   * Les trajets vélo + transport, demandés à part.
+   *
+   * Une seconde requête au planificateur, avec `BICYCLE,TRANSIT` : elle part en
+   * même temps que la première et n'a donc rien de plus lent à l'écran. Le
+   * planificateur y mêle aussi des trajets tout à vélo, qu'on écarte plus bas —
+   * le GreLines Trip est un trajet mixte, pas une promenade.
+   */
+  const [bikeResults, setBikeResults] = useState<RouteItinerary[]>([]);
   // Les options en véhicule partagé arrivent après les itinéraires : elles
   // demandent la flotte des opérateurs en plus du routeur, et ne doivent pas
   // retarder l'affichage des transports en commun.
@@ -452,6 +496,26 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     storedWalk.priorityIndex <= 0 ? 'transit' : storedWalk.priorityIndex >= 2 ? 'walk' : 'balanced'
   );
   const [walkSpeed, setWalkSpeed] = useState(walkSpeedMs(storedWalk));
+  /*
+   * Les réseaux acceptés dans la recherche.
+   *
+   * Le filtre s'applique aux résultats déjà obtenus, et non à la requête :
+   * décocher un réseau retire ses itinéraires sur-le-champ, sans relancer le
+   * calcul ni faire patienter devant un écran vide pour un réglage qu'on est
+   * peut-être en train d'essayer.
+   */
+  const [routeNetworks, setRouteNetworks] = useState<string[]>(loadRouteNetworks);
+  const toggleRouteNetwork = (code: string) => {
+    setRouteNetworks(current => {
+      const next = current.includes(code)
+        ? current.filter(entry => entry !== code)
+        : [...current, code];
+      // Tout décocher ne renverrait plus rien : le dernier réseau reste.
+      const kept = next.length > 0 ? next : current;
+      saveRouteNetworks(kept);
+      return kept;
+    });
+  };
     useEffect(() => {
       const priorityIndex = walkPreference === 'transit' ? 0 : walkPreference === 'walk' ? 2 : 1;
       const speedIndex = WALK_SPEEDS.reduce((best, option, index) => {
@@ -494,6 +558,25 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   const sharedRequestRef = useRef(0);
 
   const calendarCells = useMemo(() => buildCalendarCells(calendarMonth), [calendarMonth]);
+  /*
+   * Les rangs attendus par les curseurs.
+   *
+   * L'écran d'itinéraire raisonne en mots — « équilibré », « plus de marche » —
+   * là où les curseurs raisonnent en positions. On traduit ici, dans les deux
+   * sens, plutôt que de tenir un second état qui pourrait diverger du premier.
+   */
+  const isFr = language === 'fr';
+  const PRIORITY_KEYS = ['transit', 'balanced', 'walk'] as const;
+  const priorityIndex = PRIORITY_KEYS.indexOf(walkPreference);
+  const speedIndex = (() => {
+    const kmh = walkSpeed * 3.6;
+    let best = 0;
+    WALK_SPEEDS.forEach((entry, index) => {
+      if (Math.abs(entry.kmh - kmh) < Math.abs(WALK_SPEEDS[best].kmh - kmh)) best = index;
+    });
+    return best;
+  })();
+
   const schedulePillLabel = scheduleIsNow
     ? text.now
     : `${scheduleMode === 'depart' ? text.departAt : text.arriveAt} : ${formatPillDate(scheduleDate, scheduleTime)}`;
@@ -508,6 +591,219 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   const minuteValues = useMemo(() => Array.from({ length: 12 }, (_, index) => index * 5), []);
   const hourWheelValues = getWheelValues(hourValues, selectedHour);
   const minuteWheelValues = getWheelValues(minuteValues, selectedMinute);
+
+  /**
+   * Le contenu du choix de date et d'heure.
+   *
+   * Le même des deux côtés : une boîte accrochée au bouton sur ordinateur, une
+   * feuille sur téléphone. Le calendrier est celui d'origine — il n'y avait
+   * rien à lui reprocher — et seule l'heure change de main sur téléphone, où
+   * elle passe au sélecteur du système.
+   */
+  const scheduleBody = (
+    <>
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeScheduleMenu();
+                      }}
+                      className={`flex items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-slate-300 transition hover:bg-slate-800 hover:text-white ${isMobile ? 'h-11 w-11' : 'h-9 w-9'}`}
+                      aria-label={text.close}
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                    <div className="text-base font-bold text-white">{text.schedule}</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        applyScheduleDraft();
+                      }}
+                      className={`flex items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-500 ${isMobile ? 'h-11 w-11' : 'h-9 w-9'}`}
+                      aria-label="Valider"
+                    >
+                      <CheckIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDraftScheduleMode('depart');
+                        setDraftScheduleIsNow(false);
+                      }}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${draftScheduleMode === 'depart' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                    >
+                      {text.departAt}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDraftScheduleMode('arrive');
+                        setDraftScheduleIsNow(false);
+                      }}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${draftScheduleMode === 'arrive' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                    >
+                      {text.arriveAt}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-bold capitalize text-white">{monthLabel(calendarMonth, language)}</div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-700 hover:text-white"
+                        >
+                          <ChevronLeftIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-700 hover:text-white"
+                        >
+                          <ChevronRightIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-7 gap-y-1 text-center text-[10px] font-bold uppercase text-slate-400">
+                      {(language === 'fr' ? ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.', 'Dim.'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']).map(day => (
+                        <div key={day}>{day}</div>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-7 gap-y-1 text-center">
+                      {calendarCells.map(cell => {
+                        const value = formatDateInput(cell.date);
+                        const selected = value === draftScheduleDate;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => {
+                              setDraftScheduleDate(value);
+                              setDraftScheduleIsNow(false);
+                            }}
+                            className={`mx-auto flex items-center justify-center rounded-full text-sm transition ${isMobile ? 'h-10 w-10' : 'h-8 w-8'} ${
+                              selected
+                                ? 'bg-blue-600 font-bold text-white'
+                                : cell.inMonth
+                                ? 'text-white hover:bg-slate-700'
+                                : 'text-slate-600'
+                            }`}
+                          >
+                            {cell.day}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="relative mt-4 flex items-center justify-between">
+                      <div className="text-sm font-bold text-white">Heure</div>
+                      {/*
+                        Sur téléphone, le sélecteur du système.
+                        Il parle la langue de l'appareil, respecte son format
+                        horaire et se manie sans rien apprendre — la roue
+                        dessinée à la main reste pour l'ordinateur, où il n'y a
+                        pas de sélecteur natif à ouvrir.
+                      */}
+                      {isMobile ? (
+                        <input
+                          type="time"
+                          value={draftScheduleTime}
+                          onChange={event => {
+                            setDraftScheduleTime(event.target.value);
+                            setDraftScheduleIsNow(false);
+                          }}
+                          className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-base font-semibold text-white outline-none focus:border-blue-500"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsTimePickerOpen(open => !open)}
+                          className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white transition hover:border-blue-500"
+                        >
+                          {draftScheduleTime}
+                        </button>
+                      )}
+
+                      {isTimePickerOpen && !isMobile && (
+                        <div
+                          className="absolute bottom-full right-0 z-30 mb-2 w-48 rounded-2xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl"
+                          onWheel={e => e.stopPropagation()}
+                        >
+                          <div className="relative grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 py-2 overscroll-contain">
+                            <div className="pointer-events-none absolute left-3 right-3 top-1/2 h-9 -translate-y-1/2 rounded-xl bg-slate-800/90" />
+                            <div
+                              className="relative z-10 flex flex-col items-center"
+                              onWheel={e => handleWheelStep(e, hourWheelDeltaRef, shiftHour)}
+                            >
+                              {hourWheelValues.map(({ value, offset }) => (
+                                <button
+                                  key={`hour-${value}`}
+                                  type="button"
+                                  onClick={() => updateDraftScheduleTime(value, selectedMinute)}
+                                  className={`h-9 w-full text-center transition ${
+                                    offset === 0
+                                      ? 'text-2xl font-semibold text-white'
+                                      : Math.abs(offset) === 1
+                                      ? 'text-lg text-slate-500'
+                                      : 'text-sm text-slate-700'
+                                  }`}
+                                >
+                                  {pad2(value)}
+                                </button>
+                              ))}
+                            </div>
+                            <div
+                              className="relative z-10 flex flex-col items-center"
+                              onWheel={e => handleWheelStep(e, minuteWheelDeltaRef, shiftMinute)}
+                            >
+                              {minuteWheelValues.map(({ value, offset }) => (
+                                <button
+                                  key={`minute-${value}`}
+                                  type="button"
+                                  onClick={() => updateDraftScheduleTime(selectedHour, value)}
+                                  className={`h-9 w-full text-center transition ${
+                                    offset === 0
+                                      ? 'text-2xl font-semibold text-white'
+                                      : Math.abs(offset) === 1
+                                      ? 'text-lg text-slate-500'
+                                      : 'text-sm text-slate-700'
+                                  }`}
+                                >
+                                  {pad2(value)}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const now = new Date();
+                      setDraftScheduleMode('depart');
+                      setDraftScheduleIsNow(true);
+                      setDraftScheduleDate(formatDateInput(now));
+                      setDraftScheduleTime(formatTimeInput(now));
+                      setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+                      setIsTimePickerOpen(false);
+                    }}
+                    className="mt-4 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-slate-500 transition hover:border-slate-700 hover:text-slate-200"
+                  >
+                    {text.leaveNow}
+                  </button>
+    </>
+  );
+
 
   const updateDraftScheduleTime = (hour: number, minute: number) => {
     setDraftScheduleTime(`${pad2(hour)}:${pad2(minute)}`);
@@ -725,6 +1021,13 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       return;
     }
     setRouteError(null);
+    /*
+     * Une recherche silencieuse ne vide pas la liste et n'affiche pas l'écran
+     * d'attente — mais elle travaille, et le bouton doit le dire. `refreshing`
+     * ne sert qu'à faire tourner son icône : sans lui, appuyer sur « actualiser »
+     * ne provoquait rien de visible, et l'on appuyait trois fois.
+     */
+    setRefreshing(true);
     if (!options.silent) {
       setRouteLoading(true);
     }
@@ -783,6 +1086,29 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       });
       setRouteResults(itineraries);
       onItinerariesUpdated?.(itineraries);
+
+      /*
+       * Le vélo part de son côté.
+       *
+       * Requête séparée, sans `await` devant la première : les deux voyagent
+       * ensemble, et le GreLines Trip se pose dans la liste dès qu'il arrive,
+       * sans retarder les trajets ordinaires d'une seule milliseconde. Un échec
+       * n'a aucune conséquence — la section disparaît, c'est tout.
+       */
+      void planItineraries({
+        fromLatitude: fromSelection.lat,
+        fromLongitude: fromSelection.lon,
+        toLatitude: toSelection.lat,
+        toLongitude: toSelection.lon,
+        fromName: fromSelection.label,
+        toName: toSelection.label,
+        arriveBy: scheduleMode === 'arrive',
+        date: queryDate,
+        time: queryTime,
+        mode: 'BICYCLE,TRANSIT',
+      })
+        .then(setBikeResults)
+        .catch(() => setBikeResults([]));
       if (!options.silent && sharedRouteTarget && !sharedRouteExpired) {
         const targetKey = [sharedRouteTarget.dep || '', sharedRouteTarget.arr || '', sharedRouteTarget.dur || ''].join('|');
         if (sharedRouteTargetHandledRef.current !== targetKey) {
@@ -803,6 +1129,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     } catch (err) {
       setRouteError((err as Error)?.message || String(err));
     } finally {
+      setRefreshing(false);
       if (!options.silent) {
         setRouteLoading(false);
       }
@@ -1182,9 +1509,40 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   );
 
   const currentResults = useMemo(
-    (): RouteItinerary[] => [...routeResults, ...operatorResults],
-    [routeResults, operatorResults],
+    (): RouteItinerary[] => [...routeResults, ...bikeResults, ...operatorResults],
+    [routeResults, bikeResults, operatorResults],
   );
+
+  /**
+   * Les résultats, rangés en trois temps.
+   *
+   * `transit` — la liste ordinaire, celle qu'on vient chercher.
+   * `greLinesTrip` — le meilleur trajet mêlant vélo et transport, et lui seul :
+   *   en proposer trois variantes noierait l'idée. On garde le plus court.
+   * `others` — tout ce qui ne roule pas sur le réseau : trottinette, voiture
+   *   partagée, VTC, taxi. Rangé à part parce que cela se paie.
+   */
+  const sections = useMemo(() => {
+    const toMinutes = (itinerary: RouteItinerary): number => {
+      const match = /(\d+)/.exec(itinerary.dur ?? '');
+      return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+    };
+
+    const accepted = new Set(routeNetworks);
+    const kept = (itinerary: RouteItinerary) => itineraryUsesOnly(itinerary.allLegs ?? [], accepted);
+
+    const transit = routeResults.filter(itinerary => !itinerary.bikeTransit && kept(itinerary));
+    const mixed = [...routeResults, ...bikeResults].filter(
+      itinerary => itinerary.bikeTransit && kept(itinerary),
+    );
+    const best = mixed.length
+      ? mixed.reduce((shortest, candidate) =>
+          toMinutes(candidate) < toMinutes(shortest) ? candidate : shortest,
+        )
+      : null;
+
+    return { transit, greLinesTrip: best, others: operatorResults };
+  }, [routeResults, bikeResults, operatorResults, routeNetworks]);
 
   const buildShareUrl = () => {
     const url = new URL('/app', window.location.origin);
@@ -1459,11 +1817,15 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                 saisie. Ses angles sont ceux des champs : une pastille ronde au
                 milieu de coins arrondis jurait. */}
             {selection.id === CURRENT_POSITION_ID ? (
-              <span className="inline-flex w-fit max-w-full items-center rounded-2xl bg-blue-500/15 px-3 py-1.5 text-[0.95rem] font-semibold text-blue-500">
-                <span className="truncate">{selection.label}</span>
+              <span className="inline-flex w-fit min-w-0 max-w-full items-center rounded-2xl bg-blue-500/15 px-3 py-1.5 text-[0.95rem] font-semibold text-blue-500">
+                <span className="min-w-0 truncate">{selection.label}</span>
               </span>
             ) : (
-              <span className="truncate text-[0.95rem] font-semibold">{selection.label}</span>
+              /* `min-w-0` : sans lui, un élément de flex ne descend jamais sous la
+                 largeur de son texte, `truncate` reste sans effet, et l'adresse
+                 pousse le champ hors de l'écran — qui devient alors déplaçable
+                 latéralement, comme si l'on avait zoomé. */
+              <span className="min-w-0 truncate text-[0.95rem] font-semibold">{selection.label}</span>
             )}
           </button>
         ) : (
@@ -1609,7 +1971,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                 : 'border-blue-500/40 bg-blue-500/10 text-white'
             }`}
           >
-            <span className="truncate text-lg font-semibold">{toSelection.label}</span>
+            <span className="min-w-0 truncate text-lg font-semibold">{toSelection.label}</span>
           </button>
         ) : (
           <input
@@ -1888,228 +2250,57 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             <button
               type="button"
               onClick={() => setActiveScheduleMenu(activeScheduleMenu === 'mode' ? null : 'mode')}
-              className={`inline-flex items-center gap-2 rounded-full font-semibold transition ${
-                isMobile ? 'h-11 flex-shrink-0 px-4 text-sm active:scale-95' : 'h-10 px-4 text-sm'
+              className={`inline-flex flex-shrink-0 items-center justify-center rounded-full transition ${
+                isMobile ? 'h-11 w-11 active:scale-95' : 'h-10 w-10'
               } ${
                 isLight ? 'bg-white text-slate-900 hover:bg-slate-100' : 'bg-slate-900 text-slate-100 hover:bg-slate-800'
               }`}
-              aria-label={`${text.prefer}: ${preferenceLabel}`}
+              aria-label={`${text.prefer} : ${preferenceLabel}`}
+              title={`${text.prefer} : ${preferenceLabel}`}
             >
-              <span>{isMobile ? `${text.prefer} · ${preferenceLabel}` : text.prefer}</span>
-              <ChevronDownIcon className={`h-4 w-4 ${isLight ? 'text-slate-500' : 'text-slate-400'}`} />
+              {/* L'icône des réglages, sans un mot : la préférence en cours se
+                  lit dans les résultats, pas dans le libellé d'un bouton. */}
+              <AdjustmentsHorizontalIcon className="h-5 w-5" />
             </button>
 
-            {/* Au doigt, un menu se prend par le bas de l'écran : c'est là que
-                se trouve la main, et le voile derrière le referme d'une tape. */}
-            {isMobile && activeScheduleMenu && (
+            {/* Le rafraîchissement prend la forme des autres : un macaron dans
+                la même rangée, plutôt qu'une icône nue posée au-dessus de la
+                liste. Trois pastilles côte à côte se lisent comme une barre de
+                réglages ; une icône isolée ne se lisait comme rien. */}
+            <button
+              type="button"
+              onClick={() => handleSearch({ silent: true })}
+              disabled={refreshing}
+              className={`inline-flex flex-shrink-0 items-center justify-center rounded-full transition disabled:opacity-50 ${
+                isMobile ? 'h-11 w-11 active:scale-95' : 'h-10 w-10'
+              } ${
+                isLight ? 'bg-white text-slate-900 hover:bg-slate-100' : 'bg-slate-900 text-slate-100 hover:bg-slate-800'
+              }`}
+              aria-label={text.refreshRoutes}
+              title={text.refreshRoutes}
+            >
+              <ArrowPathIcon className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+
+
+            {/* Sur ordinateur, le choix de la date reste une boîte accrochée au
+                bouton. Sur téléphone, le même contenu prend place dans une
+                feuille — voir plus bas. */}
+            {activeScheduleMenu === 'time' && !isMobile && (
               <div
-                className="fixed inset-0 z-[55] bg-black/50"
-                onClick={closeScheduleMenu}
-                aria-hidden
-              />
-            )}
-
-            {activeScheduleMenu === 'time' && (
-              <div className={`border border-slate-700 bg-slate-900/95 p-4 shadow-2xl ${isMobile ? 'fixed inset-x-0 bottom-0 z-[60] max-h-[88vh] overflow-y-auto rounded-t-3xl' : 'absolute left-0 top-full z-20 mt-2 rounded-2xl'}`}
-            style={{ width: isMobile ? '100%' : 'min(330px, calc(100vw - 2rem))', paddingBottom: isMobile ? safeBottom : undefined }}>
-                  {isMobile && (
-                    <div className="mb-3 flex justify-center">
-                      <span className="h-1.5 w-12 rounded-full bg-white/20" aria-hidden />
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        closeScheduleMenu();
-                      }}
-                      className={`flex items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-slate-300 transition hover:bg-slate-800 hover:text-white ${isMobile ? 'h-11 w-11' : 'h-9 w-9'}`}
-                      aria-label={text.close}
-                    >
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                    <div className="text-base font-bold text-white">{text.schedule}</div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        applyScheduleDraft();
-                      }}
-                      className={`flex items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-500 ${isMobile ? 'h-11 w-11' : 'h-9 w-9'}`}
-                      aria-label="Valider"
-                    >
-                      <CheckIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDraftScheduleMode('depart');
-                        setDraftScheduleIsNow(false);
-                      }}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${draftScheduleMode === 'depart' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                    >
-                      {text.departAt}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDraftScheduleMode('arrive');
-                        setDraftScheduleIsNow(false);
-                      }}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${draftScheduleMode === 'arrive' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                    >
-                      {text.arriveAt}
-                    </button>
-                  </div>
-
-                  <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-bold capitalize text-white">{monthLabel(calendarMonth, language)}</div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-700 hover:text-white"
-                        >
-                          <ChevronLeftIcon className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-700 hover:text-white"
-                        >
-                          <ChevronRightIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-7 gap-y-1 text-center text-[10px] font-bold uppercase text-slate-400">
-                      {(language === 'fr' ? ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.', 'Dim.'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']).map(day => (
-                        <div key={day}>{day}</div>
-                      ))}
-                    </div>
-
-                    <div className="mt-2 grid grid-cols-7 gap-y-1 text-center">
-                      {calendarCells.map(cell => {
-                        const value = formatDateInput(cell.date);
-                        const selected = value === draftScheduleDate;
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => {
-                              setDraftScheduleDate(value);
-                              setDraftScheduleIsNow(false);
-                            }}
-                            className={`mx-auto flex items-center justify-center rounded-full text-sm transition ${isMobile ? 'h-10 w-10' : 'h-8 w-8'} ${
-                              selected
-                                ? 'bg-blue-600 font-bold text-white'
-                                : cell.inMonth
-                                ? 'text-white hover:bg-slate-700'
-                                : 'text-slate-600'
-                            }`}
-                          >
-                            {cell.day}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="relative mt-4 flex items-center justify-between">
-                      <div className="text-sm font-bold text-white">Heure</div>
-                      <button
-                        type="button"
-                        onClick={() => setIsTimePickerOpen(open => !open)}
-                        className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white transition hover:border-blue-500"
-                      >
-                        {draftScheduleTime}
-                      </button>
-
-                      {isTimePickerOpen && (
-                        <div
-                          className="absolute bottom-full right-0 z-30 mb-2 w-48 rounded-2xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl"
-                          onWheel={e => e.stopPropagation()}
-                        >
-                          <div className="relative grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 py-2 overscroll-contain">
-                            <div className="pointer-events-none absolute left-3 right-3 top-1/2 h-9 -translate-y-1/2 rounded-xl bg-slate-800/90" />
-                            <div
-                              className="relative z-10 flex flex-col items-center"
-                              onWheel={e => handleWheelStep(e, hourWheelDeltaRef, shiftHour)}
-                            >
-                              {hourWheelValues.map(({ value, offset }) => (
-                                <button
-                                  key={`hour-${value}`}
-                                  type="button"
-                                  onClick={() => updateDraftScheduleTime(value, selectedMinute)}
-                                  className={`h-9 w-full text-center transition ${
-                                    offset === 0
-                                      ? 'text-2xl font-semibold text-white'
-                                      : Math.abs(offset) === 1
-                                      ? 'text-lg text-slate-500'
-                                      : 'text-sm text-slate-700'
-                                  }`}
-                                >
-                                  {pad2(value)}
-                                </button>
-                              ))}
-                            </div>
-                            <div
-                              className="relative z-10 flex flex-col items-center"
-                              onWheel={e => handleWheelStep(e, minuteWheelDeltaRef, shiftMinute)}
-                            >
-                              {minuteWheelValues.map(({ value, offset }) => (
-                                <button
-                                  key={`minute-${value}`}
-                                  type="button"
-                                  onClick={() => updateDraftScheduleTime(selectedHour, value)}
-                                  className={`h-9 w-full text-center transition ${
-                                    offset === 0
-                                      ? 'text-2xl font-semibold text-white'
-                                      : Math.abs(offset) === 1
-                                      ? 'text-lg text-slate-500'
-                                      : 'text-sm text-slate-700'
-                                  }`}
-                                >
-                                  {pad2(value)}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const now = new Date();
-                      setDraftScheduleMode('depart');
-                      setDraftScheduleIsNow(true);
-                      setDraftScheduleDate(formatDateInput(now));
-                      setDraftScheduleTime(formatTimeInput(now));
-                      setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1));
-                      setIsTimePickerOpen(false);
-                    }}
-                    className="mt-4 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-slate-500 transition hover:border-slate-700 hover:text-slate-200"
-                  >
-                    {text.leaveNow}
-                  </button>
+                className="absolute left-0 top-full z-20 mt-2 rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl"
+                style={{ width: 'min(330px, calc(100vw - 2rem))' }}
+              >
+                {scheduleBody}
               </div>
             )}
 
-            {activeScheduleMenu === 'mode' && (
+            {/* Sur ordinateur, le menu reste une boîte accrochée au bouton.
+                Sur téléphone, il devient une feuille — voir plus bas. */}
+            {activeScheduleMenu === 'mode' && !isMobile && (
               <div
-                className={`border p-3 shadow-2xl ${isMobile ? 'fixed inset-x-0 bottom-0 z-[60] max-h-[85vh] overflow-y-auto rounded-t-3xl' : 'absolute left-28 top-full z-20 mt-2 w-64 rounded-2xl'} ${isLight ? 'border-slate-200 bg-white' : 'border-slate-700 bg-slate-900/95'}`}
-                style={{ paddingBottom: isMobile ? safeBottom : undefined }}
+                className={`absolute left-28 top-full z-20 mt-2 w-64 rounded-2xl border p-3 shadow-2xl ${isLight ? 'border-slate-200 bg-white' : 'border-slate-700 bg-slate-900/95'}`}
               >
-                {isMobile && (
-                  <div className="mb-2 flex justify-center pb-1">
-                    <span className="h-1.5 w-12 rounded-full bg-white/20" aria-hidden />
-                  </div>
-                )}
                 {([
                   ['balanced', text.walkBalanced],
                   ['walk', text.preferWalk],
@@ -2155,53 +2346,41 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             sur les autres : des rangées pleine largeur, séparées par un trait
             fin. Chacune porte sa frise — qui défile du doigt quand le trajet
             est long — et, sous elle, l'heure d'arrivée et le prix. */}
+        {/*
+          Trois blocs, dans cet ordre : les trajets du réseau, le GreLines Trip,
+          puis ce qui se paie. Plus de titre au-dessus du premier — « Sélectionnez
+          un itinéraire » disait ce que la liste montre déjà. Les deux autres
+          portent le leur, parce qu'ils changent de nature.
+        */}
         {isMobile && currentResults.length > 0 && (
-          <div className="gl-stagger" style={{ animationDelay: '60ms' }}>
-            <div className="flex items-center justify-between gap-3 pb-1">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                {text.selectRoute}
-              </div>
-              <button
-                type="button"
-                onClick={() => handleSearch({ silent: true })}
-                disabled={routeLoading}
-                className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 transition active:scale-90 disabled:opacity-50"
-                aria-label={text.refreshRoutes}
-              >
-                <ArrowPathIcon className={`h-4 w-4 ${routeLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
+          <div className="gl-stagger -mx-4" style={{ animationDelay: '60ms' }}>
+            {/*
+              Une seule frise, trois catégories posées dessus.
 
-            <div className="-mx-4">
-              <JourneyTimelineList
-                journeys={currentResults}
-                language={language}
-                stops={stops}
-                lineLookup={lineLookup}
-                theme={theme}
-                selected={selectedItinerary}
-                onSelect={itinerary => _onItinerarySelected?.(itinerary)}
-              />
-            </div>
+              Une frise par bloc, c'était trois pistes de défilement et trois
+              échelles : on poussait les trajets du réseau vers la droite, les
+              autres restaient en place, et les mêmes heures ne tombaient plus
+              à la même verticale d'un bloc à l'autre. Ici l'axe est commun,
+              donc comparable, et le doigt emmène tout le tableau.
+            */}
+            <JourneyTimelineList
+              sections={[
+                { label: null, journeys: sections.transit },
+                { label: text.greLinesTrip, journeys: sections.greLinesTrip ? [sections.greLinesTrip] : [] },
+                { label: text.otherOptions, journeys: sections.others },
+              ]}
+              language={language}
+              stops={stops}
+              lineLookup={lineLookup}
+              theme={theme}
+              selected={selectedItinerary}
+              onSelect={itinerary => _onItinerarySelected?.(itinerary)}
+            />
           </div>
         )}
 
         {!isMobile && currentResults.length > 0 && (
           <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
-                {text.selectRoute}
-              </div>
-              <button
-                type="button"
-                onClick={() => handleSearch({ silent: true })}
-                disabled={routeLoading}
-                className={`flex items-center justify-center rounded-full text-slate-300 transition hover:text-blue-300 disabled:opacity-50 ${isMobile ? 'h-11 w-11 active:scale-90' : 'h-9 w-9'}`}
-                aria-label={text.refreshRoutes}
-              >
-                <ArrowPathIcon className={`h-4 w-4 ${routeLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
             {currentResults.map((itinerary: RouteItinerary, idx) => {
               const isSelected = selectedItinerary != null && selectedItinerary.dep === itinerary.dep && selectedItinerary.arr === itinerary.arr && selectedItinerary.dur === itinerary.dur;
               const fareChip = journeyFareChip(itinerary, language);
@@ -2351,23 +2530,10 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     </>
   );
 
-  const creditNode = (
-      <div className="border-t border-slate-800 px-4 py-4 text-center text-xs text-slate-400">
-        <a
-          href="https://gre-go.vercel.app/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-2 cursor-pointer text-xs text-slate-400 transition hover:text-slate-200"
-        >
-          <span>{text.madeBy}</span>
-          <img
-            src={theme === 'dark' ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png'}
-            alt="GreGo"
-            className="h-4 w-auto"
-          />
-        </a>
-      </div>
-  );
+  /* Le bandeau « Réalisé par GreGo » a été retiré : la page d'itinéraire est
+     celle de GreLines, et une signature en pied de résultats n'apprenait rien à
+     qui cherche son tram. */
+  const creditNode = null;
 
   if (isMobile) {
     const canNavigate = Boolean(
@@ -2389,6 +2555,124 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     return (
       <>
         {overlayNodes}
+
+        {/*
+          Les deux réglages du trajet prennent la forme d'une feuille.
+          C'est celle de toute l'application — même poignée, mêmes paliers,
+          même façon de s'en aller —, et non un panneau collé au bas de
+          l'écran qui ne ressemblait qu'à lui-même.
+        */}
+        <MapSheet
+          isOpen={activeScheduleMenu === 'mode'}
+          onClose={closeScheduleMenu}
+          isLight={isLight}
+          /* Pas de palier imposé : on prend celui par défaut, à mi-hauteur, le
+             même que la feuille de réglages du guidage. Ces réglages se
+             prennent d'un pouce, sans quitter des yeux les itinéraires qui
+             restent visibles derrière. */
+          zIndex={1100}
+        >
+          <div className="px-4 pb-6">
+            {/* Les mêmes curseurs que le mode guidage : une pastille qui porte
+                un émoji et se traîne d'un cran à l'autre. Deux réglages de
+                marche présentés de deux façons différentes dans la même
+                application, c'étaient deux choses à apprendre au lieu d'une. */}
+            <SectionRule label={text.walkPriority} isLight={isLight} />
+            <StepSlider
+              count={WALK_PRIORITIES.length}
+              value={priorityIndex}
+              emoji={WALK_PRIORITIES[priorityIndex].emoji}
+              color="#3b82f6"
+              ariaLabel={text.walkPriority}
+              onChange={index => setWalkPreference(PRIORITY_KEYS[index])}
+            />
+            <p className={`mt-2 text-center text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+              {WALK_PRIORITIES[priorityIndex].label(isFr)}
+            </p>
+            <p className="mb-6 mt-0.5 text-center text-xs text-slate-400">
+              {WALK_PRIORITIES[priorityIndex].hint(isFr)}
+            </p>
+
+            <SectionRule label={text.walkSpeed} isLight={isLight} />
+            <StepSlider
+              count={WALK_SPEEDS.length}
+              value={speedIndex}
+              emoji={WALK_SPEEDS[speedIndex].emoji}
+              color="#22c55e"
+              ariaLabel={text.walkSpeed}
+              onChange={index => setWalkSpeed(WALK_SPEEDS[index].kmh / 3.6)}
+            />
+            <p className={`mt-2 text-center text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+              {WALK_SPEEDS[speedIndex].label(isFr)}
+            </p>
+            <p className="tabular mt-0.5 text-center text-xs text-slate-400">
+              {WALK_SPEEDS[speedIndex].kmh.toLocaleString('fr-FR', { minimumFractionDigits: 1 })} km/h
+            </p>
+
+            {/*
+              Les réseaux à retenir dans le calcul.
+
+              Une liste, et non les plaques des réglages : celles-ci décident de
+              ce que la carte affiche, ce qui n'est pas la même question. On peut
+              vouloir continuer de voir les gares sans se faire proposer le
+              train. Une coche à gauche du nom, comme partout ailleurs dans le
+              système, suffit à dire lesquels comptent.
+            */}
+            <SectionRule label={isFr ? 'Réseaux' : 'Networks'} isLight={isLight} />
+            <div className="pt-1">
+              {ROUTE_NETWORKS.map(network => {
+                const active = routeNetworks.includes(network.code);
+                return (
+                  <button
+                    key={network.code}
+                    type="button"
+                    onClick={() => toggleRouteNetwork(network.code)}
+                    aria-pressed={active}
+                    className="flex w-full items-center gap-3 py-2.5 text-left"
+                  >
+                    <span
+                      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border transition ${
+                        active
+                          ? 'border-blue-600 bg-blue-600'
+                          : isLight
+                            ? 'border-slate-300'
+                            : 'border-slate-600'
+                      }`}
+                    >
+                      {active && <CheckIcon className="h-3.5 w-3.5 text-white" />}
+                    </span>
+                    <span
+                      className={`text-sm ${
+                        active
+                          ? isLight
+                            ? 'text-slate-900'
+                            : 'text-white'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {network.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="pb-2 pt-6 text-center text-[11px] leading-snug text-slate-500">
+              {isFr
+                ? 'Ces réglages sont conservés sur cet appareil et servent au calcul de vos prochains itinéraires.'
+                : 'These settings stay on this device and shape your next journeys.'}
+            </p>
+          </div>
+        </MapSheet>
+
+        <MapSheet
+          isOpen={activeScheduleMenu === 'time'}
+          onClose={closeScheduleMenu}
+          isLight={isLight}
+          zIndex={1100}
+        >
+          <div className="px-4 pb-6">{scheduleBody}</div>
+        </MapSheet>
 
         {isOpen && isPicking && (
             <div
@@ -2560,7 +2844,12 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           <div
             ref={scrollerRef}
             key={openSeq}
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            /* Le panneau ne défile que verticalement. Sans cette borne, un
+               contenu qui dépasse de quelques pixels — la frise débordée de sa
+               marge négative, une adresse un peu longue — rendait tout le cadre
+               déplaçable : un mouvement circulaire du pouce décalait la page
+               entière, alors qu'on croyait ne toucher que la frise. */
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
             onPointerDown={isPicker ? undefined : handleDragStart}
             onPointerMove={isPicker ? undefined : handleDragMove}
             onPointerUp={isPicker ? undefined : handleDragEnd}

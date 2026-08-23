@@ -1,9 +1,13 @@
 import { useState, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
 import { FaWalking } from 'react-icons/fa';
 import { LineBadge } from './LineBadge';
-import { DisruptionItem } from './DisruptionItem';
+import { TrafficAlertCard } from './TrafficAlertCard';
 import { VehicleGlyph } from './VehicleGlyph';
+import { MdDirectionsBike } from 'react-icons/md';
+
+/** Les modes qu'on pédale, et le vert qui les désigne partout. */
+const BIKE_MODES = new Set(['BICYCLE', 'BICYCLE_RENT']);
+const BIKE_COLOR = '#22c55e';
 import { JourneyFareBlock } from './JourneyFare';
 import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
@@ -119,6 +123,54 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
               </p>
               <p className="mt-0.5 text-xs text-slate-500">
                 {durationMin} min · {formatDistance(Number(leg.distance || 0), language)}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {formatClock(leg.startTime)} → {formatClock(leg.endTime)}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold leading-tight text-white">
+                {leg.to?.name?.replace(/^[^,]+,\s*/, '')}
+              </p>
+              <p className="text-xs text-slate-500">{formatClock(leg.endTime)}</p>
+            </div>
+          </div>
+        </div>
+      );
+      return;
+    }
+
+    /*
+     * À vélo.
+     *
+     * Sans ce cas, le vélo retombait dans le tronçon de ligne ordinaire : un
+     * trait gris, sans pastille, annoncé en « minutes et arrêts » alors qu'il
+     * ne dessert rien. Il prend donc la même forme que les autres modes qui ne
+     * sont pas des lignes — un carré à sa couleur, son pictogramme en blanc,
+     * son trait de la même teinte — et se dit en distance, qui est ce qu'on
+     * veut savoir avant d'enfourcher.
+     */
+    if (BIKE_MODES.has(String(leg.mode ?? '').toUpperCase())) {
+      timelineItems.push(
+        <div key={`bike-${i}`} className="flex gap-3">
+          <div className="flex w-8 flex-shrink-0 flex-col items-center">
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-lg"
+              style={{ backgroundColor: BIKE_COLOR }}
+            >
+              <MdDirectionsBike size={18} color="#ffffff" />
+            </div>
+            <div className="w-1 flex-1 min-h-[2.5rem]" style={{ backgroundColor: BIKE_COLOR }} />
+            <div className="h-4 w-4 flex-shrink-0 rounded-full" style={{ backgroundColor: BIKE_COLOR }} />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col justify-between gap-6">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-tight text-white">
+                {isFr ? 'À vélo' : 'By bike'}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {durationMin} min
+                {leg.distance ? ` · ${formatDistance(Number(leg.distance), language)}` : ''}
               </p>
               <p className="mt-0.5 text-xs text-slate-500">
                 {formatClock(leg.startTime)} → {formatClock(leg.endTime)}
@@ -435,19 +487,21 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
               </div>
             );
           })()}
-          <motion.div
-        layout
-        initial={false}
-        className="rounded-2xl border border-amber-700 bg-amber-950 overflow-hidden"
-      >
-                <div className="space-y-3">
-                  {trafficLines.flatMap(({ lineKey, details }) =>
-                    details.map((detail, index) => (
-                      <DisruptionItem key={`${lineKey}-${detail.titre}-${index}`} detail={detail} lineKey={lineKey} />
-                    )),
-                  )}
-                </div>
-      </motion.div>
+          {/* Une carte par perturbation, et non un bloc unique qui les
+              regroupait derrière un seul cadre : chacune se déplie pour elle
+              seule, comme dans la fiche d'un arrêt. */}
+          <div className="space-y-2.5">
+            {trafficLines.flatMap(({ lineKey, details }) =>
+              details.map((detail, index) => (
+                <TrafficAlertCard
+                  key={`${lineKey}-${detail.titre}-${index}`}
+                  detail={detail}
+                  language={language}
+                  heading={`${isFr ? 'Perturbation' : 'Disruption'} ${lineKey}`}
+                />
+              )),
+            )}
+          </div>
     </div>
   )}
 

@@ -137,6 +137,58 @@
   --code-bg: rgba(255, 255, 255, 0.05);
 }
 
+/*
+ * Le thème sombre, en gris neutres.
+ *
+ * L'application est écrite en `slate`, une gamme de gris volontairement tirés
+ * vers le bleu : c'est ce qui donnait au sombre son fond bleu nuit. On garde
+ * ces classes — les réécrire toutes serait absurde — mais on remplace la
+ * gamme par des gris sans teinte, du noir franc jusqu'au blanc cassé.
+ *
+ * Tailwind 4 expose chaque couleur du thème en variable, et ses utilitaires y
+ * puisent : redéfinir `--color-slate-900` ici suffit donc à repeindre tout ce
+ * qui porte `bg-slate-900`, sans toucher au moindre composant.
+ *
+ * `theme-blue` restitue la gamme d'origine, et c'est l'ancien thème sombre qui
+ * porte désormais ce nom. Faute de cette classe, on est en gris neutres — le
+ * sombre par défaut est donc le noir.
+ */
+:root.dark:not(.theme-blue) {
+  --color-slate-950: #000000;
+  --color-slate-900: #0a0a0a;
+  --color-slate-800: #1f1f1f;
+  --color-slate-700: #2e2e2e;
+  --color-slate-600: #3f3f3f;
+  --color-slate-500: #737373;
+  --color-slate-400: #a1a1a1;
+  --color-slate-300: #d4d4d4;
+  --color-slate-200: #e5e5e5;
+  --color-slate-100: #f5f5f5;
+  --color-slate-50: #fafafa;
+
+  /*
+   * `gray` en plus de `slate` : une quarantaine d'endroits l'emploient, et sa
+   * gamme est elle aussi tirée vers le bleu. Sans cette seconde série, ces
+   * surfaces-là resteraient bleutées au milieu des autres, ce qui se voit
+   * beaucoup plus qu'un fond uniformément bleu.
+   */
+  --color-gray-950: #000000;
+  --color-gray-900: #0a0a0a;
+  --color-gray-800: #1f1f1f;
+  --color-gray-700: #2e2e2e;
+  --color-gray-600: #3f3f3f;
+  --color-gray-500: #737373;
+  --color-gray-400: #a1a1a1;
+  --color-gray-300: #d4d4d4;
+  --color-gray-200: #e5e5e5;
+  --color-gray-100: #f5f5f5;
+  --color-gray-50: #fafafa;
+
+  /* Le fond des feuilles mobiles, peint en style en ligne par les composants
+     et donc hors de portée des utilitaires ci-dessus. */
+  --gl-sheet-bg: #0a0a0a;
+}
+
 .mapboxgl-canvas {
   outline: none;
 }
@@ -183,14 +235,6 @@ body {
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
 }
-
-
-
-
-
-
-
-
 
 /*
  * Glissement horizontal du tutoriel « app sur l'écran d'accueil ».
@@ -493,4 +537,39 @@ code {
 @keyframes footer-marquee {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
+}
+
+/*
+ * Une feuille ne se pousse pas de côté.
+ *
+ * `react-modal-sheet` donne à son conteneur de défilement un `overflow: auto`
+ * complet, donc horizontal aussi. Il suffit alors qu'un contenu déborde un
+ * instant — un écran qui entre par la droite, une capture cadrée plus large que
+ * sa fenêtre — pour qu'on puisse faire glisser la feuille entière latéralement.
+ * L'impression est celle d'une page zoomée qu'on promène, et l'on cherche
+ * longtemps comment revenir au cadrage d'origine.
+ *
+ * Le défilement vertical, lui, reste entier : c'est celui qu'on est venu
+ * chercher.
+ */
+.react-modal-sheet-content-scroller {
+  overflow-x: hidden;
+}
+
+/*
+ * L'intertitre d'une section de fiche.
+ *
+ * « Prochains départs », « Lignes », « Cet arrêt est concerné » : trois
+ * intertitres qui disaient la même chose de la même façon, mais chacun avec sa
+ * propre valeur d'interlettrage. Très espacées, des capitales cessent de se
+ * lire comme un mot et prennent l'air d'un gabarit posé là ; un cran suffit à
+ * les aérer sans les délier. Un seul réglage, pour que les trois restent
+ * identiques quand l'un d'eux bougera.
+ */
+.section-caps {
+  font-family: 'Inter', 'Helvetica Neue', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }

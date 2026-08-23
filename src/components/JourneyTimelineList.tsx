@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeftIcon } from '@heroicons/react/24/solid';
+import { MdDirectionsBike } from 'react-icons/md';
 import { LineBadge } from './LineBadge';
 import { journeyFareChip } from '../utils/journeyFare';
 import { journeyOperatorBrand } from '../utils/journeyOperator';
@@ -22,8 +23,19 @@ import { resolveRouteLine } from '../utils/routeLineResolver';
 import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
 
-/** Largeur d'une minute. Un quart d'heure fait donc 90 px, lisible au doigt. */
+/**
+ * Largeur d'une minute, et pas des graduations.
+ *
+ * Six pixels la minute conviennent à une heure de trajet, pas à dix minutes :
+ * une course de trottinette tenait alors dans soixante pixels, et l'heure de
+ * départ s'écrivait par-dessus la durée. L'échelle s'adapte donc à ce qu'il y a
+ * à montrer — voir `buildTimelineModel`.
+ */
 const PIXELS_PER_MINUTE = 6;
+/** Au-delà de cette largeur, on cesse d'étirer : la frise deviendrait un ruban. */
+const MAX_PIXELS_PER_MINUTE = 22;
+/** Largeur visée pour une frise courte, de l'ordre d'un écran de téléphone. */
+const TARGET_WIDTH = 320;
 const QUARTER = 15;
 const MINUTE = 60_000;
 
@@ -38,9 +50,28 @@ const TRAILING_SPACE = 96;
 /** Hauteurs fixes : elles permettent de poser le prix en face de sa ligne. */
 const RULER_HEIGHT = 26;
 const ROW_HEIGHT = 80;
+/** Hauteur d'un intertitre, filet compris. */
+const SECTION_HEIGHT = 46;
+
+/**
+ * Un groupe de trajets, sous son intertitre.
+ *
+ * « GreLines Trip » et « Autres options » ne sont pas d'autres frises : ce sont
+ * des catégories posées sur la même. Séparées, chacune avait sa piste de
+ * défilement et sa propre échelle — on poussait les trajets du réseau vers la
+ * droite et les autres restaient où ils étaient, comme si les heures ne
+ * voulaient plus dire la même chose d'un bloc à l'autre.
+ */
+export interface JourneySection {
+  /** Sans libellé, le groupe s'ouvre sans intertitre : c'est le premier. */
+  label?: string | null;
+  journeys: RouteItinerary[];
+}
 
 interface JourneyTimelineListProps {
-  journeys: RouteItinerary[];
+  /** Une liste simple. Équivaut à une section unique et sans titre. */
+  journeys?: RouteItinerary[];
+  sections?: JourneySection[];
   language: 'fr' | 'en';
   stops?: unknown[];
   lineLookup?: Map<string, AllLinesLine> | null;
@@ -53,11 +84,20 @@ interface Segment {
   key: string;
   startMs: number;
   endMs: number;
-  kind: 'walk' | 'transit' | 'operator';
+  kind: 'walk' | 'transit' | 'operator' | 'bike';
   color?: string;
   logo?: string;
   line?: { id: string; shortName?: string; color?: string; textColor?: string };
 }
+
+/**
+ * Les modes qu'on emprunte par soi-même : ni ligne, ni horaire, ni opérateur.
+ * Seul le vélo apparaît aujourd'hui, les autres sont là pour ne pas retomber
+ * dans le cas général le jour où l'API en renverra.
+ */
+const SELF_POWERED = new Set(['BICYCLE', 'BICYCLE_RENT', 'SCOOTER', 'MICROMOBILITY', 'MICROMOBILITY_RENT']);
+/** Le vert du vélo — celui des mobilités douces dans toute l'application. */
+const BIKE_COLOR = '#22c55e';
 
 /** Bornes d'un trajet, à défaut de temps sur ses tronçons. */
 function journeyBounds(journey: RouteItinerary): { start: number; end: number } {
@@ -115,6 +155,19 @@ function journeySegments(
       return [{ key: `walk-${index}`, startMs: legStart, endMs: legEnd, kind: 'walk' }];
     }
 
+    /*
+     * Le vélo a sa bande à lui.
+     *
+     * Sans elle, il tombait dans le cas général : une bande grise sans nom de
+     * ligne, indiscernable d'un tronçon dont on n'aurait pas su lire le
+     * réseau. C'est pourtant la moitié de l'intérêt d'un GreLines Trip, et ce
+     * qui distingue ce trajet des autres — il mérite sa couleur et son
+     * pictogramme, au même titre qu'une ligne porte son numéro.
+     */
+    if (SELF_POWERED.has(String(leg?.mode ?? '').toUpperCase())) {
+      return [{ key: `bike-${index}`, startMs: legStart, endMs: legEnd, kind: 'bike', color: BIKE_COLOR }];
+    }
+
     const line = resolveRouteLine({
       routeShortName: leg?.routeShortName,
       route: leg?.route,
@@ -163,18 +216,53 @@ function buildTimelineModel(journeys: RouteItinerary[]) {
   if (journeys.length === 0) return null;
   const bounds = journeys.map(journeyBounds);
   const firstStart = Math.min(...bounds.map(bound => bound.start));
-  const origin = Math.floor(firstStart / (QUARTER * MINUTE)) * (QUARTER * MINUTE);
   const lastEnd = Math.max(...bounds.map(bound => bound.end));
-  const spanMinutes = Math.max(30, Math.ceil((lastEnd - origin) / MINUTE / QUARTER) * QUARTER);
-  const ticks = Array.from({ length: Math.floor(spanMinutes / QUARTER) + 1 }, (_, index) => ({
-    left: index * QUARTER * PIXELS_PER_MINUTE,
-    label: formatClock(origin + index * QUARTER * MINUTE),
+  const rawMinutes = Math.max(1, (lastEnd - firstStart) / MINUTE);
+
+  /*
+   * Le pas des graduations suit la durée montrée.
+   *
+   * Un quart d'heure ne veut rien dire sur une frise de dix minutes : il n'y
+   * tient qu'une seule graduation, et tous les trajets se tassent dans le
+   * premier tiers. On descend donc à cinq minutes, puis à dix, avant de revenir
+   * au quart d'heure quand il y a une heure à couvrir.
+   */
+  const step = rawMinutes <= 20 ? 5 : rawMinutes <= 45 ? 10 : QUARTER;
+
+  const origin = Math.floor(firstStart / (step * MINUTE)) * (step * MINUTE);
+  const spanMinutes = Math.max(step * 2, Math.ceil((lastEnd - origin) / MINUTE / step) * step);
+
+  /*
+   * Puis l'échelle s'étire pour occuper la largeur.
+   *
+   * Sans cela, une frise courte reste courte : les bandes font quelques dizaines
+   * de pixels, les heures se chevauchent, et l'on ne distingue plus un trajet de
+   * neuf minutes d'un trajet de treize. On vise donc une largeur d'écran, sans
+   * jamais descendre sous l'échelle de base ni dépasser un plafond.
+   */
+  const pixelsPerMinute = Math.min(
+    MAX_PIXELS_PER_MINUTE,
+    Math.max(PIXELS_PER_MINUTE, TARGET_WIDTH / spanMinutes),
+  );
+
+  const ticks = Array.from({ length: Math.floor(spanMinutes / step) + 1 }, (_, index) => ({
+    left: index * step * pixelsPerMinute,
+    label: formatClock(origin + index * step * MINUTE),
   }));
-  return { origin, width: spanMinutes * PIXELS_PER_MINUTE, ticks, bounds };
+
+  return {
+    origin,
+    width: spanMinutes * pixelsPerMinute,
+    ticks,
+    bounds,
+    pixelsPerMinute,
+    step,
+  };
 }
 
 export function JourneyTimelineList({
   journeys,
+  sections,
   language,
   stops,
   lineLookup,
@@ -183,6 +271,43 @@ export function JourneyTimelineList({
   onSelect,
 }: JourneyTimelineListProps) {
   const isLight = theme === 'light';
+
+  /*
+   * Les groupes, à plat.
+   *
+   * Chaque trajet garde le rang qu'il occupe dans la frise entière : c'est ce
+   * rang qui décide de son ordonnée, et donc de l'endroit où son prix se pose
+   * dans la couche fixe. Les intertitres comptent dans le calcul, sans quoi
+   * tout ce qui les suit se retrouverait décalé d'un titre.
+   */
+  const groups = useMemo<JourneySection[]>(
+    () => (sections ?? [{ label: null, journeys: journeys ?? [] }]).filter(group => group.journeys.length > 0),
+    [sections, journeys],
+  );
+  const allJourneys = useMemo(() => groups.flatMap(group => group.journeys), [groups]);
+  /** Le rang du premier trajet de chaque groupe, dans `allJourneys`. */
+  const rowOffsets = useMemo(() => {
+    const offsets: number[] = [];
+    let seen = 0;
+    for (const group of groups) {
+      offsets.push(seen);
+      seen += group.journeys.length;
+    }
+    return offsets;
+  }, [groups]);
+  /** L'ordonnée de chaque trajet, titres compris, dans l'ordre de `allJourneys`. */
+  const rowTops = useMemo(() => {
+    const tops: number[] = [];
+    let offset = RULER_HEIGHT;
+    for (const group of groups) {
+      if (group.label) offset += SECTION_HEIGHT;
+      for (let i = 0; i < group.journeys.length; i += 1) {
+        tops.push(offset);
+        offset += ROW_HEIGHT;
+      }
+    }
+    return tops;
+  }, [groups]);
 
   /**
    * Une seule piste de défilement pour toute la liste.
@@ -223,7 +348,7 @@ export function JourneyTimelineList({
     if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
   }, []);
 
-  const model = useMemo(() => buildTimelineModel(journeys), [journeys]);
+  const model = useMemo(() => buildTimelineModel(allJourneys), [allJourneys]);
 
   /**
    * Les résultats se rafraîchissent tout seuls chaque minute : sans cela, le
@@ -238,7 +363,7 @@ export function JourneyTimelineList({
   const gridColor = isLight ? 'rgba(148,163,184,0.28)' : 'rgba(148,163,184,0.18)';
   const walkDotColor = isLight ? 'rgba(100,116,139,0.55)' : 'rgba(148,163,184,0.7)';
   const gridStyle = {
-    backgroundImage: `repeating-linear-gradient(to right, ${gridColor} 0 1px, transparent 1px ${QUARTER * PIXELS_PER_MINUTE}px)`,
+    backgroundImage: `repeating-linear-gradient(to right, ${gridColor} 0 1px, transparent 1px ${(model?.step ?? QUARTER) * (model?.pixelsPerMinute ?? PIXELS_PER_MINUTE)}px)`,
     backgroundPosition: `${EDGE_PADDING}px 0`,
   };
   const dividerClass = isLight ? 'border-slate-200' : 'border-slate-800';
@@ -267,7 +392,27 @@ export function JourneyTimelineList({
             ))}
           </div>
 
-          {journeys.map((journey, index) => {
+          {groups.map((group, groupIndex) => (
+            <div key={`group-${groupIndex}`}>
+              {/*
+                L'intertitre reste collé au bord gauche pendant qu'on fait
+                glisser les heures : posé dans la piste, il partirait avec elles
+                et l'on ne saurait plus ce qu'on regarde. Le filet, lui, court
+                sur toute la largeur — c'est le même tableau, on y pose juste
+                une catégorie.
+              */}
+              {group.label && (
+                <div className="relative" style={{ height: SECTION_HEIGHT }}>
+                  <div className="sticky left-0 w-fit px-4 pt-4">
+                    <p className={`text-sm font-semibold ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                      {group.label}
+                    </p>
+                  </div>
+                  <div className={`absolute inset-x-0 bottom-1 h-px ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
+                </div>
+              )}
+              {group.journeys.map((journey, indexInGroup) => {
+            const index = rowOffsets[groupIndex] + indexInGroup;
             const { start, end } = model.bounds[index];
             const isSelected = selected != null
               && selected.dep === journey.dep
@@ -276,8 +421,8 @@ export function JourneyTimelineList({
             const brand = journeyOperatorBrand(journey, isLight ? 'light' : 'dark');
             const segments = journeySegments(journey, start, lineLookup, stops, brand?.chipColor, brand?.chipLogo);
             const departure = departureLabel(start, language);
-            const barLeft = ((start - model.origin) / MINUTE) * PIXELS_PER_MINUTE + EDGE_PADDING;
-            const barRight = ((end - model.origin) / MINUTE) * PIXELS_PER_MINUTE + EDGE_PADDING;
+            const barLeft = ((start - model.origin) / MINUTE) * model.pixelsPerMinute + EDGE_PADDING;
+            const barRight = ((end - model.origin) / MINUTE) * model.pixelsPerMinute + EDGE_PADDING;
             /**
              * Une course de taxi ou de trottinette tient en quelques minutes,
              * donc en quelques dizaines de pixels : la durée, calée sur la fin
@@ -285,15 +430,29 @@ export function JourneyTimelineList({
              * Faute de place entre les deux, elle passe à droite de la bande,
              * au-dessus de l'heure d'arrivée.
              */
+            /*
+             * Où poser la durée.
+             *
+             * Calée sur la fin de la bande, elle s'écrivait par-dessus l'heure
+             * de départ dès que le trajet était court — « Maintenant » fait
+             * quatre-vingts pixels, une course de neuf minutes en fait à peine
+             * plus. Quand la bande est trop étroite, la durée passe donc à
+             * droite, et jamais avant la fin du texte de départ : c'est le plus
+             * à droite des deux qui décide.
+             */
+            const departureWidth = departure.length * 7;
             const neededRoom = (departure.length + journey.dur.length) * 7 + 20;
             const durationOutside = barRight - barLeft < neededRoom;
+            const durationLeft = durationOutside
+              ? Math.max(barRight + 6, barLeft + departureWidth + 10)
+              : barRight;
 
             return (
               <button
                 key={`${journey.dep}-${index}`}
                 type="button"
                 onClick={() => onSelect?.(journey)}
-                style={{ height: ROW_HEIGHT, borderTopWidth: index > 0 ? 1 : 0 }}
+                style={{ height: ROW_HEIGHT, borderTopWidth: indexInGroup > 0 ? 1 : 0 }}
                 className={`relative box-border block w-full py-3 text-left transition ${dividerClass} ${
                   isSelected ? 'bg-blue-500/10' : 'active:bg-blue-500/5'
                 }`}
@@ -313,14 +472,14 @@ export function JourneyTimelineList({
                     className={`absolute top-0 whitespace-nowrap text-sm font-extrabold ${
                       durationOutside ? '' : '-translate-x-full pl-2'
                     } ${isLight ? 'text-slate-900' : 'text-white'}`}
-                    style={{ left: durationOutside ? barRight + 6 : barRight }}
+                    style={{ left: durationLeft }}
                   >
                     {journey.dur}
                   </span>
 
                   {segments.map(segment => {
-                    const left = ((segment.startMs - model.origin) / MINUTE) * PIXELS_PER_MINUTE + EDGE_PADDING;
-                    const width = Math.max(6, ((segment.endMs - segment.startMs) / MINUTE) * PIXELS_PER_MINUTE);
+                    const left = ((segment.startMs - model.origin) / MINUTE) * model.pixelsPerMinute + EDGE_PADDING;
+                    const width = Math.max(6, ((segment.endMs - segment.startMs) / MINUTE) * model.pixelsPerMinute);
 
                     if (segment.kind === 'walk') {
                       // La marche reste une traînée de points : c'est ce qui
@@ -354,6 +513,18 @@ export function JourneyTimelineList({
                               className="max-h-5 w-auto max-w-full object-contain"
                             />
                           )
+                        ) : segment.kind === 'bike' ? (
+                          /* Le même gabarit qu'un badge de ligne : un carré aux
+                             angles adoucis, le pictogramme en blanc dedans. Le
+                             vélo se lit ainsi dans la frise comme se lit un
+                             numéro de tram, sans qu'on ait à le déchiffrer. */
+                          <span
+                            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                            style={{ backgroundColor: BIKE_COLOR }}
+                            aria-label={language === 'fr' ? 'À vélo' : 'By bike'}
+                          >
+                            <MdDirectionsBike size={18} color="#ffffff" />
+                          </span>
                         ) : (
                           segment.line && <LineBadge line={segment.line} size="sm" />
                         )}
@@ -372,7 +543,9 @@ export function JourneyTimelineList({
                 </div>
               </button>
             );
-          })}
+              })}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -383,11 +556,11 @@ export function JourneyTimelineList({
         calcule sans rien mesurer.
       */}
       <div className="pointer-events-none absolute inset-0">
-        {journeys.map((journey, index) => {
+        {allJourneys.map((journey, index) => {
           const { start, end } = model.bounds[index];
           const fareChip = journeyFareChip(journey, language);
-          const barLeft = ((start - model.origin) / MINUTE) * PIXELS_PER_MINUTE + EDGE_PADDING;
-          const barRight = ((end - model.origin) / MINUTE) * PIXELS_PER_MINUTE + EDGE_PADDING;
+          const barLeft = ((start - model.origin) / MINUTE) * model.pixelsPerMinute + EDGE_PADDING;
+          const barRight = ((end - model.origin) / MINUTE) * model.pixelsPerMinute + EDGE_PADDING;
           /**
            * Poussé assez loin vers la droite, un trajet sort de l'écran par la
            * gauche et l'on ne sait plus qu'il existe : sa ligne garde alors un
@@ -395,7 +568,7 @@ export function JourneyTimelineList({
            * paraître — pendant le mouvement, il flotterait lui aussi.
            */
           const isOutLeft = view.width > 0 && !isScrolling && barRight < view.left + 12;
-          const top = RULER_HEIGHT + index * ROW_HEIGHT;
+          const top = rowTops[index] ?? RULER_HEIGHT + index * ROW_HEIGHT;
 
           return (
             <div key={`overlay-${journey.dep}-${index}`}>

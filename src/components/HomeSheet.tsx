@@ -993,7 +993,12 @@ export const HomeSheet = ({
                       </motion.div>
 
                       <span className="relative z-0 flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white text-[42px] shadow-[0_6px_20px_rgba(0,0,0,0.3)]">
-                        {account.avatarEmoji ? (
+                        {/* La photographie déposée d'abord, l'émoji ensuite,
+                            la photo de la carte en dernier : du plus choisi au
+                            plus subi. */}
+                        {account.avatarUrl ? (
+                          <img src={account.avatarUrl} alt="" className="h-full w-full object-cover" />
+                        ) : account.avatarEmoji ? (
                           <span aria-hidden>{account.avatarEmoji}</span>
                         ) : accountPhotoUrl ? (
                           <img src={accountPhotoUrl} alt="" className="h-full w-full object-cover" />
@@ -1003,8 +1008,20 @@ export const HomeSheet = ({
                       </span>
                     </div>
 
+                    {/* Le nom d'état civil au-dessus du pseudonyme : c'est celui
+                        de la carte, il dit à qui appartient le compte, tandis
+                        que le pseudonyme dit sous quel nom on se montre. Le plus
+                        petit des deux passe devant, comme une mention. */}
+                    {[account.firstName, account.lastName].some(Boolean) && (
+                      <p className={`mt-4 text-sm font-medium leading-none ${mutedClass}`}>
+                        {[account.firstName, account.lastName].filter(Boolean).join(' ')}
+                      </p>
+                    )}
+
                     <p
-                      className={`mt-4 text-[20px] font-extrabold leading-none ${titleClass}`}
+                      className={`text-[20px] font-extrabold leading-none ${
+                        [account.firstName, account.lastName].some(Boolean) ? 'mt-1.5' : 'mt-4'
+                      } ${titleClass}`}
                       style={isLight ? { color: '#0f172a' } : undefined}
                     >
                       {account.pseudo}

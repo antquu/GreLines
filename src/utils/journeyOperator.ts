@@ -62,7 +62,14 @@ export function journeyOperatorBrand(
           : '/assets/voi.png',
       color: SHARED_OPERATOR_COLORS[operator],
       chipColor: SHARED_OPERATOR_COLORS[operator],
-      chipLogo: operator === 'citiz' ? '/assets/citiz_white.png' : '/assets/voi.png',
+      /*
+       * La pastille est peinte à la couleur de l'opérateur, donc le logotype
+       * qu'on y pose doit être blanc — celui de Voi est rose, et sur une
+       * pastille rose il disparaissait purement et simplement. Citiz suivait
+       * déjà cette règle ; Voi l'a rejointe.
+       */
+      chipLogo:
+        operator === 'citiz' ? '/assets/citiz_white.png' : '/assets/voi_white.png',
     };
   }
 

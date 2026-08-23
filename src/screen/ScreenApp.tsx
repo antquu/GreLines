@@ -96,7 +96,7 @@ export function ScreenApp() {
   }, [stopId, layout]);
 
   useEffect(() => {
-    document.title = stopId ? `${stopId} · GreLines Screen` : 'GreLines Screen';
+    document.title = stopId ? `${stopId} \\ GreLines Screen` : 'GreLines Screen';
   }, [stopId]);
 
   return stopId ? (
