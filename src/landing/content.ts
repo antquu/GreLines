@@ -74,12 +74,14 @@ interface Showcase {
  * C'est le motif que Vercel emploie pour ses trois publics — une phrase qui
  * tient debout seule, un visuel qui occupe la moitié de la largeur, une preuve
  * chiffrée, puis la liste de ce qu'on sait faire. Là où ils montrent des
- * captures de logiciel, on montre le réseau : un tram, un abribus, un quai.
+ * captures de logiciel, on montre le réseau : des panneaux, un abribus, la
+ * ville. Les fichiers sont détourés sur fond transparent, comme celui du haut
+ * de page : ils sont posés dans la mise en page, jamais encadrés ni rognés.
  */
 export interface Pillar {
-  /** Nom du fichier photo, dans `/assets/homepage/photos/`. */
+  /** Nom du fichier détouré, dans `/assets/homepage/photos/`. */
   photo: string;
-  /** Ce que la photo montre, pour ceux qui ne la voient pas. */
+  /** Ce que le montage montre, pour ceux qui ne le voient pas. */
   alt: string;
   title: string;
   /** La preuve. `strong` est la part écrite en pleine encre. */
@@ -159,6 +161,24 @@ export interface LandingCopy {
   screenTitle: string;
   screenBody: string;
   screenNote: string;
+  /**
+   * La section des dernières nouvelles, en bas de page.
+   *
+   * Les articles viennent de la base ; ne sont écrits ici que les mots de la
+   * page elle-même — le titre de la section, les intitulés des deux lignes de
+   * pied de carte, et les deux liens.
+   */
+  news: {
+    eyebrow: string;
+    title: string;
+    body: string;
+    dateLabel: string;
+    categoryLabel: string;
+    read: string;
+    all: string;
+    /** Ce qui s'écrit dans une carte dont l'article n'a pas de chapô. */
+    fallbackKind: string;
+  };
   finalTitle: string;
   finalBody: string;
   finalPrimary: string;
@@ -186,32 +206,32 @@ const FR: LandingCopy = {
     {
       name: 'GreLines Screen',
       note: 'Les prochains passages d’un arrêt en plein écran, sur n’importe quel téléviseur. Sans installation, sans compte, avec une adresse fixe.',
-      href: '/app/screen',
+      href: '/fr/solutions/screen',
     },
     {
       name: 'Affiches et QR codes',
       note: 'Une adresse durable par arrêt, qui survit aux renommages du réseau, et le décompte des scans pour chaque affiche posée.',
-      href: '#screens',
+      href: '/fr/solutions/affiches',
     },
     {
       name: 'Messages aux porteurs',
       note: 'Une perturbation, un abonnement qui expire, un mot du réseau : adressés à une carte OùRA, reçus dans l’application.',
-      href: '#features',
+      href: '/fr/solutions/messages',
     },
     {
       name: 'Retours voyageurs',
       note: 'Affluence signalée à bord, avis sur les lignes et sur les arrêts, remontés en continu et sans compte à créer.',
-      href: '#features',
+      href: '/fr/solutions/retours',
     },
     {
       name: 'GreLines Data',
       note: 'Le guichet où vos voyageurs consultent ce qui est conservé sur eux, et en demandent la suppression.',
-      href: 'https://data.grelines.fr',
+      href: '/fr/solutions/data',
     },
     {
       name: 'Intégrer votre réseau',
       note: 'Vos lignes, vos arrêts et votre temps réel ajoutés à l’application, à côté des onze réseaux déjà desservis.',
-      href: '#networks',
+      href: '/fr/solutions/reseau',
     },
   ],
   footer: {
@@ -220,26 +240,28 @@ const FR: LandingCopy = {
         title: 'Application',
         links: [
           { label: 'Ouvrir GreLines', href: '/app' },
-          { label: 'Itinéraires', href: '/app/mob/route' },
-          { label: 'Favoris', href: '/app/mob/favorites' },
-          { label: 'Réglages', href: '/app/mob/settings' },
+          { label: 'Afficher un écran', href: '/app/screen' },
+          { label: "L'installer sur son téléphone", href: '/fr/docs/start/installer' },
+          { label: "Ce que fait l'application", href: '/fr/docs/usage/arrets' },
         ],
       },
       {
-        title: 'Écrans',
+        title: 'Solutions',
         links: [
-          { label: 'GreLines Screen', href: '/app/screen' },
-          { label: 'Affiches et QR codes', href: '#screens' },
-          { label: 'Intégrer votre réseau', href: '#networks' },
+          { label: 'GreLines Screen', href: '/fr/solutions/screen' },
+          { label: 'Affiches et QR codes', href: '/fr/solutions/affiches' },
+          { label: 'Messages aux porteurs', href: '/fr/solutions/messages' },
+          { label: 'Retours voyageurs', href: '/fr/solutions/retours' },
+          { label: 'Intégrer votre réseau', href: '/fr/solutions/reseau' },
         ],
       },
       {
         title: 'Réseaux',
         links: [
           { label: 'Réseaux desservis', href: '#networks' },
-          { label: 'Ce que fait l’application', href: '#features' },
-          { label: 'Messages aux porteurs', href: '#features' },
-          { label: 'Retours voyageurs', href: '#features' },
+          { label: 'Raccorder vos données', href: '/fr/docs/reseaux/prerequis' },
+          { label: 'Déployer GreLines', href: '/fr/docs/deploy/avant-de-commencer' },
+          { label: "L'infrastructure", href: '/fr/docs/infra/vue-densemble' },
         ],
       },
       {
@@ -253,8 +275,10 @@ const FR: LandingCopy = {
       {
         title: 'Ressources',
         links: [
+          { label: 'Documentation', href: '/fr/docs' },
+          { label: 'Newsroom', href: '/fr/newsroom' },
           { label: 'État du service', href: STATUS_URL },
-          { label: 'Code source', href: 'https://github.com/antquu' },
+          { label: 'Code source', href: 'https://github.com/antquu/GreLines' },
         ],
       },
       {
@@ -271,12 +295,13 @@ const FR: LandingCopy = {
           { label: 'RGPD', href: '/fr/legals/gdpr' },
           { label: "Conditions d'utilisation", href: '/fr/legals/terms-of-service' },
           { label: 'Conditions de vente', href: '/fr/legals/terms-of-sale' },
+          { label: 'Licence du code source', href: '/fr/legals/license' },
           { label: 'Vos données', href: 'https://data.grelines.fr' },
         ],
       },
       {
         title: 'Social',
-        links: [{ label: 'GitHub', href: 'https://github.com/antquu' }],
+        links: [{ label: 'GitHub', href: 'https://github.com/antquu/GreLines' }],
       },
     ],
     status: 'Tous les services fonctionnent',
@@ -310,8 +335,8 @@ const FR: LandingCopy = {
   ],
   pillars: [
     {
-      photo: 'reseau.jpg',
-      alt: 'Un tram de la ligne A traversant le centre de Grenoble',
+      photo: 'reseau.png',
+      alt: 'Des panneaux directionnels vers le Pays Voironnais, les Cars Région, le Grésivaudan, TCL et M réso, et un vélo en libre-service',
       title: 'Onze réseaux, une seule application',
       proof: {
         strong: 'Plus de 3 000 arrêts',
@@ -325,8 +350,8 @@ const FR: LandingCopy = {
       ],
     },
     {
-      photo: 'arret.jpg',
-      alt: 'Un abribus la nuit, sous la pluie',
+      photo: 'arret.png',
+      alt: "L'abribus Malherbe à Grenoble, avec son plan de quartier et le mât de la ligne A",
       title: 'Le temps réel, pas les horaires théoriques',
       proof: {
         strong: 'Rafraîchi toutes les 15 secondes',
@@ -340,8 +365,8 @@ const FR: LandingCopy = {
       ],
     },
     {
-      photo: 'quai.jpg',
-      alt: 'Un voyageur consultant son téléphone sur un quai de tram',
+      photo: 'ville.png',
+      alt: 'Des façades grenobloises, un immeuble ancien et un immeuble contemporain côte à côte',
       title: 'Ouverte à l’arrêt, pas au bureau',
       proof: {
         strong: 'Trois secondes',
@@ -414,6 +439,16 @@ const FR: LandingCopy = {
   screenBody:
     "Un téléviseur, un vieil ordinateur, une tablette au mur : GreLines Screen affiche les prochains passages d'un arrêt en plein écran, sans installation et sans compte. Un hall d'accueil, une salle des profs, un comptoir — l'adresse suffit.",
   screenNote: "Adresse fixe, lisible de loin, s'actualise toute seule.",
+  news: {
+    eyebrow: 'La salle de presse',
+    title: 'Dernières actualités',
+    body: "Les réseaux qui rejoignent l'application, les nouveautés, et ce qui change sous le capot.",
+    dateLabel: 'Date',
+    categoryLabel: 'Catégorie',
+    read: 'Lire le communiqué',
+    all: 'Toutes les actualités',
+    fallbackKind: 'Annonces',
+  },
   finalTitle: 'Ouvrez-la, elle est déjà prête',
   finalBody:
     "Rien à créer, rien à télécharger, rien à payer. La carte s'affiche, les passages arrivent.",
@@ -442,32 +477,32 @@ const EN: LandingCopy = {
     {
       name: 'GreLines Screen',
       note: 'A stop’s next departures full screen, on any television. Nothing to install, no account, and a fixed address.',
-      href: '/app/screen',
+      href: '/en/solutions/screen',
     },
     {
       name: 'Posters and QR codes',
       note: 'A durable address per stop that survives the network renaming its own codes, and a scan count for every poster you put up.',
-      href: '#screens',
+      href: '/en/solutions/affiches',
     },
     {
       name: 'Messages to cardholders',
       note: 'A disruption, an expiring pass, a word from the network: addressed to an OùRA card, received in the app.',
-      href: '#features',
+      href: '/en/solutions/messages',
     },
     {
       name: 'Rider feedback',
       note: 'Crowding reported on board, reviews of lines and stops, coming in continuously with no account to create.',
-      href: '#features',
+      href: '/en/solutions/retours',
     },
     {
       name: 'GreLines Data',
       note: 'The desk where your riders see what is kept about them, and ask for it to be deleted.',
-      href: 'https://data.grelines.fr',
+      href: '/en/solutions/data',
     },
     {
       name: 'Add your network',
       note: 'Your lines, your stops and your live data added to the app, alongside the eleven networks already served.',
-      href: '#networks',
+      href: '/en/solutions/reseau',
     },
   ],
   footer: {
@@ -476,26 +511,28 @@ const EN: LandingCopy = {
         title: 'App',
         links: [
           { label: 'Open GreLines', href: '/app' },
-          { label: 'Journeys', href: '/app/mob/route' },
-          { label: 'Favourites', href: '/app/mob/favorites' },
-          { label: 'Settings', href: '/app/mob/settings' },
+          { label: 'Show a screen', href: '/app/screen' },
+          { label: 'Install it on a phone', href: '/en/docs/start/installer' },
+          { label: 'What the app does', href: '/en/docs/usage/arrets' },
         ],
       },
       {
-        title: 'Screens',
+        title: 'Solutions',
         links: [
-          { label: 'GreLines Screen', href: '/app/screen' },
-          { label: 'Posters and QR codes', href: '#screens' },
-          { label: 'Add your network', href: '#networks' },
+          { label: 'GreLines Screen', href: '/en/solutions/screen' },
+          { label: 'Posters and QR codes', href: '/en/solutions/affiches' },
+          { label: 'Messages to cardholders', href: '/en/solutions/messages' },
+          { label: 'Rider feedback', href: '/en/solutions/retours' },
+          { label: 'Add your network', href: '/en/solutions/reseau' },
         ],
       },
       {
         title: 'Networks',
         links: [
           { label: 'Networks served', href: '#networks' },
-          { label: 'What the app does', href: '#features' },
-          { label: 'Messages to cardholders', href: '#features' },
-          { label: 'Rider feedback', href: '#features' },
+          { label: 'Connecting your data', href: '/en/docs/reseaux/prerequis' },
+          { label: 'Deploying GreLines', href: '/en/docs/deploy/avant-de-commencer' },
+          { label: 'The infrastructure', href: '/en/docs/infra/vue-densemble' },
         ],
       },
       {
@@ -509,8 +546,10 @@ const EN: LandingCopy = {
       {
         title: 'Resources',
         links: [
+          { label: 'Documentation', href: '/en/docs' },
+          { label: 'Newsroom', href: '/en/newsroom' },
           { label: 'Service status', href: STATUS_URL },
-          { label: 'Source code', href: 'https://github.com/antquu' },
+          { label: 'Source code', href: 'https://github.com/antquu/GreLines' },
         ],
       },
       {
@@ -527,12 +566,13 @@ const EN: LandingCopy = {
           { label: 'GDPR', href: '/en/legals/gdpr' },
           { label: 'Terms of service', href: '/en/legals/terms-of-service' },
           { label: 'Terms of sale', href: '/en/legals/terms-of-sale' },
+          { label: 'Source code licence', href: '/en/legals/license' },
           { label: 'Your data', href: 'https://data.grelines.fr' },
         ],
       },
       {
         title: 'Social',
-        links: [{ label: 'GitHub', href: 'https://github.com/antquu' }],
+        links: [{ label: 'GitHub', href: 'https://github.com/antquu/GreLines' }],
       },
     ],
     status: 'All systems normal',
@@ -566,8 +606,8 @@ const EN: LandingCopy = {
   ],
   pillars: [
     {
-      photo: 'reseau.jpg',
-      alt: 'A line A tram crossing central Grenoble',
+      photo: 'reseau.png',
+      alt: 'Direction signs to Pays Voironnais, Cars Région, Grésivaudan, TCL and M réso, and a shared bike',
       title: 'Eleven networks, one single app',
       proof: {
         strong: 'Over 3,000 stops',
@@ -581,8 +621,8 @@ const EN: LandingCopy = {
       ],
     },
     {
-      photo: 'arret.jpg',
-      alt: 'A bus shelter at night, in the rain',
+      photo: 'arret.png',
+      alt: 'The Malherbe bus shelter in Grenoble, with its area map and the line A pole',
       title: 'Live departures, not printed timetables',
       proof: {
         strong: 'Refreshed every 15 seconds',
@@ -596,8 +636,8 @@ const EN: LandingCopy = {
       ],
     },
     {
-      photo: 'quai.jpg',
-      alt: 'A traveller checking their phone on a tram platform',
+      photo: 'ville.png',
+      alt: 'Grenoble façades, an old building and a contemporary one side by side',
       title: 'Opened at the stop, not at a desk',
       proof: {
         strong: 'Three seconds',
@@ -670,6 +710,16 @@ const EN: LandingCopy = {
   screenBody:
     'A television, an old computer, a tablet on the wall: GreLines Screen shows a stop’s next departures full screen, with nothing to install and no account. A lobby, a staff room, a counter — the address is all it takes.',
   screenNote: 'Fixed address, readable from afar, refreshes itself.',
+  news: {
+    eyebrow: 'The newsroom',
+    title: 'Latest releases',
+    body: 'Networks joining the app, what is new, and what changed under the hood.',
+    dateLabel: 'Date',
+    categoryLabel: 'Category',
+    read: 'Read announcement',
+    all: 'All announcements',
+    fallbackKind: 'Announcements',
+  },
   finalTitle: 'Open it — it is already running',
   finalBody: 'Nothing to create, nothing to download, nothing to pay. The map loads, the departures arrive.',
   finalPrimary: 'Open GreLines',

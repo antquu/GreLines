@@ -48,14 +48,27 @@ export function LandingFooter({
   onChoose,
   /** Marque un lien de langue comme choix explicite, si la page en tient compte. */
   onPickLang,
+  local = false,
 }: {
   lang: Lang;
   theme: Theme;
   choice: ThemeChoice;
   onChoose: (next: ThemeChoice) => void;
   onPickLang?: (next: Lang) => void;
+  /**
+   * Vrai sur la page d'accueil, où les ancres du pied désignent des sections
+   * de la page en cours.
+   *
+   * Ailleurs, une ancre ne désigne rien : le pied de la documentation ou d'une
+   * page légale renvoyait vers `#features`, qui n'existe pas là, et le lien ne
+   * faisait rien du tout. On lui rend alors son chemin, comme l'en-tête le fait
+   * déjà pour le menu des solutions.
+   */
+  local?: boolean;
 }) {
   const copy = COPY[lang];
+  const href = (target: string) =>
+    !local && target.startsWith('#') ? `/${lang}${target}` : target;
 
   return (
     <footer className="landing-surface-alt border-t border-[var(--line)]">
@@ -67,7 +80,7 @@ export function LandingFooter({
               {column.links.map(link => (
                 <a
                   key={link.label}
-                  href={link.href}
+                  href={href(link.href)}
                   className="landing-footer-link"
                   {...(link.href.startsWith('http')
                     ? { target: '_blank', rel: 'noreferrer' }

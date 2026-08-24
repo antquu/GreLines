@@ -556,6 +556,16 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   const sharedRouteTargetHandledRef = useRef('');
   /** Jeton de la dernière recherche de véhicules partagés, contre les réponses tardives. */
   const sharedRequestRef = useRef(0);
+  /*
+   * Le jeton de la requête vélo.
+   *
+   * Elle part sans `await` et revient quand elle veut. Sans jeton, une réponse
+   * arrivée après un effacement repeuplait la liste toute seule : on fermait la
+   * page, on la rouvrait, et le GreLines Trip d'un trajet abandonné y était
+   * encore. Le même garde-fou existait déjà pour les véhicules partagés ; il
+   * manquait ici.
+   */
+  const bikeRequestRef = useRef(0);
 
   const calendarCells = useMemo(() => buildCalendarCells(calendarMonth), [calendarMonth]);
   /*
@@ -854,6 +864,34 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     closeScheduleMenu();
   };
 
+  /*
+   * Fermer, c'est repartir de zéro.
+   *
+   * Cette page n'est jamais démontée : une fois ouverte, elle reste en mémoire
+   * pour se rouvrir à l'instant. C'est bon pour la vitesse, et c'est un piège
+   * pour l'état — ses résultats survivaient à sa fermeture, si bien qu'en
+   * revenant on retrouvait la liste d'un trajet qu'on avait abandonné, parfois
+   * réduite au seul GreLines Trip parce que les autres sources, elles, avaient
+   * été vidées entre-temps.
+   *
+   * On efface donc au moment où elle se referme, quelle que soit la façon dont
+   * on l'a fermée : la croix, le retour, ou le doigt qui la tire vers le bas.
+   */
+  useEffect(() => {
+    if (isOpen) return;
+    clearAllResults();
+    setRouteError(null);
+    setRouteLoading(false);
+    setRefreshing(false);
+    setMapPeek(false);
+    setDragY(0);
+    dragYRef.current = 0;
+    // `clearAllResults` est redéfinie à chaque rendu et ne lit que des setters,
+    // qui sont stables : la citer en dépendance ferait rejouer l'effacement à
+    // chaque frappe dans le champ de départ.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   useEffect(() => {
     if (!routeFrom) {
       setFromSelection(null);
@@ -1035,6 +1073,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     const queryTime = scheduleIsNow ? formatTimeInput(new Date()) : scheduleTime;
     if (!options.silent) {
       setRouteResults([]);
+      setBikeResults([]);
       setSharedResults([]);
       setUberResult(null);
       setTaxiResult(null);
@@ -1095,6 +1134,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
        * sans retarder les trajets ordinaires d'une seule milliseconde. Un échec
        * n'a aucune conséquence — la section disparaît, c'est tout.
        */
+      const bikeToken = ++bikeRequestRef.current;
       void planItineraries({
         fromLatitude: fromSelection.lat,
         fromLongitude: fromSelection.lon,
@@ -1107,8 +1147,12 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         time: queryTime,
         mode: 'BICYCLE,TRANSIT',
       })
-        .then(setBikeResults)
-        .catch(() => setBikeResults([]));
+        .then(found => {
+          if (bikeRequestRef.current === bikeToken) setBikeResults(found);
+        })
+        .catch(() => {
+          if (bikeRequestRef.current === bikeToken) setBikeResults([]);
+        });
       if (!options.silent && sharedRouteTarget && !sharedRouteExpired) {
         const targetKey = [sharedRouteTarget.dep || '', sharedRouteTarget.arr || '', sharedRouteTarget.dur || ''].join('|');
         if (sharedRouteTargetHandledRef.current !== targetKey) {
@@ -1216,18 +1260,25 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   /**
    * Vider les résultats, tous les résultats.
    *
-   * Les options en véhicule partagé et en VTC arrivent après les transports en
-   * commun, par une autre requête : oubliées ici, elles survivaient à
-   * l'effacement de la destination, et l'écran d'accueil affichait une
-   * trottinette et un taxi à la place de l'historique.
+   * Les options en véhicule partagé, en VTC et à vélo arrivent après les
+   * transports en commun, par d'autres requêtes. Oubliées ici, elles
+   * survivaient à l'effacement de la destination : l'écran d'accueil affichait
+   * une trottinette et un taxi à la place de l'historique, et le GreLines Trip
+   * d'un trajet abandonné restait seul dans une liste par ailleurs vide.
+   *
+   * « Tous » veut dire tous. Chaque fois qu'on ajoutera une source de
+   * résultats, c'est ici qu'il faudra la déclarer, et les jetons plus bas sont
+   * ce qui empêche une réponse en retard de défaire ce travail.
    */
   function clearAllResults() {
     setRouteResults([]);
+    setBikeResults([]);
     setSharedResults([]);
     setUberResult(null);
     setTaxiResult(null);
-    // La requête en vol ne doit pas repeupler la liste qu'on vient de vider.
+    // Les requêtes en vol ne doivent pas repeupler la liste qu'on vient de vider.
     sharedRequestRef.current += 1;
+    bikeRequestRef.current += 1;
     onItinerariesUpdated?.([]);
   }
 

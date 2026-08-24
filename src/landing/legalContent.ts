@@ -15,7 +15,12 @@
  * pas été relu par un juriste : c'est une base honnête, pas un avis juridique.
  */
 
-export type LegalSlug = 'privacy-policy' | 'terms-of-service' | 'terms-of-sale' | 'gdpr';
+export type LegalSlug =
+  | 'privacy-policy'
+  | 'terms-of-service'
+  | 'terms-of-sale'
+  | 'gdpr'
+  | 'license';
 
 export interface LegalSection {
   /** L'ancre, en anglais elle aussi, pour que les liens profonds survivent. */
@@ -40,7 +45,11 @@ export const LEGAL_ORDER: LegalSlug[] = [
   'gdpr',
   'terms-of-service',
   'terms-of-sale',
+  'license',
 ];
+
+/** L'adresse du dépôt, citée par la licence. Une seule ligne à changer. */
+export const REPO_URL = 'https://github.com/antquu/GreLines';
 
 const UPDATED_FR = '23 août 2026';
 const UPDATED_EN = '23 August 2026';
@@ -296,6 +305,87 @@ const FR: Record<LegalSlug, LegalDocument> = {
       },
     ],
   },
+  license: {
+    slug: 'license',
+    title: "Licence du code source",
+    lede:
+      "GreLines est un logiciel libre, et compte le rester. Voici ce que vous pouvez en faire, et les deux ou trois choses qu'on vous demande en retour.",
+    updated: UPDATED_FR,
+    sections: [
+      {
+        id: 'summary',
+        heading: 'En une phrase',
+        body: [
+          "Le code de GreLines est publié sous licence GNU AGPL v3, augmentée de conditions d'attribution autorisees par l'article 7 de cette licence. Vous pouvez le lire, le modifier, le republier et le faire tourner, y compris pour un usage professionnel, à condition de rester ouvert et de dire d'où il vient.",
+          "Le texte qui fait foi est le fichier LICENSE du dépôt. Cette page l'explique en français ordinaire ; en cas de désaccord entre les deux, c'est le fichier qui compte.",
+        ],
+      },
+      {
+        id: 'why-affero',
+        heading: "Pourquoi la version Affero, et pas la GPL ordinaire",
+        body: [
+          "La GPL ordinaire se déclenche quand on distribue un logiciel. Or GreLines ne se distribue pas : il s'héberge. Sous GPL, quelqu'un pourrait prendre ce code, le mettre en ligne à sa propre adresse, le servir au public et ne jamais rien rendre, puisqu'il n'a remis de copie à personne.",
+          "La variante Affero ferme cette porte. Son article 13 fait compter l'usage en réseau : si vous laissez d'autres personnes se servir d'une version modifiée à travers un réseau, vous devez leur en proposer les sources. C'est la seule licence qui protège un projet dont la valeur est en ligne et non dans un fichier téléchargé.",
+        ],
+      },
+      {
+        id: 'allowed',
+        heading: 'Ce que vous pouvez faire',
+        body: [
+          "- Lire le code, l'étudier, vous en servir pour apprendre.",
+          "- Le modifier, le corriger, en retirer ce qui ne vous sert pas.",
+          "- Le republier, en votre nom, sous la même licence.",
+          "- Le faire tourner pour vous, chez vous, sans rien devoir à personne.",
+          "- L'exploiter dans un cadre professionnel ou commercial, aux mêmes conditions que tout le monde.",
+        ],
+      },
+      {
+        id: 'asked',
+        heading: 'Ce qu’on vous demande en retour',
+        body: [
+          "Trois choses, et elles sont courtes.",
+          "- Citer l'origine dans le code. Si vous republiez le projet ou une version dérivée, gardez les mentions de droit d'auteur et le fichier de licence, et dites dans le fichier de présentation du dépôt que le travail est fondé sur GreLines, avec le lien vers le dépôt.",
+          "- Citer l'origine sur le site. Si vous mettez le projet en ligne pour que d'autres s'en servent, chaque utilisateur doit pouvoir voir une mention nommant GreLines et renvoyant au dépôt. « Chaque utilisateur » se lit au pied de la lettre : la mention doit être accessible sans compte, sans connexion, sans abonnement, sur le premier écran ou dans un pied de page atteignable en un geste depuis celui-ci. Une mention réservée aux administrateurs, ou enfouie à quatre niveaux dans des réglages, ne suffit pas.",
+          "- Ne pas vous faire passer pour l'origine. Vous ne pouvez pas présenter ce travail comme votre création originale, ni employer le nom ou le logotype GreLines de façon à laisser croire que votre version est l'officielle. Dire que votre projet est fondé sur GreLines, en revanche, est encouragé.",
+        ],
+      },
+      {
+        id: 'derivative',
+        heading: 'Ce qui compte comme une version dérivée',
+        body: [
+          "La question se pose surtout pour les composants, et la réponse est simple : un fichier copié d'ici reste un fichier d'ici, quel que soit le nom qu'on lui donne ensuite.",
+          "Sont couverts : les fichiers repris en tout ou en partie et restés reconnaissables après un renommage, une remise en forme, une traduction, une réorganisation en dossiers, un passage dans un transpileur ou une réécriture par une machine. Cela vaut pour les composants d'interface comme pour les feuilles de style, les schémas de base de données, les structures de contenu et la configuration.",
+          "Est couvert aussi le fait de reprendre une part substantielle du projet sans copier un seul fichier entier, dès lors que ce que vous avez gardé relève de la façon dont ce logiciel est écrit et non de l'idée qu'il met en oeuvre.",
+          "N'est pas couvert : écrire votre propre afficheur de passages, votre propre calculateur d'itinéraires ou votre propre application de transport, depuis une page blanche, sans copier ce code. Le droit d'auteur protège la manière dont ce logiciel est écrit. Il ne protège pas l'idée d'annoncer le prochain tram, et cette licence ne prétend pas le contraire.",
+        ],
+      },
+      {
+        id: 'local',
+        heading: 'Usage local et privé',
+        body: [
+          "Aucune de ces obligations ne s'applique quand vous faites tourner le projet pour vous.",
+          "Sur votre machine, sur un serveur chez vous, ou à l'intérieur d'une organisation dont seuls les membres s'en servent : vous ne remettez de copie à personne et vous ne le mettez à disposition d'aucun tiers. Ni les articles 5, 6 et 13 de la licence, ni les conditions d'attribution ci-dessus ne vous concernent. Modifiez-le, cassez-le, gardez vos changements : cela ne regarde que vous.",
+          "Les obligations commencent au moment où d'autres personnes deviennent utilisatrices de ce que vous faites tourner.",
+        ],
+      },
+      {
+        id: 'data',
+        heading: 'Ce que la licence ne couvre pas',
+        body: [
+          "Elle porte sur le code. Elle ne porte ni sur les données de transport, qui appartiennent aux exploitants et suivent leurs propres conditions, ni sur les logotypes des réseaux desservis, ni sur les photographies et les montages du site.",
+          "Elle ne vous donne aucun droit sur l'instance que nous exploitons : ses adresses, ses clés, ses comptes et ses bases ne font pas partie du code publié et n'y figureront pas.",
+        ],
+      },
+      {
+        id: 'contact',
+        heading: 'Un cas qui ne rentre pas dans ces cases',
+        body: [
+          "Écrivez. Si votre projet ne tient pas dans ces conditions et que vous voulez tout de même partir de ce travail, dites ce que vous cherchez à faire : ant.adam468@gmail.com.",
+          "Cette page a été écrite avec soin, mais elle n'a pas été relue par un juriste. C'est une explication honnête, pas un avis juridique.",
+        ],
+      },
+    ],
+  },
 };
 
 const EN: Record<LegalSlug, LegalDocument> = {
@@ -540,6 +630,87 @@ const EN: Record<LegalSlug, LegalDocument> = {
         heading: 'Governing law',
         body: [
           'These terms are governed by French law. Failing an amicable settlement, disputes fall to the competent courts of Grenoble.',
+        ],
+      },
+    ],
+  },
+  license: {
+    slug: 'license',
+    title: 'Source code licence',
+    lede:
+      'GreLines is free software and intends to stay that way. Here is what you may do with it, and the two or three things asked in return.',
+    updated: UPDATED_EN,
+    sections: [
+      {
+        id: 'summary',
+        heading: 'In one sentence',
+        body: [
+          "GreLines source code is published under the GNU AGPL v3, with attribution terms permitted by section 7 of that licence. You may read it, change it, republish it and run it, commercially included, provided you stay open and say where it came from.",
+          'The authoritative text is the LICENSE file in the repository. This page explains it in plain language; where the two disagree, the file governs.',
+        ],
+      },
+      {
+        id: 'why-affero',
+        heading: 'Why the Affero version, and not the ordinary GPL',
+        body: [
+          'The ordinary GPL is triggered by distributing software. GreLines is not distributed, it is hosted. Under the GPL, somebody could take this code, put it online at their own address, serve it to the public and never give anything back, because they handed a copy to nobody.',
+          'The Affero variant closes that door. Its section 13 makes network use count: if you let other people use a modified version over a network, you must offer them its source. It is the only licence that protects a project whose value is online rather than in a downloaded file.',
+        ],
+      },
+      {
+        id: 'allowed',
+        heading: 'What you may do',
+        body: [
+          '- Read the code, study it, learn from it.',
+          '- Modify it, fix it, strip out what you do not need.',
+          '- Republish it, under your own name, under the same licence.',
+          '- Run it for yourself, at home, owing nobody anything.',
+          '- Use it professionally or commercially, on the same terms as everyone else.',
+        ],
+      },
+      {
+        id: 'asked',
+        heading: 'What is asked in return',
+        body: [
+          'Three things, and they are short.',
+          '- Credit the origin in the source. If you republish the project or a derived version, keep the copyright notices and the licence file, and state in the repository README that the work is based on GreLines, with a link to the repository.',
+          '- Credit the origin on the site. If you put the project online for others to use, every user must be able to see a notice naming GreLines and linking to the repository. "Every user" is meant literally: it must be reachable without an account, without signing in, without a paid plan, on the first screen or in a footer one step away from it. A notice shown only to administrators, or buried four levels deep in settings, does not count.',
+          '- Do not pass yourself off as the origin. You may not present this work as your own original creation, nor use the GreLines name or logotype in a way that suggests your version is the official one. Saying accurately that your project is based on GreLines is encouraged.',
+        ],
+      },
+      {
+        id: 'derivative',
+        heading: 'What counts as a derived version',
+        body: [
+          'The question mostly comes up about components, and the answer is simple: a file copied from here stays a file from here, whatever you rename it to.',
+          'Covered: files taken in whole or in part and still recognisable after renaming, reformatting, translating, reorganising into other directories, running through a transpiler or having a machine rewrite them. That applies to interface components as much as to stylesheets, database schemas, content structures and configuration.',
+          "Also covered: taking a substantial part of the project without copying any single file whole, where what you kept is this software's expression rather than the idea it implements.",
+          'Not covered: writing your own departure board, your own journey planner or your own transit application from a blank page, without copying this code. Copyright protects the way this software is written. It does not protect the idea of announcing the next tram, and this licence does not pretend otherwise.',
+        ],
+      },
+      {
+        id: 'local',
+        heading: 'Local and private use',
+        body: [
+          'None of these obligations apply when you run the project for yourself.',
+          'On your own machine, on a home server, or inside an organisation where only its own people use it: you are conveying a copy to nobody and making it available to no third party. Neither sections 5, 6 and 13 of the licence nor the attribution terms above concern you. Modify it, break it, keep your changes: that is your business alone.',
+          'The obligations begin the moment other people become users of what you run.',
+        ],
+      },
+      {
+        id: 'data',
+        heading: 'What the licence does not cover',
+        body: [
+          'It covers the code. It does not cover transit data, which belongs to the operators and follows their own terms, nor the logotypes of the networks served, nor the photographs and montages on this site.',
+          'It gives you no rights over the instance we operate: its addresses, keys, accounts and databases are not part of the published code and never will be.',
+        ],
+      },
+      {
+        id: 'contact',
+        heading: 'A case that does not fit',
+        body: [
+          'Write to us. If your project does not fit these terms and you still want to build on this work, say what you are trying to do: ant.adam468@gmail.com.',
+          'This page was written carefully, but it has not been reviewed by a lawyer. It is an honest explanation, not legal advice.',
         ],
       },
     ],

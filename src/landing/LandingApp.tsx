@@ -6,8 +6,11 @@
  * par un lien partagé, par un moteur de recherche.
  *
  * Elle est montée avant `App`, dans `main.tsx`, et ne charge rien de
- * l'application : ni carte, ni requêtes réseau, ni service d'horaires. Une page
- * de présentation qui met trois secondes à s'afficher ne présente rien du tout.
+ * l'application : ni carte, ni service d'horaires. Une page de présentation qui
+ * met trois secondes à s'afficher ne présente rien du tout. La seule requête
+ * qu'elle fasse est celle des trois derniers communiqués, en bas de page : elle
+ * part après le premier rendu, et la section n'existe pas tant qu'elle n'a rien
+ * rapporté.
  *
  * La page est entièrement claire ou entièrement sombre. Le thème est celui
  * choisi dans l'application — la vitrine relit le même réglage — et se change
@@ -24,6 +27,7 @@ import { useEffect, useRef, useState } from 'react';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import { COPY, PARTNERS, type Lang, type Partner } from './content';
+import { listPosts, formatPostDate, type BlogPost } from '../services/blog';
 import { LandingHeader } from './LandingHeader';
 import { LandingFooter } from './LandingFooter';
 import './landing.css';
@@ -125,36 +129,6 @@ function SoftImage({
   );
 }
 
-/**
- * L'emplacement de la démonstration.
- *
- * Une vidéo si le fichier est là, une trame de traits obliques sinon. La trame
- * n'est empruntée à personne : elle est dessinée en CSS, et elle disparaît
- * d'elle-même le jour où la vidéo arrive.
- */
-function Demo({ src, poster, ratio }: { src: string; poster?: string; ratio: string }) {
-  const [failed, setFailed] = useState(false);
-
-  return (
-    <div className="landing-frame w-full" style={{ aspectRatio: ratio }}>
-      {failed ? (
-        <div className="landing-placeholder" aria-hidden />
-      ) : (
-        <video
-          src={src}
-          poster={poster}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          onError={() => setFailed(true)}
-        />
-      )}
-    </div>
-  );
-}
-
 /** La hauteur d'encre commune à tous les logotypes du bandeau, en pixels. */
 const LOGO_INK_HEIGHT = 26;
 
@@ -243,6 +217,106 @@ function Eyebrow({ children }: { children: string }) {
 }
 
 
+
+
+/**
+ * Les trois dernières nouvelles, en cartes.
+ *
+ * La forme est celle d'un communiqué affiché : le titre, le chapô, puis — collé
+ * au bas de la carte — les deux faits qu'on veut pouvoir comparer d'un coup
+ * d'œil d'une carte à l'autre, la date et la catégorie. Ils sont alignés parce
+ * qu'ils sont poussés en bas : trois chapôs de longueurs différentes ne
+ * décalent donc pas trois dates.
+ *
+ * La section disparaît si la base ne répond pas ou si rien n'est publié. Une
+ * salle de presse vide sur une page d'accueil dit quelque chose de faux sur le
+ * produit ; mieux vaut qu'elle ne soit pas là.
+ */
+function LatestNews({ lang }: { lang: Lang }) {
+  const copy = COPY[lang];
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    listPosts(lang).then(result => {
+      if (active) setPosts(result.slice(0, 3));
+    });
+    return () => {
+      active = false;
+    };
+  }, [lang]);
+
+  if (posts.length === 0) return null;
+
+  return (
+    <section id="news" className="border-t border-[var(--line)]">
+      <div className="mx-auto max-w-6xl px-6 py-28">
+        <Reveal>
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <Eyebrow>{copy.news.eyebrow}</Eyebrow>
+              <h2 className="landing-title mt-5">{copy.news.title}</h2>
+              <p className="landing-lead mt-5 max-w-xl">{copy.news.body}</p>
+            </div>
+            <a href={`/${lang}/newsroom`} className="landing-cta landing-cta-ghost">
+              {copy.news.all}
+              <ArrowRight />
+            </a>
+          </div>
+        </Reveal>
+
+        {/* Autant de colonnes que de communiqués, jusqu'à trois : un article
+            seul dans une grille de trois laisse deux tiers de vide, et la page
+            paraît alors amputée plutôt que sobre. */}
+        <div
+          className={`mt-14 grid gap-6 ${
+            posts.length === 1
+              ? 'md:max-w-md'
+              : posts.length === 2
+                ? 'md:grid-cols-2'
+                : 'md:grid-cols-3'
+          }`}
+        >
+          {posts.map((post, index) => (
+            <Reveal key={post.id} delay={index * 80}>
+              <article className="landing-card landing-news-card">
+                <h3 className="landing-news-title">{post.title}</h3>
+                {post.excerpt && <p className="landing-body mt-3">{post.excerpt}</p>}
+
+                {/* Le vide qui pousse le pied de carte vers le bas, et aligne
+                    les dates des trois cartes sur une même ligne. */}
+                <div className="flex-1" />
+
+                <dl className="mt-8">
+                  <div className="landing-news-meta">
+                    <dt className="landing-news-label">{copy.news.dateLabel}</dt>
+                    <dd className="landing-news-value">
+                      {formatPostDate(post.publishedAt, lang)}
+                    </dd>
+                  </div>
+                  <div className="landing-news-meta">
+                    <dt className="landing-news-label">{copy.news.categoryLabel}</dt>
+                    <dd className="landing-news-value">
+                      {post.kind || post.theme || copy.news.fallbackKind}
+                    </dd>
+                  </div>
+                </dl>
+
+                <a
+                  href={`/${lang}/newsroom/${post.slug}`}
+                  className="landing-cta landing-cta-primary mt-7 self-start !h-10 !px-4 !text-[0.8125rem]"
+                >
+                  {copy.news.read}
+                  <ArrowRight />
+                </a>
+              </article>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 
 type Theme = 'light' | 'dark';
@@ -402,9 +476,17 @@ export function LandingApp({ lang }: { lang: Lang }) {
 
   return (
     <div className={`landing ${animated ? 'landing-anim' : ''}`} data-theme={theme}>
+      {/*
+        L'en-tête est hors des pièces, et non dans la première.
+        Un `position: sticky` ne colle qu'à l'intérieur de la boîte de son
+        parent : posé dans la première section, l'en-tête la suivait puis
+        décrochait au bout de mille cinq cents pixels, ce qui se lit comme une
+        panne. Enfant direct de la page, il tient du haut jusqu'en bas.
+      */}
+      <LandingHeader lang={lang} theme={theme} stuck={stuck} local />
+
       {/* ================================================== pièce sombre */}
       <div className="landing-surface">
-        <LandingHeader lang={lang} theme={theme} stuck={stuck} local />
 
         {/* ------------------------------------------------ hero */}
         <section className="mx-auto max-w-6xl px-6 pb-24 pt-20 sm:pt-28">
@@ -531,12 +613,19 @@ export function LandingApp({ lang }: { lang: Lang }) {
                 {/* Le visuel change de côté d'un pilier à l'autre. `order` et
                     non deux mises en page : la lecture reste la même sur
                     téléphone, où tout se remet en colonne. */}
+                {/* Le visuel est posé, pas encadré.
+                    Les trois fichiers sont des montages détourés sur fond
+                    transparent, comme celui du haut de page : les enfermer dans
+                    un cadre au ratio fixe rendrait le détourage inutile, et
+                    ferait apparaître le vide qui les entoure comme un défaut de
+                    cadrage. Ils gardent donc leurs proportions, et le fond de la
+                    section passe derrière eux. */}
                 <Reveal className={index % 2 === 1 ? 'lg:order-2' : ''}>
-                  <div className="landing-media" style={{ aspectRatio: '4 / 3' }}>
+                  <div className="mx-auto w-full max-w-[32rem]">
                     <SoftImage
                       src={`${ASSETS}/photos/${pillar.photo}`}
                       alt={pillar.alt}
-                      className="landing-photo"
+                      className="h-auto w-full"
                     />
                   </div>
                 </Reveal>
@@ -565,27 +654,8 @@ export function LandingApp({ lang }: { lang: Lang }) {
 
       {/* ================================================== pièce sombre */}
       <div className="landing-surface">
-        {/* ------------------------------------------------ écrans */}
-        <section id="screens" className="mx-auto max-w-6xl px-6 py-28">
-          <div className="grid items-center gap-16 lg:grid-cols-2">
-            <Reveal>
-              <div>
-                <Eyebrow>{copy.eyebrows.screens}</Eyebrow>
-                <h2 className="landing-title mt-5">{copy.screenTitle}</h2>
-                <p className="landing-lead mt-6">{copy.screenBody}</p>
-                <p className="landing-eyebrow mt-8">{copy.screenNote}</p>
-                <a href="/app/screen" className="landing-cta landing-cta-ghost mt-8">
-                  {copy.nav.screens}
-                  <ArrowRight />
-                </a>
-              </div>
-            </Reveal>
-
-            <Reveal delay={90}>
-              <Demo src={`${ASSETS}/ecran.mp4`} poster={`${ASSETS}/ecran.png`} ratio="16 / 9" />
-            </Reveal>
-          </div>
-        </section>
+        {/* ------------------------------------------------ actualités */}
+        <LatestNews lang={lang} />
 
         {/* ------------------------------------------------ appel final */}
         <section className="border-t border-[var(--line)]">
@@ -612,6 +682,7 @@ export function LandingApp({ lang }: { lang: Lang }) {
           choice={choice}
           onChoose={choose}
           onPickLang={rememberLang}
+          local
         />
       </div>
     </div>

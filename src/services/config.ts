@@ -31,7 +31,7 @@ export interface GreLinesConfig {
 export function loadConfig(): GreLinesConfig {
   try {
     
-    const version = import.meta.env.VITE_APP_VERSION || '2.0.1';
+    const version = import.meta.env.VITE_APP_VERSION || '3.7.0';
 
     const creditsJson = import.meta.env.VITE_CREDITS;
     const credits: Credit[] = creditsJson ? JSON.parse(creditsJson) : [];
@@ -48,7 +48,7 @@ export function loadConfig(): GreLinesConfig {
     };
   } catch (error) {    
     return {
-      version: '2.0.1',
+      version: '3.7.0',
       credits: [],
       admin: {
         identifiers: []

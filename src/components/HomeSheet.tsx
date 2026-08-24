@@ -517,6 +517,17 @@ export const HomeSheet = ({
   searchBar,
 }: HomeSheetProps) => {
   const text = getText(language);
+  /*
+   * Quatre arrêts récents, pas huit.
+   *
+   * La feuille d'accueil porte déjà la recherche, les favoris et le profil :
+   * une huitième ligne d'historique repoussait tout le reste sous le pli, et
+   * l'on ne descend pas dans un historique, on y reconnaît son arrêt du premier
+   * coup d'oeil ou l'on repasse par la recherche. Le stockage en garde huit,
+   * lui, parce qu'ils ne coûtent rien et servent au classement.
+   */
+  const RECENTS_SHOWN = 4;
+
   const isLight = theme === 'light';
 
   /*
@@ -528,7 +539,7 @@ export const HomeSheet = ({
    */
   const [recents, setRecents] = useState<RecentStop[]>([]);
   useEffect(() => {
-    if (isOpen) setRecents(loadRecentStops());
+    if (isOpen) setRecents(loadRecentStops().slice(0, RECENTS_SHOWN));
   }, [isOpen]);
 
   /*

@@ -21,26 +21,38 @@ type Theme = 'light' | 'dark';
 
 const ASSETS = '/assets/homepage';
 
-/** La pastille et le mot, à gauche de la barre. */
+/**
+ * La pastille seule, à gauche de la barre.
+ *
+ * Le nom ne l'accompagne plus. Sur un site qui n'appartient qu'à GreLines,
+ * l'écrire à côté de sa propre marque ne distingue rien, et prend la place que
+ * la navigation réclame. Le mot revient dans le pied de page et dans le titre
+ * de l'onglet, où il sert vraiment.
+ *
+ * Si le fichier manque, le nom réapparaît : un en-tête sans rien à gauche
+ * n'aurait plus de lien de retour visible.
+ */
 function Mark({ theme }: { theme: Theme }) {
   const [failed, setFailed] = useState(false);
-  return (
-    <span className="inline-flex items-center gap-2.5">
-      {!failed && (
-        <img
-          src={`${ASSETS}/${theme === 'dark' ? 'logo_light.png' : 'logo.png'}`}
-          alt=""
-          className="h-7 w-auto rounded-full"
-          onError={() => setFailed(true)}
-        />
-      )}
+
+  if (failed) {
+    return (
       <span
         className="text-[1.0625rem] tracking-[-0.03em]"
         style={{ fontFamily: 'var(--display)', fontWeight: 500 }}
       >
         GreLines
       </span>
-    </span>
+    );
+  }
+
+  return (
+    <img
+      src={`${ASSETS}/${theme === 'dark' ? 'logo_light.png' : 'logo.png'}`}
+      alt="GreLines"
+      className="h-7 w-auto rounded-full"
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -176,7 +188,6 @@ export function LandingHeader({
           </div>
           <a href={anchor('features')} className="landing-link">{copy.nav.features}</a>
           <a href={anchor('networks')} className="landing-link">{copy.nav.networks}</a>
-          <a href={anchor('screens')} className="landing-link">{copy.nav.screens}</a>
         </nav>
 
         <div className="flex items-center gap-4">

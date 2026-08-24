@@ -77,7 +77,28 @@ const legalRoute = /^\/(fr|en)\/legals\/([a-z-]+)\/?$/.exec(window.location.path
  * partagée avant le changement de nom. Une adresse publiée ne se retire pas.
  */
 const blogRoute = /^\/(fr|en)\/(?:newsroom|blog)\/?$/.exec(window.location.pathname);
-const docsRoute = /^\/(fr|en)\/docs\/?$/.exec(window.location.pathname);
+/*
+ * La documentation, sur trois étages.
+ *
+ * `/fr/docs` est le sommaire, `/fr/docs/<categorie>` la liste d'une catégorie,
+ * `/fr/docs/<categorie>/<section>` l'article lui-même. Les deux derniers
+ * segments sont facultatifs, et une adresse qui nomme une catégorie inconnue
+ * retombe sur le sommaire plutôt que de rendre une page vide : c'est la page
+ * qui en décide, pas cette expression, qui se contente de découper.
+ */
+const docsRoute = /^\/(fr|en)\/docs(?:\/([a-z0-9-]+))?(?:\/([a-z0-9-]+))?\/?$/.exec(
+  window.location.pathname,
+);
+/**
+ * Les pages de solution, sur `/fr/solutions/<slug>`.
+ *
+ * Le segment est facultatif : sans lui, la page rend la liste des six. Un slug
+ * inconnu fait de même, plutôt que de laisser tomber le visiteur dans
+ * l'application.
+ */
+const solutionRoute = /^\/(fr|en)\/solutions(?:\/([a-z0-9-]+))?\/?$/.exec(
+  window.location.pathname,
+);
 const postRoute = /^\/(fr|en)\/(?:newsroom|blog)\/([A-Za-z0-9-]+)\/?$/.exec(window.location.pathname);
 
 /**
@@ -89,11 +110,25 @@ const postRoute = /^\/(fr|en)\/(?:newsroom|blog)\/([A-Za-z0-9-]+)\/?$/.exec(wind
  */
 const LANDING_LANG_KEY = 'greLines_landingLang';
 
-if (docsRoute) {
-  void import('./landing/BlogPage').then(({ DocsPage }) => {
+if (solutionRoute) {
+  void import('./landing/SolutionPage').then(({ SolutionPage }) => {
     root.render(
       <StrictMode>
-        <DocsPage lang={docsRoute[1] as 'fr' | 'en'} />
+        <SolutionPage lang={solutionRoute[1] as 'fr' | 'en'} slug={solutionRoute[2]} />
+        <Analytics />
+        <SpeedInsights />
+      </StrictMode>,
+    );
+  });
+} else if (docsRoute) {
+  void import('./landing/DocsPage').then(({ DocsPage }) => {
+    root.render(
+      <StrictMode>
+        <DocsPage
+          lang={docsRoute[1] as 'fr' | 'en'}
+          group={docsRoute[2]}
+          entry={docsRoute[3]}
+        />
         <Analytics />
         <SpeedInsights />
       </StrictMode>,

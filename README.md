@@ -1,59 +1,20 @@
-[![Bannière Grelines](https://image.noelshack.com/fichiers/2026/16/2/1776164180-grelines-banniere.png)](https://grelines.vercel.app/)
+[![Main](.screenshots/main.png)](https://grelines.fr/)
 
-[![React](https://img.shields.io/badge/React-19.2.4-blue.svg)](https://reactjs.org/)
-[![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-3178C6.svg)](https://www.typescriptlang.org/)
-[![Framer Motion](https://img.shields.io/badge/Framer_Motion-12.38.0-0055FF.svg)](https://www.framer.com/motion/)
-[![MapLibre GL](https://img.shields.io/badge/MapLibre_GL-5.21.0-000000.svg)](https://maplibre.org/)
-[![MapTiler](https://img.shields.io/badge/MapTiler-API-000000.svg)](https://www.maptiler.com/)
+[![Note de maj](.screenshots/update_note.png)](https://grelines.fr/fr/newsroom)
 
-> Une application web React moderne pour visualiser les arrêts de transport public de Grenoble avec des informations de départ en temps réel, utilisant MapLibre GL et MapTiler.
-
-## Captures d'écran
-
-### Interface principale
-![Interface principale](.screenshots/main-interface.png)
-*Carte interactive avec les arrêts de transport marqués.*
-
-### Sidebar des détails
-![Sidebar ouverte](.screenshots/sidebar-details.png)
-*Overlay animé affichant les détails de l'arrêt et les prochains départs.*
-
-### Vue mobile
-![Vue mobile](.screenshots/mobile-view-main.png)
-
-## Fonctionnalités
-
-* **Carte interactive** avec MapLibre GL et MapTiler
-* **Arrêts en temps réel**
-* **Informations TCL**
-* **Lignes et itinéraires**
-* **Navigation**
-* **Reprise du guidage après actualisation**
-* **Détection automatique des correspondances par géolocalisation**
-* **Suivi GPS avec recentrage manuel animé**
-* **Avatar bus/tram animé pendant l'étape de transport**
-* **Recherche d'adresses**
-* **Favoris**
-* **Informations trafic**
-* **Qualité de l'air**
-* **Mobilités partagées**
-* **Horaires et prochains départs**
-* **Interface mobile complète**
-* **Mode clair et sombre**
-* **Réglages adaptés au mobile et au PC**
-* **Préférences de marche persistantes**
-* **Écrans voyageurs**
-* **Géolocalisation**
-* **Sondage après un trajet**
-* **Cache et optimisations des performances**
-
-## Note de mise à jour
-
-* **Version** : `3.3.0`
+* **Version** : `3.7.0`
 * **Principales nouveautés** :
 
+  * Vitrine publique sur `/fr` et `/en`
+  * Documentation complète sur `/fr/docs`, en trois étages
+  * Pages de solutions sur `/fr/solutions/<nom>`
+  * Salle de presse sur `/fr/newsroom`
+  * Page de licence sur `/fr/legals/license`
+  * Passage de la GPL v3 à l'AGPL v3, avec conditions d'attribution
+  * Section « Dernières actualités » en page d'accueil
+  * En-tête réduit à la pastille, sans le nom écrit à côté
+  * Historique des arrêts limité à quatre entrées sur mobile
+  * Résultats d'itinéraire remis à zéro à la fermeture de la feuille
   * Carte MapLibre
   * Arrêts en temps réel
   * TCL
@@ -79,99 +40,81 @@
   * Sondage trajet
   * Cache et optimisation
 
-## Pile technologique
+[![Pile technologique](.screenshots/technologie.png)](https://grelines.fr/fr/docs/deploy)
 
-* **Framework Frontend** : React 19 avec TypeScript
-* **Outil de build** : Vite
-* **Stylisation** : Tailwind CSS
+* **Framework Frontend** : React 19 avec TypeScript en mode strict
+* **Outil de build** : Vite 8
+* **Stylisation** : Tailwind CSS 4, complété de feuilles écrites à la main
 * **Cartes** : MapLibre GL avec tuiles MapTiler
 * **Animations** : Framer Motion
 * **Appels API** : Axios
-* **Police** : Helvetica / polices système
+* **Base de données** : Supabase (PostgreSQL), interrogée depuis le navigateur
+* **Fonctions serveur** : deux fonctions à la demande, pour les fournisseurs qui
+  demandent une authentification
+* **Hébergement** : dossier statique servi par Vercel
+* **Polices** : Inter pour l'application, Geist et Geist Mono pour la vitrine
 
 ## Structure du projet
 
 ```text
 src/
-├── components/          # Composants React
+├── components/          # Composants React de l'application
 │   ├── Map.tsx          # Composant MapLibre
-│   ├── Sidebar.tsx      # Sidebar overlay animée
+│   ├── HomeSheet.tsx    # Feuille d'accueil mobile
+│   ├── RouteSidebar.tsx # Recherche et résultats d'itinéraires
 │   └── index.ts         # Exports des composants
-├── services/            # Services API
-│   └── api.ts           # Intégration API MTAG + données mock
-├── types/               # Types TypeScript
-│   └── index.ts         # Définitions des types
-├── App.tsx              # Composant principal
-├── main.tsx             # Point d'entrée
+├── landing/             # Le site public, servi sur /fr et /en
+│   ├── LandingApp.tsx   # Page d'accueil
+│   ├── DocsPage.tsx     # Documentation, sur trois étages
+│   ├── SolutionPage.tsx # Les six pages de solutions
+│   ├── BlogPage.tsx     # Salle de presse
+│   ├── LegalPage.tsx    # Pages légales, licence comprise
+│   └── landing.css      # Styles du site public
+├── screen/              # GreLines Screen, l'affichage plein écran
+├── services/            # Accès aux données
+│   ├── api.ts           # Arrêts, passages, itinéraires
+│   ├── supabase.ts      # Base de données
+│   └── blog.ts          # Communiqués
+├── hooks/               # Hooks partagés
+├── utils/               # Utilitaires
+├── types/               # Définitions TypeScript
+├── App.tsx              # Composant principal de l'application
+├── main.tsx             # Point d'entrée et routage
 └── index.css            # Styles globaux avec Tailwind
 
+api/                     # Fonctions serveur
+├── tcl.js               # Réseau lyonnais
+└── uber.js              # Estimations VTC
+
+supabase/                # Schéma de la base, un fichier par sujet
 public/                  # Assets statiques
 ```
 
-## Démarrage rapide
+[![Documentation](.screenshots/docs.png)](https://grelines.fr/fr/docs/)
 
-### Prérequis
-
-* Node.js 16+ et npm/yarn
-
-### Installation et développement
-
-1. **Installer les dépendances**
-
-2. **Démarrer le serveur de développement** :
-
-   ```bash
-   npm run dev
-   ```
-
-3. **Ouvrir** http://localhost:5173 dans votre navigateur
-
-### Build pour la production
-
-```bash
-npm run build
-```
-
-## Configuration MapTiler
-
-La carte utilise MapTiler avec une clé gratuite.
-
-Si vous souhaitez changer de style MapTiler :
-
-1. Choisissez un style sur [MapTiler](https://www.maptiler.com/)
-2. Remplacez l'URL du `mapStyle` dans `src/components/Map.tsx`
-
-## Intégration API
-
-L'application utilise les données du réseau de transport de la métropole :
-
-* **URL de base** : `https://data.mobilites-m.fr/donnees`
-
-Les services de l'application sont organisés afin de gérer les différentes sources de données nécessaires à l'affichage des transports, des horaires, des lignes, du trafic, de la qualité de l'air et des mobilités partagées.
-
-## Architecture
-
-### Stratégie de layout
-
-* **Carte** : plein écran
-* **Header** : fixé au-dessus de la carte
-* **Sidebars** : overlays animés venant se placer au-dessus de la carte
-* **Overlays mobiles** : panneaux adaptés aux interactions tactiles
-* **Backdrop mobile** : assombrissement de la carte lorsqu'un panneau est ouvert
-
-Cette architecture permet de conserver la carte visible tout en affichant les différentes informations par-dessus.
-
-## Licence et droits d'auteur
+[![Liscence](.screenshots/liscence.png)](https://grelines.fr/fr/legals/license)
 
 Copyright © 2026 Antoine ADAM (antquu).
 
-GreLines est distribué sous les termes de la **GNU General Public License v3.0 (GPL-3.0)**.
+GreLines est distribué sous les termes de la **GNU Affero General Public License v3.0 (AGPL-3.0)**, augmentée de conditions d'attribution autorisées par l'article 7 de cette licence.
 
-Cette licence vous autorise notamment à utiliser, étudier, modifier et redistribuer le logiciel, sous réserve du respect des conditions définies par la GPL v3.
+**Pourquoi l'Affero et non la GPL ordinaire.** La GPL se déclenche quand on distribue un logiciel. GreLines ne se distribue pas, il s'héberge : sous GPL, quelqu'un pourrait prendre ce code, le mettre en ligne à sa propre adresse, le servir au public et ne jamais rien rendre, puisqu'il n'a remis de copie à personne. L'article 13 de l'AGPL fait compter l'usage en réseau.
 
-Le code source de GreLines est fourni sous licence GPL v3. Les éléments qui ne sont pas couverts par cette licence, notamment certains logos, marques, assets graphiques ou contenus appartenant à des tiers, restent soumis à leurs propres conditions d'utilisation.
+Cette licence vous autorise à utiliser, étudier, modifier, redistribuer et héberger le logiciel, y compris à titre professionnel. Elle vous demande trois choses en retour :
 
-Le logiciel est fourni **sans aucune garantie**, conformément aux conditions de la GNU GPL v3.
+1. **Citer l'origine dans le code.** Garder les mentions de droit d'auteur et le fichier de licence, et indiquer dans le fichier de présentation du dépôt que le travail est fondé sur GreLines, avec le lien vers ce dépôt.
+2. **Citer l'origine sur le site.** Si vous mettez le projet en ligne pour d'autres, chaque utilisateur doit pouvoir voir une mention nommant GreLines et renvoyant à ce dépôt, sans compte, sans connexion et sans abonnement, sur le premier écran ou dans un pied de page atteignable en un geste.
+3. **Ne pas vous faire passer pour l'origine.** Ne pas présenter ce travail comme votre création, ni employer le nom ou le logotype GreLines de façon à laisser croire que votre version est l'officielle. Dire que votre projet est fondé sur GreLines est en revanche encouragé.
+
+**Ce qui compte comme version dérivée.** Un fichier copié d'ici reste un fichier d'ici, qu'il soit renommé, remis en forme, traduit, réorganisé en dossiers, passé dans un transpileur ou réécrit par une machine. Cela vaut pour les composants d'interface comme pour les feuilles de style, les schémas de base et les structures de contenu. En revanche, écrire sa propre application de transport depuis une page blanche, sans copier ce code, n'est pas couvert : le droit d'auteur protège la façon dont ce logiciel est écrit, pas l'idée d'annoncer le prochain tram.
+
+**Usage local et privé.** Aucune de ces obligations ne s'applique quand vous faites tourner le projet pour vous : sur votre machine, sur un serveur chez vous, ou à l'intérieur d'une organisation dont seuls les membres s'en servent. Vous ne remettez de copie à personne et vous ne le mettez à disposition d'aucun tiers. Les obligations commencent au moment où d'autres personnes deviennent utilisatrices de ce que vous faites tourner.
+
+Les éléments qui ne sont pas couverts par cette licence, notamment les données de transport, les logotypes des réseaux desservis, les photographies et les montages du site, restent soumis à leurs propres conditions. La licence ne donne aucun droit sur l'instance exploitée à grelines.fr : ses adresses, ses clés, ses comptes et ses bases ne font pas partie du code publié.
+
+Le logiciel est fourni **sans aucune garantie**, conformément aux conditions de la GNU AGPL v3.
+
+Le texte qui fait foi est le fichier [`LICENSE`](LICENSE) de ce dépôt. Il contient les conditions additionnelles puis le texte intégral de l'AGPL v3. La page [grelines.fr/fr/legals/license](https://grelines.fr/fr/legals/license) l'explique en français ordinaire.
 
 Pour toute question concernant le projet, sa licence ou son utilisation :
 
@@ -179,12 +122,7 @@ Pour toute question concernant le projet, sa licence ou son utilisation :
 **GitHub :** [@antquu](https://github.com/antquu)
 **Email :** [ant.adam468@gmail.com](mailto:ant.adam468@gmail.com)
 
-Une copie de la GNU GPL v3 doit être fournie avec le projet. La licence complète est disponible sur le site de la Free Software Foundation.
-
-
-
-
-![Bannière Grelines](https://image.noelshack.com/fichiers/2026/33/2/1786482267-warning.png)
+![Bannière warning](https://image.noelshack.com/fichiers/2026/33/2/1786482267-warning.png)
 ---
 
 ## Fonctionnalités en détail
@@ -218,6 +156,7 @@ Une copie de la GNU GPL v3 doit être fournie avec le projet. La licence complè
 * Affichage des différentes étapes d'un trajet
 * Prévisualisation d'un trajet avant le lancement de la navigation
 * Mode navigation
+* Remise à zéro complète des résultats à la fermeture de la feuille
 
 ### Guidage et géolocalisation
 
@@ -254,13 +193,14 @@ conservées localement.
 * Synchronisation de l'état de la recherche avec l'URL
 * Interface de recherche adaptée aux appareils mobiles
 
-### Favoris
+### Favoris et historique
 
 * Ajout d'un arrêt aux favoris
 * Suppression d'un favori
 * Affichage des favoris depuis l'interface principale
 * Accès rapide aux informations d'un arrêt favori
 * Conservation des favoris entre les sessions
+* Historique des arrêts consultés, quatre entrées visibles sur mobile
 
 ### Trafic et qualité de l'air
 
@@ -293,6 +233,15 @@ conservées localement.
 * Affichage des lignes et des destinations
 * Bandeaux d'informations et éléments défilants
 
+### Site public
+
+* Page d'accueil sur `/fr` et `/en`, sans rien charger de l'application
+* Documentation sur trois étages : sommaire, catégorie, article
+* Six pages de solutions, une par offre
+* Salle de presse et communiqués
+* Pages légales, licence comprise
+* Thème clair et sombre partagé avec l'application
+
 ### Design responsive
 
 * Approche mobile-first
@@ -307,16 +256,29 @@ conservées localement.
 
 ### Scripts disponibles
 
-* `npm run dev` - Démarre le serveur de développement
-* `npm run build` - Build pour la production
+* `npm run dev` - Démarre le serveur de développement sur le port 5173
+* `npm run build` - Vérifie les types puis construit le paquet de production
 * `npm run preview` - Aperçu du build de production
-* `npm run lint` - Lance ESLint
+* `npm run lint` - Lance ESLint sur le dépôt entier
+
+### Adresses en développement
+
+| Adresse | Ce qu'elle sert |
+| --- | --- |
+| `/` | L'application |
+| `/app/screen` | L'affichage plein écran |
+| `/fr` | La vitrine |
+| `/fr/docs` | La documentation |
+| `/fr/solutions/screen` | Une page de solution |
+| `/fr/newsroom` | La salle de presse |
+| `/fr/legals/license` | La licence |
 
 ### Fichiers clés à modifier
 
 **Pour modifier l'intégration API :**
 
 * `src/services/` - Services permettant de récupérer et traiter les données
+* `api/` - Fonctions serveur, pour les fournisseurs qui demandent une clé
 
 **Pour personnaliser la carte :**
 
@@ -326,10 +288,18 @@ conservées localement.
 
 * `src/components/` - Composants des différents panneaux et overlays
 
+**Pour modifier le site public :**
+
+* `src/landing/content.ts` - Les textes de la page d'accueil
+* `src/landing/docsContent.ts` - Les textes de la documentation
+* `src/landing/solutionsContent.ts` - Les textes des pages de solutions
+* `src/landing/legalContent.ts` - Les pages légales et la licence
+
 **Pour ajouter de nouvelles données :**
 
 * `src/types/` - Définitions des interfaces et types TypeScript
 * `src/services/` - Services associés aux nouvelles données
+* `supabase/` - Schéma, un fichier par sujet
 
 ## Support des navigateurs
 
@@ -340,7 +310,8 @@ conservées localement.
 
 ## Licence
 
-Ce projet est sous la licence GNU GPL v3.
+Ce projet est sous licence GNU AGPL v3, augmentée de conditions d'attribution.
+Voir [`LICENSE`](LICENSE) et [grelines.fr/fr/legals/license](https://grelines.fr/fr/legals/license).
 
 ## Support
 
@@ -352,209 +323,83 @@ Pour les problèmes ou questions concernant les technologies utilisées :
 
 ## Note de mise à jour
 
-### GreLines 3.0 → 3.2
+### GreLines 3.5 → 3.7
 
-La version 3.2 représente une évolution importante de GreLines. L'application ne se limite plus à l'affichage d'une carte et des informations d'un arrêt : elle intègre désormais plusieurs fonctionnalités permettant d'explorer le réseau, de préparer un trajet et d'accéder à différentes informations liées à la mobilité.
+La 3.7 ne change pas l'application : elle lui donne ce qui lui manquait autour.
+Jusqu'ici, GreLines n'existait qu'en s'ouvrant. Il n'y avait aucune page à
+envoyer à un exploitant, aucune documentation à lire avant de se lancer, et rien
+qui dise à quelles conditions on pouvait reprendre le code.
 
-### Cartographie
+### Le site public
 
-La gestion de la carte a été modernisée avec l'utilisation de **MapLibre GL** et de **MapTiler**.
+Un site complet est servi sur `/fr` et `/en`, et sur elles seules : `/` continue
+de mener droit à l'application. Il ne charge rien de celle-ci, ni carte ni
+service d'horaires, parce qu'une page de présentation qui met trois secondes à
+s'afficher ne présente rien du tout.
 
-La nouvelle architecture cartographique permet notamment :
+Il comprend une page d'accueil, six pages de solutions, une salle de presse, les
+pages légales, et une documentation.
 
-* Un rendu plus moderne de la carte
-* Une meilleure gestion des styles cartographiques
-* L'affichage des différents éléments du réseau
-* Une meilleure gestion des interactions avec les arrêts
-* L'intégration de la géolocalisation
-* Une meilleure compatibilité avec les différentes interfaces de l'application
+### La documentation
 
-### Lignes et itinéraires
+Servie sur `/fr/docs`, en trois étages : le sommaire présente huit catégories,
+une catégorie présente ses sections, une section est un article. Une adresse par
+sujet, donc un lien qu'on colle dans un message sans avoir à dire où chercher
+dans la page.
 
-La version 3.2 introduit une gestion beaucoup plus complète des lignes et des trajets.
+Trente-trois sections, dont trois nouveautés de fond : comment déployer une
+instance à soi, de quoi le produit est fait brique par brique, et comment donner
+un retour utile. Les extraits de code y sont réels, tirés du dépôt.
 
-L'application permet désormais de :
+Le sommaire est un accordéon, avec un pictogramme par section et un champ qui le
+filtre sans tenir compte des accents.
 
-* Consulter les différentes lignes du réseau
-* Afficher le parcours d'une ligne
-* Visualiser les informations associées à une ligne
-* Rechercher un itinéraire
-* Afficher les différentes étapes d'un trajet
-* Prévisualiser un trajet avant de commencer la navigation
-* Utiliser un mode de navigation dédié
+### Les pages de solutions
 
-De nouveaux composants et services ont été ajoutés pour gérer la géométrie des trajets, les parcours des lignes et les différents modes de transport.
+Six pages, une par offre, sur `/fr/solutions/<nom>` : GreLines Screen, affiches
+et QR codes, messages aux porteurs, retours voyageurs, GreLines Data,
+raccordement d'un réseau.
 
-### Recherche et géocodage
+Toutes ont la même charpente, et c'est voulu : six pages qui se ressemblent se
+comparent, six pages qui inventent chacune leur plan obligent à réapprendre où
+regarder. Douze emplacements d'images par page, tous facultatifs, qui
+disparaissent tant que le fichier n'existe pas.
 
-Le système de recherche a été largement amélioré.
+### La licence
 
-La V3.2 permet notamment :
+Le projet passe de la GPL v3 à l'**AGPL v3**, augmentée de conditions
+d'attribution autorisées par l'article 7.
 
-* La recherche d'adresses
-* La recherche d'arrêts
-* Le géocodage
-* La synchronisation d'un arrêt avec l'URL
-* L'ouverture directe d'un arrêt via une URL
-* Une interface de recherche spécifique aux appareils mobiles
+La raison est simple : la GPL se déclenche à la distribution, et GreLines ne se
+distribue pas, il s'héberge. Sous GPL, on pouvait reprendre ce code, le mettre
+en ligne ailleurs, le servir au public et ne jamais rien rendre. L'article 13 de
+l'AGPL fait compter l'usage en réseau.
 
-Le système de recherche est désormais mieux intégré aux autres fonctionnalités de l'application, notamment aux itinéraires et à la navigation.
+Les conditions additionnelles demandent de citer l'origine dans le code et sur
+le site, visiblement, pour tout utilisateur et sans connexion préalable. Elles
+ne s'appliquent pas à un usage local ou privé. Une page publique les explique en
+français ordinaire, sur `/fr/legals/license`.
 
-### Favoris
+### Corrections d'interface
 
-Un système complet de favoris a été ajouté.
+Deux défauts de longue date ont été corrigés.
 
-Les utilisateurs peuvent désormais :
+Les feuilles de la vitrine se refermaient mal sur leur propre état : la feuille
+d'itinéraires n'est jamais démontée une fois ouverte, pour se rouvrir à
+l'instant, et ses résultats survivaient à sa fermeture. On revenait donc sur la
+liste d'un trajet abandonné, parfois réduite au seul GreLines Trip parce que les
+autres sources avaient été vidées entre-temps. Tout est maintenant effacé à la
+fermeture, quelle que soit la façon dont on ferme, et les requêtes en vol ne
+peuvent plus repeupler une liste qu'on vient de vider.
 
-* Ajouter un arrêt à leurs favoris
-* Supprimer un arrêt de leurs favoris
-* Consulter leurs arrêts favoris
-* Accéder rapidement aux détails d'un favori
-* Conserver leurs favoris entre les différentes sessions
+L'historique de la feuille d'accueil montre quatre arrêts au lieu de huit. On ne
+descend pas dans un historique : on y reconnaît son arrêt du premier coup d'oeil,
+ou l'on repasse par la recherche.
 
-Cette fonctionnalité s'accompagne de nouveaux composants, hooks et services dédiés à la gestion des favoris.
+### Détails d'affichage
 
-### Trafic
-
-La V3.2 ajoute une gestion dédiée des informations de trafic.
-
-Les perturbations peuvent désormais être affichées dans un panneau spécifique et être associées aux arrêts concernés.
-
-L'interface comprend également une version adaptée aux appareils mobiles afin de conserver une navigation fluide sur les petits écrans.
-
-### Qualité de l'air
-
-Les informations relatives à la qualité de l'air ont été intégrées à l'application avec un panneau dédié aux données ATMO.
-
-Cette fonctionnalité permet d'ajouter les informations environnementales aux données déjà disponibles sur les transports.
-
-### TCL
-
-Un panneau TCL dédié a été ajouté.
-
-Il permet d'intégrer les informations et avertissements concernant le réseau directement dans l'interface de GreLines.
-
-Cette nouvelle fonctionnalité possède également une interface adaptée aux appareils mobiles.
-
-### Mobilités partagées
-
-La version 3.2 ajoute la prise en charge des services de mobilité partagée.
-
-Un panneau dédié permet de présenter les services disponibles ainsi que les informations associées, notamment les données tarifaires lorsqu'elles sont disponibles.
-
-La gestion des mobilités partagées est séparée du reste des données de transport afin de faciliter l'évolution du système.
-
-### Horaires et informations voyageurs
-
-Le système d'horaires a été enrichi avec une nouvelle gestion des tableaux de départ.
-
-La V3.2 introduit notamment :
-
-* Des informations plus détaillées sur les prochains départs
-* Une interface dédiée aux horaires
-* Des tableaux d'information voyageurs
-* Des éléments d'affichage spécifiques aux lignes
-* Des composants permettant de reproduire un écran d'information voyageurs
-* Des informations sous forme de bandeaux et de défilements
-
-### Interface mobile
-
-L'interface mobile a été fortement retravaillée.
-
-La carte reste au centre de l'expérience et les différents panneaux viennent se superposer à celle-ci plutôt que de réduire sa taille.
-
-Plusieurs interfaces spécifiques ont été ajoutées pour les appareils mobiles :
-
-* Barre de recherche mobile
-* Sidebar mobile
-* Panneau trafic mobile
-* Panneau TCL mobile
-* Navigation tactile
-* Overlays adaptés aux petits écrans
-
-Cette architecture permet de conserver une expérience similaire entre ordinateur et mobile tout en adaptant les interactions à chaque appareil.
-
-### Mode clair et sombre
-
-Le système de thèmes a été amélioré avec une gestion plus complète des modes clair et sombre.
-
-Les éléments graphiques de l'application s'adaptent désormais au thème sélectionné, notamment les logos et différents éléments de l'interface.
-
-De nouveaux assets graphiques ont également été ajoutés afin d'améliorer la cohérence visuelle entre les deux modes.
-
-### Écrans voyageurs
-
-Une nouvelle architecture dédiée aux écrans voyageurs a été ajoutée.
-
-Elle comprend notamment :
-
-* Un écran principal
-* Une interface de recherche
-* Une barre supérieure
-* Des informations défilantes
-* Des badges de lignes
-* Des informations sur les départs
-* Des éléments graphiques adaptés à un affichage de type écran d'information
-
-Cette architecture permet d'utiliser les données de GreLines dans une interface différente de l'interface cartographique classique.
-
-### Géolocalisation
-
-La gestion de la position de l'utilisateur a été améliorée afin de mieux l'intégrer aux fonctionnalités de recherche, de cartographie et d'itinéraire.
-
-La géolocalisation peut notamment être utilisée comme point de départ pour certaines fonctionnalités de navigation.
-
-### Sondage après un trajet
-
-Un système de sondage après un trajet a été ajouté.
-
-Il permet de recueillir un retour associé au trajet effectué, avec notamment des informations permettant d'identifier le contexte du trajet comme la ligne, l'arrêt d'embarquement et l'heure.
-
-### Performances et cache
-
-La V3.2 apporte également plusieurs améliorations internes destinées à rendre l'application plus fluide.
-
-Des mécanismes de cache et de gestion des données persistantes ont été ajoutés afin de limiter les traitements inutiles.
-
-La nouvelle architecture comprend également :
-
-* Une gestion améliorée du montage des panneaux
-* Des hooks dédiés aux performances
-* Des mécanismes de debounce
-* Une meilleure organisation des services
-* Une gestion plus efficace des données récurrentes
-
-### Architecture du projet
-
-La V3.2 apporte une restructuration importante de l'application.
-
-De nombreux composants et services spécialisés ont été ajoutés afin de séparer les différentes fonctionnalités :
-
-* Gestion des lignes
-* Géométrie des itinéraires
-* Favoris
-* Géocodage
-* Horaires
-* Trafic
-* Qualité de l'air
-* TCL
-* Mobilités partagées
-* Navigation
-* Recherche
-* Écrans voyageurs
-
-Cette séparation rend le projet plus facilement maintenable et permet d'ajouter de nouvelles fonctionnalités sans modifier l'ensemble de l'application.
-
-### Assets et identité visuelle
-
-La version 3.2 ajoute également de nombreux assets dédiés aux lignes et aux différents modes de transport.
-
-De nouveaux éléments graphiques permettent notamment d'afficher :
-
-* Les badges des lignes
-* Les différents modes de transport
-* Les véhicules
-* Les couleurs associées aux lignes
-* Les logos et éléments graphiques adaptés aux différents thèmes
-
-Un nettoyage des assets inutilisés a également été effectué afin de réduire les éléments superflus présents dans le projet.
+* En-tête réduit à la pastille, sans le nom écrit à côté
+* Section « Dernières actualités » en page d'accueil, alimentée par la salle de presse
+* Pied de page nettoyé des liens qui ne menaient qu'à des écrans mobiles
+* Marges des titres réparées sur tout le site public
+* En-tête de la vitrine réellement collant en haut de l'écran
