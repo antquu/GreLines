@@ -63,7 +63,6 @@ export function rememberStop(stop: { id: string; name: string; city?: string; la
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch {
-    // Navigation privée : la liste vaudra pour cette session.
   }
   return next;
 }

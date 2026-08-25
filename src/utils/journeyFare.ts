@@ -12,15 +12,11 @@ import { estimateTransitFare } from '../services/tagFares';
  * qu'un prix inventé.
  */
 export function journeyFareChip(journey: RouteItinerary, language: 'fr' | 'en'): string | null {
-  // Taxi : une fourchette, parce que le compteur compte aussi le temps passé à
-  // l'arrêt. Annoncer un montant unique laisserait croire à un forfait.
   if (journey.taxi) {
     const { lowEstimate, highEstimate } = journey.taxi;
     return `${lowEstimate}–${highEstimate} €`;
   }
 
-  // Uber met déjà sa fourchette en forme dans la devise locale (« 12–15 € ») ;
-  // la réécrire ne ferait que risquer de la trahir.
   if (journey.uber) {
     const { priceLabel, lowEstimate } = journey.uber;
     if (priceLabel) return priceLabel;
@@ -36,8 +32,6 @@ export function journeyFareChip(journey: RouteItinerary, language: 'fr' | 'en'):
   if (!fare) return null;
 
   const price = formatEuro(fare.total, language);
-  // Un TER ou un car Région dans le trajet demande un titre de plus : le prix
-  // affiché n'est alors qu'un plancher.
   return fare.uncoveredNetworks.length > 0
     ? `${language === 'fr' ? 'dès' : 'from'} ${price}`
     : price;

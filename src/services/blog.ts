@@ -108,7 +108,6 @@ export async function listPosts(lang: 'fr' | 'en'): Promise<BlogPost[]> {
     supabase!
       .from('blog_posts')
       .select(columns)
-      // Les articles de cette langue, et ceux qui valent pour les deux.
       .in('lang', [lang, 'both'])
       .order('published_at', { ascending: false });
 

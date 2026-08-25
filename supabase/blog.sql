@@ -319,3 +319,87 @@ begin
   return saved;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Les deux champs de la vignette deviennent facultatifs à l'appel.
+--
+-- PostgREST choisit la fonction d'après l'ensemble exact des noms d'arguments
+-- reçus. La gestion envoyait `p_square_url` sans `p_square_alt` : treize clés
+-- pour une fonction qui en déclarait quatorze, aucune correspondance, et un
+-- message qui affirmait que la fonction n'existait pas alors qu'elle était là.
+--
+-- Un défaut sur chacun des deux règle le cas pour de bon : un client qui les
+-- omet, un client qui n'en envoie qu'un, un client qui envoie les deux, les
+-- trois atteignent la même fonction. C'est ce qu'on veut d'un point d'entrée
+-- appelé par un éditeur qui évolue de son côté.
+--
+-- `create or replace` suffit : les noms et les types ne changent pas, seuls
+-- les défauts s'ajoutent, donc il n'y a pas de surcharge à retirer.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.crm_blog_save(
+  p_actor_id uuid,
+  p_id uuid,
+  p_slug text,
+  p_lang text,
+  p_theme text,
+  p_kind text,
+  p_title text,
+  p_excerpt text,
+  p_hero_url text,
+  p_hero_alt text,
+  p_body jsonb,
+  p_published_at timestamptz,
+  p_square_url text default null,
+  p_square_alt text default null
+)
+returns uuid
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  saved uuid;
+begin
+  perform public.crm_assert_can_write_blog(p_actor_id);
+
+  if p_id is null then
+    insert into public.blog_posts
+      (slug, lang, theme, kind, title, excerpt, hero_url, hero_alt,
+       square_url, square_alt, body, published_at)
+    values
+      (p_slug, p_lang, p_theme, p_kind, p_title, p_excerpt, p_hero_url, p_hero_alt,
+       p_square_url, p_square_alt, coalesce(p_body, '[]'::jsonb), p_published_at)
+    returning id into saved;
+  else
+    update public.blog_posts set
+      slug = p_slug,
+      lang = p_lang,
+      theme = p_theme,
+      kind = p_kind,
+      title = p_title,
+      excerpt = p_excerpt,
+      hero_url = p_hero_url,
+      hero_alt = p_hero_alt,
+      square_url = p_square_url,
+      square_alt = p_square_alt,
+      body = coalesce(p_body, '[]'::jsonb),
+      published_at = p_published_at
+    where id = p_id
+    returning id into saved;
+  end if;
+
+  return saved;
+end;
+$$;
+
+-- Les paramètres facultatifs passent en fin de liste : Postgres l'exige, un
+-- argument à défaut ne peut pas précéder un argument sans défaut. L'ancienne
+-- fonction, où ils étaient au milieu, doit donc être retirée, sans quoi les
+-- deux coexisteraient et l'appel redeviendrait ambigu.
+drop function if exists public.crm_blog_save(
+  uuid, uuid, text, text, text, text, text, text, text, text, text, text, jsonb, timestamptz
+);
+
+-- Le cache de schéma est relu : sans cela, PostgREST continuerait d'ignorer la
+-- nouvelle signature pendant quelques minutes.
+notify pgrst, 'reload schema';

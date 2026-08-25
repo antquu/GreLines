@@ -1,18 +1,6 @@
 import { useEffect, useState } from 'react';
 
-
 const twoDigits = (value: number) => String(value).padStart(2, '0');
-
-
-
-
-
-
-
-
-
-
-
 
 export function ScreenTopBar({ stopName }: { stopName?: string }) {
   const [now, setNow] = useState(() => new Date());
@@ -26,7 +14,6 @@ export function ScreenTopBar({ stopName }: { stopName?: string }) {
     <header className="flex h-14 flex-shrink-0 items-center gap-3 bg-[#0f172a] px-4 text-white 2xl:h-16 2xl:gap-4 2xl:px-6">
       <a href="/app" className="flex flex-shrink-0 items-center no-underline" title="Ouvrir GreLines">
         {
-
 
 }
         <img src="/assets/GreLinesWordmark.png" alt="GreLines" className="h-4 w-auto 2xl:h-6" />

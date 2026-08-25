@@ -1,17 +1,7 @@
 import type { Departure, Line, StopDetail } from '../types';
 import { normalizeMode } from '../utils/transportMode';
 
-
-
-
-
-
-
-
-
-
 export const TIMES_PER_DIRECTION = 2;
-
 
 export const DIRECTIONS_PER_LINE = 2;
 
@@ -28,21 +18,11 @@ export interface ScreenLineGroup {
   textColor?: string;
   hasTraffic?: boolean;
   
-
-
-
-
-
   mode: string;
   directions: ScreenDirection[];
 }
 
 const TRAM_LABELS = new Set(['A', 'B', 'C', 'D', 'E']);
-
-
-
-
-
 
 function lineRank(label: string, mode: string): [number, number, string] {
   const code = label.toUpperCase().trim();
@@ -63,14 +43,7 @@ function compareLines(a: ScreenLineGroup, b: ScreenLineGroup): number {
   return ra[2].localeCompare(rb[2], 'fr');
 }
 
-
-
-
-
-
 export function groupDeparturesForScreen(detail: StopDetail): ScreenLineGroup[] {
-  
-  
   
   const lineByRef = new Map<string, Line>();
   for (const line of detail.lines ?? []) {
@@ -107,8 +80,6 @@ export function groupDeparturesForScreen(detail: StopDetail): ScreenLineGroup[] 
       group.directions.push(direction);
     }
     
-    
-    
     const alreadyListed = direction.departures.some(d => d.departureTime === departure.departureTime);
     if (!alreadyListed && direction.departures.length < TIMES_PER_DIRECTION) {
       direction.departures.push(departure);
@@ -117,7 +88,6 @@ export function groupDeparturesForScreen(detail: StopDetail): ScreenLineGroup[] 
 
   const result = Array.from(groups.values());
   for (const group of result) {
-    
     
     group.directions.sort(
       (a, b) => (a.departures[0]?.departureTime ?? Infinity) - (b.departures[0]?.departureTime ?? Infinity),
@@ -128,22 +98,12 @@ export function groupDeparturesForScreen(detail: StopDetail): ScreenLineGroup[] 
   return result;
 }
 
-
 export function departureClockTime(minutes: number, now: Date = new Date()): string {
   const at = new Date(now.getTime() + minutes * 60_000);
   return at.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
-
-
-
-
 export const CLOCK_TIME_THRESHOLD_MIN = 60;
-
-
-
-
-
 
 export interface DepartureDisplay {
   
@@ -163,23 +123,13 @@ export function departureDisplay(departure: Departure, now: Date = new Date()): 
   return { value: String(minutes), isArrival: false, isClockTime: false };
 }
 
-
-
-
-
-
-
-
-
 export type ScreenLayout = 'cards' | 'rows';
-
 
 const ROWS_QUERY_VALUE = 'lignes';
 
 export function parseScreenLayout(search: string): ScreenLayout {
   return new URLSearchParams(search).get('vue') === ROWS_QUERY_VALUE ? 'rows' : 'cards';
 }
-
 
 export function buildScreenUrl(stopId: string, layout: ScreenLayout): string {
   const path = `${SCREEN_BASE}/${stopId}`;
@@ -210,7 +160,6 @@ export function parseScreenStopId(pathname: string): string | null {
   try {
     decoded = decodeURIComponent(rest);
   } catch {
-    // Séquence d'échappement invalide : on garde la valeur telle quelle.
   }
 
   const separator = decoded.indexOf(':');

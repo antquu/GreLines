@@ -8,8 +8,6 @@
  */
 export const isStandaloneApp = (): boolean => {
   if (typeof window === 'undefined') return false;
-  // Uniquement `standalone` : `minimal-ui` et `fullscreen` peuvent matcher dans
-  // un navigateur ordinaire et feraient disparaître le tutoriel à tort.
   const matchesDisplayMode = window.matchMedia?.('(display-mode: standalone)').matches ?? false;
   const iosStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
   return matchesDisplayMode || iosStandalone;
@@ -18,7 +16,6 @@ export const isStandaloneApp = (): boolean => {
 export const isIOSDevice = (): boolean => {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent;
-  // iPadOS 13+ se présente comme un Mac : on le distingue par le tactile.
   const iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
   return /iPhone|iPad|iPod/.test(ua) || iPadOS;
 };
@@ -77,12 +74,8 @@ function seenInstallGuideVersion(): number {
       const parsed = Number(raw);
       return Number.isFinite(parsed) ? parsed : 0;
     }
-    // Personne n'a de numéro de version avant cette mise à jour : l'ancien
-    // drapeau dit seulement qu'on a vu le tutoriel d'alors, c'est-à-dire le 1.
     return localStorage.getItem(INSTALL_GUIDE_LEGACY_KEY) === 'true' ? 1 : 0;
   } catch {
-    // Stockage refusé : on considère le tutoriel comme jamais vu plutôt que de
-    // le masquer à quelqu'un qui ne l'a peut-être jamais eu.
     return 0;
   }
 }
@@ -108,7 +101,6 @@ export const markInstallGuideSeen = (): void => {
     localStorage.setItem(INSTALL_GUIDE_SEEN_KEY, String(INSTALL_GUIDE_VERSION));
     localStorage.removeItem(INSTALL_GUIDE_LEGACY_KEY);
   } catch {
-    // Stockage refusé : le tutoriel se representera au prochain lancement.
   }
 };
 

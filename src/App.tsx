@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy } from 'react';
 import { AnimatePresence, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
-import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon } from '@heroicons/react/24/solid';
+import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
 import { useFavoriteDetails } from './hooks/useFavoriteDetails';
@@ -8,10 +8,9 @@ import { useFavoriteJourneys } from './hooks/useFavoriteJourneys';
 import { useJourneyHistory } from './hooks/useJourneyHistory';
 import { addFavoriteJourney, journeyKey, FAVORITE_JOURNEYS_MAX } from './services/favoriteJourneys';
 import { recordJourney } from './services/journeyHistory';
-import { FavoriteCard } from './components/FavoriteCard';
 import { getAllSemLines, buildLineLookup, type AllLinesLine } from './services/allLines';
 import { LineBadge } from './components/LineBadge';
-
+import { favoriteStopLines } from './utils/favoriteDepartures';
 
 import { Map as TransitMap } from './components/Map';
 import { Sidebar } from './components/Sidebar';
@@ -21,6 +20,7 @@ import { TrafficAlertCard } from './components/TrafficAlertCard';
 import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
 import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
+import { MobileSplash } from './components/MobileSplash';
 import { SidebarMobile } from './components/SidebarMobile';
 import { HomeSheet } from './components/HomeSheet';
 import { AccountScreen } from './components/AccountScreen';
@@ -60,14 +60,13 @@ import {
   markInstallGuideSeen,
   shouldAutoOpenInstallGuide,
 } from './utils/pwa';
-import { shouldAutoOpenMobileNotificationPrompt, markMobileNotificationPromptDismissed } from './utils/mobileNotificationPrompt';
+import { markMobileNotificationPromptDismissed } from './utils/mobileNotificationPrompt';
+import { shouldRunOnboarding, markOnboardingDone } from './utils/onboarding';
+import { OnboardingFlow } from './components/OnboardingFlow';
 import { requestNotificationPermission, setNotificationsEnabled } from './services/tripNotifications';
 
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
-
-
-
 
 const LineSidebar = lazy(() =>
   import('./components/LineSidebar').then(m => ({ default: m.LineSidebar }))
@@ -154,10 +153,6 @@ function App() {
   const [initialSelectedLines, setInitialSelectedLines] = useState<Set<string>>(new Set());
   const [initialSelectedLineId, setInitialSelectedLineId] = useState<string | null>(null);
   
-
-
-
-
   const [urlHydrated, setUrlHydrated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [trafficInfo, setTrafficInfo] = useState<Map<string, TrafficDetail[]>>(new Map());
@@ -188,35 +183,19 @@ function App() {
   const [routeTo, setRouteTo] = useState<RouteLocation | null>(null);
   const [selectedRouteItinerary, setSelectedRouteItinerary] = useState<RouteItinerary | null>(null);
   
-
-
-
-
   const [itineraryLineShapes, setItineraryLineShapes] = useState<Map<string, LineGeometry>>(new Map());
   const [routeItineraryOptions, setRouteItineraryOptions] = useState<RouteItinerary[]>([]);
   
-
-
-
-
   const [autoPickFirstItinerary, setAutoPickFirstItinerary] = useState(false);
   const [sharedRouteExpired, setSharedRouteExpired] = useState(false);
   const [sharedRouteTarget, setSharedRouteTarget] = useState<{ dep?: string; arr?: string; dur?: string } | null>(null);
   const [isTrafficButtonHovered, setIsTrafficButtonHovered] = useState(false);
   const [isTrafficPanelHovered, setIsTrafficPanelHovered] = useState(false);
   
-
-
-
-
   const [isTrafficPanelPinned, setIsTrafficPanelPinned] = useState(false);
-  
-  
   
   const [isFavBtnHovered, setIsFavBtnHovered] = useState(false);
   const [isFavPanelHovered, setIsFavPanelHovered] = useState(false);
-  
-  
   
   /*
    * Le portefeuille, sur ordinateur.
@@ -230,8 +209,6 @@ function App() {
   const [walletCards, setWalletCards] = useState<OuraCard[]>([]);
   const [isAtmoBtnHovered, setIsAtmoBtnHovered] = useState(false);
   const [isAtmoPanelHovered, setIsAtmoPanelHovered] = useState(false);
-  // Code postal de repli : il ne sert qu'au tout premier chargement et aux
-  // sessions ouvertes avant la recherche par nom de commune.
   const [atmoPostalCode] = useState<string>(
     () => localStorage.getItem('greLines_atmoPostalCode') || DEFAULT_ATMO_POSTAL_CODE
   );
@@ -286,7 +263,6 @@ function App() {
     });
   }, []);
   
-  
   const [desktopTrafficFilter, setDesktopTrafficFilter] = useState<string>('all');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   /**
@@ -321,13 +297,11 @@ function App() {
       `/app${window.location.search}${window.location.hash}`,
     );
   }, []);
-  // Tutoriel « ajouter GreLines à l'écran d'accueil » : proposé une seule fois
-  // aux mobiles qui naviguent depuis le navigateur, puis à la demande via les
-  // réglages. Une fois l'app installée, il disparaît complètement.
   const [canOfferInstallGuide] = useState(canShowInstallGuide);
   const [autoOpenInstallGuide] = useState(shouldAutoOpenInstallGuide);
   const [isInstallSheetOpen, setIsInstallSheetOpen] = useState(false);
   const [isMobileNotificationPromptOpen, setIsMobileNotificationPromptOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const { settings: perfSettings } = usePerfSettings();
   const [currentLocation, setCurrentLocation] = useState<{lat: number, lon: number} | null>(null);
   const [locationWatchId, setLocationWatchId] = useState<number | null>(null);
@@ -375,32 +349,15 @@ function App() {
   const [isTrafficPanelOpenMobile, setIsTrafficPanelOpenMobile] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   
-
-
-
-
   const [isNearbySheetOpen, setIsNearbySheetOpen] = useState(false);
   
-
-
-
-
-
   const sheetProgress = useMotionValue(0.15);
   
-
-
-
-
   const [snapHomeToMiniSignal, setSnapHomeToMiniSignal] = useState(0);
   
   const [openHomeSheetSignal, setOpenHomeSheetSignal] = useState(0);
   const [isLinesExplorerOpen, setIsLinesExplorerOpen] = useState(false);
   
-
-
-
-
   const geolocButtonBottom = useTransform(sheetProgress, p => {
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
     return `${Math.round(p * vh + 12)}px`;
@@ -459,10 +416,7 @@ function App() {
       try {
         localStorage.setItem('greLines_hiddenSharedLayers', JSON.stringify([...next]));
       } catch {
-        // Stockage refusé : le choix ne tiendra que le temps de la visite.
       }
-      // Masquer un opérateur dont la fiche est ouverte fermerait la carte sur
-      // un véhicule qu'on ne voit plus : on referme la fiche avec le calque.
       setSharedSelection(selection =>
         selection && next.has(selection.operator) ? null : selection,
       );
@@ -477,7 +431,18 @@ function App() {
   const [highlightedVehicleId, setHighlightedVehicleId] = useState<string | null>(null);
   /** Fiche horaire ouverte à droite de la fiche d'arrêt. */
   const [timetableTarget, setTimetableTarget] = useState<
-    { line: { id: string; shortName?: string; color?: string; textColor?: string }; headsign?: string } | null
+    {
+      line: { id: string; shortName?: string; color?: string; textColor?: string };
+      headsign?: string;
+      /**
+       * L'arrêt à surligner dans la fiche.
+       *
+       * Renseigné quand la fiche est ouverte depuis un arrêt de la sidebar
+       * d'une ligne : c'est celui-là qu'on veut retrouver dans la colonne, et
+       * non l'arrêt sélectionné sur la carte, qui est ailleurs.
+       */
+      stopName?: string;
+    } | null
   >(null);
   /** Plan de ligne (PDF) ouvert en visionneuse plein écran. */
   const [lineMapTarget, setLineMapTarget] = useState<
@@ -507,8 +472,6 @@ function App() {
   const hasLoadedCatalogueRef = useRef(false);
   const pendingNetworksKey = perfSettings.networks.join(',');
   if (!isSettingsOpen && pendingNetworksKey !== appliedNetworks.join(',')) {
-    // Ajusté pendant le rendu : le chargement démarre dès la fermeture, sans
-    // image intermédiaire montrant encore l'ancienne sélection.
     setAppliedNetworks(perfSettings.networks);
   }
   const settingsContentRef = useRef<HTMLDivElement>(null);
@@ -585,8 +548,6 @@ function App() {
     if (!resumed) return;
     setSelectedRouteItinerary(resumed);
     setIsNavigationOpen(true);
-    // Une seule tentative, au démarrage : la reprise ne doit pas se rejouer à
-    // chaque bascule de largeur d'écran.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -618,7 +579,6 @@ function App() {
           : [navigator.language];
 
     for (const tag of preferred) {
-      // « fr-CA », « FR », « fr » : seule la sous-étiquette de langue compte.
       const base = tag?.toLowerCase().split('-')[0];
       if (base === 'fr') return 'fr';
       if (base === 'en') return 'en';
@@ -666,8 +626,6 @@ function App() {
   const [autoSync, setAutoSync] = useState(() => localStorage.getItem('greLines_autoSync') !== 'false');
   const [autoLocation, setAutoLocation] = useState(() => localStorage.getItem('greLines_autoLocation') === 'true');
 
-  // Address search results (BAN geocoder), the currently picked address marker,
-  // and the geometries of the lines currently filtered in the open stop.
   const [addressResults, setAddressResults] = useState<AddressResult[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<AddressResult | null>(null);
   const [lineGeometries, setLineGeometries] = useState<LineGeometry[]>([]);
@@ -681,9 +639,6 @@ function App() {
   const [servedStopPoints, setServedStopPoints] = useState<ServedStopPoint[] | null>(null);
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 250);
 
-  // Match stops against the (live) search query — used both by the dropdown
-  // and to gate the address geocoder so we don't hit the network when stop
-  // matches alone are plenty.
   const matchedStops = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
@@ -713,7 +668,6 @@ function App() {
     setTimetableTarget(null);
   }
 
-
   /**
    * On first paint, redirect bare `/` to `/app` so the canonical home is `/app`.
    * If the URL already has a stop config (`?T1=...`) or any search params, we
@@ -726,13 +680,10 @@ function App() {
     const { pathname, search, hash } = window.location;
     const isReservedRoute = pathname.startsWith('/app');
     if (pathname !== '/app' && !search && !isReservedRoute) {
-      // Use replaceState so the user's "back" button still works as expected.
       window.history.replaceState(window.history.state, '', `/app${hash || ''}`);
     }
   }, []);
 
-  // Reset selectedLines when the user opens a different stop, unless we just
-  // hydrated from URL params (initialSelectedLines).
   useEffect(() => {
     if (!isCarpoolStop(selectedStop?.id)) { setCarpoolMapLines([]); return; }
     let active = true;
@@ -750,24 +701,17 @@ function App() {
       setSelectedLines(new Set());
       return;
     }
-    // When initialSelectedLines was set from URL, sync them in once per stop.
     if (initialSelectedLines.size > 0) {
       setSelectedLines(new Set(initialSelectedLines));
       setInitialSelectedLines(new Set()); // consume — only apply once
       return;
     }
-    // Auto-show the line trace when this stop has exactly one line. Saves the
-    // user a click and gives them an immediate visual hint of where it goes.
     if (selectedStop.lines && selectedStop.lines.length === 1) {
       setSelectedLines(new Set([selectedStop.lines[0].id]));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStop?.id, selectedStop?.lines?.length]);
 
-  // URL sync: stop + selected lines → /<path>?T1=...&T2=... (no reload).
-  // We disable the sync until the initial URL has been parsed (`urlHydrated`),
-  // otherwise on first paint `selectedStop` is null and the hook would
-  // overwrite a deep-link URL like "/app?T1=ALL_SEM:CHAVANT" with just "/app".
   useStopUrlSync({
     stopId: selectedStop?.id ?? null,
     selectedLines,
@@ -784,10 +728,6 @@ function App() {
     }
   }, [selectedLine, selectedStop, urlHydrated]);
 
-  // Address geocoding — only fires when there are fewer than 4 matching stops,
-  // so common stop searches (where stops dominate) don't pay the network cost.
-  // We re-evaluate on every debounced query change AND when matchedStops shrinks
-  // past the threshold (e.g. user types more letters and stops drop off).
   useEffect(() => {
     const trimmed = debouncedSearchQuery.trim();
     if (trimmed.length < 3 || matchedStops.length >= 4) {
@@ -810,8 +750,6 @@ function App() {
     };
   }, [debouncedSearchQuery, matchedStops.length]);
 
-  // Full SEM line catalogue (with real MTAG colours), fetched once at mount.
-  // Used by route previews, itinerary vectors and traffic panels.
   const [allLines, setAllLines] = useState<AllLinesLine[]>([]);
   const normalizeLineSearch = (value: string) =>
     value.toLowerCase().replace(/^sem[:_]/, '');
@@ -890,11 +828,7 @@ function App() {
   }, [debouncedSearchQuery, isSearchFocused, isSearchHovered, matchedStops, searchHistoryItems, searchStopLines]);
 
   useEffect(() => {
-    // Les surcharges de lignes du CRM (code, nom, couleurs, masquage) sont
-    // appliquées par-dessus le catalogue officiel MTAG.
     Promise.all([getAllSemLines(), getLineOverrides()]).then(([lines, overrides]) => {
-      // Alimente le résolveur de couleurs : toutes les couleurs de ligne de
-      // l'app (badges d'arrêt, départs, itinéraires, tracés) en dépendent.
       setLineColorOverrides(
         Array.from(overrides.values()).map(o => ({
           lineId: o.line_id,
@@ -929,11 +863,6 @@ function App() {
   }, [cmsRevision]);
   const allLinesLookup = useMemo(() => buildLineLookup(allLines), [allLines]);
 
-  // Line geometries — when the user filters by line(s) inside an open stop,
-  // fetch and display the polyline of each filtered line, AND the set of
-  // stops served by those lines so the map can hide everything else. With
-  // no filter (selectedLines empty = "all"), we don't show any polyline and
-  // we keep all stops visible.
   useEffect(() => {
     if (!selectedStop) {
       if (selectedLine) {
@@ -1123,9 +1052,6 @@ function App() {
     setSidebarState('closed');
     setSelectedStop(null);
     setSelectedLines(new Set());
-    // La feuille d'accueil reprend sa place, repliée sur sa barre d'onglets :
-    // fermer un arrêt, c'est revenir à « Autour », pas se retrouver devant une
-    // feuille dépliée qu'on n'a pas demandée.
     setSnapHomeToMiniSignal(s => s + 1);
   }, []);
 
@@ -1149,10 +1075,6 @@ function App() {
     if (atmoCommune) localStorage.setItem('greLines_atmoCommune', JSON.stringify(atmoCommune));
     else localStorage.setItem('greLines_atmoPostalCode', atmoPostalCode);
 
-    // Pas d'AbortController ici : la requête est mutualisée entre appelants
-    // par le cache du service, l'annuler priverait aussi le suivant de sa
-    // réponse — et en développement, le double montage de StrictMode suffirait
-    // à laisser la carte vide.
     let active = true;
     setAtmoLoading(true);
     (atmoCommune ? getAtmoReportForCommune(atmoCommune) : getAtmoReportByPostalCode(atmoPostalCode))
@@ -1180,15 +1102,11 @@ function App() {
     let active = true;
     void getCommuneAtCoords(mapCenter.lat, mapCenter.lon).then(commune => {
       if (!active || !commune) return;
-      // Même commune qu'avant : on ne relance pas le chargement de l'indice.
       setAtmoCommune(current => (current?.code === commune.code ? current : commune));
     });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [atmoFollowMap, mapCenterKey]);
-  // Live favourites list + their detail (lines + departures, refreshed every 30s).
-  // Loaded globally so the app can prioritize the first favorite before it
-  // leaves the splash screen.
   const favoritesList = useFavorites();
   const favoritesDetails = useFavoriteDetails(favoritesList, true);
   const favoriteJourneys = useFavoriteJourneys();
@@ -1310,8 +1228,6 @@ function App() {
       return null;
     }
 
-    // Un trajet partagé par message vit aussi longtemps que le message : son
-    // arrêt de départ se retrouve par le même chemin que celui d'une affiche.
     const stop = kind === 'stop' ? resolveStopFromUrlId(id, stops) ?? null : null;
 
     return {
@@ -1361,11 +1277,9 @@ function App() {
       return { id, label, name: label, context: closest.stop.city || '', lat, lon, score: 0 };
     }
 
-    const label = 'Point sur la carte';
-    // Les coordonnées descendent en sous-titre : invisibles au premier regard,
-    // lisibles quand on veut vraiment savoir où l'on a pointé.
+    const label = language === 'fr' ? 'Point sur la carte' : 'Point on the map';
     return { id, label, name: label, context: formatCoordinates(lat, lon), lat, lon, score: 0 };
-  }, [stops]);
+  }, [stops, language]);
 
   /**
    * Les dernières recherches, relues comme des destinations possibles.
@@ -1430,9 +1344,6 @@ function App() {
       kind: 'stop',
       raw: stop,
     };
-    // L'arrêt consulté est la *destination* : on ouvre sa fiche pour savoir
-    // comment y aller, pas pour en partir. Le départ reste à choisir (ou la
-    // position courante si elle est connue).
     setRouteTo(location);
     setRouteFrom(currentLocation ? currentPositionLocation(currentLocation) : null);
     setSelectedRouteItinerary(null);
@@ -1488,8 +1399,6 @@ function App() {
     });
     if (selectedLinesFromUrl.size > 0) setInitialSelectedLines(selectedLinesFromUrl);
     if (targetStopId && stops.length > 0) {
-      // Même résolution que pour les affiches : un lien de configuration écrit
-      // il y a six mois désigne un arrêt que le réseau a pu renommer depuis.
       const targetStop = resolveStopFromUrlId(targetStopId, stops);
       if (targetStop) {
         try {
@@ -1540,14 +1449,10 @@ function App() {
   }, [stops.length]);
 
   useEffect(() => {
-    // Only run once stops are loaded — applyConfigFromParams needs them to
-    // resolve a stop id from the URL.
     if (stops.length === 0) return;
     let active = true;
     applyConfigFromParams(new URLSearchParams(window.location.search))
       .finally(() => {
-        // Mark hydrated regardless of whether the URL pointed at a known stop.
-        // After this, the URL sync hook is allowed to start overwriting the URL.
         if (active) setUrlHydrated(true);
       });
     return () => { active = false; };
@@ -1576,9 +1481,6 @@ function App() {
     };
 
     loadCmsContent();
-    // Les changements faits depuis le CRM se répercutent immédiatement, sans
-    // rechargement de page (temps réel Supabase). `cmsRevision` propage aussi
-    // le signal aux données dérivées (arrêts et lignes surchargés).
     return subscribeToCmsChanges(() => {
       loadCmsContent();
       setCmsRevision(revision => revision + 1);
@@ -1587,20 +1489,11 @@ function App() {
 
   useEffect(() => {
     let active = true;
-    // Doit précéder tout appel : c'est cette sélection qui sert de défaut à la
-    // résolution d'un arrêt (favoris, liens partagés, prochains passages).
     setActiveNetworks(appliedNetworks);
 
     const fetchStops = async () => {
       try {
-        // Premier chargement seulement : ensuite, la mise à jour se fait sous
-        // la carte, sans rien masquer.
         if (!hasLoadedCatalogueRef.current) setIsLoading(true);
-        // Les surcharges définies dans le CRM (renommage, repositionnement,
-        // masquage) sont appliquées par-dessus la donnée officielle MTAG.
-        // Les réseaux ne viennent pas tous du même fournisseur : MTAG sert
-        // Grenoble, TCL sert Lyon par notre propre proxy. On les charge en
-        // parallèle et on les réunit — la carte ne fait pas la différence.
         const wantsTcl = appliedNetworks.includes(TCL_NETWORK);
 
         const [data, overrides, tclStops] = await Promise.all([
@@ -1639,8 +1532,6 @@ function App() {
     };
     fetchStops();
     return () => { active = false; };
-    // `join` plutôt que le tableau lui-même : recharger seulement quand la
-    // sélection change vraiment, pas à chaque nouvelle référence.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cmsRevision, appliedNetworks.join(',')]);
 
@@ -1679,11 +1570,25 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [autoOpenInstallGuide]);
 
+  /*
+   * La mise en route, au premier lancement de l'application installée.
+   *
+   * Ce n'était qu'une demande de notifications, seule et sortie de nulle part.
+   * C'est un parcours maintenant — les notifications, la carte, le compte —,
+   * mais le déclenchement n'a pas changé : une seule fois, dans l'application
+   * posée sur l'écran d'accueil, après une seconde le temps que la carte du
+   * réseau se dessine derrière.
+   *
+   * On marque le parcours comme fait à l'ouverture : quelqu'un qui referme
+   * l'application au deuxième écran ne doit pas le retrouver au lancement
+   * suivant. Ce qu'il n'a pas réglé l'attend dans les réglages.
+   */
   useEffect(() => {
-    if (!shouldAutoOpenMobileNotificationPrompt()) return;
+    if (!shouldRunOnboarding()) return;
     const timer = window.setTimeout(() => {
+      markOnboardingDone();
       markMobileNotificationPromptDismissed();
-      setIsMobileNotificationPromptOpen(true);
+      setIsOnboardingOpen(true);
     }, 900);
     return () => window.clearTimeout(timer);
   }, []);
@@ -1752,9 +1657,6 @@ function App() {
       mapRef.current?.centerOnStop(stop);
       setSidebarState('peek');
 
-      // Lyon a son propre fournisseur : lignes et passages viennent de notre
-      // proxy, pas de l'API grenobloise. Le reste de l'écran ne voit aucune
-      // différence — c'est la même fiche d'arrêt.
       if (isTclId(stop.id)) {
         const detail = await getTclStopDetail(stop.id);
         if (detail) setSelectedStop(detail);
@@ -1822,9 +1724,6 @@ function App() {
       lat: address.lat,
       lon: address.lon,
     });
-    // Cadre sur l'adresse *et* les arrêts que la fiche propose : centrer sur le
-    // seul point laissait la moitié des arrêts listés hors de l'écran, alors
-    // que c'est justement ce qu'on vient comparer.
     const nearby = findClosestStops(stops, address.lat, address.lon, 8);
     if (nearby.length > 0) {
       const lons = [address.lon, ...nearby.map(entry => entry.stop.lon)];
@@ -1859,8 +1758,6 @@ function App() {
       if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.code !== 'Space' && event.key !== ' ') return;
 
-      // Maj + Espace insère une espace dans un champ de saisie : on ne
-      // détourne jamais la frappe quand l'utilisateur est en train d'écrire.
       const target = event.target as HTMLElement | null;
       if (target?.isContentEditable) return;
       const tag = target?.tagName;
@@ -2025,20 +1922,17 @@ function App() {
 
     setLocationError(null);
 
-    // Stop any existing watch before starting a fresh one.
     if (locationWatchId !== null) {
       navigator.geolocation.clearWatch(locationWatchId);
       setLocationWatchId(null);
     }
 
-    // Single fresh fix — centers the map and places the dot.
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         setCurrentLocation({ lat: coords.latitude, lon: coords.longitude });
         mapRef.current?.centerOnLocation(coords.latitude, coords.longitude);
         setLocationError(null);
 
-        // Start continuous watch ONLY after successful position
         const watchId = navigator.geolocation.watchPosition(
           ({ coords }) => {
             setCurrentLocation({ lat: coords.latitude, lon: coords.longitude });
@@ -2048,28 +1942,31 @@ function App() {
         );
         setLocationWatchId(watchId);
       },
-      (err) => {        let message = 'Erreur de géolocalisation';
+      (err) => {
+        const isFr = language === 'fr';
+        let message = isFr ? 'Erreur de géolocalisation' : 'Location error';
         if (err.code === 1) {
-          message = 'Accès géolocalisation refusé. Vérifiez les permissions du navigateur.';
+          message = isFr
+            ? 'Accès géolocalisation refusé. Vérifiez les permissions du navigateur.'
+            : 'Location access denied. Check your browser permissions.';
         } else if (err.code === 2) {
-          message = 'Position indisponible. Essayez dans une zone avec meilleure réception.';
+          message = isFr
+            ? 'Position indisponible. Essayez dans une zone avec meilleure réception.'
+            : 'Position unavailable. Try somewhere with better reception.';
         } else if (err.code === 3) {
-          message = 'Délai d\'attente dépassé. Réessayez.';
+          message = isFr ? 'Délai d\'attente dépassé. Réessayez.' : 'Timed out. Try again.';
         }
         setLocationError(message);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
-  }, [locationWatchId]);
+  }, [locationWatchId, language]);
 
   useEffect(() => {
     if (!autoLocation || !navigator.geolocation || !isMobile) return;
     
-    // Simply call handleLocationClick which has all the logic we need
     handleLocationClick();
     
-    // Note: handleLocationClick already manages the watch, so we just call it
-    // The cleanup of the watch is handled by the existing return statement in the next useEffect
   }, [autoLocation, isMobile, handleLocationClick]);
 
   /**
@@ -2104,10 +2001,6 @@ function App() {
    * permission dance, even if React re-runs the effect.
    */
   const [hasOpenedNearbyOnce, setHasOpenedNearbyOnce] = useState(false);
-  // Hard guard against React 18 StrictMode's double-effect-invoke in dev:
-  // we want the geoloc request to fire EXACTLY once, even if the effect's
-  // cleanup runs between the two passes. Using a ref bypasses the
-  // setHasOpenedNearbyOnce → re-render → effect-rerun loop.
   const geolocStartedRef = useRef(false);
 
   /**
@@ -2128,10 +2021,6 @@ function App() {
     setHasOpenedNearbyOnce(true);
     setIsNearbySheetOpen(true);
 
-    // Trigger the same flow as if the user had tapped the geolocation button.
-    // `handleLocationClick` already handles the permission popup, position
-    // acquisition, map centering, and starts the watch — no need to duplicate
-    // any of that here.
     handleLocationClick();
   }, [isMobile, stops.length, selectedStop, handleLocationClick]);
 
@@ -2147,8 +2036,6 @@ function App() {
     if (hasUserClosedHome) return;
     if (!hasOpenedNearbyOnce) return; // wait until first auto-open ran
     if (isNearbySheetOpen) return;
-    // None of the conditions that should keep the home sheet closed are
-    // active — bring it back.
     setIsNearbySheetOpen(true);
   }, [isMobile, hasUserClosedHome, hasOpenedNearbyOnce, isNearbySheetOpen, isSidebarOpen, isSettingsOpen, isTrafficPanelOpenMobile]);
 
@@ -2213,8 +2100,6 @@ function App() {
         liveTrafficInfo: 'Infos trafic en direct', noIncidents: 'Aucun incident connu.',
         linePrefix: 'Ligne', incidentSingular: 'incident', incidentPlural: 'incidents',
         endPrefix: 'Fin :', networkClosed: 'RÉSEAU ACTUELLEMENT FERMÉ', localStorageTitle: 'Stockage local :',
-        aboutDescription1: 'GreLines est une application web pour visualiser les arrêts de transport en commun de Grenoble avec des informations de départ en temps réel.',
-        aboutDescription2: 'Construit avec React, Tailwind CSS et Leaflet/MapTiler.',
         versionLabel: 'Version :', dataSourceLabel: 'Source :', designLabel: 'Design :',
         pleaseReload: 'Veuillez recharger la page.',
         calculateItinerary: 'Calculer un itinéraire',
@@ -2273,8 +2158,6 @@ function App() {
         liveTrafficInfo: 'Live traffic info', noIncidents: 'No known incidents.',
         linePrefix: 'Line', incidentSingular: 'incident', incidentPlural: 'incidents',
         endPrefix: 'End:', networkClosed: 'NETWORK CURRENTLY CLOSED', localStorageTitle: 'Local storage:',
-        aboutDescription1: 'GreLines is a web app for viewing Grenoble public transport stops with real-time departure info.',
-        aboutDescription2: 'Built with React, Tailwind CSS, and Leaflet/MapTiler.',
         versionLabel: 'Version:', dataSourceLabel: 'Data source:', designLabel: 'Design:',
         pleaseReload: 'Please reload the page.',
         calculateItinerary: 'Plan a journey',
@@ -2302,11 +2185,6 @@ function App() {
   }, [isLoading, firstFavoriteLoading]);
   /** Le démarrage est passé : les messages d'accueil peuvent paraître. */
   const popupsReleased = hasBooted;
-
-  // ─── Itinéraire sur la carte ──────────────────────────────────────────────
-  // Le tracé renvoyé par le planificateur est approximatif : il coupe les
-  // courbes et s'arrête à quelques mètres des arrêts. On récupère donc le tracé
-  // de référence de chaque ligne empruntée pour y découper le trajet réel.
 
   const normalizeRouteRef = useCallback((value: string | undefined | null): string | null => {
     if (!value) return null;
@@ -2377,7 +2255,6 @@ function App() {
       else grid.set(key, [stop]);
     }
 
-    // « Grenoble, Victor Hugo » côté planificateur, « Victor Hugo » côté carte.
     const nameKey = (value: string | undefined) =>
       (value || '')
         .replace(/^[^,]+,\s*/, '')
@@ -2399,10 +2276,6 @@ function App() {
           for (const stop of bucket) {
             const meters = haversineMeters(point.lat, point.lon, stop.lat, stop.lon);
             const sameName = Boolean(wanted) && nameKey(stop.name) === wanted;
-            // Un même nom autorise un écart plus large : le cluster est le
-            // barycentre de quais parfois distants de 150 m. Au-delà, on
-            // laisserait le tracé faire un crochet visible pour rejoindre la
-            // pastille — mieux vaut garder la position du planificateur.
             if (meters > (sameName ? 250 : 120)) continue;
             if (!best || (sameName && !best.sameName) || (sameName === best.sameName && meters < best.meters)) {
               best = { stop, meters, sameName };
@@ -2417,8 +2290,6 @@ function App() {
   }, [stops]);
 
   const getItineraryLineColor = useCallback((leg: any): string => {
-    // Une course en véhicule partagé n'emprunte aucune ligne : c'est la couleur
-    // de l'opérateur qui identifie le tronçon sur la carte.
     const sharedOperator = leg?.sharedOperator as SharedOperator | undefined;
     if (sharedOperator) return SHARED_OPERATOR_COLORS[sharedOperator];
     if (leg?.taxiCompany) return '#f59e0b';
@@ -2540,7 +2411,6 @@ function App() {
       focusedShared={sharedSelection}
       highlightedVehicleId={highlightedVehicleId}
       onSharedSelect={selection => {
-        // Une fiche à la fois : ouvrir un véhicule referme l'arrêt courant.
         setSelectedStop(null);
         setSidebarState('closed');
         setSharedSelection(selection);
@@ -2557,7 +2427,6 @@ function App() {
       pickMode={mapPickTarget}
       onLongPress={isMobile ? handleMapLongPress : undefined}
       onMapClick={async (lat: number, lon: number) => {
-        // Le point se nomme par son adresse et se calcule par ses coordonnées.
         const addr = await describeMapPoint(lat, lon);
         const location: RouteLocation = {
           id: addr.id || `mappick-${lat}-${lon}`,
@@ -2579,7 +2448,6 @@ function App() {
         mapRef.current?.centerOnLocation(lat, lon);
       }}
       visibleStopPoints={selectedRouteItinerary ? (
-        // When an itinerary is selected, only show stops near the itinerary's path
         (selectedRouteItinerary.routePath || []).map(([lon, lat]) => ({ lat, lon }))
       ) : servedStopPoints}
       isDarkMode={isDarkMode}
@@ -2667,7 +2535,14 @@ function App() {
         )}
       </div>
 
-      {isLoadingOverlayVisible && !error && (
+      {/* Sur téléphone, la photographie remplace le logo. Elle est montée dès
+          le départ et non quand le chargement traîne : c'est elle qui compte
+          les deux secondes qu'elle doit tenir au minimum. */}
+      {isMobile && !error && (
+        <MobileSplash done={!isLoadingOverlayVisible} language={language} />
+      )}
+
+      {isLoadingOverlayVisible && !error && !isMobile && (
         /*
          * L'écran de chargement, et son logo réellement au milieu.
          *
@@ -2713,7 +2588,6 @@ function App() {
           itinerary={selectedRouteItinerary}
           isOpen={isNavigationOpen}
           onClose={() => {
-            // Fermer soi-même, c'est renoncer au trajet : rien à reprendre.
             clearNavigationSession();
             setIsNavigationOpen(false);
           }}
@@ -2981,10 +2855,6 @@ function App() {
         }}
         onItinerarySelected={itinerary => {
           setSelectedRouteItinerary(itinerary);
-          // Ouvrir la fiche d'un itinéraire, c'est dire « celui-là, je le
-          // prends » : le trajet entre dans l'historique, où l'on viendra le
-          // repêcher pour en faire un favori. La position courante en est
-          // exclue — « Ma position » d'hier ne désigne plus rien aujourd'hui.
           if (
             itinerary &&
             routeFrom &&
@@ -3009,6 +2879,14 @@ function App() {
           if (isMobile && selectedRouteItinerary) saveNavigationSession(selectedRouteItinerary);
           setIsNavigationOpen(true);
         }}
+        /* Une ligne trouvée dans la recherche du planificateur : on ferme le
+           planificateur et l'on ouvre la ligne, comme depuis la recherche de
+           la carte. Chercher « A » en tapant une destination veut souvent dire
+           qu'on cherche le tram, pas un arrêt. */
+        onOpenLine={line => {
+          setIsRouteSidebarOpen(false);
+          handleLineSearchSelect(line);
+        }}
         currentLocation={currentLocation}
         onPlanNewSharedRoute={() => {
           setSharedRouteExpired(false);
@@ -3032,19 +2910,13 @@ function App() {
       {!isLoading && (
         <>
 
-
           {isMobile && !hidePageControls && isNearbySheetOpen && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
             <>
               <motion.button
                 onClick={() => {
                   handleLocationClick();
-                  // Open the HomeSheet and snap it to the mid snap (0.6) so the
-                  // nearby stops list is immediately visible.
                   setIsNearbySheetOpen(true);
                   setSnapHomeToMiniSignal(0); // don't collapse, let it open
-                  // We bump snapHomeToMiniSignal only when foreground sheets open,
-                  // not here — instead we target snap index 2 (=0.6) directly by
-                  // using a separate signal prop on HomeSheet.
                   setOpenHomeSheetSignal(s => s + 1);
                 }}
                 style={{
@@ -3275,53 +3147,118 @@ function App() {
                     className={`absolute top-0 left-0 z-50 transition-all duration-300 ease-out ${isFavPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                     style={{ width: '100%', height: '100%' }}
                   >
+                    {/*
+                      Les mêmes rangées que sur téléphone.
+
+                      Le panneau montrait des cartes qui dépliaient les horaires
+                      de chaque ligne, là où l'écran Favoris du téléphone s'en
+                      tient à une rangée par arrêt : les pastilles de ligne, le
+                      nom, un chevron. Deux dessins pour une même liste, et le
+                      plus chargé des deux tenait dans un carré de trois cent
+                      quatre-vingts pixels — on y lisait des heures qu'on n'était
+                      pas venu chercher, et l'on ne voyait plus ses arrêts.
+
+                      Une rangée, deux cibles, comme sur le téléphone : toucher
+                      un badge ouvre l'arrêt filtré sur cette ligne, toucher le
+                      reste l'ouvre en entier.
+                    */}
                     <div className="h-full w-full overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl">
-                      <div className="flex items-center gap-2 mb-3">
+                      <div className="mb-3 flex items-center gap-2">
                         <StarIcon className="w-4 h-4 text-amber-400" />
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                        <h3 className="text-sm font-semibold text-slate-300">
                           {language === 'fr' ? 'Favoris' : 'Favorites'}
                         </h3>
                       </div>
                       {favoritesList.length === 0 ? (
-                        <div className="text-xs text-slate-400 leading-relaxed bg-slate-800 border border-slate-700 rounded-xl p-3">
+                        <p className="rounded-[26px] border border-slate-800 bg-slate-900 px-4 py-5 text-center text-sm text-slate-400">
                           {language === 'fr'
                             ? 'Aucun favori pour le moment. Ouvre un arrêt et clique sur l\u2019étoile pour en ajouter un.'
                             : 'No favorites yet. Open a stop and tap the star to add one.'}
-                        </div>
+                        </p>
                       ) : (
-                        <div className="space-y-2.5">
-                          {favoritesDetails.map(({ favorite, detail, loading }) => (
-                            <FavoriteCard
-                              key={favorite.stopId}
-                              stopName={favorite.stopName}
-                              city={favorite.city}
-                              lineFilter={favorite.lines}
-                              detail={detail}
-                              loading={loading}
-                              onOpen={() => {
-                                const lineFilter =
-                                  favorite.lines === 'all' ? undefined : favorite.lines;
-                                if (lineFilter && lineFilter.length > 0) {
-                                  setInitialSelectedLines(new Set(lineFilter));
-                                }
-                                // Hand a minimal Stop to handleStopClick; it
-                                // refetches the full detail anyway.
-                                const stub: Stop = (detail as Stop) ?? {
-                                  id: favorite.stopId,
-                                  name: favorite.stopName,
-                                  lat: 0,
-                                  lon: 0,
-                                  city: favorite.city,
-                                };
-                                // Close the favorites panel so it doesn't
-                                // stay hovering over the freshly-opened stop.
-                                setIsFavBtnHovered(false);
-                                setIsFavPanelHovered(false);
-                                handleStopClick(stub);
-                              }}
-                              language={language}
-                            />
-                          ))}
+                        <div className="space-y-2">
+                          {favoritesDetails.map(entry => {
+                            const { favorite, detail } = entry;
+                            const lines = favoriteStopLines(entry, allLinesLookup);
+                            const shown = lines.slice(0, 3);
+                            const extra = lines.length - shown.length;
+
+                            /** Ouvre l'arrêt, filtré sur une ligne si l'on en a touché une. */
+                            const open = (lineId?: string) => {
+                              const filter = lineId
+                                ? [lineId]
+                                : favorite.lines === 'all'
+                                  ? undefined
+                                  : favorite.lines;
+                              if (filter && filter.length > 0) {
+                                setInitialSelectedLines(new Set(filter));
+                              }
+                              const stub: Stop = (detail as Stop) ?? {
+                                id: favorite.stopId,
+                                name: favorite.stopName,
+                                lat: 0,
+                                lon: 0,
+                                city: favorite.city,
+                              };
+                              setIsFavBtnHovered(false);
+                              setIsFavPanelHovered(false);
+                              handleStopClick(stub);
+                            };
+
+                            return (
+                              <div
+                                key={favorite.stopId}
+                                className="flex w-full items-center gap-3 rounded-[26px] border border-slate-800 bg-slate-900 px-3.5 py-3 text-left transition hover:bg-slate-800/70"
+                              >
+                                {/* Les lignes d'abord : c'est par elles qu'on
+                                    retrouve un arrêt dans une liste, avant même
+                                    d'en lire le nom. */}
+                                <span className="flex flex-shrink-0 items-center gap-1">
+                                  {shown.map(line => (
+                                    <button
+                                      key={line.lineId}
+                                      type="button"
+                                      onClick={() => open(line.lineId)}
+                                      className="transition active:scale-90"
+                                      aria-label={`${line.shortName} — ${favorite.stopName}`}
+                                    >
+                                      <LineBadge
+                                        line={{
+                                          id: line.lineId,
+                                          shortName: line.shortName,
+                                          color: line.color || undefined,
+                                          textColor: line.textColor || undefined,
+                                          hasTraffic: disruptedLineCodes?.has(line.shortName.toUpperCase()),
+                                        }}
+                                        size="xs"
+                                      />
+                                    </button>
+                                  ))}
+                                  {extra > 0 && (
+                                    <span className="text-xs font-bold text-slate-400">+{extra}</span>
+                                  )}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() => open()}
+                                  className="flex min-w-0 flex-1 items-center gap-3 text-left text-white"
+                                >
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-[15px] font-semibold">
+                                      {favorite.stopName}
+                                    </span>
+                                    {favorite.city && (
+                                      <span className="block truncate text-xs text-slate-400">
+                                        {favorite.city}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <ChevronRightIcon className="h-5 w-5 flex-shrink-0 text-slate-400" />
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -3417,8 +3354,6 @@ function App() {
                           </div>
                           <h3 className="text-sm font-bold text-white">{text.misc.liveTrafficInfo}</h3>
                           {trafficInfo.size > 0 && (() => {
-                            // Count entries after the filter so the badge
-                            // matches what the user actually sees below.
                             const visibleCount = Array.from(trafficInfo.entries())
                               .filter(([line]) =>
                                 desktopTrafficFilter === 'all' ||
@@ -3461,9 +3396,6 @@ function App() {
                       {/* Scrollable content */}
                       <div className="overflow-y-auto flex-1 px-4 pb-4">
                         {(() => {
-                          // Sort order in the list: trams first, then chrono,
-                          // then proximo, then flexo. Within each category
-                          // we let the natural string order do the job.
                           const filteredEntries = Array.from(trafficInfo.entries())
                             .filter(([line]) =>
                               desktopTrafficFilter === 'all' ||
@@ -3496,11 +3428,6 @@ function App() {
                                   const bt = new Date(b.dateFin).getTime() || 0;
                                   return at - bt;
                                 });
-                                // Try to resolve the real MTAG line object (with
-                                // its official colour) from the catalogue we
-                                // fetched at mount. Fallback to a synthetic line
-                                // so `LineBadge` still renders something
-                                // meaningful before/while the catalogue loads.
                                 const resolved = allLinesLookup.get(n);
                                 const badgeLine = resolved ?? {
                                   id: `SEM:${n}`,
@@ -3572,6 +3499,7 @@ function App() {
              entièrement à autre chose qu'à la carte du réseau. */
           isOpen={isNearbySheetOpen && !isRouteSidebarOpen && !isCardFocused && !(isMobile && isSidebarOpen)}
           locked={isAccountOpen || isFavoritesOpen}
+          lockedScreen={isAccountOpen ? 'account' : isFavoritesOpen ? 'favorites' : undefined}
           /* La liste de résultats vit dans l'en-tête, qui est la poignée de la
              feuille : tant qu'elle est ouverte, le glissement vertical lui
              appartient. */
@@ -3589,8 +3517,6 @@ function App() {
             if (lineFilter && lineFilter.length > 0) {
               setInitialSelectedLines(new Set(lineFilter));
             }
-            // Collapse the home sheet back to mini so it's in its initial
-            // state when the user closes the stop sidebar later.
             setSnapHomeToMiniSignal(s => s + 1);
             handleStopClick(stop);
           }}
@@ -3608,9 +3534,6 @@ function App() {
           }}
           onOpenAccount={() => setIsAccountOpen(true)}
           onLeaveAccount={() => setIsAccountOpen(false)}
-          // Le compte et les favoris ne cohabitent pas : l'un se range quand
-          // l'autre s'ouvre, et c'est ce qui donne aux Favoris le bord par
-          // lequel ils entrent — la gauche s'ils remplacent le compte.
           onOpenFavorites={() => {
             setIsAccountOpen(false);
             setIsFavoritesOpen(true);
@@ -3636,8 +3559,23 @@ function App() {
             setSnapHomeToMiniSignal(s => s + 1);
             setIsLinesExplorerOpen(true);
           }}
-          // La recherche vit dans l'en-tête de la feuille : c'est elle qui
-          // remplace la barre d'onglets dès qu'on tire la feuille vers le haut.
+          /* « Y aller » depuis un lieu à visiter : le monument devient la
+             destination, et l'on se retrouve devant les itinéraires qui y
+             mènent. Le lieu est visé, non son arrêt : le calculateur sait
+             finir à pied, et choisir l'arrêt aurait décidé de la ligne à la
+             place du voyageur. */
+          onNavigateToPlace={(place) => {
+            setSnapHomeToMiniSignal(s => s + 1);
+            openRouteToAddress({
+              id: `place:${place.id}`,
+              label: place.title,
+              name: place.title,
+              context: 'Grenoble',
+              lat: place.lat,
+              lon: place.lon,
+              score: 1,
+            });
+          }}
           searchBar={
             <SearchBarMobile
               inline
@@ -3681,8 +3619,6 @@ function App() {
           onScrolledChange={setIsNavCompact}
           onOpenStop={(stopId, lineId) => {
             const favorite = favoritesList.find(entry => entry.stopId === stopId);
-            // Une ligne touchée l'emporte sur le filtre du favori : on vient de
-            // dire laquelle des dix on regarde.
             const lineFilter = lineId
               ? [lineId]
               : favorite && favorite.lines !== 'all'
@@ -3691,8 +3627,6 @@ function App() {
             if (lineFilter && lineFilter.length > 0) {
               setInitialSelectedLines(new Set(lineFilter));
             }
-            // La fiche recharge l'arrêt de toute façon : un identifiant et un
-            // nom suffisent à la lui faire ouvrir.
             const stub: Stop = stops.find(stop => stop.id === stopId) ?? {
               id: stopId,
               name: favorite?.stopName ?? stopId,
@@ -3709,8 +3643,6 @@ function App() {
             setIsFavoritesOpen(false);
             setRouteFrom(journey.from);
             setRouteTo(journey.to);
-            // Un itinéraire touché ouvre sa fiche directement : on a désigné un
-            // départ précis, pas « un trajet vers là-bas ».
             setSelectedRouteItinerary(itinerary ?? null);
             setRouteItineraryOptions(itinerary ? [itinerary] : []);
             setMapPickTarget(null);
@@ -3762,9 +3694,6 @@ function App() {
               lineLookup={allLinesLookup}
               trafficInfo={trafficInfo}
               currentLocation={currentLocation}
-              // Pas d'historique des lieux : on ne compose pas ici le trajet du
-              // jour, on décrit un trajet qu'on refera. Les raccourcis d'un
-              // départ pressé n'y ont pas leur place.
               recentPlaces={[]}
               onLocationSelected={(location, field) => {
                 if (field === 'from') setPickerFrom(location);
@@ -3778,8 +3707,6 @@ function App() {
               onItinerariesUpdated={setPickerResults}
               onPickJourney={itinerary => {
                 if (!pickerFrom || !pickerTo) return;
-                // Le bouton du bas ne désigne aucun itinéraire : on prend celui
-                // du haut de la liste, qui est celui qu'on aurait choisi.
                 const chosen = itinerary ?? pickerResults[0] ?? null;
                 setPendingJourney({
                   from: pickerFrom,
@@ -3808,9 +3735,6 @@ function App() {
               addFavoriteJourney(pendingJourney.from, pendingJourney.to, {
                 lines: pendingJourney.lines,
               });
-              // Le trajet ajouté, on redescend d'un coup jusqu'aux Favoris :
-              // c'est là que le nouvel onglet vient d'apparaître, et c'est lui
-              // qu'on veut voir — pas la page qui a servi à le créer.
               setPendingJourney(null);
               setIsJourneyPickerOpen(false);
               setIsJourneyConfigOpen(false);
@@ -3880,7 +3804,6 @@ function App() {
           onClose={() => setIsLinesExplorerOpen(false)}
           lines={allLines}
           onLineClick={line => {
-            // On ferme l'explorateur puis on ouvre la feuille de la ligne.
             setIsLinesExplorerOpen(false);
             handleLineSearchSelect(line);
           }}
@@ -3910,6 +3833,19 @@ function App() {
         />
       )}
 
+      <OnboardingFlow
+        isOpen={isOnboardingOpen}
+        language={language}
+        cards={walletCards}
+        canAddCard={isSupabaseConfigured}
+        onEnableNotifications={async () => {
+          const granted = await requestNotificationPermission();
+          setNotificationsEnabled(granted);
+        }}
+        onCardsChange={setWalletCards}
+        onDone={() => setIsOnboardingOpen(false)}
+      />
+
       <MobileNotificationPrompt
         isOpen={isMobileNotificationPromptOpen}
         language={language}
@@ -3933,8 +3869,6 @@ function App() {
           onPlanRouteFromStop={openRouteFromStop}
           onOpenTimetable={setTimetableTarget}
           onOpenLine={line => {
-            // L'identifiant complet d'abord : « SEM:C1 » et « SNC:C1 » sont
-            // deux lignes différentes, et le code nu ne les distingue pas.
             const resolved = allLinesLookup.get(line.id.toUpperCase().trim())
               ?? allLinesLookup.get((line.shortName || line.id).toUpperCase().trim());
             if (resolved) handleLineSearchSelect(resolved);
@@ -3953,7 +3887,7 @@ function App() {
         autoSync={autoSync}
         refreshIntervalMs={parseRefreshInterval(refreshInterval)}
         theme={effectiveTheme}
-        onOpenTimetable={() => {
+        onOpenTimetable={options => {
           if (!selectedLine) return;
           setTimetableTarget({
             line: {
@@ -3962,6 +3896,7 @@ function App() {
               color: selectedLine.color,
               textColor: selectedLine.textColor,
             },
+            stopName: options?.stopName,
           });
         }}
         onOpenLineMap={() => {
@@ -4074,7 +4009,9 @@ function App() {
           onClose={() => setTimetableTarget(null)}
           line={timetableTarget?.line ?? null}
           preferredHeadsign={timetableTarget?.headsign ?? null}
-          highlightStopName={selectedStop?.name ?? null}
+          /* L'arrêt d'où l'on vient l'emporte sur celui de la carte : ouvrir
+             la fiche depuis un arrêt de la ligne doit surligner celui-là. */
+          highlightStopName={timetableTarget?.stopName ?? selectedStop?.name ?? null}
           isMobile={isMobile}
           language={language}
           onOpenLineMap={() => {
@@ -4126,8 +4063,6 @@ function App() {
               setRouteTo(target);
               setSelectedRouteItinerary(null);
               setRouteItineraryOptions([]);
-              // Sur mobile avec la géolocalisation active, le départ est connu :
-              // on enchaîne directement sur le premier itinéraire proposé.
               if (currentLocation) {
                 setRouteFrom(currentPositionLocation(currentLocation));
                 setAutoPickFirstItinerary(isMobile);
@@ -4138,7 +4073,6 @@ function App() {
           />
         )}
       </DeferredPanel>
-
 
       {/* Overlay de performance — mode développeur, ordinateur uniquement */}
       {/* Un message reçu sur une carte du portefeuille. On l'annonce là où l'on

@@ -5,12 +5,6 @@ import {
   type Favorite,
 } from '../services/favorites';
 
-
-
-
-
-
-
 export function useFavorites(): Favorite[] {
   const [favorites, setFavoritesState] = useState<Favorite[]>(() => getFavorites());
 

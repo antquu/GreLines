@@ -196,8 +196,6 @@ function ScrollingTitle({ children }: { children: React.ReactNode }) {
         transition={
           overflow > 0
             ? {
-                // Un temps d'arrêt à chaque bout : un texte qui défile sans pause
-                // ne se lit pas, on court après son début.
                 duration: overflow / 28 + 2,
                 times: [0, 0.45, 0.55, 1],
                 repeat: Infinity,
@@ -227,8 +225,6 @@ export function TripCompleteScreen({
 }: TripCompleteScreenProps) {
   const isFr = language === 'fr';
 
-  // La graine des confettis ne doit pas changer à chaque rendu, sans quoi ils
-  // repartiraient du haut dès que le composant se redessine.
   const confettiKey = useMemo(() => Date.now(), [isOpen]);
 
   /**
@@ -262,8 +258,6 @@ export function TripCompleteScreen({
       };
     };
 
-    // Le remplissage initial se fait de proche en proche : chaque visage voit
-    // ceux déjà posés, sinon rien ne les empêcherait de tomber au même endroit.
     const initial: CloudFace[] = [];
     for (let i = 0; i < slots; i++) initial.push(draw(initial));
     setCloud(initial);
@@ -280,8 +274,6 @@ export function TripCompleteScreen({
         if (current.length === 0) return current;
         const index = Math.floor(Math.random() * current.length);
         const next = [...current];
-        // Le nouveau visage évite tous les autres, celui qu'il remplace excepté :
-        // sa place se libère à l'instant même.
         next[index] = draw(current.filter((_, i) => i !== index));
         return next;
       });
@@ -385,8 +377,6 @@ export function TripCompleteScreen({
               {account && (
               <motion.div
                 className="absolute inset-0 z-10"
-                // Un tour en cent secondes : assez pour qu'on le remarque en
-                // regardant, trop lent pour qu'on le suive des yeux.
                 animate={{ rotate: 360 }}
                 transition={{ duration: SPIN_MS / 1000, repeat: Infinity, ease: 'linear' }}
               >

@@ -11,14 +11,7 @@ import './screen.css';
 export function ScreenApp() {
   const [stopId, setStopId] = useState(() => parseScreenStopId(window.location.pathname));
   
-  
   const [layout, setLayout] = useState<ScreenLayout>(() => parseScreenLayout(window.location.search));
-
-  
-
-
-
-
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -31,7 +24,6 @@ export function ScreenApp() {
     };
   }, []);
 
-  
   useEffect(() => {
     const onPopState = () => {
       setStopId(parseScreenStopId(window.location.pathname));
@@ -42,7 +34,6 @@ export function ScreenApp() {
   }, []);
 
   const handleSelect = useCallback((stop: Stop, chosenLayout: ScreenLayout) => {
-    
     
     window.history.pushState(null, '', buildScreenUrl(stop.id, chosenLayout));
     setStopId(stop.id);
@@ -82,9 +73,6 @@ export function ScreenApp() {
       if (!active) return;
 
       const resolved = resolveStopFromUrlId(printedId, [...mtag, ...tcl]);
-      // Rien de certain : on laisse l'identifiant tel quel, et le tableau
-      // affichera qu'il ne le connaît pas. Mieux vaut le dire qu'afficher les
-      // horaires d'un autre arrêt.
       if (!resolved || resolved.id === stopId) return;
       window.history.replaceState(null, '', buildScreenUrl(resolved.id, layout));
       setStopId(resolved.id);

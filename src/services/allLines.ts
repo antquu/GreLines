@@ -1,17 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 export type LineFamily = 'tram' | 'chrono' | 'proximo' | 'flexo' | 'other';
 
 export interface AllLinesLine {
@@ -62,7 +49,6 @@ function persistCache(lines: AllLinesLine[]): void {
     
   }
 }
-
 
 function withHash(hex: string | undefined, fallback: string): string {
   if (!hex) return fallback;
@@ -159,13 +145,10 @@ function networkRank(id: string): number {
 export function buildLineLookup(lines: AllLinesLine[]): Map<string, AllLinesLine> {
   const m = new Map<string, AllLinesLine>();
 
-  // Les identifiants complets d'abord : ils ne peuvent pas entrer en conflit.
   for (const line of lines) {
     m.set(line.id.toUpperCase().trim(), line);
   }
 
-  // Puis les codes nus, du réseau le plus prioritaire au moins prioritaire, en
-  // ne remplaçant jamais une entrée déjà posée.
   for (const line of [...lines].sort((a, b) => networkRank(a.id) - networkRank(b.id))) {
     const id = line.id.toUpperCase().trim();
     for (const key of [line.shortName.toUpperCase().trim(), id.replace(/^(?:SEM:|SEM_)/, '')]) {

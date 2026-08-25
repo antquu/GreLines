@@ -226,8 +226,6 @@ export function LegalSheet({ isOpen, onClose, language, theme = 'dark', isMobile
     </div>
   );
 
-  // Téléphone : une feuille comme les autres. Ordinateur : une fenêtre posée au
-  // centre — une feuille pleine hauteur sur un grand écran n'aurait pas de sens.
   if (isMobile) {
     return (
       <MapSheet isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={200} initialSnap={3}>

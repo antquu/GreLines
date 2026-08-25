@@ -70,8 +70,6 @@ export function AtmoPanel({
   const [searching, setSearching] = useState(false);
   const requestRef = useRef(0);
 
-  // Recherche différée : on tape « Saint-Martin-d'Hères » en vingt frappes, pas
-  // en vingt requêtes.
   useEffect(() => {
     const term = query.trim();
     if (term.length < 2) {
@@ -84,7 +82,6 @@ export function AtmoPanel({
     const ticket = ++requestRef.current;
     const timer = window.setTimeout(() => {
       void searchCommunes(term).then(communes => {
-        // Une réponse en retard ne doit pas écraser une saisie plus récente.
         if (requestRef.current !== ticket) return;
         setResults(communes);
         setSearching(false);
@@ -94,7 +91,6 @@ export function AtmoPanel({
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  // La commune affichée a changé : la recherche a abouti, on referme la liste.
   useEffect(() => {
     setQuery('');
     setResults([]);
@@ -105,7 +101,6 @@ export function AtmoPanel({
   const foreground = readableTextColor(color);
   const soft = (alpha: number) =>
     foreground === '#000000' ? `rgba(0,0,0,${alpha})` : `rgba(255,255,255,${alpha})`;
-
 
   return (
     <div

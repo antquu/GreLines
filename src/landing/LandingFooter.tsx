@@ -101,7 +101,6 @@ export function LandingFooter({
           ))}
         </div>
 
-
         {/* La pastille seule, loin sous les colonnes : c'est la signature
             de bas de page, elle n'a pas besoin du nom à côté d'elle. */}
         <div className="mt-24">

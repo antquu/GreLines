@@ -27,15 +27,6 @@ export const LINE_COLORS = {
 const DEFAULT_LINE_BADGE_COLOR = '#3b82f6';
 const GRAY_FALLBACK_COLOR = '#94A3B8';
 
-
-
-
-
-
-
-
-
-
 type LineColorOverride = { color?: string | null; textColor?: string | null };
 const lineColorOverrides = new Map<string, LineColorOverride>();
 
@@ -54,15 +45,6 @@ function getLineColorOverride(lineId?: string | null): LineColorOverride | null 
   return lineColorOverrides.get(code) ?? null;
 }
 
-
-
-
-
-
-
-
-
-
 export const isGrenobleNetworkLine = (value?: string | null): boolean => {
   const raw = String(value ?? '').trim().toUpperCase();
   if (!raw) return true;
@@ -72,15 +54,7 @@ export const isGrenobleNetworkLine = (value?: string | null): boolean => {
   return network === 'SEM' || network === 'SE2';
 };
 
-
 export const SNCF_TER_COLOR = '#00337F';
-
-
-
-
-
-
-
 
 export const isSncfLine = (value?: string | null): boolean => {
   const raw = String(value ?? '').trim().toUpperCase();
@@ -92,10 +66,6 @@ export const isSncfLine = (value?: string | null): boolean => {
 
 export const normalizeLineId = (value?: string | null): string | null => {
   if (!value) return null;
-  // Le séparateur se retire dans la même passe. En deux temps, `SEM_C1` perdait
-  // son préfixe au premier remplacement — la seconde règle, qui attendait
-  // encore « SEM_ », ne trouvait plus que « _C1 » et le laissait tel quel. Le
-  // code ne correspondait alors à aucune couleur officielle.
   const code = String(value)
     .trim()
     .toUpperCase()
@@ -127,7 +97,6 @@ export const isFallbackColor = (color?: string | null): boolean => {
 export const getSpecialLineFallback = (lineId?: string | null) => {
   const code = normalizeLineId(lineId);
   if (!code) return null;
-  // Prefer explicit mapping from LINE_COLORS when available
   if (LINE_COLORS[code as keyof typeof LINE_COLORS]) {
     return { backgroundColor: LINE_COLORS[code as keyof typeof LINE_COLORS] };
   }
@@ -142,12 +111,9 @@ export const resolveLineBackgroundColor = (
   lineId?: string | null,
   defaultColor = DEFAULT_LINE_BADGE_COLOR,
 ): string => {
-  // Une surcharge définie dans le CRM prime sur tout le reste, y compris sur
-  // la table de couleurs officielles ci-dessous.
   const overrideColor = normalizeHexColor(getLineColorOverride(lineId)?.color);
   if (overrideColor) return overrideColor;
 
-  // Prefer explicit mapping from LINE_COLORS first (matches Grego behaviour)
   const code = normalizeLineId(lineId);
   if (code && LINE_COLORS[code as keyof typeof LINE_COLORS]) {
     return LINE_COLORS[code as keyof typeof LINE_COLORS];
@@ -168,8 +134,6 @@ export const resolveLineTextColor = (
   const override = getLineColorOverride(lineId);
   const overrideTextColor = normalizeHexColor(override?.textColor);
   if (overrideTextColor) return overrideTextColor;
-  // Couleur de fond surchargée sans couleur de texte : on calcule le contraste
-  // plutôt que d'appliquer les règles de la palette officielle.
   const overrideBackground = normalizeHexColor(override?.color);
   if (overrideBackground) {
     const r = parseInt(overrideBackground.slice(1, 3), 16);
@@ -178,8 +142,6 @@ export const resolveLineTextColor = (
     return r * 0.299 + g * 0.587 + b * 0.114 > 186 ? '#000000' : '#FFFFFF';
   }
 
-  // Chrono C1..C9 are yellow in the MTAG palette, so force black text even if
-  // an upstream object forgot or overrode the official text color.
   const code = normalizeLineId(lineId);
   if (code && /^C[1-9]$/.test(code)) return '#000000';
   const normalizedTextColor = normalizeHexColor(explicitTextColor);

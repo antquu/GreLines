@@ -11,11 +11,6 @@ interface PopupOverlayProps {
   theme?: 'light' | 'dark';
 }
 
-
-
-
-
-
 const OPTED_OUT_KEY = 'greLines_optedOutPopups';
 
 function getOptedOutIds(): Set<string> {
@@ -36,11 +31,6 @@ function markOptedOut(id: string) {
     
   }
 }
-
-
-
-
-
 
 export function PopupOverlay({ popups, language, theme = 'dark' }: PopupOverlayProps) {
   const isLight = theme === 'light';
@@ -66,10 +56,8 @@ export function PopupOverlay({ popups, language, theme = 'dark' }: PopupOverlayP
 
   if (!visiblePopup) return null;
 
-  
   const handleClose = () => setVisiblePopup(null);
 
-  
   const handleOptOut = () => {
     markOptedOut(visiblePopup.id);
     setVisiblePopup(null);

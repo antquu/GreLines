@@ -39,8 +39,6 @@ export function LineCloud({
   return (
     <span
       className="relative inline-flex flex-shrink-0 items-center"
-      // La grappe se décale vers le bas à mesure qu'elle s'étend : sans cette
-      // hauteur réservée, le dernier badge déborderait de la rangée.
       style={{
         width: (visible.length - 1) * step + (size === 'md' ? 36 : 24) + (extra > 0 ? step + 8 : 0),
         height: (visible.length - 1) * (step / 2) + (size === 'md' ? 36 : 24),
@@ -56,8 +54,6 @@ export function LineCloud({
             style={{
               left: index * step,
               top: index * (step / 2),
-              // Le dernier posé passe devant : la grappe se lit de haut-gauche
-              // vers bas-droite, dans l'ordre du trajet.
               zIndex: index + 1,
             }}
           >

@@ -20,11 +20,6 @@ console.log(`_
 
 const root = createRoot(document.getElementById('root')!)
 
-
-
-
-
-
 /**
  * La vitrine, sur `/fr` et `/en` — et sur elles seules.
  *
@@ -158,8 +153,6 @@ if (solutionRoute) {
   const [, legalLang, legalSlug] = legalRoute;
   void Promise.all([import('./landing/LegalPage'), import('./landing/legalContent')]).then(
     ([{ LegalPage }, { isLegalSlug }]) => {
-      // Une adresse inventée renvoie à la politique de confidentialité plutôt
-      // qu'à une page blanche : c'est le document qu'on cherche neuf fois sur dix.
       const slug = isLegalSlug(legalSlug) ? legalSlug : 'privacy-policy';
       root.render(
         <StrictMode>
@@ -176,8 +169,6 @@ if (solutionRoute) {
 
   const wanted = deviceLang();
   if (!chosen && wanted !== landingLang) {
-    // Une seule redirection, et vers une vraie adresse : la page anglaise vit à
-    // `/en`, pas à `/fr` avec un contenu différent.
     window.location.replace(`/${wanted}${window.location.search}${window.location.hash}`);
   }
 
@@ -214,18 +205,9 @@ if (solutionRoute) {
   })
 }
 
-
-
-
-
-
-
-
-
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
-      
       
     })
   })

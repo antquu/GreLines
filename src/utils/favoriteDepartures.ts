@@ -75,8 +75,6 @@ export function groupFavoriteDepartures(
       });
     }
     const group = map.get(key)!;
-    // Deux passages annoncés à la même minute sont le même véhicule vu deux
-    // fois : afficher « prochain 1min / suivant 1min » n'apprend rien.
     if (group.times.length < 2 && group.times[0] !== departure.departureTime) {
       group.times.push(departure.departureTime);
     }
@@ -113,9 +111,6 @@ export function favoriteStopLines(
   const filter = detail?.favorite.lines;
   const accepts = (lineId: string) => !filter || filter === 'all' || filter.includes(lineId);
 
-  // La fiche si elle est là, sinon celle du cache : les badges sont la cible
-  // qu'on touche, ils doivent exister dès le premier affichage et pas au bout
-  // des deux secondes que met la fiche à revenir du réseau.
   const stopId = detail?.favorite.stopId;
   const known = detail?.detail?.lines ?? (stopId ? getCachedStopLines(stopId) : null) ?? [];
 
@@ -128,8 +123,6 @@ export function favoriteStopLines(
       textColor: line.textColor,
     }));
 
-  // Repli sur les passages : certaines fiches arrivent avec leurs départs avant
-  // leur liste de lignes.
   const source: StopLine[] =
     declared.length > 0 ? declared : groupFavoriteDepartures(detail, lineLookup);
 

@@ -23,7 +23,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/solid';
 import { attachKnownCard, findKnownCard, saveTestCard, lookupOuraCard, saveOuraCard, type OuraCard, type OuraCardLookup } from '../services/ouraCard';
-import { scanCard, toCanvas } from '../services/cardOcr';
+import { scanCard, toCanvas, waitForSteadyFrame } from '../services/cardOcr';
 
 interface AddCardSheetProps {
   isOpen: boolean;
@@ -47,9 +47,11 @@ interface AddCardSheetProps {
    * `sheet` : une feuille qui monte du bas, celle du téléphone, qu'on referme
    * en la tirant. `dialog` : une boîte posée au centre, celle du bureau — sur
    * un grand écran, une feuille pleine hauteur laisse la moitié de la fenêtre
-   * ouverte sur rien.
+   * ouverte sur rien. `screen` : l'écran entier, sans voile ni poignée, pour la
+   * mise en route — une feuille posée sur un écran d'accueil qui n'est lui-même
+   * qu'un fond noir montrait un bord de feuille sur du vide.
    */
-  variant?: 'sheet' | 'dialog';
+  variant?: 'sheet' | 'dialog' | 'screen';
   /**
    * Le portefeuille se contente de rattacher des cartes existantes.
    *
@@ -90,8 +92,8 @@ const getText = (language: 'fr' | 'en') => {
     back: isFr ? 'Retour' : 'Back',
     reading: isFr ? 'Lecture de la carte…' : 'Reading the card…',
     aiming: isFr
-      ? 'Présentez la carte dans le cadre, la lecture se lance toute seule.'
-      : 'Hold the card inside the frame, reading starts on its own.',
+      ? 'Présentez la carte dans le cadre : la lecture part dès que vous ne bougez plus.'
+      : 'Hold the card inside the frame: reading starts as soon as you hold still.',
     cameraDenied: isFr
       ? "L'appareil photo n'est pas accessible. Saisissez le numéro à la main."
       : 'The camera is unavailable. Enter the number by hand.',
@@ -108,13 +110,11 @@ const getText = (language: 'fr' | 'en') => {
     found: isFr ? 'Carte reconnue' : 'Card recognised',
     typeInstead: isFr ? 'Saisir le numéro à la main' : 'Type the number instead',
 
-    // Les trois étapes
     stepCard: isFr ? 'La carte' : 'The card',
     stepIdentity: isFr ? 'Votre identité' : 'Your identity',
     stepName: isFr ? 'Votre nom' : 'Your name',
     stepOf: isFr ? 'Étape' : 'Step',
 
-    // Le portrait
     selfieTitle: isFr ? 'Vérifions votre identité' : "Let's verify your identity",
     selfieBody: isFr
       ? "Prenez-vous en photo : ce portrait figure sur votre carte OURA dans l'application, et confirme qu'elle est bien la vôtre."
@@ -130,7 +130,6 @@ const getText = (language: 'fr' | 'en') => {
       : 'The camera is unavailable. Verification requires a photo.',
     selfieRequired: isFr ? 'La photo est obligatoire.' : 'The photo is required.',
 
-    // L'identité
     yourInfo: isFr ? 'Sont-ce bien vos informations ?' : 'Are these your details?',
     known: isFr
       ? 'Cette carte est déjà connue. Quel est votre nom de famille ?'
@@ -199,6 +198,7 @@ function DrawnCheck({ className = '' }: { className?: string }) {
 
 export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSaved, allowScan = true, variant = 'sheet', linkOnly = false }: AddCardSheetProps) {
   const isDialog = variant === 'dialog';
+  const isScreen = variant === 'screen';
   const text = getText(language);
   const isLight = theme === 'light';
 
@@ -222,7 +222,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
   /** Vrai dès que le portrait a été validé : l'étape 2 est franchie. */
   const [identityDone, setIdentityDone] = useState(false);
 
-  // Lecture automatique de la carte.
   const [scanPhase, setScanPhase] = useState<ScanPhase>('aiming');
   /** La photo qu'on est en train de lire, figée à l'écran pendant la lecture. */
   const [frozenCard, setFrozenCard] = useState<string | null>(null);
@@ -303,8 +302,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
       stopCamera();
       return;
     }
-    // Chaque ouverture repart de la première question — la saisie du numéro
-    // quand la lecture par l'appareil photo n'est pas proposée.
     setStep(allowScan ? 'choice' : 'manual');
     setCode('');
     setLookup(null);
@@ -361,9 +358,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     setError(null);
     const found = await lookupOuraCard(rawCode);
     if (!found) {
-      // Le réseau ne connaît pas ce numéro : ce peut être une carte d'essai,
-      // créée à la main et qui n'existe que chez nous. Vide, c'est à celui qui
-      // l'ajoute de la renseigner ; déjà remplie, elle s'importe telle quelle.
       const test = await findKnownCard(rawCode);
       setBusy(false);
       if (test?.isTest) {
@@ -389,14 +383,9 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     setWasScanned(scanned);
     announce(text.found);
 
-    // Carte déjà déclarée : on reprend son porteur et son visage plutôt que de
-    // les redemander. Ce que la lecture avait cru comprendre cède la place.
     const existing = await findKnownCard(found.code);
     if (existing) {
-      // Le visage déjà enregistré vaut mieux que celui qu'on vient de prendre.
       setPhoto(null);
-      // On ne redemande pas tout : le porteur est déjà là. Il ne reste qu'à
-      // s'assurer que c'est bien la même personne, par son nom de famille.
       setKnown(existing);
       if (existing.firstName) setFirstName(existing.firstName);
       setKnownPhotoPath(existing.photoPath);
@@ -452,11 +441,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         setScanPhase('aiming');
         setFrozenCard(null);
 
-        // Le temps de présenter la carte — un peu plus au premier essai, où
-        // l'on découvre l'écran.
-        await wait(attempt === 1 ? 1600 : 900);
-
-        // L'image met parfois une seconde de plus à arriver que la promesse.
         for (let tick = 0; tick < 12 && !videoRef.current?.videoWidth; tick += 1) {
           await wait(200);
           if (stale()) return;
@@ -464,6 +448,22 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         const video = videoRef.current;
         if (stale()) return;
         if (!video?.videoWidth) continue;
+
+        /*
+         * On ne photographie plus à intervalle fixe : on attend le moment où la
+         * carte est présentée et la main arrêtée. Voir `waitForSteadyFrame`.
+         *
+         * Après un échec, on exige que le cadre ait bougé avant de reprendre —
+         * sinon la même image immobile redonnerait la même lecture ratée, et
+         * les trois essais se consommeraient en trois secondes sans que le
+         * voyageur ait eu le temps de comprendre ce qu'on attend de lui.
+         */
+        const steady = await waitForSteadyFrame(video, {
+          cancelled: stale,
+          requireMotionFirst: attempt > 1,
+        });
+        if (stale()) return;
+        if (!steady) break;
 
         const canvas = toCanvas(video, video.videoWidth, video.videoHeight);
         setFrozenCard(canvas.toDataURL('image/jpeg', 0.85));
@@ -478,8 +478,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         if (stale()) return;
 
         if (read?.cardCode) {
-          // Ce que la carte dit du porteur n'est qu'un brouillon : il le
-          // corrigera à l'étape du nom, où rien ne part sans son accord.
           if (read.firstName) setFirstName(read.firstName);
           if (read.lastName) setLastName(read.lastName);
           setCode(read.cardCode);
@@ -496,7 +494,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         }
 
         setScanPhase('fail');
-        await wait(1300);
+        await wait(1100);
         if (stale()) return;
       }
 
@@ -619,7 +617,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
       onClose();
       return;
     }
-    // Carte déjà connue : il n'y a qu'un lien à créer, rien à réécrire.
     const saved = known
       ? ((await attachKnownCard(known.cardCode)) ? known : null)
       : await saveOuraCard({ lookup: lookup!, firstName, lastName, photo, photoPath: knownPhotoPath });
@@ -655,8 +652,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
       return;
     }
     setStep('choice');
-    // Sans écran de choix, reculer depuis la saisie ferme la feuille : il n'y
-    // a rien derrière.
     if (!allowScan && step === 'manual') onClose();
   };
 
@@ -786,20 +781,26 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
           animation pilotée en JavaScript, et une animation qui n'aboutit pas la
           laisse invisible pour de bon. Ici le glissement est une transition
           CSS, dont l'état d'arrivée est déclaré donc atteint. */}
-      <div
-        className={`fixed inset-0 z-[10001] bg-black/50 transition-opacity duration-300 ${
-          isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
-        }`}
-        onClick={onClose}
-        aria-hidden
-      />
+      {!isScreen && (
+        <div
+          className={`fixed inset-0 z-[10001] bg-black/50 transition-opacity duration-300 ${
+            isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+          }`}
+          onClick={onClose}
+          aria-hidden
+        />
+      )}
       <div
         /* Boîte au centre sur ordinateur, feuille montante sur téléphone. La
            boîte ne se tire pas : elle se ferme par sa croix ou par le voile, et
            un geste de glissement sur une fenêtre posée au milieu de l'écran ne
            veut rien dire. */
         className={
-          isDialog
+          isScreen
+            ? `fixed inset-0 z-[10002] flex flex-col overflow-hidden transition-opacity duration-300 ${
+                isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+              } ${isLight ? 'bg-slate-50' : 'bg-black'}`
+            : isDialog
             ? `fixed left-1/2 top-1/2 z-[10002] flex max-h-[80vh] w-[min(30rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border shadow-2xl transition-all duration-200 ${
                 isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
               } ${isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950'}`
@@ -809,18 +810,23 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         }
         style={{
           pointerEvents: isOpen ? 'auto' : 'none',
-          transform: !isDialog && dragY > 0 ? `translateY(${dragY}px)` : undefined,
-          transition: !isDialog && dragY > 0 ? 'none' : undefined,
+          transform: !isDialog && !isScreen && dragY > 0 ? `translateY(${dragY}px)` : undefined,
+          transition: !isDialog && !isScreen && dragY > 0 ? 'none' : undefined,
+          paddingTop: isScreen ? 'env(safe-area-inset-top)' : undefined,
         }}
         aria-hidden={!isOpen}
-        onPointerDown={isDialog ? undefined : handleDragStart}
-        onPointerMove={isDialog ? undefined : handleDragMove}
-        onPointerUp={isDialog ? undefined : handleDragEnd}
+        /* L'écran plein ne se tire pas : il n'a pas de bord à saisir, et
+           glisser dessus doit faire défiler son contenu. */
+        onPointerDown={isDialog || isScreen ? undefined : handleDragStart}
+        onPointerMove={isDialog || isScreen ? undefined : handleDragMove}
+        onPointerUp={isDialog || isScreen ? undefined : handleDragEnd}
         onPointerCancel={handleDragEnd}
       >
-        <div className="flex justify-center pb-1 pt-3">
-          <div className={`h-1.5 w-12 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/20'}`} />
-        </div>
+        {!isScreen && (
+          <div className="flex justify-center pb-1 pt-3">
+            <div className={`h-1.5 w-12 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/20'}`} />
+          </div>
+        )}
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center gap-2 px-3 pb-2">
               {step !== 'choice' && (
@@ -977,39 +983,47 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                   )}
                 </div>
 
-                {/* 3 — la vérification d'identité */}
-                <div className="h-full w-1/4 overflow-y-auto px-5 pb-8">
-                  <p className={`text-lg font-bold ${strong}`}>{text.selfieTitle}</p>
-                  <p className="mb-5 mt-2 text-sm leading-relaxed text-slate-500">{text.selfieBody}</p>
+                {/*
+                  3 — la vérification d'identité.
 
-                  {/* Un visage se cadre mal dans une vignette : le cadre prend
-                      toute la largeur disponible, et ne se bride que sur les
-                      écrans larges, où il finirait par occuper la fenêtre. */}
-                  <div className="mx-auto w-full max-w-[22rem]">
-                    <div className="relative overflow-hidden rounded-3xl bg-black" style={{ aspectRatio: '3 / 4' }}>
-                      {photoUrl ? (
-                        <img src={photoUrl} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <video
-                          ref={selfieVideoRef}
-                          playsInline
-                          muted
-                          className="h-full w-full object-cover"
-                          /* Miroir à l'écran : on se regarde comme dans une
-                             glace. L'image enregistrée, elle, ne l'est pas. */
-                          style={{ transform: 'scaleX(-1)' }}
-                        />
-                      )}
-                      {/* L'ovale place le visage là où la découpe l'attend. */}
-                      {!photoUrl && (
-                        <div className="pointer-events-none absolute inset-x-[16%] inset-y-[8%] rounded-[50%] border-2 border-dashed border-white/70" />
-                      )}
-                      {photoUrl && (
-                        <span className="gl-verdict absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg">
-                          <DrawnCheck className="h-5 w-5" />
-                        </span>
-                      )}
-                    </div>
+                  Le seul écran de la feuille qui ne défile pas : la caméra prend
+                  toute la largeur du téléphone et toute la hauteur qui reste
+                  sous le texte, jusqu'au bouton. Elle était posée dans une
+                  vignette arrondie de trois quarts, ce qui débordait de l'écran
+                  et donnait un cadrage à faire glisser — on se cherchait dans
+                  une fenêtre qu'il fallait d'abord trouver.
+                */}
+                <div className="flex h-full w-1/4 flex-col overflow-hidden">
+                  <div className="flex-shrink-0 px-5">
+                    <p className={`text-lg font-bold ${strong}`}>{text.selfieTitle}</p>
+                    <p className="mb-4 mt-2 text-sm leading-relaxed text-slate-500">{text.selfieBody}</p>
+                  </div>
+
+                  {/* Bord à bord : pas de coins arrondis, rien qui laisse voir
+                      le fond derrière. C'est un viseur, pas une vignette. */}
+                  <div className="relative min-h-0 w-full flex-1 bg-black">
+                    {photoUrl ? (
+                      <img src={photoUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <video
+                        ref={selfieVideoRef}
+                        playsInline
+                        muted
+                        className="h-full w-full object-cover"
+                        /* Miroir à l'écran : on se regarde comme dans une
+                           glace. L'image enregistrée, elle, ne l'est pas. */
+                        style={{ transform: 'scaleX(-1)' }}
+                      />
+                    )}
+                    {/* L'ovale place le visage là où la découpe l'attend. */}
+                    {!photoUrl && (
+                      <div className="pointer-events-none absolute inset-x-[16%] inset-y-[10%] rounded-[50%] border-2 border-dashed border-white/70" />
+                    )}
+                    {photoUrl && (
+                      <span className="gl-verdict absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg">
+                        <DrawnCheck className="h-5 w-5" />
+                      </span>
+                    )}
                   </div>
                 </div>
 

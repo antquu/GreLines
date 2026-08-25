@@ -21,11 +21,6 @@ interface AddressSidebarProps {
   onOpenItinerary?: () => void;
 }
 
-
-
-
-
-
 const WALK_METRES_PER_MINUTE = 75;
 
 const walkMinutes = (meters: number): number => Math.max(1, Math.ceil(meters / WALK_METRES_PER_MINUTE));
@@ -236,7 +231,6 @@ export const AddressSidebar = ({
     </>
   );
 
-  // ── Ordinateur : panneau latéral ────────────────────────────────────────
   if (!isMobile) {
     return (
       <motion.div
@@ -251,7 +245,6 @@ export const AddressSidebar = ({
     );
   }
 
-  // ── Téléphone : feuille remontant du bas ────────────────────────────────
   return (
     <MapSheet initialSnap={3} isOpen={isOpen} onClose={onClose} isLight={false} zIndex={100}>
           <div className="flex-1 overflow-y-auto px-5 pb-10 pt-2">{body}</div>

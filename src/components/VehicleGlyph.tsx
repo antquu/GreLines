@@ -2,12 +2,6 @@ import { MdElectricBike, MdElectricScooter } from 'react-icons/md';
 import { IoCarSport } from 'react-icons/io5';
 import { FaMotorcycle, FaTruckFront } from 'react-icons/fa6';
 
-
-
-
-
-
-
 export function VehicleGlyph({
   formFactor,
   size = 20,

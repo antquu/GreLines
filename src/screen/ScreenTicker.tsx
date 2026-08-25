@@ -3,16 +3,6 @@ import type { Line } from '../types';
 import { MarqueeText } from '../components/MarqueeText';
 import { stripHtml } from '../utils/stripHtml';
 
-
-
-
-
-
-
-
-
-
-
 export function ScreenTicker({ lines }: { lines: Line[] }) {
   const messages: string[] = [];
   const seen = new Set<string>();

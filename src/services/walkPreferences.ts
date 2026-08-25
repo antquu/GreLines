@@ -107,7 +107,6 @@ export function saveWalkPreferences(preferences: WalkPreferences): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
   } catch {
-    // Navigation privée, quota plein : le réglage vaudra pour cette session.
   }
 }
 

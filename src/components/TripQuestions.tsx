@@ -56,7 +56,6 @@ function writeAppetite(choice: Appetite, scope: string) {
   try {
     localStorage.setItem(CHOICE_KEY, JSON.stringify({ choice, scope }));
   } catch {
-    // Navigation privée : le choix vaudra pour cette session.
   }
 }
 
@@ -405,8 +404,6 @@ export function TripQuestions({
       lineId: targetId,
       boardingStop,
       boardingTime,
-      // L'heure du téléphone à la seconde de la réponse : rapportée à l'heure de
-      // montée, c'est elle qui situera le véhicule sur son parcours.
       answeredAt: new Date().toISOString(),
       journey,
       cleanliness: collected.cleanliness,
@@ -446,15 +443,12 @@ export function TripQuestions({
      * seule personne a répondu une fois.
      */
     if (step + 1 >= round.length) send(updated);
-    // Un court délai laisse voir la carte se colorer avant qu'elle sorte : sans
-    // lui, on ne sait pas si l'on a touché ce qu'on visait.
     window.setTimeout(() => setStep((s) => s + 1), 160);
   };
 
   const answer = (choice: Appetite) => {
     writeAppetite(choice, choice === 'later' ? targetId : '');
     if (choice === 'yes') {
-      // On avance dans la réserve : trois questions *de plus*, jamais les mêmes.
       setThanked(true);
       window.setTimeout(() => {
         setThanked(false);

@@ -23,7 +23,7 @@
 
 import { motion } from 'framer-motion';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { MapSheet } from './MapSheet';
+import { createPortal } from 'react-dom';
 import { XMarkIcon } from '@heroicons/react/24/solid';
 import { isAndroidDevice } from '../utils/pwa';
 
@@ -169,8 +169,6 @@ function TutorialShot({
 }) {
   const width = box.x1 - box.x0;
   const height = box.y1 - box.y0;
-  // La toile fait deux fois plus large que haut : la zone utile, ramenée à ses
-  // proportions réelles, vaut donc `largeur × 2 / hauteur`.
   const ratio = (width * 2) / height;
 
   /*
@@ -292,10 +290,8 @@ export const InstallAppSheet = ({
   onDismiss,
   onClose,
   language,
-  theme = 'dark',
 }: InstallAppSheetProps) => {
   const text = getInstallText(language);
-  const isLight = theme === 'light';
 
   /**
    * L'appareil décide, et lui seul.
@@ -320,30 +316,35 @@ export const InstallAppSheet = ({
     isAndroidDevice() ? 'android' : 'apple',
   );
   const [slide, setSlide] = useState(0);
-  // Sens de l'animation : 1 = le nouveau contenu entre par la droite,
-  // -1 = il entre par la gauche.
+  /* Sortir en fondu plutôt que d'un coup : voir le même mécanisme dans le
+     parcours de mise en route. */
+  const [leaving, setLeaving] = useState(false);
   const [direction, setDirection] = useState(1);
 
   const steps = STEPS[platform];
   const total = steps.length;
 
-  // Rouvrir la feuille depuis les réglages doit repartir de la première étape.
-  // Ajustement pendant le rendu plutôt que dans un effet : pas de rendu
-  // intermédiaire affichant l'ancienne étape.
   const [wasOpen, setWasOpen] = useState(isOpen);
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
     if (isOpen) {
       setSlide(0);
       setDirection(1);
+      setLeaving(false);
     }
   }
 
   const isLastSlide = slide === total - 1;
 
+  /** Sortir : le fondu d'abord, le démontage ensuite. */
+  const leave = (done: () => void) => {
+    setLeaving(true);
+    window.setTimeout(done, 300);
+  };
+
   const handleNext = () => {
     if (isLastSlide) {
-      onDismiss();
+      leave(onDismiss);
       return;
     }
     setDirection(1);
@@ -364,161 +365,148 @@ export const InstallAppSheet = ({
   const footerRef = useRef<HTMLDivElement | null>(null);
   const area = useShotArea(isOpen, columnNode, { header: headerRef, footer: footerRef });
 
-  return (
-    <MapSheet initialSnap={3} isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={100}>
-      {/* Colonne de hauteur pleine : react-modal-sheet insère un conteneur
-          intermédiaire non flex, sans lequel la capture du tutoriel pousse les
-          boutons sous le bord de l'écran. */}
-      <div ref={setColumnNode} className="flex flex-col">
-        {/* En-tête */}
-        <div
-          ref={headerRef}
-          className="flex flex-shrink-0 items-start justify-between gap-3 px-5 py-3"
+  if (!isOpen || typeof document === 'undefined') return null;
+
+  /*
+   * Un écran, pas une feuille.
+   *
+   * Le tutoriel vivait dans une feuille qui montait du bas, à moitié posée sur
+   * la carte : on lisait « touchez les trois points » avec, sous les yeux, une
+   * application dont ce n'était plus le moment. L'écran entier, en noir, ne
+   * laisse rien d'autre à regarder que la manœuvre à faire.
+   *
+   * Toujours noir, quel que soit le thème : ce sont des captures d'écran de
+   * navigateur qu'on regarde, et elles se détachent sur du noir.
+   */
+  return createPortal(
+    <div
+      className={`fixed inset-0 z-[10040] flex flex-col bg-black text-white transition-opacity duration-300 ${
+        leaving ? 'pointer-events-none opacity-0' : 'opacity-100'
+      }`}
+    >
+      <div
+        ref={headerRef}
+        className="flex flex-shrink-0 items-start justify-between gap-3 px-6 pb-4"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+      >
+        <h3
+          style={{
+            fontSize: '26px',
+            lineHeight: 1.15,
+            fontWeight: 700,
+            color: '#ffffff',
+            margin: 0,
+            minWidth: 0,
+            flex: '1 1 auto',
+          }}
         >
-          <div className="min-w-0">
-            <h3
-              className={`text-base font-bold leading-tight ${
-                isLight ? 'text-slate-900' : 'text-white'
-              }`}
-            >
-              {text.title}
-            </h3>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label={text.close}
-            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border transition ${
-              isLight
-                ? 'border-slate-200 bg-white hover:bg-slate-100'
-                : 'border-slate-700 bg-slate-800 hover:bg-slate-700'
-            }`}
-          >
-            <XMarkIcon className={`h-4 w-4 ${isLight ? 'text-slate-700' : 'text-white'}`} />
-          </button>
-        </div>
-
-        {/* La capture, seule, dans toute la place qui reste. Elle glisse d'un
-            côté ou de l'autre au changement d'étape — le changement de clé
-            remonte le bloc, qui rejoue alors les keyframes d'index.css. Pas
-            d'animation de sortie : elle n'apporte rien ici, et AnimatePresence
-            en mode « wait » se bloque sous StrictMode. */}
-        <div
-          className="flex flex-shrink-0 items-center justify-center px-5"
-          style={{ height: area.height }}
+          {text.title}
+        </h3>
+        <button
+          onClick={() => leave(onClose)}
+          aria-label={text.close}
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white/10 transition active:scale-90"
         >
-          <div
-            key={`${platform}-${slide}`}
-            className={direction > 0 ? 'install-slide-right' : 'install-slide-left'}
-          >
-            <TutorialShot
-              src={`/assets/tuto/${platform}/${step.file}_${suffix}.png`}
-              box={step.box}
-              alt={text.stepLabel(slide + 1, total)}
-              area={area}
-            />
-          </div>
-        </div>
+          <XMarkIcon className="h-5 w-5 text-white" />
+        </button>
+      </div>
 
-        {/* Le bas de la feuille : ce qu'il faut lire, et ce qu'il faut toucher.
-            Le tout est ancré ici et ne bouge pas d'une étape à l'autre, quelle
-            que soit la hauteur de la capture au-dessus. */}
+      {/* La capture, au milieu, dans toute la place qui reste. */}
+      <div
+        ref={setColumnNode}
+        className="flex min-h-0 flex-1 items-center justify-center px-6"
+      >
         <div
-          ref={footerRef}
-          className={`flex-shrink-0 border-t px-5 pb-6 pt-4 ${
-            isLight ? 'border-slate-200' : 'border-slate-700/60'
-          }`}
+          key={`${platform}-${slide}`}
+          className={direction > 0 ? 'install-slide-right' : 'install-slide-left'}
         >
-          {/* Marges portées par des div : `p { margin: 0 }` est déclaré hors
-              layer dans index.css et neutralise les utilitaires `mt-*`
-              appliqués à un paragraphe. */}
-          <p
-            className={`text-sm font-semibold ${isLight ? 'text-slate-400' : 'text-slate-500'}`}
-          >
-            {text.stepLabel(slide + 1, total)}
-          </p>
-          {/* Une hauteur minimale réservée au texte, calée sur l'étape la plus
-              longue : sans elle, une étape à deux lignes ferait remonter les
-              boutons d'un cran par rapport à l'étape à trois lignes qui la
-              précède, et l'on viserait un bouton qui a bougé. */}
-          <div className="mt-1 min-h-[4.5rem]">
-            <p
-              className={`text-sm leading-relaxed ${
-                isLight ? 'text-slate-600' : 'text-slate-300'
-              }`}
-            >
-              {text.slides[platform][slide]}
-            </p>
-          </div>
-
-          {/* Progression. Les points sont cliquables : revenir sur une étape
-              qu'on vient de passer ne doit pas demander de tout recommencer. */}
-          <div className="mb-4 mt-3 flex justify-center gap-1.5">
-            {steps.map((entry, index) => (
-              <button
-                key={entry.file}
-                type="button"
-                aria-label={text.stepLabel(index + 1, total)}
-                onClick={() => {
-                  setDirection(index >= slide ? 1 : -1);
-                  setSlide(index);
-                }}
-                className={`h-1.5 rounded-full transition-all ${
-                  index === slide
-                    ? 'w-6 bg-blue-600'
-                    : `w-1.5 ${isLight ? 'bg-slate-300' : 'bg-slate-600'}`
-                }`}
-              />
-            ))}
-          </div>
-
-          <div className="flex gap-2">
-            {slide > 0 && (
-              <button
-                type="button"
-                onClick={handlePrevious}
-                className={`rounded-2xl border px-4 py-3 text-[15px] font-semibold transition ${
-                  isLight
-                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                    : 'border-slate-700 bg-slate-800 text-white hover:bg-slate-700'
-                }`}
-              >
-                {language === 'fr' ? 'Retour' : 'Back'}
-              </button>
-            )}
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.98 }}
-              onClick={handleNext}
-              className="flex-1 rounded-2xl bg-blue-600 px-4 py-3 text-[15px] font-semibold text-white transition hover:bg-blue-500"
-            >
-              {isLastSlide ? text.done : text.next}
-            </motion.button>
-          </div>
-
-          <div className="mt-3 flex flex-col items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setDirection(platform === 'apple' ? 1 : -1);
-                setPlatform(platform === 'apple' ? 'android' : 'apple');
-                setSlide(0);
-              }}
-              className="text-[13px] font-semibold text-blue-500 transition-opacity hover:opacity-70"
-            >
-              {text.otherPlatform(platform)}
-            </button>
-            <button
-              type="button"
-              onClick={onDismiss}
-              className={`text-[13px] font-normal transition-opacity hover:opacity-60 ${
-                isLight ? 'text-slate-500' : 'text-slate-400'
-              }`}
-            >
-              {text.skip}
-            </button>
-          </div>
+          <TutorialShot
+            src={`/assets/tuto/${platform}/${step.file}_${suffix}.png`}
+            box={step.box}
+            alt={text.stepLabel(slide + 1, total)}
+            area={area}
+          />
         </div>
       </div>
-    </MapSheet>
+
+      {/* Ce qu'il faut lire, et ce qu'il faut toucher. Ancré en bas, immobile
+          d'une étape à l'autre quelle que soit la hauteur de la capture. */}
+      <div
+        ref={footerRef}
+        className="flex-shrink-0 px-6 pt-5"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
+      >
+        <p className="text-sm font-semibold text-white/45">
+          {text.stepLabel(slide + 1, total)}
+        </p>
+        {/* Une hauteur minimale réservée au texte, calée sur l'étape la plus
+            longue : sans elle les boutons remontent d'un cran d'une étape à
+            l'autre, et l'on vise un bouton qui a bougé. */}
+        <div className="mt-2 min-h-[5rem]">
+          <p className="text-[17px] leading-relaxed text-white/85">
+            {text.slides[platform][slide]}
+          </p>
+        </div>
+
+        <div className="mb-5 mt-4 flex justify-center gap-1.5">
+          {steps.map((entry, index) => (
+            <button
+              key={entry.file}
+              type="button"
+              aria-label={text.stepLabel(index + 1, total)}
+              onClick={() => {
+                setDirection(index >= slide ? 1 : -1);
+                setSlide(index);
+              }}
+              className={`h-1.5 rounded-full transition-all ${
+                index === slide ? 'w-6 bg-blue-500' : 'w-1.5 bg-white/25'
+              }`}
+            />
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          {slide > 0 && (
+            <button
+              type="button"
+              onClick={handlePrevious}
+              className="rounded-2xl bg-white/10 px-5 py-4 text-[15px] font-bold text-white transition active:scale-[0.98]"
+            >
+              {language === 'fr' ? 'Retour' : 'Back'}
+            </button>
+          )}
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.98 }}
+            onClick={handleNext}
+            className="flex-1 rounded-2xl bg-blue-600 px-4 py-4 text-[15px] font-bold text-white transition"
+          >
+            {isLastSlide ? text.done : text.next}
+          </motion.button>
+        </div>
+
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setDirection(platform === 'apple' ? 1 : -1);
+              setPlatform(platform === 'apple' ? 'android' : 'apple');
+              setSlide(0);
+            }}
+            className="text-[14px] font-semibold text-blue-400 transition-opacity active:opacity-60"
+          >
+            {text.otherPlatform(platform)}
+          </button>
+          <button
+            type="button"
+            onClick={() => leave(onDismiss)}
+            className="py-1 text-[13px] font-normal text-white/45 transition active:text-white/80"
+          >
+            {text.skip}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 };

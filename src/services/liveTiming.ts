@@ -85,7 +85,6 @@ export async function publishObservation(observation: LineObservation): Promise<
   if (!isSupabaseConfigured || !supabase) return;
 
   const delay = Math.round(observation.delaySeconds);
-  // On ne publie pas ce qu'on refuserait de lire.
   if (!Number.isFinite(delay) || Math.abs(delay) > MAX_PLAUSIBLE_DELAY_S) return;
   if (!observation.lineId || !observation.fromStop || !observation.toStop) return;
 
@@ -99,7 +98,6 @@ export async function publishObservation(observation: LineObservation): Promise<
       delay_seconds: delay,
     });
   } catch {
-    // Rien à rattraper.
   }
 }
 

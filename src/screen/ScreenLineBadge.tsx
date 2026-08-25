@@ -1,7 +1,6 @@
 import { resolveLineStyle, isGrenobleNetworkLine, isSncfLine, SNCF_TER_COLOR } from '../utils/lineColors';
 import { isRoundLine } from '../components/LineBadge';
 
-
 const RELAY_OVERLAY: Record<string, string> = {
   NAVA: 'A',
   NAVB: 'B',
@@ -9,14 +8,6 @@ const RELAY_OVERLAY: Record<string, string> = {
   NAVD: 'D',
   NAVE: 'E',
 };
-
-
-
-
-
-
-
-
 
 export function ScreenLineBadge({
   lineId,
@@ -56,7 +47,6 @@ export function ScreenLineBadge({
     );
   }
 
-  // Lignes SNCF : logo TER au-dessus du code, sur le bleu de la charte.
   if (isSncfLine(lineId)) {
     return (
       <span

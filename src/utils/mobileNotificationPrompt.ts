@@ -1,23 +1,16 @@
-import { isMobileDevice, isStandaloneApp } from './pwa';
-import { notificationPermission } from '../services/tripNotifications';
+/*
+ * L'ancienne demande de notifications ne s'ouvre plus d'elle-même : la mise en
+ * route du premier lancement l'a reprise, avec la carte et le compte — voir
+ * `utils/onboarding`. L'écran, lui, existe toujours : les réglages le rouvrent
+ * pour qui veut y revenir. Il ne reste ici que la marque qui l'empêche de
+ * réapparaître.
+ */
 
 const STORAGE_KEY = 'greLines_mobileNotificationPromptDismissed_v1';
-
-export function shouldAutoOpenMobileNotificationPrompt(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (!isMobileDevice() || !isStandaloneApp()) return false;
-  if (notificationPermission() !== 'default') return false;
-  try {
-    return localStorage.getItem(STORAGE_KEY) !== 'true';
-  } catch {
-    return true;
-  }
-}
 
 export function markMobileNotificationPromptDismissed(): void {
   try {
     localStorage.setItem(STORAGE_KEY, 'true');
   } catch {
-    // Si le stockage est indisponible, on laissera le navigateur décider.
   }
 }

@@ -24,8 +24,6 @@ export function useWakeLock(active: boolean) {
     const lock: any = (navigator as any).wakeLock;
     if (!active || !lock?.request) return;
 
-    // `cancelled` évite qu'une demande partie juste avant la sortie du guidage
-    // n'installe un verrou que plus personne ne relâchera.
     let cancelled = false;
 
     const acquire = async () => {
@@ -38,12 +36,10 @@ export function useWakeLock(active: boolean) {
           return;
         }
         sentinelRef.current = sentinel;
-        // Le système peut reprendre le verrou sans nous prévenir autrement.
         sentinel.addEventListener?.('release', () => {
           if (sentinelRef.current === sentinel) sentinelRef.current = null;
         });
       } catch {
-        // Refus du navigateur, batterie faible, onglet en fond : on s'en passe.
       }
     };
 

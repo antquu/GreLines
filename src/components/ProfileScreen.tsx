@@ -79,8 +79,6 @@ export function ProfileScreen({
     const count = Math.min(helped, 8);
     if (count === 0) return [];
 
-    // Une graine tirée du numéro de carte : deux comptes n'ont pas la même
-    // couronne, et le même compte retrouve toujours la sienne.
     const seed = [...(account?.cardCode ?? '')].reduce(
       (total, char) => total + char.charCodeAt(0),
       0,
@@ -239,7 +237,7 @@ export function ProfileScreen({
               cardCode={card.cardCode}
               expiresAt={card.expiresAt}
               photoUrl={card.photoUrl}
-              className={isLight ? 'shadow-[0_10px_28px_rgba(15,23,42,0.10)]' : 'shadow-2xl'}
+              shadowClassName={isLight ? 'shadow-[0_10px_28px_rgba(15,23,42,0.10)]' : 'shadow-2xl'}
             />
           </div>
         )}

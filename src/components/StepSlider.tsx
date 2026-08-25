@@ -61,8 +61,6 @@ export function StepSlider({
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-  // Un identifiant par curseur : deux `clipPath` de même nom dans un document
-  // se marchent dessus, et les deux réglages sont côte à côte.
   const clipId = useRef(`slider-fill-${Math.random().toString(36).slice(2)}`).current;
 
   useEffect(() => {
@@ -86,7 +84,6 @@ export function StepSlider({
   };
 
   const ratio = count > 1 ? value / (count - 1) : 0;
-  // Le remplissage s'arrête sous la pastille, pas à son bord gauche.
   const fillWidth = Math.max(CAP_LEFT, ratio * width + CAP_LEFT / 2);
 
   return (
@@ -99,9 +96,6 @@ export function StepSlider({
       aria-valuenow={value}
       tabIndex={0}
       onPointerDown={(e) => {
-        // On capture le pointeur : le doigt peut sortir de la piste sans que le
-        // réglage s'interrompe, ce qui arrive tout le temps sur une bande de
-        // seize pixels de haut.
         e.currentTarget.setPointerCapture(e.pointerId);
         pick(e.clientX);
       }}

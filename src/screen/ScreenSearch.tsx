@@ -7,7 +7,6 @@ import { ScreenTopBar } from './ScreenTopBar';
 import { ScreenLineBadge } from './ScreenLineBadge';
 import type { ScreenLayout } from './screenUtils';
 
-
 const MAX_RESULTS = 8;
 
 const normalize = (value: string) =>
@@ -15,12 +14,6 @@ const normalize = (value: string) =>
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
-
-
-
-
-
-
 
 const LAYOUT_OPTIONS: Array<{ id: ScreenLayout; label: string; hint: string }> = [
   { id: 'cards', label: 'Cartes', hint: 'Grands chiffres, lisible de loin' },
@@ -63,10 +56,6 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
       return name.includes(q) || city.includes(q) || stop.id.toLowerCase().includes(q);
     });
     
-    
-    
-    
-    
     const rank = (stop: Stop) => {
       const name = normalize(stop.name);
       if (name === q) return 0;
@@ -85,8 +74,6 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
 
   useEffect(() => setHighlight(0), [query]);
 
-  
-  
   useEffect(() => {
     let active = true;
     for (const stop of results) {
@@ -209,8 +196,7 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
                   onClick={() => setLayout(option.id)}
                   title={option.hint}
                   className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
-                    
-                    
+
                     isActive
                       ? 'border-[#0f172a] bg-[#0f172a] text-white'
                       : 'border-slate-200 bg-white text-slate-500'

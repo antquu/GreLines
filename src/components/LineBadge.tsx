@@ -17,21 +17,11 @@ const RELAY_OVERLAY: Record<string, string> = {
   NAVE: 'E',
 };
 
-
-
-
-
-
 export function isRoundLine(label: string): boolean {
   const n = label.toUpperCase().trim();
   if (n === 'A' || n === 'B' || n === 'C' || n === 'D' || n === 'E') return true;
   return /^C\d+$/.test(n);
 }
-
-
-
-
-
 
 export function readableTextColor(hex: string): string {
   const m = hex.replace('#', '');
@@ -41,15 +31,6 @@ export function readableTextColor(hex: string): string {
   const b = parseInt(m.slice(4, 6), 16);
   return r * 0.299 + g * 0.587 + b * 0.114 > 186 ? '#000000' : '#ffffff';
 }
-
-
-
-
-
-
-
-
-
 
 export function LineBadge({
   line,
@@ -116,12 +97,6 @@ export function LineBadge({
     );
   }
 
-  // TCL publie ses propres pictogrammes de ligne, avec le logogramme du mode
-  // (M pour le métro, T pour le tram) et la couleur officielle de la charte.
-  // Les redessiner en badge coloré donnerait un à-peu-près là où l'exact est
-  // disponible. Ils sont servis depuis nos assets et non depuis tcl.fr : un
-  // domaine tiers dépend d'une politique de sécurité de contenu et d'une URL
-  // dont rien ne garantit la pérennité.
   if (String(line.id).startsWith('TCL:')) {
     const code = String(line.id).slice(4);
     return (
@@ -130,8 +105,6 @@ export function LineBadge({
           src={`/assets/lignes/${encodeURIComponent(code)}.svg`}
           alt={code}
           className="h-full w-auto max-w-none object-contain"
-          // Un pictogramme absent ne doit pas laisser une image cassée : on
-          // rend la main au badge coloré, qui sait toujours s'afficher.
           onError={event => { (event.currentTarget as HTMLImageElement).style.display = 'none'; }}
         />
         {line.hasTraffic && (
@@ -143,9 +116,6 @@ export function LineBadge({
     );
   }
 
-  // Lignes SNCF : le logo TER au-dessus du code, sur le bleu de la charte. Le
-  // code seul ne suffit pas — la « C1 » du TER n'a rien à voir avec la Chrono 1
-  // de Grenoble, et les deux se croisent en gare.
   if (isSncfLine(line.routeId || line.id)) {
     const sncfCode = (line.shortName || line.id).toUpperCase().replace(/^[A-Z0-9]{3}[:_]/, '');
     const logoDim =

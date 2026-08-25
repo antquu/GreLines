@@ -69,9 +69,6 @@ export async function getLineReputation(lineId: string): Promise<LineReputation 
       return null;
     }
 
-    // La note agrège les quatre critères sans les pondérer : rien ne permet de
-    // dire qu'un véhicule sale gêne plus qu'un véhicule bondé, et prétendre le
-    // contraire reviendrait à choisir à la place des voyageurs.
     const scores: number[] = [];
     const crowdingScores: number[] = [];
     let onTimeTotal = 0;

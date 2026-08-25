@@ -1,6 +1,10 @@
 ﻿import { useRef, forwardRef, useImperativeHandle, useCallback, useState, useMemo, useEffect, memo } from 'react';
 import type { ForwardedRef } from 'react';
 import MapLibreMap, { Marker, Source, Layer } from 'react-map-gl/maplibre';
+import { FaWheelchair } from 'react-icons/fa';
+import { useAccessibleStops } from '../hooks/useAccessibleStops';
+import { detectDeviceTier, mapPixelRatio } from '../utils/deviceTier';
+import { isStopAccessible } from '../services/stopAccessibility';
 import type { Line, Stop } from '../types';
 import type { MapRef as MapLibreRef, MapLayerMouseEvent, MapLayerTouchEvent } from 'react-map-gl/maplibre';
 import type { AddressResult } from '../services/geocoding';
@@ -44,17 +48,10 @@ interface MapProps {
   
   routeEnd?: RouteMapPoint | null;
   
-
-
-
-
   alwaysLabelledStopIds?: string[] | null;
   
   routeLine?: GeoJSON.FeatureCollection | null;
   
-
-
-
   routeStops?: GeoJSON.FeatureCollection | null;
   
   routeLineBadges?: JourneyBadge[] | null;
@@ -69,10 +66,6 @@ interface MapProps {
   
   lineGeometries?: LineGeometry[];
   
-
-
-
-
   visibleStopPoints?: ServedStopPoint[] | null;
   
   /** Un point est en attente d'être désigné : extrémité du trajet, domicile ou travail. */
@@ -94,85 +87,32 @@ interface MapProps {
   
   onSharedSelect?: (selection: { operator: SharedOperator; points: SharedVehiclePoint[] }) => void;
   
-
-
-
   focusedShared?: { operator: SharedOperator; points: SharedVehiclePoint[] } | null;
   
   highlightedVehicleId?: string | null;
 }
 
-
 const MAX_LABEL_LINE_BADGES = 3;
-
 
 const STOPS_LAYER_ID = 'stops-circles';
 
 /** Durée du contact au-delà de laquelle on désigne un point plutôt qu'on ne fait glisser la carte. */
 const LONG_PRESS_MS = 500;
 
-
-
-
-
-
 const CITIZ_LAYER_ID = 'citiz-circles';
 const VOI_LAYER_ID = 'voi-circles';
 const CITIZ_COLOR = '#2563eb';
 const VOI_COLOR = '#ec4899';
 
-
-
-
-
-
-
-
-
-
-
-
 const SHARED_LABEL_MIN_ZOOM = 16.5;
-
-
-
-
-
-
-
-
-
 
 const MAX_SHARED_LABELS = 30;
 
-
-
-
-
-
 const MAX_FOCUS_LABELS = 200;
-
-
-
-
-
-
-
 
 const SHARED_CLUSTER_RADIUS = 28;
 
-
-
-
-
-
-
-
-
-
-
 const SHARED_CLUSTER_MAX_ZOOM = 16;
-
 
 interface SharedPinData {
   key: string;
@@ -186,19 +126,7 @@ interface SharedPinData {
   point: SharedVehiclePoint | null;
 }
 
-
-
-
-
-
 const FANOUT_RADIUS_DEG = 0.000055;
-
-
-
-
-
-
-
 
 function explodeIntoVehiclePoints(points: SharedVehiclePoint[]): SharedVehiclePoint[] {
   const byPosition: Record<string, SharedVehiclePoint[]> = {};
@@ -218,8 +146,6 @@ function explodeIntoVehiclePoints(points: SharedVehiclePoint[]): SharedVehiclePo
       exploded.push(bucket[0]);
       continue;
     }
-    // La longitude se resserre avec la latitude : sans ce facteur, la couronne
-    // serait un ovale écrasé.
     const lonScale = 1 / Math.max(0.2, Math.cos((bucket[0].lat * Math.PI) / 180));
     bucket.forEach((single, index) => {
       const angle = (2 * Math.PI * index) / bucket.length;
@@ -237,7 +163,6 @@ function explodeIntoVehiclePoints(points: SharedVehiclePoint[]): SharedVehiclePo
 /** Rayon de tolérance, en pixels, pour attraper un véhicule au clic. */
 const SHARED_TAP_RADIUS_PX = 18;
 
-
 /** Nombre maximal de véhicules rapportés par un amas cliqué. */
 const MAX_CLUSTER_LEAVES = 200;
 
@@ -247,18 +172,10 @@ const MAX_CLUSTER_LEAVES = 200;
  * « il y en a plusieurs » sans avoir besoin d'un chiffre lisible au 1:20 000.
  */
 const sharedCirclePaint = (color: string) => ({
-  // Toutes de la même taille, et volontairement minuscules : ce sont des
-  // véhicules de complément, ils ne doivent pas concurrencer les arrêts.
   'circle-radius': 2.5,
   'circle-color': color,
   'circle-stroke-color': '#ffffff',
   'circle-stroke-width': 1,
-  // Les pastilles s'effacent là où les épingles prennent le relais. On les
-  // rend transparentes plutôt que de borner la couche : sans couche visible,
-  // MapLibre cesserait de charger les tuiles de la source, et les épingles —
-  // qui lisent les amas depuis cette source — n'auraient plus rien à afficher.
-  // Bascule franche : la pastille s'éteint exactement au zoom où l'épingle
-  // prend le relais. Un fondu laissait un intervalle sans rien à l'écran.
   'circle-opacity': ['step', ['zoom'], 1, SHARED_LABEL_MIN_ZOOM, 0] as any,
   'circle-stroke-opacity': ['step', ['zoom'], 1, SHARED_LABEL_MIN_ZOOM, 0] as any,
 });
@@ -273,7 +190,6 @@ const MAX_DOM_LABELS = 40;
 /** Deux fonds de carte MapTiler : un pour chaque thème de l'app. */
 const DARK_MODE_MAP_STYLE_URL = 'https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl';
 const LIGHT_MODE_MAP_STYLE_URL = 'https://api.maptiler.com/maps/019f7c76-a3f8-751b-bedb-d7fe9d83d122/style.json?key=7TQErbyvEqFlis3QMmSl';
-
 
 export interface MapRef {
   centerOnStop: (stop: Stop) => void;
@@ -364,16 +280,11 @@ const attemptedMissingImages = new Set<string>();
 const handleStyleImageMissing = (map: any, event: any) => {
   const id = String(event.id ?? '');
   if (!id || map.hasImage(id)) return;
-  // Une seule tentative par identifiant. Sans ce registre, chaque tuile
-  // contenant l'écusson relançait l'ajout, et MapLibre journalisait un refus à
-  // chaque fois — des centaines par seconde pendant un déplacement.
   if (attemptedMissingImages.has(id)) return;
   attemptedMissingImages.add(id);
   try {
     map.addImage(id, createPlaceholderSprite(), { pixelRatio: 1 });
   } catch {
-    // Le style déclare cette icône avec une taille nulle : on ne peut pas la
-    // combler. L'écusson ne se dessinera pas, et on n'en reparle plus.
   }
 };
 
@@ -393,10 +304,6 @@ const buildLinesFeatureCollection = (
   const features: GeoJSON.Feature[] = [];
   for (const g of geometries) {
     for (const feat of g.geojson.features) {
-      // Try to read a color from the feature's existing properties. MTAG
-      // sometimes exposes `couleur` (with #) or `color`. If the source colour
-      // is missing or is the generic grey fallback, resolve special rules
-      // (chrono / specific bus lines) via `resolveLineBackgroundColor`.
       const props = (feat.properties || {}) as Record<string, unknown>;
       const rawColor =
         (typeof props.color === 'string' && props.color) ||
@@ -413,7 +320,6 @@ const buildLinesFeatureCollection = (
         undefined;
       const color = resolveLineBackgroundColor(rawColor as string | null, idCandidate as string | null);
 
-      // Use the raw GTFS geometry directly — no spline smoothing.
       features.push({
         ...feat,
         properties: { ...props, color },
@@ -538,7 +444,6 @@ const MapComponentBase = (
 
   const mapStyleUrl = isDarkMode ? DARK_MODE_MAP_STYLE_URL : LIGHT_MODE_MAP_STYLE_URL;
 
-
   /**
    * Arrêts confiés à la couche GPU : filtre de ligne et aimantage appliqués,
    * mais **sans découpage au viewport**.
@@ -558,16 +463,11 @@ const MapComponentBase = (
       filtered = filtered.map(stop => {
         const snapped = snapStopToLines(stop, lineGeometries, 80);
         if (!snapped) return stop;
-        // L'arrêt consulté garde sa position — on ne déplace pas ce qu'on est
-        // en train de regarder — mais il prend quand même la couleur de sa
-        // ligne : il est sur le tracé comme les autres.
         if (stop.id === selectedStop?.id) return { ...stop, lineColor: snapped.color };
         return { ...stop, lat: snapped.lat, lon: snapped.lon, lineColor: snapped.color };
       });
     }
 
-    // Plafond de marqueurs (option d'optimisation). L'arrêt sélectionné n'est
-    // jamais coupé, sinon il disparaîtrait au moment où on le consulte.
     if (perf.markerCap > 0 && filtered.length > perf.markerCap) {
       const capped = filtered.slice(0, perf.markerCap);
       if (selectedStop && !capped.some(stop => stop.id === selectedStop.id)) {
@@ -667,13 +567,17 @@ const MapComponentBase = (
     [routeLineFeatureCollection, routeDrawProgress]
   );
 
-  // Les tracés de lignes peuvent être coupés depuis la section Développeur :
-  // c'est la couche la plus lourde à redessiner pendant un déplacement.
   const hasLines = perf.lineShapes && !focusedShared && linesFeatureCollection.features.length > 0;
 
   /** Show stop name labels when zoomed in enough to read them comfortably, or
    * after a short hover delay when the user is still zoomed out. */
   const showStopLabels = perf.stopLabels && mapState.zoom >= 15;
+  /* Les arrêts accessibles en fauteuil : le pictogramme ne paraît qu'avec
+     l'étiquette, donc au zoom rapproché, là où l'on choisit son quai. */
+  const accessibleStops = useAccessibleStops();
+  /* Le mode accessibilité change la forme du renseignement, pas son contenu :
+     une pastille au-dessus du point plutôt qu'un pictogramme collé au nom. */
+  const accessibilityMode = perf.accessibility;
 
   const clearStopHoverTimer = useCallback(() => {
     if (hoverTimerRef.current !== null) {
@@ -698,15 +602,11 @@ const MapComponentBase = (
   }, [clearStopHoverTimer]);
 
   useEffect(() => {
-    // Badges désactivés : on ne précharge pas les lignes des arrêts visibles,
-    // ce qui supprime jusqu'à 35 requêtes à chaque déplacement de la carte.
     if (!perf.stopLineBadges) return;
 
     const idsToInspect = visibleStops.slice(0, 35).map(stop => stop.id);
     if (idsToInspect.length === 0) return;
 
-    // Fill immediately from the persistent cache to avoid a blank state while
-    // the network queue warms up.
     let hasCacheUpdates = false;
     const cacheUpdates: Record<string, Line[]> = {};
     for (const stopId of idsToInspect) {
@@ -764,8 +664,6 @@ const MapComponentBase = (
     if (!perf.stopLineBadges) return null;
     const lines = stopLinesById[stopId] || [];
     if (lines.length === 0) return null;
-    // Trois badges au maximum : au-delà, l'étiquette devient plus large que
-    // l'arrêt qu'elle désigne et cache ses voisins.
     const visible = lines.slice(0, MAX_LABEL_LINE_BADGES);
     const hiddenCount = lines.length - visible.length;
     return (
@@ -812,13 +710,39 @@ const MapComponentBase = (
       },
       zoom,
     });
-    // Le centre part au parent : c'est lui qui sait quoi en faire — pour
-    // l'instant, y chercher la commune dont on affichera la qualité de l'air.
     const center = mapRef.current.getCenter();
     onCenterChangeRef.current?.(center.lat, center.lng);
   }, []);
 
   const handleMapMove = useCallback(throttle(updateViewport, 300), [updateViewport]);
+
+  /**
+   * Vrai pendant qu'on déplace ou qu'on zoome.
+   *
+   * Sert aux pastilles d'accessibilité, qui sont larges : posées en pleine
+   * opacité, elles se recouvrent l'une l'autre dès qu'on fait glisser la carte
+   * et cachent les arrêts qu'on est en train de chercher. Elles s'effacent donc
+   * le temps du geste et reviennent quand il s'arrête.
+   *
+   * Le repos se déduit du silence, et non d'un `moveend` : ces événements
+   * s'apparient mal — une inertie, un `easeTo` déclenché pendant qu'on fait
+   * glisser, et l'on reçoit deux débuts pour une fin. Les pastilles restaient
+   * alors effacées indéfiniment. Ici, chaque frame de mouvement repousse
+   * l'échéance ; quand elle échoit, c'est que plus rien ne bouge, et la
+   * question de savoir quel geste s'est terminé ne se pose plus.
+   */
+  const [isMapMoving, setIsMapMoving] = useState(false);
+  const movingIdleRef = useRef<number | null>(null);
+
+  const markMapMoving = useCallback(() => {
+    setIsMapMoving(true);
+    if (movingIdleRef.current !== null) window.clearTimeout(movingIdleRef.current);
+    movingIdleRef.current = window.setTimeout(() => setIsMapMoving(false), 220);
+  }, []);
+
+  useEffect(() => () => {
+    if (movingIdleRef.current !== null) window.clearTimeout(movingIdleRef.current);
+  }, []);
 
   useEffect(() => {
     if (mapRef.current) {
@@ -855,10 +779,6 @@ const MapComponentBase = (
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    // On observe notre propre conteneur, présent dès le premier rendu, et non
-    // celui de MapLibre : au moment où cet effet s'exécute, react-map-gl n'a
-    // pas encore créé la carte. La carte, elle, est cherchée à chaque
-    // notification — elle finira par exister.
     let frame = 0;
     let lastWidth = 0;
     let lastHeight = 0;
@@ -866,16 +786,11 @@ const MapComponentBase = (
     const observer = new ResizeObserver(() => {
       const width = wrapper.clientWidth;
       const height = wrapper.clientHeight;
-      // Un conteneur de taille nulle (écran de chargement, onglet masqué) ne
-      // décrit aucune fenêtre de carte : redimensionner dessus ferait jeter à
-      // MapLibre les tuiles qu'il est en train de charger.
       if (width === 0 || height === 0) return;
       if (width === lastWidth && height === lastHeight) return;
       lastWidth = width;
       lastHeight = height;
 
-      // Une seule mise à jour par image : un observateur peut se déclencher
-      // plusieurs fois pendant une même transition de mise en page.
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => mapRef.current?.getMap?.()?.resize());
     });
@@ -920,16 +835,6 @@ const MapComponentBase = (
     onStopClick(stop);
   }, [onStopClick]);
 
-  // ─── Arrêts : une couche GPU au lieu de centaines de marqueurs DOM ────────
-  //
-  // MapLibre repositionne chaque marqueur HTML à *chaque image* pendant un zoom
-  // ou un déplacement. Avec ~750 arrêts dans le viewport, cela fait 750 calculs
-  // de projection + 750 écritures de `transform` par image : c'est ce qui
-  // faisait tomber la carte à 1 image/seconde au zoom.
-  //
-  // Une couche `circle` dessine les mêmes 750 arrêts en un seul appel GPU, avec
-  // un coût constant quel que soit leur nombre. Le DOM ne sert plus que pour les
-  // étiquettes (peu nombreuses, et seulement quand elles sont visibles).
   const stopsFeatureCollection = useMemo<GeoJSON.FeatureCollection>(() => ({
     type: 'FeatureCollection',
     features: mapStopsVisible.map(stop => ({
@@ -939,9 +844,6 @@ const MapComponentBase = (
         stopId: stop.id,
         selected: selectedStop?.id === stop.id,
         endpoint: selectedRouteStopIds.has(stop.id),
-        // Couleur du tracé sur lequel l'arrêt a été calé — la même que celle du
-        // trait, puisqu'elle en vient. Vide si l'arrêt n'est sur aucun tracé
-        // affiché ; la couche `circle` ne lit que des propriétés.
         lineColor: (stop as Stop & { lineColor?: string }).lineColor || '',
       },
       geometry: { type: 'Point' as const, coordinates: [stop.lon, stop.lat] },
@@ -962,10 +864,6 @@ const MapComponentBase = (
   const visibleShared = useMemo<SharedMobilityData>(() => {
     if (!focusedShared) return sharedMobility;
 
-    // Consulter une station, c'est demander à voir où chaque véhicule est
-    // garé : le point se démultiplie dès l'ouverture, une pastille par
-    // véhicule. Sélectionner une ligne dans la fiche ne fait plus que désigner
-    // sa pastille parmi les autres.
     const points = explodeIntoVehiclePoints(focusedShared.points);
 
     return {
@@ -1060,10 +958,6 @@ const MapComponentBase = (
 
       if (resolved.length > 0) return resolved;
 
-      // `getClusterLeaves` dépend de l'état interne de supercluster ; s'il ne
-      // rend rien (tuile pas encore indexée, amas recomposé entre-temps), on
-      // rassemble nous-mêmes les véhicules autour du point cliqué. Mieux vaut
-      // une fiche approchée qu'un clic sans effet.
       const [lon, lat] = feature.geometry?.coordinates ?? [];
       if (typeof lon === 'number' && typeof lat === 'number') {
         return gatherAround(operator, [lon, lat]);
@@ -1107,8 +1001,6 @@ const MapComponentBase = (
 
     inspect('citiz', visibleShared.citiz);
     inspect('voi', visibleShared.voi);
-    // Annotation explicite : l'affectation a lieu dans une fonction imbriquée,
-    // que l'inférence de flux ne suit pas.
     return best as Candidate | null;
   }, [visibleShared]);
 
@@ -1163,13 +1055,10 @@ const MapComponentBase = (
   }, [onSharedSelect, zoomToSharedSelection]);
 
   const handleMapClick = useCallback((event: any) => {
-    // Les couches de mobilité passent devant : leur cible est plus petite, si
-    // l'utilisateur l'a touchée c'est qu'il la visait.
     const features: any[] = event.features ?? [];
     const feature = features.find(f => /^(citiz|voi)/.test(f?.layer?.id ?? '')) ?? features[0];
     const layerId = feature?.layer?.id as string | undefined;
 
-    // Mobilités partagées : amas ou véhicule isolé, on ouvre la fiche.
     if (layerId && (layerId.startsWith('citiz') || layerId.startsWith('voi'))) {
       const operator: SharedOperator = layerId.startsWith('citiz') ? 'citiz' : 'voi';
       void collectSharedSelection(operator, feature).then(points => {
@@ -1187,27 +1076,17 @@ const MapComponentBase = (
       }
     }
 
-    // react-map-gl/maplibre expose lngLat comme tableau ou comme objet.
     let lngLat: [number, number] | null = null;
     try {
       const raw = event.lngLat;
       const parsed = Array.isArray(raw) ? raw : raw?.toArray?.() ?? null;
       if (parsed) lngLat = [parsed[0], parsed[1]];
     } catch {
-      // Coordonnées illisibles : on ignore le clic plutôt que de planter.
     }
     if (!lngLat) return;
 
-    // Repêchage par proximité.
-    //
-    // Les pastilles de mobilité partagée ne font que quelques pixels, et
-    // l'interrogation des couches dépend de subtilités de rendu. Plutôt que
-    // d'en dépendre, on cherche nous-mêmes le véhicule le plus proche du point
-    // touché, dans un rayon exprimé à l'écran.
     const nearby = findNearestSharedPoint(lngLat);
     if (nearby) {
-      // On ouvre tout le tas, pas seulement le véhicule le plus proche : un
-      // doigt posé sur un groupe désigne le groupe.
       const around = gatherAround(nearby.operator, [nearby.point.lon, nearby.point.lat]);
       openSharedSelection(nearby.operator, around.length > 0 ? around : [nearby.point]);
       return;
@@ -1233,11 +1112,6 @@ const MapComponentBase = (
       return;
     }
 
-    // On vient chercher *ce* véhicule : la caméra descend au zoom maximal que
-    // le style accepte, sur le barycentre des pastilles. Le cadrage précédent
-    // calculait le zoom qui fait tenir la couronne d'éclatement (une douzaine
-    // de mètres) avec du rembourrage : il retombait toujours un cran sous le
-    // maximum, et l'on voyait la carte reculer juste après s'être approchée.
     const spread = explodeIntoVehiclePoints(focusedShared.points);
     const lon = spread.reduce((sum, point) => sum + point.lon, 0) / spread.length;
     const lat = spread.reduce((sum, point) => sum + point.lat, 0) / spread.length;
@@ -1287,11 +1161,6 @@ const MapComponentBase = (
     if (!map || typeof map.getLayer !== 'function') return;
     if (!map.getLayer(STOPS_LAYER_ID)) return;
 
-    // Garde d'idempotence : `moveLayer` invalide le style et force un repaint.
-    // On ne l'appelle que si l'ordre est réellement à corriger — sans cela, un
-    // appel à chaque événement de style déclenchait un repaint en boucle, ce
-    // qui coûtait une bonne partie des images par seconde et retardait
-    // l'affichage des tuiles.
     const layers = map.getStyle()?.layers;
     if (!layers?.length) return;
     if (layers[layers.length - 1].id === STOPS_LAYER_ID) return;
@@ -1329,7 +1198,6 @@ const MapComponentBase = (
 
   const handleTouchStart = useCallback((event: MapLayerTouchEvent) => {
     cancelLongPress();
-    // Deux doigts : c'est un zoom qui commence.
     if (!onLongPress || (event.points?.length ?? 1) > 1) return;
 
     const { lat, lng } = event.lngLat ?? {};
@@ -1337,8 +1205,6 @@ const MapComponentBase = (
 
     longPressTimerRef.current = window.setTimeout(() => {
       longPressTimerRef.current = null;
-      // Une vibration brève confirme que le point est pris, sans avoir à
-      // regarder l'écran remonter la fiche.
       navigator.vibrate?.(15);
       onLongPress(lat, lng);
     }, LONG_PRESS_MS);
@@ -1349,16 +1215,12 @@ const MapComponentBase = (
   useEffect(() => {
     const map = mapRef.current?.getMap?.();
     if (!map) return;
-    // `beforeId` place déjà les tracés sous les arrêts à l'insertion. Il ne
-    // reste qu'un cas à rattraper : le rechargement complet du style lors de la
-    // bascule clair/sombre, qui n'arrive qu'à la demande de l'utilisateur.
     map.on('style.load', raiseStopsLayer);
     raiseStopsLayer();
     return () => {
       map.off('style.load', raiseStopsLayer);
     };
   }, [raiseStopsLayer, mapStyleUrl]);
-
 
   const citizCollection = useMemo(
     () => toSharedCollection(visibleShared.citiz),
@@ -1381,8 +1243,6 @@ const MapComponentBase = (
 
   const refreshSharedLabels = useCallback(() => {
     const map = mapRef.current?.getMap?.();
-    // En consultation d'une station, les épingles s'affichent quel que soit le
-    // zoom : c'est tout l'objet de la vue.
     if (!map || (mapState.zoom < SHARED_LABEL_MIN_ZOOM && !focusedShared)) {
       setSharedLabels(current => (current.length === 0 ? current : []));
       return;
@@ -1396,11 +1256,6 @@ const MapComponentBase = (
       const seen = new Set<string>();
       let features: Array<{ properties?: Record<string, unknown>; geometry?: { coordinates?: number[] } }> = [];
       try {
-        // `queryRenderedFeatures` se limite à ce qui est effectivement à
-        // l'écran. `querySourceFeatures` parcourait toutes les tuiles chargées,
-        // y compris celles qu'on vient de quitter : à mille huit cents
-        // trottinettes, ce balayage tombait au milieu du geste de zoom et
-        // retardait l'affichage des rues.
         const layerId = operator === 'citiz' ? CITIZ_LAYER_ID : VOI_LAYER_ID;
         if (!map.getLayer(layerId)) continue;
         features = map.queryRenderedFeatures({ layers: [layerId] }) as unknown as typeof features;
@@ -1416,7 +1271,6 @@ const MapComponentBase = (
         const clusterId = properties.cluster ? String(properties.cluster_id) : null;
         const pointId = properties.pointId ? String(properties.pointId) : null;
         const key = clusterId ? `c${clusterId}` : `p${pointId}`;
-        // Une même entité apparaît dans plusieurs tuiles chargées.
         if (!key || seen.has(key)) continue;
         seen.add(key);
 
@@ -1440,9 +1294,6 @@ const MapComponentBase = (
   }, [mapState.zoom, sharedIndex, focusedShared]);
 
   useEffect(() => {
-    // Recalcul différé plutôt qu'à chaque image : pendant un zoom, la liste
-    // des épingles change à chaque palier et personne ne la lit avant l'arrêt
-    // du geste. Ce délai rend la main au moteur pour dessiner les rues.
     const timer = setTimeout(refreshSharedLabels, 180);
     return () => clearTimeout(timer);
   }, [refreshSharedLabels, mapState.bounds, visibleShared]);
@@ -1453,13 +1304,8 @@ const MapComponentBase = (
    * HTML, et elle reste courte par construction.
    */
   const labelledStops = useMemo(() => {
-    // Consulter une station met tout le reste en retrait : les pastilles des
-    // arrêts sont déjà retirées, leurs étiquettes doivent suivre — sinon il
-    // reste des noms flottants au-dessus de rien.
     if (focusedShared) return [];
 
-    // Les arrêts proposés par la fiche adresse sont nommés en toutes lettres,
-    // même de loin : c'est la liste qu'on est en train de lire à côté.
     const pinned = alwaysLabelledStopIds?.length
       ? mapStops.filter(stop => alwaysLabelledStopIds.includes(stop.id))
       : [];
@@ -1480,53 +1326,48 @@ const MapComponentBase = (
       <MapLibreMap
         ref={mapRef}
         mapStyle={mapStyleUrl}
+        /*
+         * La finesse du rendu suit la machine.
+         *
+         * MapLibre peint par défaut à la densité de l'écran, ce qui laisse une
+         * carte crénelée sur un écran d'ordinateur ordinaire — un pixel par
+         * point — alors que la machine derrière en peindrait quatre fois plus
+         * sans y penser. On lui donne donc une consigne, calculée une fois au
+         * chargement : voir `utils/deviceTier`.
+         *
+         * Posée ici plutôt que sur le composant : `pixelRatio` n'est pas dans
+         * les propriétés que react-map-gl déclare, et une propriété inconnue
+         * n'arriverait pas jusqu'au constructeur.
+         */
+        onLoad={(event: any) => {
+          try {
+            event.target?.setPixelRatio?.(mapPixelRatio(detectDeviceTier()));
+          } catch {
+          }
+        }}
         initialViewState={{
           longitude: GRENOBLE_CENTER[1],
           latitude: GRENOBLE_CENTER[0],
           zoom: 12.1,
         }}
         style={{ width: '100%', height: '100%' }}
-        // Les tuiles apparaissent net, sans fondu de 300 ms. Sur un réseau
-        // lent, ce fondu s'ajoutait à l'attente et donnait l'impression que la
-        // carte se chargeait deux fois.
         fadeDuration={0}
-        // Une tuile vectorielle décrit un état du monde, pas un horaire : la
-        // redemander parce qu'un en-tête a expiré ne change rien à l'image.
         refreshExpiredTiles={false}
-        // Plus de tuiles gardées en mémoire : revenir sur ses pas redessine
-        // sans repasser par le réseau.
         maxTileCacheSize={400}
-        // `styledata` se déclenche à chaque modification du style — chargement,
-        // ajout de source, ajout de couche. On s'y abonnait à chaque fois, si
-        // bien qu'une même image manquante finissait traitée par des dizaines
-        // d'écouteurs empilés. Un seul abonnement, posé au premier passage.
         onStyleData={(evt: any) => {
           const map = evt.target;
           if (!map) return;
-          // `styledata` se déclenche aussi à l'ajout de la couche des arrêts :
-          // c'est le signal que les couches secondaires peuvent s'y référer.
           setStopsLayerReady(Boolean(map.getLayer?.(STOPS_LAYER_ID)));
           if (styleImageHookRef.current) return;
           styleImageHookRef.current = true;
           map.on('styleimagemissing', (event: any) => handleStyleImageMissing(map, event));
         }}
-        onMove={handleMapMove}
-        // Le suivi throttlé sert pendant le geste ; à son terme on prend la
-        // valeur exacte, pour que les épingles apparaissent sans retard.
+        onMove={() => {
+          markMapMoving();
+          handleMapMove();
+        }}
         onMoveEnd={updateViewport}
         onZoomEnd={updateViewport}
-        // La couche des arrêts est interactive : clic et survol sont résolus
-        // par MapLibre, plus par des gestionnaires attachés à chaque marqueur.
-        // Seuls les arrêts sont interrogés au survol et au clic.
-        //
-        // Cette liste sert aussi à `onMouseMove` : y laisser les couches de
-        // mobilité faisait tester, à chaque déplacement du curseur, près de
-        // deux mille pastilles réparties sur cinq couches. C'est le test le
-        // plus cher de la carte, et il tournait soixante fois par seconde.
-        //
-        // Les véhicules partagés restent cliquables : `handleMapClick` retombe
-        // sur une recherche de proximité dans les données, qui parcourt une
-        // liste déjà en mémoire au lieu d'interroger le moteur de rendu.
         interactiveLayerIds={[STOPS_LAYER_ID]}
         cursor={hoveredStopId ? 'pointer' : undefined}
         onMouseMove={handleMapMouseMove}
@@ -1548,9 +1389,6 @@ const MapComponentBase = (
             id={STOPS_LAYER_ID}
             type="circle"
             paint={{
-              // Mêmes tailles qu'avec les anciennes pastilles HTML (16 px de
-              // diamètre, 24 px pour l'arrêt sélectionné), avec une légère
-              // progression au zoom.
               'circle-radius': [
                 'interpolate', ['linear'], ['zoom'],
                 10, ['case', ['get', 'selected'], 9, 6],
@@ -1802,8 +1640,6 @@ const MapComponentBase = (
             id="citiz"
             type="geojson"
             data={citizCollection}
-            // En consultation, on vient précisément de démultiplier les
-            // pastilles : les regrouper à nouveau annulerait le geste.
             cluster={!focusedShared}
             clusterRadius={SHARED_CLUSTER_RADIUS}
             clusterMaxZoom={SHARED_CLUSTER_MAX_ZOOM}
@@ -1846,7 +1682,6 @@ const MapComponentBase = (
             latitude={pin.lat}
             anchor="bottom"
             onClick={() => {
-              // Un amas rend ses membres, un point isolé se suffit à lui-même.
               if (pin.clusterId) {
                 void collectSharedSelection(pin.operator, {
                   properties: { cluster: true, cluster_id: Number(pin.clusterId) },
@@ -1875,8 +1710,31 @@ const MapComponentBase = (
         {/* ─── Étiquettes de nom (DOM) ───────────────────────────────────
             Seules les étiquettes réellement affichées existent dans le DOM :
             au zoom rapproché, ou celle de l'arrêt survolé. */}
-        {labelledStops.map(stop => (
+        {labelledStops.map(stop => {
+          const accessible = isStopAccessible(accessibleStops, stop);
+          return (
           <Marker key={`label-${stop.id}`} longitude={stop.lon} latitude={stop.lat} anchor="bottom">
+            {/* En mode accessibilité, le fauteuil quitte le nom pour devenir une
+                pastille posée au-dessus : on la repère sans lire. Elle s'efface
+                pendant le geste — large comme elle est, elle masquerait les
+                arrêts voisins qu'on fait défiler. */}
+            {accessibilityMode && accessible && (
+              <div
+                className="mx-auto mb-1 flex items-center justify-center rounded-xl border-2"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderColor: '#22c55e',
+                  backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)',
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.2)',
+                  opacity: isMapMoving ? 0.25 : 1,
+                  transition: 'opacity 180ms ease-out',
+                  pointerEvents: 'none',
+                }}
+              >
+                <FaWheelchair style={{ width: 20, height: 20, color: '#22c55e' }} />
+              </div>
+            )}
             <div
               style={{
                 marginBottom: '10px',
@@ -1896,12 +1754,24 @@ const MapComponentBase = (
                   qui identifie l'arrêt. Ce sont les badges de lignes qui
                   cèdent la place (3 maximum, puis un +N). */}
               <span className="inline-flex items-center gap-1.5">
-                <span>{stop.name}</span>
+                <span>
+                  {stop.name}
+                  {/* Le fauteuil finit le nom, comme dans le panneau de
+                      l'arrêt : c'est la même information, elle se lit au même
+                      endroit. */}
+                  {accessible && !accessibilityMode && (
+                    <FaWheelchair
+                      className="ml-1 inline-block h-[0.85em] w-[0.85em] align-baseline text-blue-500"
+                      aria-hidden
+                    />
+                  )}
+                </span>
                 {renderStopLineBadges(stop.id)}
               </span>
             </div>
           </Marker>
-        ))}
+          );
+        })}
 
         {/* ─── Address marker (from geocoder) ───────────────────────────── */}
         {selectedAddress && (
@@ -1962,8 +1832,6 @@ const MapComponentBase = (
  */
 const SharedPin = memo(function SharedPin({ pin, highlighted = false }: { pin: SharedPinData; highlighted?: boolean }) {
   const color = pin.operator === 'citiz' ? CITIZ_COLOR : VOI_COLOR;
-  // Un amas n'expose pas le détail de ses membres : on retient l'icône de
-  // l'opérateur, la voiture pour Citiz et la trottinette pour Voi.
   const formFactor = pin.point
     ? dominantFormFactor(pin.point)
     : (pin.operator === 'citiz' ? 'car' : 'scooter');
@@ -1977,12 +1845,8 @@ const SharedPin = memo(function SharedPin({ pin, highlighted = false }: { pin: S
         height: 38,
         cursor: 'pointer',
         transformOrigin: 'bottom center',
-        // Grossie, l'épingle déborde sur ses voisines : elle doit passer devant.
         zIndex: highlighted ? 10 : 1,
       }}
-      // L'épingle naît de la pastille : elle part ronde et plate, puis s'étire
-      // en goutte. C'est la même forme qui grandit, pas une seconde forme qui
-      // apparaît par-dessus.
       initial={{ scale: 0.35, y: 10, opacity: 0 }}
       animate={{ scale: highlighted ? 1.55 : 1, y: 0, opacity: 1 }}
       transition={{ duration: 0.16, ease: 'easeOut' }}

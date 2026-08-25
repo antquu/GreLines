@@ -92,7 +92,6 @@ function write(journeys: FavoriteJourney[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(journeys));
   } catch {
-    // Stockage plein ou refusé : le favori vaut pour la session, sans plus.
   }
 }
 
@@ -119,9 +118,6 @@ export function addFavoriteJourney(
   const all = read();
   const existing = all.findIndex(entry => entry.id === key);
   if (existing >= 0) {
-    // Déjà là : on ne le double pas, on rafraîchit seulement ses libellés, qui
-    // ont pu changer de nom entre-temps (un arrêt renommé, une adresse
-    // reformulée par le géocodeur).
     all[existing] = {
       ...all[existing],
       from,

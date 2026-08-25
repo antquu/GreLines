@@ -29,17 +29,10 @@ interface SharedMobilitySidebarProps {
   onVehicleFocus?: (vehicleId: string | null) => void;
 }
 
-
 const OPERATOR_SITES: Record<SharedOperator, string> = {
   citiz: 'https://alpes-loire.citiz.coop/',
   voi: 'https://www.voi.com/fr/',
 };
-
-
-
-
-
-
 
 const OPERATOR_BRAND: Record<SharedOperator, string> = {
   citiz: '#4ac2b6',
@@ -47,7 +40,6 @@ const OPERATOR_BRAND: Record<SharedOperator, string> = {
 };
 
 const OPERATORS: Record<SharedOperator, { label: string; color: string; logo: string; logoDark?: string }> = {
-  
   
   citiz: { label: 'Citiz', color: '#2563eb', logo: '/assets/citiz.png', logoDark: '/assets/citiz_white.png' },
   voi: { label: 'Voi', color: '#ec4899', logo: '/assets/voi.png' },
@@ -220,8 +212,6 @@ function VehicleRow({
   const bookingUrl = vehicle.rentalUrl ?? OPERATOR_SITES[vehicle.operator];
 
   return (
-    // Un seul bloc arrondi : replié il fait la hauteur du titre, déplié il
-    // englobe les boutons. Les angles restent arrondis dans les deux états.
     <div
       className={`mb-2 overflow-hidden rounded-2xl transition-colors ${
         isExpanded ? 'bg-slate-800/70 ring-1 ring-slate-700' : 'hover:bg-slate-800/40'
@@ -325,7 +315,6 @@ function VehicleRow({
     </div>
   );
 }
-
 
 /**
  * Tarifs de la course.
@@ -546,25 +535,12 @@ export function SharedMobilitySidebar({
     onVehicleFocus?.(expandedId);
   }, [expandedId, onVehicleFocus]);
 
-  // Une station Citiz porte un nom ; en flotte libre il n'y a rien à nommer.
-  // Le nom de rue prend la place du titre : « 14 Rue de la Montat » dit où
-  // aller se garer, là où « Grüner [Station électrique] » suppose de connaître
-  // déjà le lieu. Le nom d'enseigne reste juste en dessous, pour ceux qui le
-  // reconnaissent.
   const stationNames = points
     .map(point => point.address || point.name)
     .filter(Boolean) as string[];
 
-  // Une trottinette en flotte libre n'a ni station ni adresse : personne ne l'a
-  // nommée, elle est simplement posée quelque part. On demande donc à la Base
-  // Adresse Nationale où est ce « quelque part », pour offrir le même repère
-  // qu'une station Citiz — un nom de rue.
   const anchorPoint = points[0];
   const needsStreet = Boolean(isOpen && anchorPoint && !anchorPoint.address && !anchorPoint.name);
-  // La rue est mémorisée avec le point auquel elle appartient : sans cette
-  // étiquette, la rue de la trottinette précédente s'afficherait un instant
-  // au-dessus de la suivante. Remettre l'état à zéro dans l'effet provoquerait
-  // un rendu en cascade — la comparaison au rendu coûte moins.
   const [resolvedStreet, setResolvedStreet] = useState<{ key: string; street: string } | null>(null);
   const anchorKey = anchorPoint ? `${anchorPoint.operator}:${anchorPoint.id}` : '';
 
@@ -581,8 +557,6 @@ export function SharedMobilitySidebar({
   const title = stationNames.length === 1 ? stationNames[0] : (points.length === 1 ? street : null);
   const stationSubtitle = points.length === 1 && points[0].address ? points[0].name : null;
 
-  // Un seul véhicule : on montre sa fiche détaillée plutôt qu'une liste d'un
-  // élément. C'est le cas dès qu'on a assez zoomé pour isoler une trottinette.
   const single = vehicles.length === 1 ? vehicles[0] : null;
 
   const header = (
@@ -650,7 +624,6 @@ export function SharedMobilitySidebar({
       ) : (
         <div className="mt-2">
           {vehicles.map(vehicle => {
-            // Le point qui porte ce véhicule : c'est vers lui qu'on guide.
             const host = points.find(point => point.vehicles.includes(vehicle)) ?? points[0];
             return (
               <VehicleRow

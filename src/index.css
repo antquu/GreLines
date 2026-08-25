@@ -16,14 +16,6 @@
   --font-sans: 'Inter', 'Helvetica Neue', system-ui, sans-serif;
 }
 
-
-
-
-
-
-
-
-
 /*
  * Canaro a été retirée : plus qu'Inter, partout.
  *
@@ -213,23 +205,12 @@ body {
   margin: 0;
 }
 
-
-
-
-
-
-
-
-
-
-
 .signal-label {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
-
 
 .tabular {
   font-variant-numeric: tabular-nums;
@@ -343,12 +324,37 @@ body {
 
 .gl-fade { animation: gl-fade-in 0.32s ease-out both; }
 
+/*
+ * Le passage de la liste d'itinéraires à la fiche, et le retour.
+ *
+ * La fiche vient de la droite, comme une page qu'on pousse ; le retour ramène
+ * la liste par la gauche, d'où on l'avait quittée. Le sens dit qu'on avance ou
+ * qu'on revient, ce qu'un simple fondu ne disait pas.
+ *
+ * `forwards` et non `both` : si l'animation ne démarre jamais, l'écran reste à
+ * sa place naturelle plutôt que figé sur son décalage de départ.
+ */
+@keyframes gl-page-from-right {
+  from { opacity: 0; transform: translateX(28%); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes gl-page-from-left {
+  from { opacity: 0; transform: translateX(-28%); }
+  to   { opacity: 1; transform: none; }
+}
+
+.gl-page-forward { animation: gl-page-from-right 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+.gl-page-back { animation: gl-page-from-left 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+
 @media (prefers-reduced-motion: reduce) {
   .gl-rise,
   .gl-drop,
   .gl-stagger,
   .gl-verdict,
   .gl-fade,
+  .gl-page-forward,
+  .gl-page-back,
   .gl-scanning { animation: none; }
   .gl-check-path { stroke-dashoffset: 0; animation: none; }
 }
@@ -525,14 +531,6 @@ code {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
-
-
-
-
-
-
-
-
 
 @keyframes footer-marquee {
   from { transform: translateX(0); }

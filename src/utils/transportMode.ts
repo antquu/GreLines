@@ -1,17 +1,7 @@
 export type TransportMode = 'BUS' | 'TRAM' | 'RAIL' | 'METRO' | 'OTHER';
 
-
-
-
-
-
-
-
-
-
 export function normalizeMode(value: string | undefined | null): TransportMode {
   const raw = String(value ?? '').toUpperCase();
-  
   
   if (raw.includes('METRO') || raw.includes('SUBWAY')) return 'METRO';
   if (raw.includes('RAIL') || raw.includes('TRAIN')) return 'RAIL';
@@ -21,4 +11,3 @@ export function normalizeMode(value: string | undefined | null): TransportMode {
   if (raw.includes('BUS') || raw.includes('COACH')) return 'BUS';
   return 'OTHER';
 }
-

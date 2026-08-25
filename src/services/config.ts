@@ -1,6 +1,4 @@
 
-
-
 /**
  * Boutique de titres M réso.
  *
@@ -56,6 +54,5 @@ export function loadConfig(): GreLinesConfig {
     };
   }
 }
-
 
 export const config = loadConfig();

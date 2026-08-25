@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { MapSheet } from './MapSheet';
-import { XMarkIcon, MapIcon, ChevronDownIcon, StarIcon, ArrowsRightLeftIcon, ClockIcon, PaperClipIcon } from '@heroicons/react/24/solid';
-import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, MapIcon, ChevronDownIcon, BookmarkIcon, ArrowsRightLeftIcon, ClockIcon, PaperClipIcon } from '@heroicons/react/24/solid';
+import { BookmarkIcon as BookmarkOutlineIcon } from '@heroicons/react/24/outline';
 import { LineBadge } from './LineBadge';
 import { TrafficAlertCard } from './TrafficAlertCard';
 import { formatDepartureTime, getDepartures } from '../services/api';
@@ -10,6 +10,7 @@ import { getStopsServedByLines, type ServedStopPoint } from '../services/lineSha
 import type { Stop, TrafficDetail, Departure } from '../types';
 import type { AllLinesLine } from '../services/allLines';
 import { resolveLineStyle } from '../utils/lineColors';
+import { DepartureQuickActions } from './DepartureQuickActions';
 import {
   isFavorite,
   removeFavoriteAndNotify,
@@ -29,7 +30,14 @@ interface LineSidebarProps {
   refreshIntervalMs: number;
   theme?: 'light' | 'dark';
   
-  onOpenTimetable?: () => void;
+  /**
+   * Ouvre la fiche horaire de la ligne.
+   *
+   * Avec un arrêt, la fiche s'ouvre sur cet arrêt-là, surligné dans la
+   * colonne : c'est la question qu'on se pose devant un arrêt déplié — « et à
+   * quelle heure, ici ? » —, et non celle de la ligne entière.
+   */
+  onOpenTimetable?: (options?: { stopName?: string }) => void;
   
   onOpenLineMap?: () => void;
 }
@@ -220,6 +228,15 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
   const railStyle: any = line ? resolveLineStyle(line.id, line.color, line.textColor) : {};
 
   const lineColor = railStyle.backgroundColor || '#475569';
+  /**
+   * L'encre de la ligne, celle de sa pastille.
+   *
+   * Blanche sur le bleu du tram A, noire sur le jaune des chrono : c'est
+   * `resolveLineTextColor` qui tranche, et il connaît déjà les exceptions du
+   * réseau. Le badge « Terminus » s'en sert plutôt que d'un blanc fixe, qui
+   * disparaissait sur les lignes claires.
+   */
+  const lineInk = railStyle.color || '#ffffff';
 
   const panelContent = (
     <div className="p-5 pb-10">
@@ -251,7 +268,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
         <div className="flex flex-shrink-0 items-center gap-2">
           {onOpenTimetable && (
             <button
-              onClick={onOpenTimetable}
+              onClick={() => onOpenTimetable()}
               aria-label={text.timetable}
               title={text.timetable}
               className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-800 transition hover:bg-slate-700"
@@ -299,7 +316,9 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
 
       <div className="mb-6">
         <div className="mb-1 flex items-baseline justify-between border-b border-slate-800 pb-2">
-          <p className="signal-label text-slate-400">{text.stops}</p>
+          {/* En Inter et sans capitales : c'est un titre de section, pas une
+              étiquette de tableau de bord. */}
+          <p className="text-[13px] font-bold text-slate-300">{text.stops}</p>
           <p className="tabular text-xs text-slate-500">
             {renderedStops.length}{' '}
             {(renderedStops.length === 1 ? text.stop : text.stops).toLocaleLowerCase(language)}
@@ -349,23 +368,53 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
                     />
                   </div>
 
-                  <div className="min-w-0 flex-1 border-b border-slate-800/80 pb-1 last:border-b-0">
-                    <div className="overflow-hidden">
+                  {/*
+                    Le trait de séparation cède la place au cadre.
+
+                    Déplié, l'arrêt devient un bloc : un seul rectangle autour du
+                    nom et de ce qu'on vient d'ouvrir, comme les passages de la
+                    fiche d'un arrêt. Le cadre posé sous l'en-tête seulement
+                    donnait deux objets là où il n'y a qu'une chose — et le trait
+                    de séparation le traversait par le milieu.
+                  */}
+                  <div
+                    className={`min-w-0 flex-1 pb-1 ${
+                      isExpanded ? '' : 'border-b border-slate-800/80 last:border-b-0'
+                    }`}
+                  >
+                    <div
+                      className={`overflow-hidden transition-colors ${
+                        isExpanded ? 'rounded-2xl border border-slate-700 bg-slate-800/60' : ''
+                      }`}
+                    >
                       <button
                         type="button"
                         onClick={() => handleToggleStop(stop)}
-                        className="flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left transition hover:bg-slate-800/70"
+                        className={`flex w-full items-center gap-3 px-2 py-2.5 text-left transition hover:bg-slate-800/70 ${
+                          isExpanded ? 'px-3.5' : 'rounded-xl'
+                        }`}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[15px] font-semibold text-white">{stop.name}</p>
-                          <p className="mt-0.5 flex items-center gap-2 truncate text-xs text-slate-400">
+                          {/* Le terminus se dit à côté du nom, en pastille : il
+                              qualifie cet arrêt-là, il n'ouvre pas une rubrique.
+                              Il tenait la place d'une ligne entière sous le nom,
+                              en capitales espacées, et se lisait comme un titre. */}
+                          <p className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-[15px] font-semibold text-white">
+                              {stop.name}
+                            </span>
                             {isTerminus && (
-                              <span className="signal-label" style={{ color: lineColor }}>
+                              <span
+                                className="flex-shrink-0 rounded-md px-1.5 py-px text-[11px] font-semibold leading-tight"
+                                style={{ backgroundColor: lineColor, color: lineInk }}
+                              >
                                 {text.terminus}
                               </span>
                             )}
-                            {stop.city || ''}
                           </p>
+                          {stop.city && (
+                            <p className="mt-0.5 truncate text-xs text-slate-400">{stop.city}</p>
+                          )}
                         </div>
                         <ChevronDownIcon className={`w-4 h-4 text-slate-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
                       </button>
@@ -384,7 +433,9 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -4 }}
                               transition={{ duration: 0.18, ease: 'easeOut' }}
-                              className="mb-2 ml-2 space-y-3 rounded-xl bg-slate-800/50 px-3.5 py-3.5"
+                              /* Plus de fond ni de coins : le cadre est
+                                 maintenant celui de l'arrêt tout entier. */
+                              className="space-y-3 px-3.5 pb-3.5"
                             >
                               {state?.loading ? (
                                 <p className="text-sm text-slate-400">{text.loading}</p>
@@ -395,8 +446,8 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
                               ) : (
                                 <div className="space-y-2">
                                   <div className="flex items-baseline justify-between">
-                                    <p className="signal-label text-slate-500">{text.direction}</p>
-                                    <p className="signal-label text-slate-500">{text.next}</p>
+                                    <p className="text-xs font-semibold text-slate-500">{text.direction}</p>
+                                    <p className="text-xs font-semibold text-slate-500">{text.next}</p>
                                   </div>
                                   {/* Deux prochains passages par direction, en
                                       chiffres tabulaires : les horaires
@@ -416,40 +467,49 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
                                   ))}
                                 </div>
                               )}
-                              <div className="flex flex-wrap items-center gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition"
-                                  onClick={() => onStopClick?.(stop)}
-                                >
-                                  <MapIcon className="w-4 h-4" />
-                                  {text.openStop}
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                                    favorite
-                                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15'
-                                      : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
-                                  }`}
-                                  onClick={() => {
-                                    if (favorite) {
-                                      removeFavoriteAndNotify(stop.id);
-                                    } else {
-                                      setFavoriteAndNotify({
-                                        stopId: stop.id,
-                                        stopName: stop.name,
-                                        city: stop.city,
-                                        lines: 'all',
-                                        addedAt: Date.now(),
-                                      });
-                                    }
-                                  }}
-                                >
-                                  {favorite ? <StarIcon className="w-4 h-4 text-amber-400" /> : <StarOutlineIcon className="w-4 h-4" />}
-                                  {favorite ? text.removeFavorite : text.addFavorite}
-                                </button>
-                              </div>
+                              {/* Les mêmes carrés que sous un passage, dans la
+                                  fiche d'un arrêt : deux ici au lieu de trois,
+                                  peints de la couleur de la ligne. Le favori
+                                  déjà posé passe à l'ambre — la couleur dit ce
+                                  que le libellé demanderait de lire. */}
+                              <DepartureQuickActions
+                                style={railStyle}
+                                actions={[
+                                  {
+                                    label: text.openStop,
+                                    Icon: MapIcon,
+                                    onSelect: () => onStopClick?.(stop),
+                                  },
+                                  {
+                                    label: text.timetable,
+                                    Icon: ClockIcon,
+                                    onSelect: () => onOpenTimetable?.({ stopName: stop.name }),
+                                  },
+                                  {
+                                    /* Le carré garde la couleur de la ligne,
+                                       gardé ou non : c'est le signet qui dit
+                                       l'état — creux, puis plein. Il passait à
+                                       l'ambre, ce qui disait la même chose une
+                                       seconde fois et faisait changer de
+                                       couleur un bloc de la taille du pouce. */
+                                    label: favorite ? text.removeFavorite : text.addFavorite,
+                                    Icon: favorite ? BookmarkIcon : BookmarkOutlineIcon,
+                                    onSelect: () => {
+                                      if (favorite) {
+                                        removeFavoriteAndNotify(stop.id);
+                                      } else {
+                                        setFavoriteAndNotify({
+                                          stopId: stop.id,
+                                          stopName: stop.name,
+                                          city: stop.city,
+                                          lines: 'all',
+                                          addedAt: Date.now(),
+                                        });
+                                      }
+                                    },
+                                  },
+                                ]}
+                              />
                             </motion.div>
                           )}
                         </AnimatePresence>

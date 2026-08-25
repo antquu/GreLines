@@ -64,8 +64,6 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
       if (!active) return;
       setCards(list);
       setLoaded(true);
-      // Puis on redemande au réseau ce qu'il en pense : une carte coupée de son
-      // côté ne nous prévient pas.
       const checked = await verifyCards(list);
       if (active) setCards(checked);
     });

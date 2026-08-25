@@ -17,9 +17,7 @@ import {
   type ScreenLineGroup,
 } from './screenUtils';
 
-
 const REFRESH_MS = 30_000;
-
 
 const tint = (color: string) => `color-mix(in srgb, ${color} 13%, #ffffff)`;
 
@@ -197,8 +195,6 @@ export function ScreenBoard({ stopId, layout }: { stopId: string; layout: Screen
   const detailRef = useRef<StopDetail | null>(null);
   const scrollRef = useAutoScroll<HTMLElement>();
 
-  // Le rafraîchissement périodique lit le dernier arrêt connu sans se relancer
-  // à chaque changement de données : la référence sert de miroir de l'état.
   useEffect(() => {
     detailRef.current = detail;
   }, [detail]);
@@ -220,14 +216,9 @@ export function ScreenBoard({ stopId, layout }: { stopId: string; layout: Screen
     };
   }, [stopId]);
 
-  // Rafraîchissement périodique : seuls les passages sont rechargés, la liste
-  // des lignes desservies ne bouge pas d'un quart d'heure à l'autre.
   useEffect(() => {
     const id = window.setInterval(() => {
       const current = detailRef.current;
-      // Tant que l'arrêt n'a pas été résolu une première fois, on retente la
-      // requête complète : un écran allumé avant le réseau doit finir par
-      // s'afficher tout seul.
       const next = current
         ? refreshStopDepartures(current)
         : isTclId(stopId)

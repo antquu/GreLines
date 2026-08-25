@@ -194,8 +194,6 @@ export function TripSurvey({
       lineId,
       boardingStop,
       boardingTime,
-      // L'heure du téléphone, prise à la seconde où l'on valide : c'est elle qui,
-      // rapportée à l'heure de montée, situera le véhicule sur son parcours.
       answeredAt: new Date().toISOString(),
       journey,
       cleanliness: finalAnswers.cleanliness,
@@ -225,8 +223,6 @@ export function TripSurvey({
   const pick = (key: string, value: number) => {
     const updated = { ...answers, [key]: value };
     setAnswers(updated);
-    // Un court délai laisse voir la pastille se colorer avant qu'elle sorte :
-    // sans lui, on ne sait pas si l'on a bien touché ce qu'on visait.
     window.setTimeout(() => goTo(stepIndex + 1, updated), 180);
   };
 

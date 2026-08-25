@@ -40,8 +40,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
   const brand = journeyOperatorBrand(journey, theme === 'light' ? 'light' : 'dark');
   const [hoveredTrafficLine, setHoveredTrafficLine] = useState<string | null>(null);
   const [tooltipCoords, setTooltipCoords] = useState({ x: 0, y: 0 });
-  // Les arrêts intermédiaires restent repliés : sur un trajet de vingt arrêts,
-  // les déplier d'office repousserait la fin du trajet hors de l'écran.
   const [expandedLegs, setExpandedLegs] = useState<Set<number>>(new Set());
 
   const toggleLeg = (index: number) => {
@@ -74,7 +72,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
     details: trafficInfo?.get(lineKey) || [],
   }));
 
-  
   const timelineItems: ReactNode[] = [];
 
   allLegs.forEach((leg, i) => {
@@ -90,15 +87,10 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
     const color = line?.color || '#94a3b8';
     const durationMin = Math.round((leg.duration || 0) / 60);
 
-    // Course en véhicule partagé : pas de ligne, pas d'arrêt — le véhicule, sa
-    // couleur d'opérateur, et ce qu'il reste à parcourir.
     const sharedOperator = leg.sharedOperator as SharedOperator | undefined;
     if (sharedOperator) {
       const operatorColor = SHARED_OPERATOR_COLORS[sharedOperator];
       const formFactor = String(leg.sharedFormFactor || (sharedOperator === 'citiz' ? 'car' : 'scooter'));
-      // Le véhicule et le point d'arrivée tiennent dans un seul bloc : séparés,
-      // l'espacement de la liste coupait le trait juste avant la pastille
-      // finale.
       timelineItems.push(
         <div key={`shared-${i}`} className="flex gap-3">
           <div className="flex w-8 flex-shrink-0 flex-col items-center">
@@ -188,8 +180,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
       return;
     }
 
-    // Course VTC ou taxi : même forme, mais aucune marche d'approche — le
-    // véhicule vient au point de départ.
     if (leg.uberProduct || leg.taxiCompany) {
       const uberColor = leg.taxiCompany ? '#f59e0b' : '#64748b';
       timelineItems.push(
@@ -232,7 +222,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
       const lineTrafficKey = normalizeTrafficLineCode(lineName);
       const legHasTraffic = lineTrafficKey ? Boolean(trafficInfo?.has(lineTrafficKey)) : false;
 
-      
       timelineItems.push(
         <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
             <div className="flex flex-col items-center w-8 flex-shrink-0">
@@ -250,8 +239,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
         </div>
       );
 
-      // Transit bar — dépliable sur les arrêts desservis entre la montée et la
-      // descente, pour repérer où l'on passe sans quitter la fiche.
       const intermediateStops: JourneyIntermediateStop[] = Array.isArray(leg.intermediateStops)
         ? leg.intermediateStops
         : [];
@@ -315,7 +302,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
         </div>
       );
 
-      // Transit end
       const nextLeg = allLegs[i + 1];
       const nextIsTransit = nextLeg && nextLeg.mode !== 'WALK';
 
@@ -345,7 +331,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
       }
     }
 
-    // Walking segments
     if (isWalk && durationMin >= 1) {
       timelineItems.push(
         <div key={`walk-${i}`} className="flex gap-3 items-center">

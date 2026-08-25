@@ -7,13 +7,6 @@ interface DeferredPanelProps {
   children: ReactNode;
 }
 
-
-
-
-
-
-
-
 export function DeferredPanel({ isOpen, children }: DeferredPanelProps) {
   const shouldMount = useMountOnOpen(isOpen);
   if (!shouldMount) return null;

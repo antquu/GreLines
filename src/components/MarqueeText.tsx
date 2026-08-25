@@ -33,7 +33,6 @@ export function MarqueeText({
 
     update();
     
-    
     const observer = new ResizeObserver(update);
     observer.observe(container);
     return () => observer.disconnect();

@@ -68,7 +68,6 @@ function write(entries: JourneyHistoryEntry[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch {
-    // Stockage refusé : l'historique vaut pour la session.
   }
 }
 
@@ -116,8 +115,6 @@ export function recordJourney(
     });
   }
 
-  // On ne garde que les plus récents : la coupe se fait à l'écriture, pas à la
-  // lecture, pour que le stockage ne gonfle pas indéfiniment.
   const kept = all.sort((a, b) => b.lastAt - a.lastAt).slice(0, MAX_ENTRIES);
   write(kept);
   notify();

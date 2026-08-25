@@ -1,24 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export type ProviderId = 'mtag' | 'tcl';
 
 export interface TransitProvider {
@@ -32,23 +12,7 @@ export interface TransitProvider {
   localCode(value: string): string;
 }
 
-
-
-
-
-
-
-
-
 const FOREIGN_NETWORK_CODES = new Set(['TCL']);
-
-
-
-
-
-
-
-
 
 const MTAG: TransitProvider = {
   id: 'mtag',
@@ -72,19 +36,7 @@ const MTAG: TransitProvider = {
   },
 };
 
-
 const TCL_CODE_FIELD = 3;
-
-
-
-
-
-
-
-
-
-
-
 
 const TCL: TransitProvider = {
   id: 'tcl',
@@ -92,8 +44,6 @@ const TCL: TransitProvider = {
 
   owns(value) {
     const raw = String(value);
-    
-    
     
     return raw.startsWith('ActIV:') || raw.startsWith('TCL:');
   },
@@ -114,12 +64,6 @@ const TCL: TransitProvider = {
 
 export const PROVIDERS: TransitProvider[] = [MTAG, TCL];
 
-
-
-
-
-
-
 export function providerOf(value: string): TransitProvider | null {
   for (const provider of PROVIDERS) {
     if (provider.owns(value)) return provider;
@@ -127,16 +71,13 @@ export function providerOf(value: string): TransitProvider | null {
   return null;
 }
 
-
 export function networkOf(value: string): string | null {
   return providerOf(value)?.networkOf(value) ?? null;
 }
 
-
 export function localCode(value: string): string {
   return providerOf(value)?.localCode(value) ?? String(value);
 }
-
 
 export function providerOfNetwork(networkCode: string): ProviderId {
   return networkCode === 'TCL' ? 'tcl' : 'mtag';

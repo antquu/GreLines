@@ -73,8 +73,6 @@ export const SearchBarMobile = ({
    */
   const startTap = (event: React.PointerEvent) => {
     tapRef.current = { x: event.clientX, y: event.clientY };
-    // À la souris, l'appui déplace le focus et referme la liste avant le
-    // relâché. Au doigt, non : y toucher casserait le défilement natif.
     if (event.pointerType === 'mouse') event.preventDefault();
   };
 
@@ -110,15 +108,6 @@ export const SearchBarMobile = ({
     (searchQuery.trim() !== ''
       ? true 
       : searchHistoryItems.length > 0);
-
-  
-
-
-
-
-
-
-
 
   const closeAfterSelection = () => {
     inputRef.current?.blur();
@@ -196,9 +185,6 @@ export const SearchBarMobile = ({
   const mobilePlaceholder = language === 'fr' ? 'On va où ?' : 'Where to?';
 
   return (
-    // `inline` : la barre vit dans l'en-tête de la feuille d'accueil, où elle
-    // remplace la barre d'onglets quand on tire la feuille vers le haut. Sinon
-    // elle flotte en haut de la carte, comme avant.
     <div
       className={inline ? 'relative w-full' : 'fixed left-4 right-4 top-[max(0.75rem,env(safe-area-inset-top))]'}
       style={inline ? undefined : { zIndex: 5 }}

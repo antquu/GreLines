@@ -8,20 +8,11 @@ const isNetworkClosed = (date: Date) => {
   return totalMinutes >= 60 && totalMinutes < 270;
 };
 
-
 const MARQUEE_SPEED_PX_PER_SEC = 60;
-
 
 function normalizeFooterMessage(message: string): string {
   return message.replace(/\s+/g, ' ').trim();
 }
-
-
-
-
-
-
-
 
 function ScrollingMessage({ message, color }: { message: string; color: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -133,8 +124,6 @@ export function ClockSignal({
   }, []);
 
   const networkClosed = isNetworkClosed(now);
-  // Réglages > Affichage : le bandeau défilant peut être masqué sans faire
-  // disparaître l'horloge ni l'alerte « réseau fermé ».
   const rawMessage =
     overrideMessage && !settings.hideFooterTicker ? normalizeFooterMessage(overrideMessage) : null;
   /* Le message du bandeau est saisi en français depuis le CRM. Traduit une
@@ -143,7 +132,6 @@ export function ClockSignal({
   const translated = useTranslated(rawMessage, language);
   const displayMessage = rawMessage ? translated : null;
 
-  // Rien à afficher : pas de message, réseau ouvert, horloge désactivée.
   if (!displayMessage && !networkClosed && !showClock) return null;
 
   return (

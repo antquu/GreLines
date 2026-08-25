@@ -79,8 +79,6 @@ export function TripHistoryScreen({
       if (lat > maxLat) maxLat = lat;
     }
     const span = Math.max(maxLon - minLon, maxLat - minLat);
-    // Un palier par ordre de grandeur : plus simple à relire qu'un logarithme, et
-    // suffisant pour que le trajet tienne dans le cadre.
     const zoom = span > 0.2 ? 10.5 : span > 0.1 ? 11.5 : span > 0.05 ? 12.5 : span > 0.02 ? 13.5 : 14.5;
     return {
       longitude: (minLon + maxLon) / 2,

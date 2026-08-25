@@ -1,22 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { idbGet, idbSet } from './persistentCache';
 import type { SharedOperator } from './sharedMobility';
 
@@ -26,7 +8,6 @@ const PRODUCERS: Record<SharedOperator, string> = {
   citiz: 'citiz_grenoble',
   voi: 'voi_grenoble',
 };
-
 
 const PRICING_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -64,16 +45,9 @@ function planName(plan: RawPlan): string | null {
     : Array.isArray(plan.name) ? plan.name[0]?.text ?? null : null;
   if (!raw) return null;
   
-  
   if (!raw.includes(' ')) return null;
   return raw;
 }
-
-
-
-
-
-
 
 function pickPlan(plans: RawPlan[], formFactor: string): RawPlan | null {
   if (plans.length === 0) return null;
@@ -109,8 +83,6 @@ export async function getSharedPricing(
   const plan = pickPlan(plans, formFactor);
   if (!plan) return null;
 
-  // Première tranche seulement : les suivantes décrivent des locations de
-  // plusieurs jours, hors sujet quand on choisit un véhicule dans la rue.
   const minuteTier = plan.per_min_pricing?.[0];
   const kmTier = plan.per_km_pricing?.[0];
 
@@ -118,8 +90,6 @@ export async function getSharedPricing(
     operator,
     unlockPrice: typeof plan.price === 'number' && plan.price > 0 ? plan.price : null,
     usageRate: typeof minuteTier?.rate === 'number' ? minuteTier.rate : null,
-    // Un intervalle nul signale une tranche forfaitaire : on la ramène à la
-    // minute pour ne pas afficher « par 0 minute ».
     usageIntervalMinutes: minuteTier?.interval && minuteTier.interval > 0 ? minuteTier.interval : 1,
     perKmRate: typeof kmTier?.rate === 'number' ? kmTier.rate : null,
     planName: planName(plan),

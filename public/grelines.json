@@ -1,5 +1,5 @@
 {
-  "version": "3.7.0",
+  "version": "3.10.0",
 
   "credits": [
     {
@@ -16,16 +16,6 @@
       "role": "Marketing and Communication",
       "name": "Jeanne Wolozan",
       "link": "https://instagram.com/jeanne_wlz"
-    },
-    {
-      "role": "Thanks to Metropole Grand Lyon for providing us with the data free of charge! / Merci a Metropole Grand Lyon de nous fournir les données gratuitement!",
-      "name": "GrandLyon - data",
-      "link": "https://data.grandlyon.com/portail/fr/accueil"
-    },
-    {
-      "role": "Thanks to Metropole Grand Lyon for providing us with the data free of charge! / Merci a Metropole Grand Lyon de nous fournir les données gratuitement!",
-      "name": "GrandLyon - data",
-      "link": "https://data.grandlyon.com/portail/fr/accueil"
     }
   ]
 }

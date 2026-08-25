@@ -101,7 +101,6 @@ export function getDeviceId(): string {
     localStorage.setItem(DEVICE_KEY, id);
     return id;
   } catch {
-    // Stockage refusé : l'appareil reste anonyme le temps de la session.
     return 'volatile';
   }
 }
@@ -128,7 +127,6 @@ function writeLocalCodes(codes: string[]): void {
   try {
     localStorage.setItem(CARDS_KEY, JSON.stringify([...new Set(codes)]));
   } catch {
-    // Stockage refusé : la base reste seule source, et tant pis pour la reprise.
   }
 }
 
@@ -154,7 +152,6 @@ export async function lookupOuraCard(rawCode: string): Promise<OuraCardLookup | 
     const response = await fetch(`${AIRWEB_ENDPOINT}/${mediaId}`);
     if (!response.ok) return null;
     media = await response.json();
-    // Une carte inconnue répond parfois 200 avec un corps d'erreur.
     if (!media || typeof media !== 'object' || !media.code) return null;
   } catch {
     return null;
@@ -177,7 +174,6 @@ export async function lookupOuraCard(rawCode: string): Promise<OuraCardLookup | 
       }
     }
   } catch {
-    // Les contrats sont un supplément : une carte sans eux reste une carte.
   }
 
   return {
@@ -234,8 +230,6 @@ interface CardRow {
 
 function toCard(row: CardRow): OuraCard {
   return {
-    // Le numéro identifie la carte : c'est lui, et non la ligne de détention,
-    // qui la désigne d'un appareil à l'autre.
     id: row.card_code,
     cardCode: row.card_code,
     firstName: row.first_name ?? undefined,
@@ -284,7 +278,6 @@ export async function listOuraCards(): Promise<OuraCard[]> {
     .in('card_code', codes);
   if (error || !holders) return [];
 
-  // Un lien manquant se recrée en silence : la carte est bien à cet appareil.
   const missing = codes.filter(code => !linked.includes(code));
   if (missing.length > 0) {
     void supabase
@@ -298,8 +291,6 @@ export async function listOuraCards(): Promise<OuraCard[]> {
   return codes.map(code => {
     const row = byCode.get(code);
     if (row) return toCard(row);
-    // Plus de porteur : la carte a été supprimée ailleurs. On la garde visible,
-    // grise et muette, avec de quoi la retirer soi-même.
     return {
       id: code,
       cardCode: code,
@@ -434,7 +425,6 @@ export async function saveOuraCard(input: SaveCardInput): Promise<OuraCard | nul
     is_invalid: lookup.isInvalid,
   };
 
-  // Le porteur d'abord — il vaut pour tous les appareils —, le lien ensuite.
   const { data, error } = await supabase
     .from('oura_holders')
     .upsert(holder, { onConflict: 'card_code' })
@@ -445,8 +435,6 @@ export async function saveOuraCard(input: SaveCardInput): Promise<OuraCard | nul
   await supabase
     .from('oura_cards')
     .upsert({ device_id: deviceId, card_code: lookup.code }, { onConflict: 'device_id,card_code' });
-  // Le lien peut échouer sans conséquence : le stockage local fait foi pour
-  // cet appareil, et la liste le rétablira au prochain chargement.
   rememberLocalCode(lookup.code);
 
   return toCard(data as CardRow);
@@ -487,8 +475,6 @@ export async function transferCard(
 ): Promise<OuraCard | null> {
   if (!supabase) return null;
   const previous = await findKnownCard(fromCode);
-  // Une carte d'essai n'a pas d'existence chez le réseau : on la remplit
-  // directement, sans lui demander son avis.
   const saved = 'testCode' in target
     ? await saveTestCard(target.testCode, {
         firstName: previous?.firstName,
@@ -546,8 +532,6 @@ export function cardBlockedBy(card: OuraCard): CardBlockedBy {
  */
 export async function verifyCards(cards: OuraCard[]): Promise<OuraCard[]> {
   return Promise.all(cards.map(async card => {
-    // Une carte d'essai n'a jamais existé chez le réseau, et une carte déjà
-    // supprimée chez nous n'a plus rien à vérifier.
     if (card.isTest || card.isMissing) return card;
     const found = await lookupOuraCard(card.cardCode);
     if (!found) return { ...card, isNetworkMissing: true };

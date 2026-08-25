@@ -62,8 +62,6 @@ export function Toast({
       {message && (
         <motion.div
           key={message.id}
-          // De bas en haut : la pastille monte jusqu'à sa place et repart par
-          // où elle est venue. Même course que le reste de l'application.
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 24 }}

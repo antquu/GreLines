@@ -41,7 +41,6 @@ export function setSavedPlace(kind: SavedPlaceKind, location: RouteLocation | nu
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(places));
   } catch {
-    // Stockage plein ou refusé : le lieu vaut pour la session, sans plus.
   }
   notify(places);
   return places;

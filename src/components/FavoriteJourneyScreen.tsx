@@ -117,9 +117,6 @@ export function FavoriteJourneyScreen({
             <button
               key={`${itinerary.dep}-${index}`}
               type="button"
-              // C'est bien celui-ci qu'on ouvre, pas le meilleur du moment :
-              // avoir touché le départ de 8h34 et se retrouver sur celui de
-              // 8h12 serait un tour de passe-passe.
               onClick={() => onOpenItinerary(itinerary)}
               className={`flex w-full gap-3 px-5 py-6 text-left transition active:scale-[0.99] ${
                 index > 0 ? `border-t ${separatorClass}` : ''

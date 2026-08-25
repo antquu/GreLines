@@ -1,25 +1,6 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 import type { Line } from '../types';
 import { idbGet, idbSet } from './persistentCache';
-
-
-
-
-
-
 
 const GEOMETRY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -119,21 +100,6 @@ export async function getLinesGeometry(
   const results = await Promise.all(ids.map(id => getLineGeometry(id)));
   return results.filter((r): r is LineGeometry => r !== null);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Terminus-to-terminus geometry via the routing engine
-//
-// The static `/api/lines/json` geometry merges *every* variant of a line
-// (short turns, depot runs, special services) into one MultiLineString, so it
-// visually "overshoots" the real terminus. The routing engine (`/plan`), on
-// the other hand, returns the exact path the vehicle takes for a given trip.
-//
-// Strategy: ask the planner for a transit trip from the line's first stop to
-// its last stop. We then keep only the transit leg(s) that belong to *this*
-// line and stitch their geometries together. If the planner can't give us a
-// clean single-line trip, we return null and the caller falls back to the
-// static geometry.
-// ─────────────────────────────────────────────────────────────────────────────
 
 const PLAN_ENDPOINT = 'https://data.mobilites-m.fr/api/routers/default/plan';
 
@@ -238,8 +204,6 @@ export async function getLineGeometryViaPlan(
 
   const promise: Promise<LineGeometry | null> = (async () => {
     try {
-      // 1. Resolve the line's ordered list of served stops → first & last are
-      //    the terminuses.
       const stops = await getStopsServedByLine(lineId, { signal: options?.signal });
       if (!stops || stops.length < 2) {
         planGeometryCache.set(key, null);
@@ -248,7 +212,6 @@ export async function getLineGeometryViaPlan(
       const from = stops[0];
       const to = stops[stops.length - 1];
 
-      // 2. Ask the planner for a transit trip between the two terminuses.
       const params = new URLSearchParams({
         fromPlace: `${from.lat},${from.lon}`,
         toPlace: `${to.lat},${to.lon}`,
@@ -269,10 +232,6 @@ export async function getLineGeometryViaPlan(
         return null;
       }
 
-      // 3. Across all returned itineraries, collect every transit leg that
-      //    rides *this* line, and pick the longest contiguous geometry. The
-      //    longest leg on the right line is the best terminus-to-terminus
-      //    candidate.
       let bestCoords: [number, number][] | null = null;
       for (const it of itineraries) {
         const legs: any[] = it?.legs || [];
@@ -296,10 +255,6 @@ export async function getLineGeometryViaPlan(
         return null;
       }
 
-      // The planner occasionally returns a leg that stops early on a branch
-      // even though the route catalogue knows a longer terminus. If the trace
-      // doesn't end near the last served stop, it's safer to fall back to the
-      // static geometry than to truncate the visible line.
       const planStart = { lon: bestCoords[0][0], lat: bestCoords[0][1] };
       const planEnd = { lon: bestCoords[bestCoords.length - 1][0], lat: bestCoords[bestCoords.length - 1][1] };
       const startMatches = Math.min(
@@ -318,19 +273,6 @@ export async function getLineGeometryViaPlan(
         return null;
       }
 
-      // Contrôle de couverture.
-      //
-      // Le test d'extrémités ci-dessus ne suffit pas : il compare le tracé aux
-      // arrêts `stops[0]` et `stops[n-1]`, or MTAG ne renvoie pas forcément les
-      // deux terminus à ces positions. Un trajet écourté passe alors le
-      // contrôle — c'est ce qui arrivait à la ligne C pendant l'interruption
-      // Condillac ↔ Les Taillées : le moteur d'itinéraires, qui raisonne sur le
-      // service *du jour*, ne pouvait pas rouler jusqu'à Condillac, et le tracé
-      // s'arrêtait à Hector Berlioz.
-      //
-      // On vérifie donc que le tracé passe bien à portée de *tous* les arrêts
-      // desservis. Sinon il est incomplet, et la géométrie statique — qui, elle,
-      // couvre toutes les variantes de la ligne — reprend la main.
       const covered = stops.filter(
         stop => distanceToPolylineMetres(stop, bestCoords!) <= STOP_COVERAGE_THRESHOLD_METERS
       ).length;
@@ -377,9 +319,6 @@ export async function getLineGeometryViaPlan(
 export async function getLinesGeometryPrecise(
   lines: Pick<Line, 'id' | 'shortName'>[]
 ): Promise<LineGeometry[]> {
-  // Les lignes lyonnaises ont leur propre source : leurs tracés viennent du WFS
-  // du Grand Lyon, pas de l'API grenobloise. On les traite à part et on rend
-  // une seule liste — la carte ne fait pas la différence.
   const tclLines = lines.filter(line => String(line.id).startsWith('TCL:'));
   const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:'));
 
@@ -403,9 +342,6 @@ export async function getLinesGeometryPrecise(
  * requêtes au prochain affichage de la même ligne.
  */
 async function resolveLineGeometry(id: string): Promise<LineGeometry | null> {
-  // v2 : les entrées v1 ont pu être calculées avant le contrôle de couverture,
-  // et contenir un tracé écourté par une interruption de service. Sans
-  // changement de clé, elles resteraient affichées pendant sept jours.
   const cacheKey = `lineGeometry_v2_${normalizeLineKey(id)}`;
   const cached = await idbGet<LineGeometry>(cacheKey);
   if (cached) return cached.value;
@@ -418,22 +354,14 @@ async function resolveLineGeometry(id: string): Promise<LineGeometry | null> {
 async function computeLineGeometry(id: string): Promise<LineGeometry | null> {
   {
     {
-      // Fetch both candidates in parallel so the comparison is fast.
       const [viaPlan, staticGeom] = await Promise.all([
         getLineGeometryViaPlan(id),
         getLineGeometry(id),
       ]);
 
-      // No plan-based geometry → just use whatever static one we have.
       if (!viaPlan) return staticGeom;
-      // No static geometry → trust the plan-based one even if short.
       if (!staticGeom) return viaPlan;
 
-      // Compare total polyline lengths (in degrees — fine for a ratio).
-      // If the plan-based trace covers less than 80% of the static one, the
-      // line probably has more than two terminuses and the plan can only
-      // describe one branch. In that case we'd rather show the (slightly
-      // overshooting) static trace than miss half the line.
       const planLen = totalPolylineLength(viaPlan);
       const staticLen = totalPolylineLength(staticGeom);
       const COVERAGE_THRESHOLD = 0.8;
@@ -472,15 +400,6 @@ function polylineLengthDeg(coords: [number, number][]): number {
   }
   return s;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Stops served by a line
-//
-// The MTAG `/routes/<routeId>/stops` endpoint returns stops with internal
-// numeric ids that DO NOT match the textual codes (e.g. "SEM:CHAVANT") that we
-// get from the `/bbox` endpoint. To work around this id mismatch reliably, we
-// match by **geographic proximity** instead.
-// ─────────────────────────────────────────────────────────────────────────────
 
 const STOPS_ENDPOINT_BASE = 'https://data.mobilites-m.fr/api/routers/default/index/routes';
 
@@ -535,9 +454,6 @@ export async function getStopsServedByLine(
   if (stopsInflightCache.has(routeId)) return stopsInflightCache.get(routeId)!;
 
   const url = `${STOPS_ENDPOINT_BASE}/${encodeURIComponent(routeId)}/stops`;
-  // v2 : les entrées v1 ne contenaient pas le nom de l'arrêt, sur lequel repose
-  // désormais l'appariement. Changer de clé force leur reconstruction plutôt
-  // que de laisser un cache muet dégrader le filtrage pendant sept jours.
   const cacheKey = `servedStops_v2_${routeId}`;
 
   const promise: Promise<ServedStopPoint[] | null> = (async () => {
@@ -585,9 +501,6 @@ export async function getStopsServedByLine(
 export async function getStopsServedByLines(
   lines: Pick<Line, 'id' | 'shortName'>[]
 ): Promise<ServedStopPoint[] | null> {
-  // Les lignes lyonnaises tirent leurs arrêts de leur propre source. Sans cette
-  // branche, filtrer une ligne de Lyon ne renvoyait rien : la carte gardait donc
-  // tous les arrêts au lieu de ne garder que ceux de la ligne.
   const tclLines = lines.filter(line => String(line.id).startsWith('TCL:'));
   const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:'));
 
@@ -607,13 +520,6 @@ export async function getStopsServedByLines(
   return [...successful.flat(), ...tclServed];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Geometry helpers (proximity test + snap-to-polyline)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Approximate metres-per-degree at Grenoble's latitude (~45°). We use the
-// equirectangular approximation because we only need to compare distances
-// over a small radius (< 100m), not measure them precisely.
 const METRES_PER_DEG_LAT = 111320;
 const METRES_PER_DEG_LON_AT_45 = 78710;
 
@@ -766,7 +672,5 @@ export function snapStopToLines(
   }
 
   if (bestDistSq > maxSq) return null;
-  // Un tracé « exceptionnel » porte sa couleur suivie d'un alpha (`#RRGGBBCC`).
-  // La pastille, elle, se veut franche : on ne garde que les six chiffres.
   return { lat: bestLat, lon: bestLon, color: bestColor.slice(0, 7) };
 }

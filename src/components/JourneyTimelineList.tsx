@@ -18,6 +18,9 @@ import { ChevronLeftIcon } from '@heroicons/react/24/solid';
 import { MdDirectionsBike } from 'react-icons/md';
 import { LineBadge } from './LineBadge';
 import { journeyFareChip } from '../utils/journeyFare';
+import { FaWheelchair } from 'react-icons/fa';
+import { useAccessibleStops } from '../hooks/useAccessibleStops';
+import { isJourneyStepFree } from '../services/stopAccessibility';
 import { journeyOperatorBrand } from '../utils/journeyOperator';
 import { resolveRouteLine } from '../utils/routeLineResolver';
 import type { RouteItinerary } from '../services/api';
@@ -136,8 +139,6 @@ function journeySegments(
     const legEnd = Number.isFinite(Number(leg?.endTime)) ? Number(leg.endTime) : legStart + durationMs;
     cursor = legEnd;
 
-    // Moins d'une minute : le tronçon n'a pas de place sur l'axe, et sa
-    // pastille écraserait celle de son voisin.
     if (legEnd - legStart < MINUTE) return [];
 
     if (leg?.sharedOperator || leg?.uberProduct || leg?.taxiCompany) {
@@ -271,6 +272,7 @@ export function JourneyTimelineList({
   onSelect,
 }: JourneyTimelineListProps) {
   const isLight = theme === 'light';
+  const accessibleStops = useAccessibleStops();
 
   /*
    * Les groupes, à plat.
@@ -482,8 +484,6 @@ export function JourneyTimelineList({
                     const width = Math.max(6, ((segment.endMs - segment.startMs) / MINUTE) * model.pixelsPerMinute);
 
                     if (segment.kind === 'walk') {
-                      // La marche reste une traînée de points : c'est ce qui
-                      // la distingue d'un tronçon roulé sans avoir à l'écrire.
                       return (
                         <span
                           key={segment.key}
@@ -559,6 +559,9 @@ export function JourneyTimelineList({
         {allJourneys.map((journey, index) => {
           const { start, end } = model.bounds[index];
           const fareChip = journeyFareChip(journey, language);
+          /* Un trajet dont tous les arrêts sont accessibles porte le fauteuil
+             contre son prix, comme sur l'ordinateur. */
+          const stepFree = isJourneyStepFree(accessibleStops, journey.allLegs);
           const barLeft = ((start - model.origin) / MINUTE) * model.pixelsPerMinute + EDGE_PADDING;
           const barRight = ((end - model.origin) / MINUTE) * model.pixelsPerMinute + EDGE_PADDING;
           /**
@@ -572,13 +575,14 @@ export function JourneyTimelineList({
 
           return (
             <div key={`overlay-${journey.dep}-${index}`}>
-              {fareChip && (
+              {(fareChip || stepFree) && (
                 <span
-                  className={`absolute right-4 rounded-lg px-1.5 text-xs font-semibold text-slate-500 transition-opacity duration-200 ${
+                  className={`absolute right-4 flex items-center gap-1 rounded-lg px-1.5 text-xs font-semibold text-slate-500 transition-opacity duration-200 ${
                     isLight ? 'bg-slate-50/90' : 'bg-slate-950/90'
                   } ${isScrolling ? 'opacity-0' : 'opacity-100'}`}
                   style={{ top: top + 12 }}
                 >
+                  {stepFree && <FaWheelchair className="h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />}
                   {fareChip}
                 </span>
               )}

@@ -1,12 +1,5 @@
 import type { Stop, Line, TrafficDetail } from '../types';
 
-
-
-
-
-
-
-
 function normalize(value: string | undefined | null): string {
   return String(value || '')
     .normalize('NFD')
@@ -15,14 +8,6 @@ function normalize(value: string | undefined | null): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
-
-
-
-
-
-
-
-
 
 function tokenizeStopName(name: string): string[] {
   const STOPWORDS = new Set([
@@ -38,26 +23,15 @@ function tokenizeStopName(name: string): string[] {
   return filtered.length > 0 ? filtered : tokens;
 }
 
-
-
-
-
-
-
-
-
-
 function textMentionsStopName(text: string, stopName: string): boolean {
   const normalizedText = ` ${normalize(text)} `;
   const normalizedName = normalize(stopName);
   if (!normalizedName) return false;
 
-  // 1) Full-name substring (with word boundaries via spaces)
   if (normalizedText.includes(` ${normalizedName} `)) {
     return true;
   }
 
-  // 2) All significant tokens must appear as whole words
   const tokens = tokenizeStopName(stopName);
   if (tokens.length === 0) return false;
 
@@ -108,7 +82,6 @@ export function getStopTrafficAlerts(
 ): StopTrafficAlert[] {
   if (!stop?.name || !stopLines || stopLines.length === 0) return [];
 
-  // Build set of line codes served by this stop (uppercased)
   const stopLineIdsByCode = new Map<string, Line>();
   for (const line of stopLines) {
     const id = (line.id || '').toUpperCase();
@@ -117,9 +90,6 @@ export function getStopTrafficAlerts(
     if (short) stopLineIdsByCode.set(short, line);
   }
 
-  // Collect all unique trafficDetails attached to the stop's lines
-  // (avoids duplicate processing when the same disruption is attached to
-  // several lines of this stop)
   /*
    * Une perturbation, une carte.
    *
@@ -147,11 +117,9 @@ export function getStopTrafficAlerts(
 
   const alerts: StopTrafficAlert[] = [];
   for (const { detail, codes } of byContent.values()) {
-    // Check 1: stop name in description (or title as fallback)
     const haystack = `${detail.titre || ''} ${detail.description || ''}`;
     if (!textMentionsStopName(haystack, stop.name)) continue;
 
-    // Check 2: at least one line from the alert is served by this stop
     const matchedLines: Line[] = [];
     for (const code of codes) {
       const line = stopLineIdsByCode.get(code);
@@ -187,5 +155,4 @@ export function filterAlertsBySelectedLines(
   });
 }
 
-// Exposed for testing only
 export const __test = { normalize, tokenizeStopName, textMentionsStopName, parseTrafficLineCodes };

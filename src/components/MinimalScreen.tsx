@@ -52,8 +52,6 @@ export function MinimalScreen({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Quitter la page referme son menu : le retrouver ouvert à la prochaine
-  // venue serait une surprise, et un menu ouvert masque le contenu.
   useEffect(() => {
     if (!isOpen) setMenuOpen(false);
   }, [isOpen]);

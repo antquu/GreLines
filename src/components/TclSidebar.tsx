@@ -40,8 +40,6 @@ export const TclSidebar = ({
 
   const [showWarning, setShowWarning] = useState(false);
 
-  
-  
   useEffect(() => {
     if (visible) {
       setShowWarning(true);

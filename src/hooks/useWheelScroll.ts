@@ -28,9 +28,7 @@ export function useWheelScroll<T extends HTMLElement>() {
     if (!node) return;
 
     const onWheel = (event: WheelEvent) => {
-      // Rien ne dépasse : la rangée n'a pas à intercepter quoi que ce soit.
       if (node.scrollWidth <= node.clientWidth) return;
-      // Un geste déjà horizontal se passe de nous.
       if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
 
       const max = node.scrollWidth - node.clientWidth;

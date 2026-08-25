@@ -1,13 +1,14 @@
 {
-  "name": "mreso",
+  "name": "grelines",
   "private": true,
-  "version": "0.0.0",
+  "version": "3.11.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "stops:accessibility": "node scripts/accessible-stops.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

@@ -1,35 +1,13 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { idbGet, idbSet } from './persistentCache';
 import { groupNearbyStopsByName } from './api';
 import type { Departure, Line, Stop, StopDetail } from '../types';
 
 const ENDPOINT = '/api/tcl';
 
-
 const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
 
-
 const SHAPE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
 
 export const TCL_NETWORK = 'TCL';
 
@@ -60,20 +38,10 @@ export interface TclLine extends Line {
   school: boolean;
 }
 
-
 export interface TclShape {
   code: string;
   segments: Array<Array<[number, number]>>;
 }
-
-
-
-
-
-
-
-
-
 
 const memory = new Map<string, Promise<unknown>>();
 
@@ -92,13 +60,11 @@ async function fetchResource<T>(query: string, cacheKey: string, ttl: number): P
       void idbSet(cacheKey, payload, ttl);
       return payload;
     } catch {
-      // Une version périmée vaut mieux qu'une carte vide.
       return cached?.value ?? null;
     }
   })();
 
   memory.set(cacheKey, work);
-  // Un échec ne se garde pas : la tentative suivante doit pouvoir réessayer.
   void work.then(value => { if (value === null) memory.delete(cacheKey); });
   return work;
 }
@@ -133,9 +99,6 @@ export async function getTclLines(options?: { includeSchool?: boolean }): Promis
   const raw = await fetchResource<RawLine[]>('ressource=lignes', 'tclLines_v2', CATALOG_TTL_MS);
   if (!raw) return [];
 
-  // Les lignes scolaires sont les trois quarts des codes et ne circulent que
-  // deux fois par jour : elles sont écartées par défaut, comme les lignes
-  // scolaires du réseau grenoblois.
   const kept = options?.includeSchool ? raw : raw.filter(line => !line.school);
 
   return kept.map(line => ({
@@ -177,10 +140,6 @@ export async function getTclStops(): Promise<Stop[]> {
     city: stop.city,
   }));
 
-  // TCL publie un objet par **quai** : « Bellecour A. Poncet » revient cinq
-  // fois, une par ligne desservie. La même règle qu'à Grenoble s'applique —
-  // même nom, moins de 300 m, un seul point. Le premier de chaque groupe fait
-  // foi ; les autres sont à quelques mètres et portent le même nom.
   const byId = new Map(raw.map(stop => [tclStopId(stop.id), stop]));
   const groups = groupNearbyStopsByName(stops);
 
@@ -191,8 +150,6 @@ export async function getTclStops(): Promise<Stop[]> {
     const representative = group[0].id;
     stopMembers.set(representative, group.map(member => localTclId(member.id)));
 
-    // Les lignes du groupe sont la réunion de celles de ses quais : c'est
-    // l'arrêt entier que consulte l'usager, pas le quai n° 3.
     const lines = new Set<string>();
     for (const member of group) {
       for (const code of byId.get(member.id)?.lines ?? []) lines.add(code);
@@ -250,8 +207,6 @@ export async function getTclLinesForStop(stopId: string): Promise<Line[]> {
  * appel — c'est le serveur qui éclate la requête, pas le navigateur.
  */
 export async function getTclStopDetail(stopId: string): Promise<StopDetail | null> {
-  // Le registre des groupes se remplit au chargement des arrêts ; ouvrir un
-  // favori avant que la carte n'ait chargé passerait sinon à côté.
   if (stopMembers.size === 0) await getTclStops();
 
   const stops = await getTclStops();
@@ -283,7 +238,6 @@ export async function getTclStopDetail(stopId: string): Promise<StopDetail | nul
       });
     }
   } catch {
-    // Pas de temps réel : la fiche garde ses lignes, ce qui reste utile.
   }
 
   return { ...stop, lines: served, departures, lastUpdate: new Date() };

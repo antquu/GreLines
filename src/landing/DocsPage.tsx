@@ -314,7 +314,6 @@ export function DocsPage({
       setTocOpen(false);
       window.scrollTo({ top: 0 });
     },
-    // `path` se reconstruit à chaque rendu mais ne dépend que de la langue.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lang],
   );

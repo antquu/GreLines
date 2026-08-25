@@ -1,7 +1,4 @@
 
-
-
-
 import type { RouteLocation } from '../services/api';
 
 export const haversineMeters = (
@@ -19,7 +16,6 @@ export const haversineMeters = (
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 };
-
 
 /**
  * Identifiant du point « position courante » dans le planificateur.

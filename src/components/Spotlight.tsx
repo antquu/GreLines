@@ -15,15 +15,6 @@ import { searchAddresses } from '../services/geocoding';
 import { LineBadge } from './LineBadge';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 
-
-
-
-
-
-
-
-
-
 export type SpotlightResult =
   | { kind: 'stop'; id: string; title: string; subtitle: string; stop: Stop }
   | { kind: 'line'; id: string; title: string; subtitle: string; line: AllLinesLine }
@@ -49,9 +40,7 @@ interface SpotlightProps {
 
 const MAX_PER_GROUP = 5;
 
-
 const EMPTY_ADDRESSES: AddressResult[] = [];
-
 
 function normalize(value: string): string {
   return value
@@ -80,8 +69,6 @@ export function Spotlight({
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   
-  
-  
   const [addressHit, setAddressHit] = useState<{ query: string; results: AddressResult[] }>({
     query: '',
     results: [],
@@ -90,9 +77,6 @@ export function Spotlight({
   const listRef = useRef<HTMLDivElement>(null);
   const debouncedQuery = useDebouncedValue(query, 250);
 
-  
-  
-  
   const [wasOpen, setWasOpen] = useState(isOpen);
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
@@ -102,16 +86,12 @@ export function Spotlight({
     }
   }
 
-  
-  
   useEffect(() => {
     if (!isOpen) return;
     const timer = window.setTimeout(() => inputRef.current?.focus(), 20);
     return () => window.clearTimeout(timer);
   }, [isOpen]);
 
-  
-  
   useEffect(() => {
     const trimmed = debouncedQuery.trim();
     if (!isOpen || trimmed.length < 3) return;
@@ -180,8 +160,6 @@ export function Spotlight({
   const results = useMemo<SpotlightResult[]>(() => {
     const q = normalize(query);
 
-    
-    
     if (!q) return actions;
 
     const matchedLines: SpotlightResult[] = lines
@@ -253,15 +231,11 @@ export function Spotlight({
     ];
   }, [query, lines, stops, trafficInfo, addresses, actions, isFr]);
 
-  // La sélection revient en tête dès que la recherche change, sinon l'index
-  // pointe sur un résultat qui n'existe plus.
   const [lastQuery, setLastQuery] = useState(query);
   if (query !== lastQuery) {
     setLastQuery(query);
     setActiveIndex(0);
   }
-  // Garde-fou : la liste peut rétrécir sans que la requête change (les adresses
-  // arrivent après coup).
   const safeIndex = results.length === 0 ? 0 : Math.min(activeIndex, results.length - 1);
 
   const select = useCallback((result: SpotlightResult) => {
@@ -298,7 +272,6 @@ export function Spotlight({
     }
   };
 
-  // Maintient la ligne sélectionnée visible quand on navigue au clavier.
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -311,13 +284,11 @@ export function Spotlight({
       {isOpen && (
         <motion.div
           className="fixed inset-0 z-[10002] flex justify-center bg-black/40 px-4"
-          // Légèrement au-dessus du milieu de l'écran, comme Spotlight.
           style={{ alignItems: 'flex-start', paddingTop: '18vh' }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.12 }}
-          // Clic en dehors de la zone de recherche : fermeture.
           onMouseDown={onClose}
         >
           <motion.div

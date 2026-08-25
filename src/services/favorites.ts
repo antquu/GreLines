@@ -1,9 +1,4 @@
 
-
-
-
-
-
 const STORAGE_KEY = 'greLines_favorites';
 export const FAVORITES_MAX = 4;
 
@@ -11,15 +6,10 @@ export interface Favorite {
   
   stopId: string;
   
-
   stopName: string;
   
   city?: string;
   
-
-
-
-
   lines: 'all' | string[];
   
   addedAt: number;
@@ -61,10 +51,6 @@ export function getFavorite(stopId: string): Favorite | null {
   return read().find(f => f.stopId === stopId) ?? null;
 }
 
-
-
-
-
 export function setFavorite(fav: Favorite): boolean {
   const all = read();
   const existingIdx = all.findIndex(f => f.stopId === fav.stopId);
@@ -84,7 +70,6 @@ export function removeFavorite(stopId: string): void {
   write(all);
 }
 
-
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
@@ -94,7 +79,6 @@ export function subscribeFavorites(fn: Listener): () => void {
 }
 
 function notify() { listeners.forEach(fn => fn()); }
-
 
 export function setFavoriteAndNotify(fav: Favorite): boolean {
   const ok = setFavorite(fav);

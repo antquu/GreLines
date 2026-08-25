@@ -54,11 +54,6 @@ import {
   type WalkPreferences,
 } from '../services/walkPreferences';
 
-
-
-
-
-
 /*
  * Les deux fonds de carte, dans le bon sens.
  *
@@ -147,12 +142,6 @@ interface NavStep {
   fromName?: string;
   path: Array<[number, number]>;
 }
-
-
-
-
-
-
 
 /** Vert, orange, rouge : la pastille des prochains passages. */
 const CONFIDENCE_COLOR: Record<CrowdConfidence['level'], string> = {
@@ -243,7 +232,6 @@ function panelSkin(isLight: boolean) {
 const WALK_COLOR = '#94a3b8';
 const ARRIVAL_COLOR = '#22c55e';
 
-
 const FOLLOW_ZOOM = 17.5;
 const FOLLOW_PITCH = 55;
 
@@ -266,12 +254,6 @@ const RUN_CARD_PITCH = RUN_CARD_WIDTH + RUN_CARD_GAP;
 
 const METRES_PER_DEG_LAT = 111320;
 const METRES_PER_DEG_LON_AT_45 = 78710;
-
-
-
-
-
-
 
 /**
  * Projette une position sur le tracé de l'étape.
@@ -304,7 +286,6 @@ function snapToPath(
     const dy = by - ay;
     const lengthSq = dx * dx + dy * dy;
 
-    // Position du pied de la perpendiculaire, bornée au segment.
     let t = lengthSq === 0 ? 0 : -(ax * dx + ay * dy) / lengthSq;
     t = Math.max(0, Math.min(1, t));
 
@@ -366,7 +347,6 @@ function useSmoothedPosition(target: [number, number] | null): [number, number] 
     const start = performance.now();
     const tick = (now: number) => {
       const linear = Math.min(1, (now - start) / SMOOTHING_MS);
-      // Décélération douce : la pastille arrive sans à-coup sur le relevé.
       const eased = 1 - Math.pow(1 - linear, 3);
       const next: [number, number] = [
         from[0] + (target[0] - from[0]) * eased,
@@ -415,13 +395,11 @@ function pointAheadOnPath(
   return path[path.length - 1];
 }
 
-
 function stepColor(step: NavStep): string {
   if (step.kind === 'arrival') return ARRIVAL_COLOR;
   if (step.kind === 'walk') return WALK_COLOR;
   return step.color;
 }
-
 
 /**
  * Noir ou blanc sur un aplat de ligne.
@@ -482,8 +460,6 @@ function onWhite(hex: string): string {
   let channels = [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16));
   const luminance = (rgb: number[]) =>
     (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
-  // Par paliers de vingt pour cent : on s'arrête au premier qui passe, pour ne
-  // pas noircir une couleur déjà lisible.
   let guard = 0;
   while (luminance(channels) > 0.45 && guard < 6) {
     channels = channels.map((value) => Math.round(value * 0.8));
@@ -523,10 +499,6 @@ function onDark(hex: string): string {
 function normalizeStopName(value: unknown): string {
   return String(value ?? '')
     .normalize('NFD')
-    // La plage des marques diacritiques combinantes est construite depuis une
-    // chaîne ASCII : écrite littéralement dans une expression régulière, elle est
-    // invisible dans l'éditeur et le moindre passage par un outil qui normalise
-    // l'Unicode la fait disparaître sans que rien ne casse à la compilation.
     .replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
@@ -553,9 +525,6 @@ function resolveStopId(
 ): string | undefined {
   if (!Array.isArray(stops) || stops.length === 0) return undefined;
   const wanted = normalizeStopName(name);
-  // Le réseau préfixe ses arrêts de leur commune — « Fontaine, La Poya » — là où
-  // le calculateur ne rend que « La Poya ». Comparer les deux formes en toutes
-  // lettres ne donne jamais rien : on garde donc aussi ce qui suit la virgule.
   const wantedShort = wanted.includes(' ')
     ? normalizeStopName(String(name ?? '').split(',').pop())
     : wanted;
@@ -587,8 +556,6 @@ function resolveStopId(
         candidate.endsWith(` ${wantedShort}`) ||
         wanted.endsWith(` ${candidateShort}`))
     ) {
-      // Un rapprochement partiel se paie d'une exigence de proximité : « Mairie »
-      // désigne une dizaine d'arrêts sur l'agglomération.
       if (distance <= 400 && (!partial || distance < partial.distance)) {
         partial = { id: stop.id, distance };
       }
@@ -601,7 +568,6 @@ function resolveStopId(
 
   if (exact) return exact.id;
   if (partial) return partial.id;
-  // Cent mètres : au-delà, ce n'est plus le même quai mais la rue d'à côté.
   if (nearest && nearest.distance <= 100) return nearest.id;
   return undefined;
 }
@@ -611,9 +577,6 @@ function formatClock(value: unknown): string {
   if (!value || Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
-
-
-
 
 function bearingBetween(from: [number, number], to: [number, number]): number {
   const toRad = (v: number) => (v * Math.PI) / 180;
@@ -697,7 +660,6 @@ function getBoundsForPath(path: Array<[number, number]>): [[number, number], [nu
   ];
 }
 
-
 function buildSteps(
   itinerary: RouteItinerary,
   isFr: boolean,
@@ -707,10 +669,6 @@ function buildSteps(
 ): NavStep[] {
   const legs = itinerary.allLegs || [];
   
-
-
-
-
   const cleanPlace = (value: unknown): string | undefined => {
     const name = typeof value === 'string' ? value.trim() : '';
     if (!name || name === 'Origin' || name === 'Destination') return undefined;
@@ -719,16 +677,12 @@ function buildSteps(
 
   const steps: NavStep[] = legs.map((leg: any, legIndex: number) => {
     const durationMin = Math.max(1, Math.round((leg.duration ?? 0) / 60));
-    // Le tracé corrigé s'il est fourni — le même que celui de la carte. À
-    // défaut seulement, la polyligne brute du routeur : mieux vaut un chemin
-    // approximatif que pas de chemin du tout.
     const path = legPaths?.get(legIndex)
       ?? (leg?.legGeometry?.points ? decodePolyline(leg.legGeometry.points) : []);
 
     if (leg.mode === 'WALK') {
       return {
         kind: 'walk',
-        
         
         instruction: cleanPlace(leg.to?.name)
           ? `${isFr ? 'Rejoignez' : 'Walk to'} ${cleanPlace(leg.to?.name)}`
@@ -871,7 +825,6 @@ export function NavigationMode({
     try {
       localStorage.setItem(helpedStorageKey, String(travellersHelpedNow));
     } catch {
-      // Le compteur reste affiché pour la session si le stockage est indisponible.
     }
   }, [helpedStorageKey, travellersHelpedNow]);
 
@@ -978,7 +931,6 @@ export function NavigationMode({
   }, [isOpen, index, openLegs, runs, scheduleRuns]);
 
   const sheetHeight = Math.max(viewportHeight * 0.85, contentHeight + 96);
-  // Décalages depuis la position haute : 0 en grand, puis 55 % et 15 % visibles.
   /**
    * Les bornes du glissement, et la hauteur d'entrée.
    *
@@ -993,7 +945,6 @@ export function NavigationMode({
    * défile plus à l'intérieur.
    */
   const sheetBounds = useMemo(() => {
-    // La sheet commence à 15 % du haut : c'est de là que part tout décalage.
     const sheetTop = viewportHeight * 0.15;
     return {
       /*
@@ -1019,7 +970,6 @@ export function NavigationMode({
 
   useEffect(() => {
     if (!isOpen) return;
-    // Elle entre par le bas jusqu'à la position médiane.
     sheetY.set(sheetBounds.bottom);
     const controls = animate(sheetY, sheetBounds.resting, {
       type: 'spring',
@@ -1051,9 +1001,6 @@ export function NavigationMode({
   useEffect(() => {
     if (isOpen) {
       setIndex(Math.min(loadNavigationStep(itinerary), Math.max(0, steps.length - 1)));
-      // Ouvrir le guidage, c'est partir. Le bouton GO n'existe plus : la sheet
-      // montre le trajet entier dès l'ouverture, il n'y avait plus rien à
-      // déclencher qu'un état interne.
       setHasStarted(true);
       setOpenLegs(new Set());
       setPickedRuns(new Map());
@@ -1102,7 +1049,6 @@ export function NavigationMode({
     lastFixRef.current = { lat: currentLocation.lat, lon: currentLocation.lon, at: now };
     if (!previous) return;
     const elapsed = (now - previous.at) / 1000;
-    // Trop court, le bruit du GPS domine ; trop long, l'app était en veille.
     if (elapsed < 2 || elapsed > 60) return;
     const metres = coordinateDistance(
       [previous.lon, previous.lat],
@@ -1130,7 +1076,6 @@ export function NavigationMode({
   useEffect(() => {
     if (!isOpen || !hasStarted || !currentLocation) return;
     const here: [number, number] = [currentLocation.lon, currentLocation.lat];
-    // 4 m/s, soit environ 14 km/h : au-dessus, on ne marche plus.
     const inVehicle = speedMps > 4;
 
     const distanceTo = (item: NavStep): number => {
@@ -1154,8 +1099,6 @@ export function NavigationMode({
       }
     }
 
-    // Après un reload, la vitesse est encore inconnue. Une position déjà
-    // avancée sur un tronçon de transport suffit alors à reconnaître le bus.
     if (steps[index]?.kind === 'walk' || !Number.isFinite(currentDistance)) {
       for (let i = index + 1; i < steps.length; i += 1) {
         const candidate = steps[i];
@@ -1186,8 +1129,6 @@ export function NavigationMode({
 
   useEffect(() => {
     if (!isOpen || !step) return;
-    // En suivi, c'est la position qui commande la caméra : recadrer sur l'étape
-    // arracherait la vue à l'usager en pleine marche.
     if (hasStarted && isFollowing && currentLocation) return;
     const map = mapRef.current;
     if (!map) return;
@@ -1240,9 +1181,6 @@ export function NavigationMode({
     lastCameraLocationRef.current = here;
     const lookAhead = pointAheadOnPath(step.path, here, FOLLOW_LOOK_AHEAD_METERS);
 
-    // `easeTo` sans durée : la caméra colle à la position déjà lissée image par
-    // image. Une animation de 800 ms par-dessus le lissage se serait battue
-    // avec lui, et la carte accusait un retard visible sur la pastille.
     const shouldAnimate = animateRecenterRef.current;
     animateRecenterRef.current = false;
     map.easeTo({
@@ -1307,8 +1245,6 @@ export function NavigationMode({
       const leg: any = legs[legIndex];
       if (!leg?.mode || leg.mode === 'WALK') return;
 
-      // Une même montée ne se constate qu'une fois, même si l'étape se
-      // recalcule ou que l'usager revient en arrière d'un pas.
       const key = `${legIndex}:${moment}`;
       if (observedRef.current.has(key)) return;
       observedRef.current.add(key);
@@ -1320,8 +1256,6 @@ export function NavigationMode({
       const arrival = leg.endTime ? new Date(leg.endTime) : null;
       if (!fromStop || !departure || Number.isNaN(departure.getTime())) return;
 
-      // À la montée, l'arrêt observé est celui de montée : on mesure le départ.
-      // À la descente, on mesure l'arrivée au terme du tronçon.
       const reference = moment === 'boarding' ? departure : arrival;
       const observedStop = moment === 'boarding' ? fromStop : toStop;
       if (!reference || Number.isNaN(reference.getTime()) || !observedStop) return;
@@ -1336,8 +1270,6 @@ export function NavigationMode({
       });
     };
 
-    // Franchir plusieurs étapes d'un coup reste possible : on solde les
-    // descentes laissées derrière avant de constater la montée en cours.
     for (let i = lastStepRef.current; i < index; i++) observe(i, 'alighting');
     observe(index, 'boarding');
     lastStepRef.current = index;
@@ -1385,7 +1317,6 @@ export function NavigationMode({
       });
     };
     load();
-    // Une minute : le rythme auquel les observations arrivent, pas plus vite.
     const timer = window.setInterval(load, 60000);
     return () => {
       cancelled = true;
@@ -1462,14 +1393,8 @@ export function NavigationMode({
               .toUpperCase() === wanted
         )
         .sort((a, b) => Number(a.departureTime) - Number(b.departureTime))
-        // Le réseau en rend une vingtaine ; on garde tout ce qui tient dans une
-        // heure d'attente, ce qui suffit largement à choisir un autre passage.
         .slice(0, 8);
 
-    // On demande d'abord au poteau que le calculateur a désigné : c'est la
-    // source la plus directe, elle ne dépend d'aucun rapprochement de noms. Le
-    // cluster retrouvé par le nom ne sert plus que de secours, pour les réseaux
-    // dont le planificateur ne rend pas d'identifiant d'arrêt.
     const load = async () => {
       const attempts: Array<() => Promise<Departure[]>> = [];
       if (rawBoardingStopId) {
@@ -1489,7 +1414,6 @@ export function NavigationMode({
             return;
           }
         } catch {
-          // On passe à la source suivante.
         }
       }
       if (!cancelled) setRuns([]);
@@ -1544,8 +1468,6 @@ export function NavigationMode({
       });
     };
     load();
-    // Au rythme choisi pour les passages : la pastille les commente, elle ne
-    // doit pas décrire un autre instant qu'eux.
     const period = Number.isFinite(refreshIntervalMs) ? Math.max(15000, refreshIntervalMs) : 30000;
     const timer = window.setInterval(load, period);
     return () => {
@@ -1592,9 +1514,6 @@ export function NavigationMode({
         const minutes: number[] = [];
 
         for (const direction of timetable.directions) {
-          // Par l'identifiant de poteau d'abord, qui est le même des deux côtés.
-          // Par le nom ensuite : sur quelques lignes la fiche publie le poteau
-          // jumeau, et un carrousel approximatif vaut mieux qu'un carrousel vide.
           const stop =
             direction.stops.find((entry) => entry.id === stopId) ??
             (wantedName
@@ -1602,7 +1521,6 @@ export function NavigationMode({
               : undefined);
           if (!stop) continue;
           for (const seconds of stop.times) {
-            // Une course qui ne dessert pas cet arrêt n'a pas d'heure à donner.
             if (seconds === null) continue;
             minutes.push(Math.round((midnight + seconds * 1000 - now.getTime()) / 60000));
           }
@@ -1684,7 +1602,6 @@ export function NavigationMode({
       try {
         localStorage.removeItem(helpedStorageKey);
       } catch {
-        // Le bilan conserve la valeur en mémoire si le stockage est indisponible.
       }
       onArrived?.({
         observations: observedRef.current.size,
@@ -1714,8 +1631,6 @@ export function NavigationMode({
     const next = steps[index + 1];
 
     if (current.kind === 'walk') {
-      // Marcher vers un quai, c'est partir ; marcher vers l'arrivée, ce n'est
-      // plus une consigne mais la fin du trajet, que l'étape suivante annonce.
       if (index === 0) void notifyTripMoment({ kind: 'leave' }, language);
       else if (next?.kind === 'transit' && next.lineShortName) {
         void notifyTripMoment(
@@ -1771,8 +1686,6 @@ export function NavigationMode({
     const stop = {
       id: String(id),
       name: String(leg?.from?.name ?? ''),
-      // La ligne qu'on attend : « le passage est-il passé ? » ne se range nulle
-      // part sans elle.
       lineId: next.lineShortName ?? null,
     };
 
@@ -1780,9 +1693,6 @@ export function NavigationMode({
 
     const lat = Number(leg?.from?.lat);
     const lon = Number(leg?.from?.lon);
-    // Sans position ni coordonnées, il n'y a rien à mesurer : on s'en remet au
-    // comportement d'avant plutôt que de museler les questions pour tout le
-    // monde à cause d'un GPS coupé.
     if (!currentLocation || !Number.isFinite(lat) || !Number.isFinite(lon)) return stop;
 
     const metres = coordinateDistance([currentLocation.lon, currentLocation.lat], [lon, lat]);
@@ -1793,9 +1703,6 @@ export function NavigationMode({
   })();
 
   const handleClose = () => {
-    // L'arrivée se solde d'elle-même dès que la dernière étape est atteinte.
-    // Fermer avant, c'est renoncer ; fermer après, c'est refermer un écran de fin
-    // déjà ouvert. Dans les deux cas il n'y a rien à créditer ici.
     onClose();
   };
 
@@ -1814,7 +1721,6 @@ export function NavigationMode({
         : 'Arrival'
       : steps[index + 1]?.lineShortName || steps[index + 1]?.instruction || '';
 
-  // La minimisation a été retirée : le guidage reste toujours plein écran.
   const compactTitle = '';
   const onRestore = () => undefined;
   const showCompact = false;
@@ -1874,7 +1780,6 @@ export function NavigationMode({
     const liveMinutes: number[] = [];
     if (legIndex === activeTransitIndex) {
       for (const run of runs) {
-        // `departureTime` compte les minutes qui restent, pas un horodatage.
         liveMinutes.push(Math.max(0, Math.round(Number(run.departureTime) || 0)));
       }
     }
@@ -1923,8 +1828,6 @@ export function NavigationMode({
 
       for (const minutes of schedule) {
         if (minutes < from || minutes > until) continue;
-        // Deux annonces à une minute l'une de l'autre sont le même véhicule :
-        // on garde celle du temps réel, qui sait ce que la fiche ignore.
         if (cards.some((card) => card.minutes !== null && Math.abs(card.minutes - minutes) <= 1)) {
           continue;
         }
@@ -2031,7 +1934,6 @@ export function NavigationMode({
   const shiftedClock = (value: unknown, legIndex: number): string => {
     const base = new Date(value as any).getTime();
     if (!Number.isFinite(base)) return '';
-    // Les tronçons déjà parcourus ont eu lieu à l'heure qu'ils ont eue.
     const shift = legIndex >= index ? shiftFor(legIndex) : 0;
     return formatClock(new Date(base + shift).toISOString());
   };
@@ -2090,7 +1992,6 @@ export function NavigationMode({
     </div>
   );
 
-
   const fullPath: Array<[number, number]> = itinerary.routePath?.length
     ? itinerary.routePath
     : steps.flatMap((item) => item.path);
@@ -2098,8 +1999,6 @@ export function NavigationMode({
     type: 'FeatureCollection' as const,
     features: [{ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: step.path } }],
   };
-  // Pendant l'approche à pied, on garde aussi la ligne à prendre visible : le
-  // chemin piéton répond à « comment y aller », le tracé transport à « où va le bus ».
   const futureRouteGeoJSON = {
     type: 'FeatureCollection' as const,
     features: steps.slice(index + 1)
@@ -2130,7 +2029,6 @@ export function NavigationMode({
     }),
   };
 
-
   const arriveLabel = itinerary.arr;
   /** L'heure de départ, prise sur le premier tronçon plutôt que sur l'horloge. */
   const departureLabel = formatClock((itinerary.allLegs as any)?.[0]?.startTime);
@@ -2156,8 +2054,6 @@ export function NavigationMode({
             onDragStart={() => setIsFollowing(false)}
             onRotateStart={() => setIsFollowing(false)}
             onZoomStart={(event: { originalEvent?: unknown }) => {
-              // Seul un zoom déclenché à la main coupe le suivi : ceux que la
-              // caméra s'inflige elle-même ne comptent pas.
               if (event?.originalEvent) setIsFollowing(false);
             }}
           >
@@ -2657,24 +2553,9 @@ export function NavigationMode({
                     {(
                       <div
                         onPointerDownCapture={(e) => {
-                          // La sheet se traine au doigt, et framer-motion capte
-                          // le geste des l'appui. Sans cette coupure, faire
-                          // defiler le carrousel faisait aussi monter ou
-                          // descendre la sheet : les deux mouvements se
-                          // disputaient le doigt et le defilement s'arretait
-                          // toutes les deux secondes.
                           e.stopPropagation();
                         }}
                         onScroll={(e) => {
-                          // La carte arrivée à la première place devient la carte
-                          // retenue : on ne demande pas de confirmer un choix
-                          // qu'on vient de faire en faisant défiler jusque-là.
-                          //
-                          // Mais on attend l'arrêt du doigt. Mettre l'état à jour
-                          // à chaque événement de défilement redessinait toute la
-                          // timeline vingt fois par seconde, et le geste
-                          // saccadait — c'est ce qui rendait le carrousel
-                          // désagréable.
                           const element = e.currentTarget;
                           scrollingRef.current = true;
                           window.clearTimeout(scrollSettleRef.current);
@@ -2745,8 +2626,6 @@ export function NavigationMode({
                               disabled={empty}
                               onClick={(e) => {
                                 choose(i, r);
-                                // L'aimant, à la main : la carte touchée glisse
-                                // à la première place, au-dessus du rail.
                                 e.currentTarget.scrollIntoView({
                                   behavior: 'smooth',
                                   inline: 'start',
@@ -2776,9 +2655,6 @@ export function NavigationMode({
                                       color: skin.plateInk(stepColor(item)),
                                     }
                                   : {
-                                      // Un cran de la couleur de ligne, pas du
-                                      // noir translucide : la carte annonce ce
-                                      // véhicule-là, elle en garde la teinte.
                                       backgroundColor: shadeColor(stepColor(item), 0.22),
                                       color: ink,
                                       opacity: empty ? 0.45 : 1,
@@ -2801,9 +2677,6 @@ export function NavigationMode({
                                   className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full"
                                   style={{
                                     backgroundColor: CONFIDENCE_COLOR[confidence.level],
-                                    // Un liseré de la couleur de la carte : sur
-                                    // un aplat clair, un point vert seul se
-                                    // confondait avec la ligne elle-même.
                                     boxShadow: '0 0 0 2px rgba(0,0,0,0.18)',
                                   }}
                                   aria-label={confidenceLabel(confidence, isFr)}
@@ -3003,8 +2876,6 @@ export function NavigationMode({
                                 role="button"
                                 tabIndex={0}
                                 onClick={(e) => {
-                                  // Sans cela, déplier changerait aussi l'étape
-                                  // en cours — on veut juste regarder.
                                   e.stopPropagation();
                                   const opening = !openLegs.has(i);
                                   setOpenLegs((prev) => {
@@ -3133,8 +3004,6 @@ export function NavigationMode({
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           isLight={theme !== 'dark'}
-          // Le guidage occupe déjà le dessus de la pile ; la feuille doit passer
-          // par-dessus lui, qu'elle soit rendue ici ou portée à la racine.
           zIndex={10050}
         >
               <div className="flex-1 overflow-y-auto px-5 pb-6">
@@ -3220,9 +3089,6 @@ export function NavigationMode({
                       const next = !voiceOn;
                       setVoiceEnabled(next);
                       setVoiceOn(next);
-                      // On dit la phrase tout de suite : c'est le seul moyen de
-                      // savoir à quoi on vient de consentir, et le geste de
-                      // l'usager débloque au passage la synthèse sur iOS.
                       if (next) {
                         speak(
                           isFr

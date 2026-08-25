@@ -7,12 +7,12 @@ import { CarpoolStopPanel, isCarpoolStop, isCarpoolLine } from './CarpoolStopPan
 import { getMcoLines, type McoLine } from '../services/mcoLines';
 import { formatDepartureTime, refreshStopDepartures } from '../services/api';
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { UserIcon, ChevronDownIcon, ChevronUpIcon, XMarkIcon, EllipsisVerticalIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon, ClockIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/solid';
+import { UserIcon, MapIcon, ClockIcon, ArrowsRightLeftIcon, ChevronDownIcon, ChevronUpIcon, XMarkIcon, EllipsisVerticalIcon, ExclamationTriangleIcon, CheckIcon, BookmarkIcon } from '@heroicons/react/24/solid';
 import { isTclId } from '../services/tclNetwork';
-import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon as BookmarkOutlineIcon } from '@heroicons/react/24/outline';
 import { TclSidebar } from './TclSidebar';
 import { resolveLineStyle, isGrenobleNetworkLine } from '../utils/lineColors';
-import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
+import { isFavorite, removeFavoriteAndNotify, setFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
 import { AddFavoriteModal } from './AddFavoriteModal';
 import { TransportModeIcon } from './TransportModeIcon';
 import { normalizeMode } from '../utils/transportMode';
@@ -21,6 +21,11 @@ import { DepartureLineBadge } from './DepartureLineBadge';
 import { getStopTrafficAlerts, filterAlertsBySelectedLines } from '../utils/stopTrafficMatcher';
 import { getTimetable, isLastDeparture, toTimetableRouteId, type Timetable } from '../services/timetable';
 import { LastRunRibbon, LAST_RUN_TEXT } from './LastRunRibbon';
+import { DepartureQuickActions } from './DepartureQuickActions';
+import { FaWheelchair } from 'react-icons/fa';
+import { useAccessibleStops } from '../hooks/useAccessibleStops';
+import { usePerfSettings } from '../hooks/usePerfSettings';
+import { isStopAccessible } from '../services/stopAccessibility';
 
 interface SidebarProps {
   stop: StopDetail | null;
@@ -28,10 +33,6 @@ interface SidebarProps {
   onClose: () => void;
   initialSelectedLines?: Set<string>;
   
-
-
-
-
   selectedLines?: Set<string>;
   onSelectedLinesChange?: (lines: Set<string>) => void;
   compactMode: boolean;
@@ -97,8 +98,6 @@ const getSidebarText = (language: 'fr' | 'en') => {
   };
 };
 
-// Line style resolution is handled centrally via `resolveLineStyle` in utils.
-
 /**
  * Nom du mode, accordé au pictogramme qui l'accompagne.
  *
@@ -125,8 +124,6 @@ const isRoundLine = (lineId: string): boolean => {
   const m = /^C(\d+)$/.exec(code);
   return !!m && parseInt(m[1], 10) >= 1 && parseInt(m[1], 10) <= 14;
 };
-
-
 
 /**
  * L'affluence, en trois silhouettes.
@@ -170,11 +167,8 @@ const renderDepartureTime = (timeString: string) => {
   return timeString;
 };
 
-
 const ExportModal = ({ isOpen, onClose, exportUrl, position, language }: { isOpen: boolean; onClose: () => void; exportUrl: string; position?: { x: number; y: number } | null; language: 'fr' | 'en' }) => {
   const [copied, setCopied] = useState(false);
-  // Reset the success state when the modal is closed or the URL changes, so a
-  // freshly-opened modal always shows the neutral "Copy" state.
   useEffect(() => {
     if (!isOpen) setCopied(false);
   }, [isOpen, exportUrl]);
@@ -190,11 +184,8 @@ const ExportModal = ({ isOpen, onClose, exportUrl, position, language }: { isOpe
     try {
       await navigator.clipboard.writeText(exportUrl);
       setCopied(true);
-      // Revert to the neutral state after a short, deliberate pause.
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Clipboard can fail in non-secure contexts; fall back to a one-shot
-      // success indicator anyway since we tried.
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }
@@ -257,6 +248,12 @@ export const Sidebar = ({
   onOpenLine,
 }: SidebarProps) => {
   const [currentStopDetail, setCurrentStopDetail] = useState<StopDetail | null>(null);
+  /* Les arrêts où l'on peut monter en fauteuil. La liste vient d'un fichier
+     statique tiré du GTFS : l'API du réseau ne porte pas ce renseignement. */
+  const accessibleStops = useAccessibleStops();
+  /* Le mode développeur : il décide seul de l'horodatage en pied de fiche. */
+  const { settings: perf } = usePerfSettings();
+  const stopIsAccessible = isStopAccessible(accessibleStops, currentStopDetail);
   const [departures, setDepartures] = useState<Departure[]>([]);
   const [internalSelectedLines, setInternalSelectedLines] = useState<Set<string>>(initialSelectedLines || new Set());
   const isControlled = controlledSelectedLines !== undefined;
@@ -278,9 +275,6 @@ export const Sidebar = ({
   const [carpoolLines, setCarpoolLines] = useState<McoLine[]>([]);
   const [isFavoriteModalOpen, setIsFavoriteModalOpen] = useState(false);
   const [showTclWarning, setShowTclWarning] = useState(false);
-  // Track favorite status reactively so the star icon updates immediately
-  // when add/remove fires from any source (this sidebar, or another tab in
-  // the future).
   const [isFav, setIsFav] = useState(false);
   useEffect(() => {
     if (!currentStopDetail) { setIsFav(false); return; }
@@ -349,7 +343,6 @@ export const Sidebar = ({
   }, [currentStopDetail]);
 
   useEffect(() => {
-    // In controlled mode, the parent owns selectedLines — don't fight it.
     if (isControlled) return;
     if (initialSelectedLines && initialSelectedLines.size > 0 && !hasAppliedInitialLines) {
       setInternalSelectedLines(new Set(initialSelectedLines));
@@ -360,10 +353,6 @@ export const Sidebar = ({
     }
   }, [currentStopId, initialSelectedLines, isControlled]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Stop-level traffic alerts: alerts whose description mentions THIS stop's
-  // name AND that affect at least one line served by this stop.
-  // ─────────────────────────────────────────────────────────────────────────────
   /*
    * Quand montrer la fiche du covoiturage.
    *
@@ -445,7 +434,6 @@ export const Sidebar = ({
 
     void load();
     return () => { active = false; };
-    // `timetables` est volontairement absent : il est alimenté par cet effet.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentStopDetail?.id]);
 
@@ -507,7 +495,20 @@ export const Sidebar = ({
                   className="mb-2 w-auto object-contain object-left" style={{ height: 35 }}
                 />
               )}
-              <h2 className="text-3xl font-extrabold text-white leading-tight">{currentStopDetail.name}</h2>
+              <h2 className="text-3xl font-extrabold text-white leading-tight">
+                {currentStopDetail.name}
+                {/* Le fauteuil finit le titre comme un point finirait la phrase :
+                    il appartient au nom de l'arrêt, il n'est pas une étiquette
+                    posée à côté. Son absence ne dit rien — la moitié du réseau
+                    n'est pas renseignée. */}
+                {stopIsAccessible && (
+                  <FaWheelchair
+                    className="ml-2 inline-block h-[0.7em] w-[0.7em] align-baseline text-blue-400"
+                    title={language === 'fr' ? 'Arrêt accessible en fauteuil' : 'Wheelchair accessible stop'}
+                    aria-label={language === 'fr' ? 'Arrêt accessible en fauteuil' : 'Wheelchair accessible stop'}
+                  />
+                )}
+              </h2>
               {!compactMode && currentStopDetail.city && (
                 <p className="text-sm text-slate-400 mt-1">{currentStopDetail.city}</p>
               )}
@@ -528,19 +529,49 @@ export const Sidebar = ({
               </button>
               <button
                 onClick={() => {
-                  if (isFav) removeFavoriteAndNotify(currentStopDetail.id);
-                  else setIsFavoriteModalOpen(true);
+                  if (isFav) {
+                    removeFavoriteAndNotify(currentStopDetail.id);
+                    return;
+                  }
+                  /*
+                   * L'étoile enregistre, et c'est tout.
+                   *
+                   * Elle ouvrait une fenêtre qui demandait quelles lignes
+                   * suivre. La question se posait à chaque arrêt mis en favori,
+                   * et la réponse était « toutes » à peu près à chaque fois :
+                   * on met un arrêt en favori parce qu'on y passe, pas parce
+                   * qu'on y prend une ligne et une seule. Le tri par ligne
+                   * existe toujours, mais là où il sert — dans la fiche du
+                   * favori, une fois qu'on l'a ouverte.
+                   *
+                   * La fenêtre ne reparaît que pour dire ce qu'on ne peut pas
+                   * deviner : que la liste est pleine.
+                   */
+                  const saved = setFavoriteAndNotify({
+                    stopId: currentStopDetail.id,
+                    stopName: currentStopDetail.name,
+                    city: currentStopDetail.city,
+                    lines: 'all',
+                    addedAt: Date.now(),
+                  });
+                  if (!saved) setIsFavoriteModalOpen(true);
                 }}
-                className={`w-9 h-9 flex items-center justify-center border rounded-full transition ${
+                /* Le bouton ne change pas d'habit selon l'état : il garde le
+                   sien, celui de ses voisins. C'est le signet qu'il porte qui
+                   dit tout — creux, l'arrêt n'est pas gardé ; plein et bleu,
+                   il l'est. Un bouton qui change de couleur en même temps que
+                   son pictogramme dit deux fois la même chose, et fait
+                   sauter la rangée à chaque clic. */
+                className="w-9 h-9 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-full transition hover:bg-slate-700"
+                aria-label={
                   isFav
-                    ? 'bg-amber-500/20 border-amber-500/40 hover:bg-amber-500/30'
-                    : 'bg-slate-800 border-slate-700 hover:bg-slate-700'
-                }`}
-                aria-label={isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                    ? language === 'fr' ? 'Retirer des favoris' : 'Remove from favourites'
+                    : language === 'fr' ? 'Ajouter aux favoris' : 'Add to favourites'
+                }
               >
                 {isFav
-                  ? <StarIcon className="w-4 h-4 text-amber-400" />
-                  : <StarOutlineIcon className="w-4 h-4 text-white" />}
+                  ? <BookmarkIcon className="w-4 h-4 text-blue-400" />
+                  : <BookmarkOutlineIcon className="w-4 h-4 text-white" />}
               </button>
               <button onClick={onClose}
                 className="w-9 h-9 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-full hover:bg-slate-700 transition">
@@ -571,9 +602,6 @@ export const Sidebar = ({
                 <button
                   ref={exportButtonRef}
                   onClick={() => {
-                    // Build the URL using the user's current path so shared
-                    // links land on the same route they were copied from
-                    // (e.g. "/" stays "/", "/app" stays "/app").
                     const path = window.location.pathname;
                     const qs = selectedLines.size === 0
                       ? `T1=ALL_${currentStopDetail.id}`
@@ -703,9 +731,6 @@ export const Sidebar = ({
                 const isExpanded = expandedItems.has(itemKey);
                 const departureLine = currentStopDetail.lines.find(l => l.id === departure.lineId || l.shortName === departure.lineShortName || l.shortName === departure.lineId);
                 const secondLine = second ? currentStopDetail.lines.find(l => l.id === second.lineId || l.shortName === second.lineShortName || l.shortName === second.lineId) : undefined;
-                // Identifiant réseau compris : « C1 » tout court ne dit pas si
-                // l'on parle de la Chrono 1 ou de la C1 du TER, qui se croisent
-                // en gare de Grenoble.
                 const departureRef = departureLine?.routeId || departure.routeId || departure.lineId;
                 const secondRef = second ? (secondLine?.routeId || second.routeId || second.lineId) : '';
                 const departureIsSem = isGrenobleNetworkLine(departureRef);
@@ -722,8 +747,18 @@ export const Sidebar = ({
                   minutesUntil,
                 );
 
-                // Tram ou chrono ou ligne avec trafic + second départ → expandable
-                if ((isTram || isChrono || hasTrafficAlert) && second) {
+                  /*
+                 * Un passage suivant connu, et la ligne se déplie.
+                 *
+                 * Le dépliement était réservé aux trams, aux chrono et aux
+                 * lignes perturbées ; sur toutes les autres, le second
+                 * passage se lisait en petit sous le premier — quand il se
+                 * lisait. Or c'est le même besoin pour tout le monde :
+                 * « celui-là, je le rate, c'est dans combien de temps le
+                 * suivant ? ». Ce qui décide n'est donc pas la sorte de
+                 * ligne mais le fait qu'on connaisse un passage de plus.
+                 */
+                if (second) {
                   return (
                     <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
                       className="border border-slate-700 rounded-2xl overflow-hidden bg-slate-800">
@@ -809,42 +844,35 @@ export const Sidebar = ({
                           {/* Actions du passage : la fiche horaire répond à la
                               question « et le prochain, c'est quand ? » que le
                               temps réel seul ne couvre pas. */}
-                          <div className="flex flex-wrap gap-2 border-t border-slate-700/70 pt-4">
-                            <button
-                              type="button"
-                              onClick={() => onOpenTimetable?.({
-                                line: departureLine ?? { id: departure.lineId, shortName: departure.lineShortName },
-                                headsign: departure.destination,
-                              })}
-                              className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
-                            >
-                              <ClockIcon className="h-4 w-4" />
-                              {text.timetable}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onOpenLine?.(departureLine ?? { id: departure.lineId, shortName: departure.lineShortName })}
-                              className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
-                            >
-                              <MapIcon className="h-4 w-4" />
-                              {text.seeLine}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => currentStopDetail && onPlanRouteFromStop?.(currentStopDetail)}
-                              className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
-                            >
-                              <ArrowsRightLeftIcon className="h-4 w-4" />
-                              {text.planRoute}
-                            </button>
-                          </div>
+                          <DepartureQuickActions
+                            style={departureStyle}
+                            actions={[
+                              {
+                                label: text.timetable,
+                                Icon: ClockIcon,
+                                onSelect: () => onOpenTimetable?.({
+                                  line: departureLine ?? { id: departure.lineId, shortName: departure.lineShortName },
+                                  headsign: departure.destination,
+                                }),
+                              },
+                              {
+                                label: text.seeLine,
+                                Icon: MapIcon,
+                                onSelect: () => onOpenLine?.(departureLine ?? { id: departure.lineId, shortName: departure.lineShortName }),
+                              },
+                              {
+                                label: text.planRoute,
+                                Icon: ArrowsRightLeftIcon,
+                                onSelect: () => currentStopDetail && onPlanRouteFromStop?.(currentStopDetail),
+                              },
+                            ]}
+                          />
                         </div>
                       </motion.div>
                     </motion.div>
                   );
                 }
 
-                // Single tram without second
                 if (isTram) {
                   return (
                     <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
@@ -874,9 +902,6 @@ export const Sidebar = ({
                   );
                 }
 
-                // Regular bus. Toutes les rangées ont la même teinte : le vert
-                // « prochain » et l'ambre « imminent » colorisaient une
-                // information que l'ordre de la liste et l'heure disent déjà.
                 return (
                   <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
                     className="flex items-center justify-between p-3 rounded-2xl border border-slate-700 bg-slate-800 transition hover:bg-slate-750">
@@ -909,6 +934,29 @@ export const Sidebar = ({
                 <p className="text-sm text-slate-500 py-6 text-center">{text.noDeparturesAvailable}</p>
               )}
             </div>
+
+            {/*
+              L'heure de la dernière requête, en mode développeur seulement.
+
+              Une fiche d'arrêt se rafraîchit toute seule, à l'intervalle réglé. Quand on
+              travaille dessus, la question qui revient est « est-ce que ça vient de se
+              rafraîchir, ou est-ce que je regarde des chiffres d'il y a deux minutes ? ».
+              Le seul moyen d'y répondre était de regarder la console.
+
+              Hors mode développeur, rien : un horodatage sous une liste de départs
+              n'apprend rien à qui prend le tram, et sème le doute sur la fraîcheur du
+              reste.
+            */}
+            {perf.devMode && currentStopDetail.lastUpdate && (
+              <p className="tabular px-1 pt-4 text-center text-[11px] text-slate-500">
+                {language === 'fr' ? 'Dernière requête effectuée à ' : 'Last request at '}
+                {currentStopDetail.lastUpdate.toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-GB', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                })}
+              </p>
+            )}
           </div>
             </>
           )}

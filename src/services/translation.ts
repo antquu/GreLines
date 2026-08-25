@@ -127,7 +127,6 @@ function chunk(text: string): string[] {
     }
   }
   if (current) parts.push(current);
-  // Une phrase à elle seule plus longue que la limite : on coupe aux espaces.
   return parts.flatMap(part => {
     if (part.length <= MAX_CHUNK) return [part];
     const words = part.split(' ');
@@ -172,9 +171,6 @@ async function translateChunk(text: string, target: string): Promise<string | nu
     const payload = await response.json();
     const translated = payload?.responseData?.translatedText;
     if (typeof translated !== 'string' || !translated.trim()) return null;
-    // Le service renvoie parfois son message d'erreur dans le champ de
-    // traduction — quota dépassé, paire de langues inconnue. Ces réponses-là
-    // sont en majuscules et commencent toujours de la même façon.
     if (/^(MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID)/i.test(translated)) return null;
     return translated;
   } catch {
@@ -274,7 +270,6 @@ export function requestTranslation(text: string, target: string): void {
   if (Date.now() < coolingUntil) return;
 
   const work = (async () => {
-    // Le cache de la base d'abord : c'est gratuit, et c'est le cas courant.
     const cached = await readCache([key]);
     const known = cached.get(key);
     if (known) {
@@ -284,7 +279,6 @@ export function requestTranslation(text: string, target: string): void {
       return known;
     }
 
-    // Le cache ne compte pas dans le budget : il ne coûte rien au service.
     if (spent >= SESSION_BUDGET) {
       failed.add(key);
       return trimmed;

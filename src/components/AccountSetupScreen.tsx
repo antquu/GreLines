@@ -5,6 +5,7 @@ import { MinimalScreen } from './MinimalScreen';
 import { OuraCardFace } from './OuraCardFace';
 import type { OuraCard } from '../services/ouraCard';
 import {
+  adoptAccount,
   createAccount,
   loadAccountForCard,
   isPseudoFree,
@@ -89,11 +90,8 @@ export function AccountSetupScreen({
   const [pseudo, setPseudo] = useState('');
   const [taken, setTaken] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [existingAccount, setExistingAccount] = useState<Account | null>(null);
   const [checkingExistingAccount, setCheckingExistingAccount] = useState(false);
 
-  // Chaque venue repart du début : on ne reprend pas une création abandonnée à
-  // mi-chemin, dont on ne sait plus ce qu'elle proposait.
   useEffect(() => {
     if (!isOpen) return;
     setStep('card');
@@ -103,9 +101,7 @@ export function AccountSetupScreen({
     setPhoto(null);
     setPseudo('');
     setTaken(false);
-    setExistingAccount(null);
     setCheckingExistingAccount(false);
-    // Une seule carte : la question ne se pose pas, on commence par la photo.
     if (cards.length === 1) start(cards[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, cards.length]);
@@ -127,17 +123,35 @@ export function AccountSetupScreen({
     setPseudo(stripAt(suggestedPseudo(card.firstName, card.lastName)));
     setTaken(false);
     setDirection(1);
-    setStep('photo');
-    setExistingAccount(null);
+    /*
+     * On interroge la base avant d'avancer d'un écran.
+     *
+     * Passer d'abord à la photo puis se raviser donnait un battement : on
+     * voyait apparaître un écran de création, le temps d'une requête, pour
+     * quelqu'un qui n'avait rien à créer. L'attente se passe donc sur l'écran
+     * du choix de carte, qui ne bouge pas.
+     */
     setCheckingExistingAccount(true);
     void loadAccountForCard(card.cardCode)
       .then(existing => {
-        if (!existing) return;
-        // Une carte qui porte déjà un compte : on reprend ce qu'elle a, plutôt
-        // que d'en proposer un nouveau qui l'écraserait sans le dire.
-        setExistingAccount(existing);
-        setPseudo(stripAt(existing.pseudo));
-        setAvatar(existing.avatarEmoji);
+        if (!existing) {
+          setStep('photo');
+          return;
+        }
+        /*
+         * Cette carte porte déjà un compte : il n'y a rien à créer.
+         *
+         * On proposait alors de rechoisir la photo et le pseudonyme, avec les
+         * anciens pré-remplis. C'était une porte ouverte sur un écrasement :
+         * quelqu'un qui retrouve son compte sur un nouveau téléphone traverse
+         * deux écrans qui lui demandent de refaire des choix déjà faits, et il
+         * suffit d'appuyer sans lire pour remplacer son visage par un émoji.
+         *
+         * On se rattache donc directement, et l'on rend la main. Le nom et la
+         * photo se modifient depuis le profil, où c'est une décision et non
+         * une étape à franchir.
+         */
+        onDone(adoptAccount(existing));
       })
       .finally(() => setCheckingExistingAccount(false));
   }
@@ -152,15 +166,15 @@ export function AccountSetupScreen({
     if (!picked || saving || !pseudoValid) return;
     setSaving(true);
 
-    const free = await isPseudoFree(pseudoStored, existingAccount?.cardCode);
+    /* Aucune exception à faire : une carte qui portait déjà un compte n'arrive
+       jamais jusqu'ici — elle est reprise telle quelle dès qu'on la choisit. */
+    const free = await isPseudoFree(pseudoStored);
     if (!free) {
       setTaken(true);
       setSaving(false);
       return;
     }
 
-    // La photographie ne part qu'ici : abandonner l'inscription en route ne
-    // laisse alors aucun fichier orphelin dans le seau.
     const avatarPath = photo ? await uploadAccountAvatar(picked.cardCode, photo) : null;
 
     const account = await createAccount({
@@ -168,8 +182,6 @@ export function AccountSetupScreen({
       firstName: picked.firstName,
       lastName: picked.lastName,
       pseudo: pseudoStored,
-      // Une photographie déposée l'emporte sur l'émoji : on ne garde pas les
-      // deux, sans quoi l'on ne saurait plus lequel s'affiche.
       avatarEmoji: avatarPath ? null : avatar,
       avatarPath,
     });
@@ -325,8 +337,6 @@ export function AccountSetupScreen({
           if (!file) return;
           setPhoto(file);
           setAvatar(null);
-          // Le champ est vidé pour que redéposer le même fichier redéclenche
-          // l'événement : sans cela, reprendre la même photo ne ferait rien.
           event.target.value = '';
         }}
       />
@@ -395,7 +405,6 @@ export function AccountSetupScreen({
           <input
             value={pseudo}
             onChange={event => {
-              // Coller « @quelquechose » ne doit pas doubler l'arobase.
               setPseudo(stripAt(event.target.value).slice(0, PSEUDO_MAX));
               setTaken(false);
             }}

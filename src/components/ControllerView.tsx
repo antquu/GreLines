@@ -88,9 +88,6 @@ export function ControllerView({ card, language, theme = 'dark', onClose }: Cont
               alt=""
               className="h-52 w-40 flex-shrink-0 rounded-2xl object-cover shadow-2xl"
               draggable={false}
-              // Un fichier disparu du bucket ne doit pas laisser une icône
-              // d'image cassée au milieu d'un contrôle : mieux vaut pas de
-              // photo qu'une photo manifestement en erreur.
               onError={event => { event.currentTarget.style.display = 'none'; }}
             />
           )}

@@ -1,31 +1,15 @@
 
-
-
-
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DEFAULT_NETWORK_CODES, NETWORKS } from '../services/api';
-
-
-
-
-
-
-
-
-
-
 
 export interface PerfSettings {
   
   hideFooterTicker: boolean;
 
-  
   devMode: boolean;
   
   devOverlay: boolean;
 
-  
-  
   stopLineBadges: boolean;
   
   stopLabels: boolean;
@@ -40,26 +24,35 @@ export interface PerfSettings {
   
   markerCap: number;
 
-  
+  /**
+   * Le mode accessibilité.
+   *
+   * Il ne change pas ce que l'application sait, mais la place que ce savoir
+   * prend. Le fauteuil quitte la fin du nom d'arrêt, où il tenait de la
+   * ponctuation, pour devenir une pastille au-dessus du point : on la voit sans
+   * lire, et l'on repère de loin les arrêts où l'on peut monter. Il ouvre aussi
+   * les itinéraires accessibles, ci-dessous.
+   */
+  accessibility: boolean;
 
-
+  /**
+   * N'proposer que des itinéraires praticables en fauteuil.
+   *
+   * C'est le calculateur qui s'en charge : il écarte les correspondances par
+   * escalier et les arrêts non repris. Distinct du mode ci-dessus, parce qu'on
+   * peut vouloir l'un sans l'autre — repérer les arrêts accessibles sans
+   * s'interdire un trajet, ou l'inverse. Le mode l'allume en s'allumant.
+   */
+  pmrRouting: boolean;
 
   networks: string[];
 
-  
   citiz: boolean;
   
   voi: boolean;
 
-  
-
-
-
-
-
   networksRevision: number;
 }
-
 
 export const NETWORKS_REVISION = 2;
 
@@ -74,6 +67,8 @@ export const DEFAULT_PERF_SETTINGS: PerfSettings = {
   blurEffects: true,
   shadows: true,
   markerCap: 0,
+  accessibility: false,
+  pmrRouting: false,
   networks: DEFAULT_NETWORK_CODES,
   citiz: true,
   voi: true,
@@ -89,23 +84,12 @@ function readStoredSettings(): PerfSettings {
     if (!raw) return DEFAULT_PERF_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<PerfSettings>;
     
-    
     const merged = { ...DEFAULT_PERF_SETTINGS, ...parsed };
-    
     
     if (!Array.isArray(merged.networks) || merged.networks.length === 0) {
       merged.networks = DEFAULT_NETWORK_CODES;
     }
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
     const storedRevision = typeof parsed.networksRevision === 'number'
       ? parsed.networksRevision
       : (Array.isArray(parsed.networks) && parsed.networks.length > 0 ? 1 : 0);
@@ -152,13 +136,9 @@ export function PerfSettingsProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     } catch {
       
-      
     }
   }, [settings]);
 
-  
-  
-  
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle('perf-no-animations', !settings.animations);

@@ -29,7 +29,6 @@ export function setNotificationsEnabled(value: boolean): void {
   try {
     localStorage.setItem(ENABLED_KEY, value ? 'on' : 'off');
   } catch {
-    // Navigation privée : le choix vaudra pour cette session.
   }
 }
 
@@ -140,28 +139,18 @@ export async function notifyTripMoment(moment: TripMoment, language: 'fr' | 'en'
    * couperait la vraie phrase au profit de son annonce.
    */
   if (moment.kind !== 'question') {
-    // Le titre est dépouillé de son émoji avant d'être dit : une voix qui
-    // prononce « bus » ou « globe avec flèches » au début de chaque phrase rend
-    // l'annonce ridicule, et certaines synthèses le font.
     const spoken = title.replace(/^[^\p{L}\p{N}]+/u, '');
     speak(body ? `${spoken}. ${body}` : spoken, language);
   }
 
   const options: NotificationOptions = {
     body,
-    // L'icône du site, la seule qui existe : `/icons/icon-192.png` n'a jamais été
-    // déposée, et une icône introuvable donne une notification sans image plutôt
-    // qu'une erreur — le genre de défaut qui passe inaperçu longtemps.
     icon: '/flavicon.png',
     badge: '/flavicon.png',
-    // Une balise par nature d'avis : un second « votre bus arrive » remplace le
-    // premier au lieu d'empiler deux fois la même phrase.
     tag: `grelines-${moment.kind}`,
     silent: false,
   };
 
-  // La notification visuelle demande une autorisation ; la voix non. Refuser les
-  // notifications ne doit donc pas rendre la voix muette.
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
   try {
@@ -172,7 +161,6 @@ export async function notifyTripMoment(moment: TripMoment, language: 'fr' | 'en'
     }
     new Notification(title, options);
   } catch {
-    // Refus du navigateur ou onglet en fond : l'écran de guidage reste la source.
   }
 }
 
@@ -205,7 +193,6 @@ export function setVoiceEnabled(value: boolean): void {
   try {
     localStorage.setItem(VOICE_KEY, value ? 'on' : 'off');
   } catch {
-    // Navigation privée : le choix vaudra pour cette session.
   }
 }
 
@@ -225,12 +212,9 @@ export function speak(text: string, language: 'fr' | 'en'): void {
   try {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = language === 'fr' ? 'fr-FR' : 'en-GB';
-    // Un peu plus lent que la valeur par défaut : une consigne de trajet se
-    // comprend du premier coup ou ne sert à rien.
     utterance.rate = 0.95;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   } catch {
-    // Voix indisponible : la notification et l'écran restent.
   }
 }

@@ -1,29 +1,11 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { idbGet, idbSet } from './persistentCache';
 
 const GBFS_BASE = 'https://data.mobilites-m.fr/api/gbfs';
 
-
 export const SHARED_MOBILITY_TTL_MS = 5 * 60 * 1000;
 
 export type SharedOperator = 'citiz' | 'voi';
-
 
 export interface SharedVehicle {
   id: string;
@@ -35,9 +17,6 @@ export interface SharedVehicle {
   
   batteryPercent?: number;
   
-
-
-
   batteryEstimated?: boolean;
   
   rangeMeters?: number;
@@ -46,10 +25,6 @@ export interface SharedVehicle {
   
   rentalUrl?: string;
 }
-
-
-
-
 
 export interface SharedVehiclePoint {
   id: string;
@@ -82,26 +57,15 @@ export const SHARED_OPERATOR_LABELS: Record<SharedOperator, string> = {
   voi: 'Voi',
 };
 
-
 const AREA = { minLat: 44.9, maxLat: 45.5, minLon: 5.2, maxLon: 6.3 };
 
-
 export const FULL_BATTERY_PERCENT = 90;
-
 
 export function hasFullBattery(point: SharedVehiclePoint): boolean {
   return point.vehicles.some(
     vehicle => typeof vehicle.batteryPercent === 'number' && vehicle.batteryPercent >= FULL_BATTERY_PERCENT,
   );
 }
-
-
-
-
-
-
-
-
 
 export function propulsionLabel(propulsion: string | undefined, language: 'fr' | 'en'): string {
   const fr = language === 'fr';
@@ -119,7 +83,6 @@ export function propulsionLabel(propulsion: string | undefined, language: 'fr' |
       return '';
   }
 }
-
 
 export function dominantFormFactor(point: SharedVehiclePoint): string {
   const counts = new Map<string, number>();
@@ -141,7 +104,6 @@ function isInArea(lat: unknown, lon: unknown): boolean {
     lon >= AREA.minLon && lon <= AREA.maxLon
   );
 }
-
 
 interface GbfsResponse<T> {
   data?: T;
@@ -188,14 +150,12 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T | null
   try {
     const response = await fetch(url, { signal });
     
-    
     if (!response.ok || response.status === 204) return null;
     return (await response.json()) as T;
   } catch {
     return null;
   }
 }
-
 
 function readText(value: GbfsText | undefined): string | undefined {
   if (typeof value === 'string') return value;
@@ -281,8 +241,7 @@ function toVehicle(
 }
 
 function isAvailable(vehicle: GbfsVehicle): boolean {
-  
-  
+
   return !vehicle?.is_disabled && !vehicle?.is_reserved;
 }
 
@@ -296,8 +255,6 @@ async function fetchCitiz(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
   const stations = info?.data?.stations;
   if (!Array.isArray(stations)) return [];
 
-  // Les voitures sont rattachées à leur station : on les regroupe avant de
-  // construire les points, pour que chaque station porte sa flotte.
   const byStation = new Map<string, SharedVehicle[]>();
   for (const vehicle of fleet?.data?.vehicles ?? []) {
     if (!isAvailable(vehicle)) continue;
@@ -315,7 +272,6 @@ async function fetchCitiz(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
     const id = String(station.station_id ?? '');
     if (!id) continue;
     const vehicles = byStation.get(id) ?? [];
-    // Une station sans voiture disponible n'a rien à proposer.
     if (vehicles.length === 0) continue;
     points.push({
       id,
@@ -331,9 +287,6 @@ async function fetchCitiz(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
 }
 
 async function fetchVoi(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
-  // `vehicle_status` d'abord (GBFS 3.0), `free_bike_status` ensuite : c'est
-  // aujourd'hui le second qui porte la flotte, mais l'ordre suit la norme pour
-  // rester correct le jour où l'opérateur migrera.
   type VoiPayload = GbfsResponse<{ vehicles?: GbfsVehicle[]; bikes?: GbfsVehicle[] }>;
   const [modern, types] = await Promise.all([
     fetchJson<VoiPayload>(`${GBFS_BASE}/voi_grenoble/vehicle_status`, signal),
@@ -360,9 +313,6 @@ async function fetchVoi(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
       vehicles: [vehicle],
     });
   }
-  // Aucune fusion ici : le regroupement dépend du zoom et se fait à
-  // l'affichage, pour que les véhicules se séparent quand on approche et qu'on
-  // voie où chacun est garé.
   return points;
 }
 
@@ -446,8 +396,6 @@ export function rangeComparison(rangeMeters: number, language: 'fr' | 'en'): str
 export function formFactorLabel(formFactor: string, language: 'fr' | 'en'): string {
   const fr = language === 'fr';
   switch (formFactor) {
-    // Les voitures n'ont pas de libellé : leur modèle (« Citroën C3 ») dit déjà
-    // ce que c'est, et « Voiture » ne ferait que l'alourdir.
     case 'car':      return '';
     case 'truck':    return fr ? 'Utilitaire' : 'Van';
     case 'scooter':

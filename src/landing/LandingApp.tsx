@@ -152,7 +152,6 @@ function PartnerLogo({ id, name, box }: Partner) {
 
   const width = box.x1 - box.x0;
   const height = box.y1 - box.y0;
-  // La toile fait 1414 × 849, soit un rapport de 1,665.
   const canvas = 1414 / 849;
   const inkWidth = LOGO_INK_HEIGHT * (width / height) * canvas;
 
@@ -215,9 +214,6 @@ function ArrowRight() {
 function Eyebrow({ children }: { children: string }) {
   return <p className="landing-eyebrow">{children}</p>;
 }
-
-
-
 
 /**
  * Les trois dernières nouvelles, en cartes.
@@ -318,7 +314,6 @@ function LatestNews({ lang }: { lang: Lang }) {
   );
 }
 
-
 type Theme = 'light' | 'dark';
 type ThemeChoice = 'auto' | Theme;
 
@@ -343,11 +338,8 @@ function useLandingTheme() {
     try {
       const stored = localStorage.getItem('greLines_theme');
       if (stored === 'light' || stored === 'dark') return stored;
-      // « bleu » est l'autre sombre de l'application : la vitrine, qui n'a
-      // qu'un noir, le traite comme du sombre.
       if (stored === 'blue') return 'dark';
     } catch {
-      // Stockage refusé : on suivra le système, comme n'importe quel visiteur.
     }
     return 'auto';
   });
@@ -369,7 +361,6 @@ function useLandingTheme() {
       if (next === 'auto') localStorage.removeItem('greLines_theme');
       else localStorage.setItem('greLines_theme', next);
     } catch {
-      // Le choix ne tiendra que le temps de la visite.
     }
   };
 
@@ -418,9 +409,6 @@ export function LandingApp({ lang }: { lang: Lang }) {
       setAnimated(false);
     }, 2000);
     return () => window.clearTimeout(timer);
-    // Une seule mise en place, au montage : `animated` ne passe de vrai à faux
-    // qu'ici même, et relancer la minuterie sur ce changement la ferait tourner
-    // pour rien.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -470,8 +458,6 @@ export function LandingApp({ lang }: { lang: Lang }) {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // La piste du bandeau est doublée : la seconde moitié est la copie de la
-  // première, ce qui rend la reprise invisible.
   const marqueeTrack = [...PARTNERS, ...PARTNERS];
 
   return (

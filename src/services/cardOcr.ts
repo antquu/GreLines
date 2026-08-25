@@ -38,7 +38,6 @@ function extractCardCode(text: string): string | undefined {
     .replace(/[Ss]/g, '5')
     .replace(/[Bb]/g, '8');
 
-  // La ligne qui suit « N° de carte » est la bonne : on la privilégie.
   const labelled = normalized.match(/N[°ºo]?\s*de\s*carte\s*:?\s*([\d\s]{10,20})/i);
   const candidates: string[] = [];
   if (labelled) candidates.push(labelled[1]);
@@ -69,7 +68,6 @@ function extractName(text: string): { firstName?: string; lastName?: string } {
 
   const names = before.filter(line => (
     /^[A-ZÀ-ÖØ-Þ][A-ZÀ-ÖØ-Þ'’\- ]{1,28}$/.test(line)
-    // Les mentions du décor sont en capitales elles aussi.
     && !/(REGION|RHONE|ALPES|SMMAG|TAG|MOBILIT|CARTE|VALID)/i.test(line)
   ));
 
@@ -107,6 +105,139 @@ async function cropPortrait(source: HTMLCanvasElement): Promise<Blob | undefined
 }
 
 /** Une image quelconque ramenée à un canevas de largeur raisonnable. */
+/* -------------------------------------------------------------------------- */
+/*  Savoir quand déclencher                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Attendre le bon moment pour lire, au lieu de lire toutes les deux secondes.
+ *
+ * La lecture à cadence fixe photographiait n'importe quand : pendant qu'on
+ * sortait la carte de son portefeuille, pendant qu'on la retournait, pendant que
+ * la main tremblait encore. Trois essais suffisaient à les gâcher tous les
+ * trois, et l'on retombait sur la saisie du numéro alors que la carte était là,
+ * sous l'objectif.
+ *
+ * On regarde donc ce que voit la caméra, dix fois par seconde, sur une vignette
+ * de 48 × 32 pixels — assez pour mesurer deux choses, et trop peu pour coûter
+ * quoi que ce soit :
+ *
+ *  — le mouvement, en comparant deux vignettes consécutives ;
+ *  — la présence de quelque chose, par l'écart-type des gris : un mur, une
+ *    table vide ou un objectif couvert donnent une image plate, une carte
+ *    posée dans le cadre y met des bords et du texte.
+ *
+ * Quand l'image cesse de bouger *et* qu'il y a quelque chose à lire, c'est le
+ * moment : la carte est présentée et la main s'est arrêtée. C'est exactement
+ * l'instant qu'un humain choisirait.
+ */
+
+/** Taille de la vignette d'analyse. Assez pour juger, trop peu pour coûter. */
+const SAMPLE_WIDTH = 48;
+const SAMPLE_HEIGHT = 32;
+
+/** En dessous, l'image est considérée immobile (écart moyen par pixel, sur 255). */
+const STILL_THRESHOLD = 3.2;
+/** Au-dessus, on considère que le cadre a de nouveau bougé pour de bon. */
+const MOVED_THRESHOLD = 6;
+/** En dessous, le cadre est vide : mur, table nue, objectif couvert. */
+const CONTENT_THRESHOLD = 9;
+/** Combien de vignettes immobiles d'affilée avant de déclencher. */
+const STILL_TICKS = 3;
+/** Le pas d'échantillonnage. */
+const SAMPLE_INTERVAL_MS = 100;
+/** Passé ce délai sans mouvement, on reprend quand même la main. */
+const MOTION_GRACE_MS = 2500;
+
+function grayscaleSample(video: HTMLVideoElement, canvas: HTMLCanvasElement): Uint8Array | null {
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context || !video.videoWidth) return null;
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+  const gray = new Uint8Array(canvas.width * canvas.height);
+  for (let i = 0; i < gray.length; i += 1) {
+    const offset = i * 4;
+    gray[i] = (data[offset] * 77 + data[offset + 1] * 150 + data[offset + 2] * 29) >> 8;
+  }
+  return gray;
+}
+
+function meanAbsoluteDifference(a: Uint8Array, b: Uint8Array): number {
+  let total = 0;
+  for (let i = 0; i < a.length; i += 1) total += Math.abs(a[i] - b[i]);
+  return total / a.length;
+}
+
+function standardDeviation(values: Uint8Array): number {
+  let sum = 0;
+  for (let i = 0; i < values.length; i += 1) sum += values[i];
+  const mean = sum / values.length;
+  let variance = 0;
+  for (let i = 0; i < values.length; i += 1) variance += (values[i] - mean) ** 2;
+  return Math.sqrt(variance / values.length);
+}
+
+export interface SteadyFrameOptions {
+  /** Rend vrai quand l'attente n'a plus lieu d'être : l'écran a changé. */
+  cancelled?: () => boolean;
+  /** Au-delà, on renonce et l'on propose la saisie à la main. */
+  timeoutMs?: number;
+  /**
+   * Attendre d'abord que le cadre bouge.
+   *
+   * Vrai après une lecture ratée : sans cela, la même image immobile
+   * redéclencherait aussitôt la même lecture ratée, en boucle. Il faut que la
+   * carte ait bougé — qu'on l'ait retournée, rapprochée, essuyée — pour qu'il
+   * y ait une raison d'espérer autre chose.
+   *
+   * L'exigence se périme d'elle-même au bout de `MOTION_GRACE_MS` : quelqu'un
+   * qui tient sa carte parfaitement immobile après un échec ne doit pas
+   * attendre indéfiniment devant un écran qui ne fait rien.
+   */
+  requireMotionFirst?: boolean;
+}
+
+/**
+ * Rend `true` quand l'image est stable et qu'il y a quelque chose dans le
+ * cadre, `false` si l'attente a été annulée ou a duré trop longtemps.
+ */
+export async function waitForSteadyFrame(
+  video: HTMLVideoElement,
+  options: SteadyFrameOptions = {},
+): Promise<boolean> {
+  const { cancelled = () => false, timeoutMs = 15000, requireMotionFirst = false } = options;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = SAMPLE_WIDTH;
+  canvas.height = SAMPLE_HEIGHT;
+
+  const startedAt = Date.now();
+  let previous: Uint8Array | null = null;
+  let stillTicks = 0;
+  let hasMoved = !requireMotionFirst;
+
+  while (!cancelled() && Date.now() - startedAt < timeoutMs) {
+    await new Promise(resolve => window.setTimeout(resolve, SAMPLE_INTERVAL_MS));
+    if (cancelled()) return false;
+
+    const sample = grayscaleSample(video, canvas);
+    if (!sample) continue;
+
+    if (previous) {
+      const motion = meanAbsoluteDifference(previous, sample);
+      if (motion > MOVED_THRESHOLD || Date.now() - startedAt > MOTION_GRACE_MS) hasMoved = true;
+      const still = motion < STILL_THRESHOLD;
+      const filled = standardDeviation(sample) > CONTENT_THRESHOLD;
+      stillTicks = still && filled && hasMoved ? stillTicks + 1 : 0;
+      if (stillTicks >= STILL_TICKS) return true;
+    }
+
+    previous = sample;
+  }
+
+  return false;
+}
+
 export function toCanvas(source: CanvasImageSource, width: number, height: number): HTMLCanvasElement {
   const maxWidth = 1400;
   const scale = width > maxWidth ? maxWidth / width : 1;

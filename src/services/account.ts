@@ -93,7 +93,6 @@ function rememberCard(code: string): void {
   try {
     localStorage.setItem(LINK_KEY, code);
   } catch {
-    // Navigation privée : le compte vaudra pour cette session.
   }
 }
 
@@ -121,8 +120,6 @@ export const AVATARS = [
 ];
 
 export function randomAvatar(current?: string | null): string {
-  // On évite de retomber sur le même : appuyer sur « régénérer » et ne rien voir
-  // changer donne l'impression que le bouton est cassé.
   const pool = AVATARS.filter((emoji) => emoji !== current);
   return pool[Math.floor(Math.random() * pool.length)] ?? AVATARS[0];
 }
@@ -211,6 +208,19 @@ export async function loadAccount(): Promise<Account | null> {
   }
 }
 
+/**
+ * Reprend sur cet appareil un compte qui existe déjà.
+ *
+ * Une carte ne porte qu'un compte, et ce compte a déjà un nom, un visage et des
+ * points. Retrouver cette carte sur un nouveau téléphone n'est donc pas une
+ * création : il n'y a rien à choisir, seulement à se rattacher. C'est ce que
+ * fait cette fonction, et c'est tout ce qu'elle fait.
+ */
+export function adoptAccount(account: Account): Account {
+  rememberCard(account.cardCode);
+  return account;
+}
+
 /** Charge le compte porté par une carte, même s'il appartient à un autre appareil. */
 export async function loadAccountForCard(cardCode: string): Promise<Account | null> {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -296,8 +306,6 @@ export async function updateAccount(
     if (changes.avatarEmoji !== undefined) patch.avatar_emoji = changes.avatarEmoji;
     if (changes.avatarPath !== undefined) patch.avatar_path = changes.avatarPath;
     let { error } = await supabase.from('oura_accounts').update(patch).eq('card_code', cardCode);
-    // Même précaution qu'à la création : une base en retard d'une migration ne
-    // doit pas empêcher de renommer son compte.
     if (error && /avatar_path/.test(error.message)) {
       delete patch.avatar_path;
       ({ error } = await supabase.from('oura_accounts').update(patch).eq('card_code', cardCode));
@@ -343,7 +351,6 @@ export async function creditAccount(
       p_helped: credit.travellersHelped,
     });
   } catch {
-    // Le trajet reste compté sur l'appareil : voir `greLinesPoints`.
   }
 }
 
@@ -395,7 +402,6 @@ function thinPath(path: Array<[number, number]>, limit = 300): Array<[number, nu
   const step = path.length / limit;
   const kept: Array<[number, number]> = [];
   for (let i = 0; i < limit; i++) kept.push(path[Math.floor(i * step)]);
-  // Le dernier point compte : c'est là qu'on est arrivé.
   kept.push(path[path.length - 1]);
   return kept;
 }
@@ -427,7 +433,6 @@ export async function recordTrip(
       travellers_helped: trip.travellersHelped,
     });
   } catch {
-    // Le trajet reste compté dans les totaux : l'historique n'est pas la source.
   }
 }
 

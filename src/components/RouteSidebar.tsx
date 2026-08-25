@@ -1,22 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronUpIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, MapIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
 import { ArrowUpOnSquareIcon } from '@heroicons/react/24/outline';
-import { FaWalking } from 'react-icons/fa';
-import { TransportModeIcon } from './TransportModeIcon';
-import { LineBadge } from './LineBadge';
-import { JourneyDetailsPreview } from './JourneyDetailsPreview';
+import { JourneyDetail } from './JourneyDetail';
 import { MapSheet } from './MapSheet';
 import { StepSlider } from './StepSlider';
-import { journeyFareChip } from '../utils/journeyFare';
-import { JourneyTimelineList } from './JourneyTimelineList';
-import { journeyOperatorBrand } from '../utils/journeyOperator';
+import { JourneyResults } from './JourneyResults';
+import { PlacesCarousel } from './PlacesCarousel';
+import { SearchResultsList } from './SearchResultsList';
+import { journeyLabelFor } from '../utils/journeyLabels';
 import { searchAddresses } from '../services/geocoding';
 import { planItineraries, type RouteItinerary, type RouteLocation } from '../services/api';
 import { loadWalkPreferences, saveWalkPreferences, walkSpeedMs, WALK_SPEEDS, WALK_PRIORITIES } from '../services/walkPreferences';
+import { usePerfSettings } from '../hooks/usePerfSettings';
+import { FaWheelchair } from 'react-icons/fa';
 import {
   ROUTE_NETWORKS,
-  itineraryUsesOnly,
   loadRouteNetworks,
   saveRouteNetworks,
 } from '../services/routeNetworks';
@@ -29,7 +28,6 @@ import { SavedPlaceSheet } from './SavedPlaceSheet';
 import { Toast } from './Toast';
 import { hapticTap } from '../utils/haptics';
 import type { AllLinesLine } from '../services/allLines';
-import { resolveRouteLine } from '../utils/routeLineResolver';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Stop, TrafficDetail } from '../types';
 
@@ -47,8 +45,21 @@ interface RouteSidebarProps {
   onItinerariesUpdated?: (itineraries: RouteItinerary[]) => void;
   
   onStartNavigation?: () => void;
+  /**
+   * Ouvrir une ligne trouvée par la recherche.
+   *
+   * Le planificateur ne sait pas montrer une ligne : il rend la main à la
+   * page, qui ferme le panneau et ouvre la fiche de la ligne.
+   */
+  onOpenLine?: (line: AllLinesLine) => void;
   onRouteReset?: () => void;
   lineLookup?: Map<string, AllLinesLine> | null;
+  /**
+   * L'info-trafic des lignes.
+   *
+   * La fiche s'en sert pour poser un triangle dans le cadre de la ligne
+   * perturbée, et rien de plus : l'avis lui-même attend qu'on le demande.
+   */
   trafficInfo?: Map<string, TrafficDetail[]>;
   pickMode?: 'from' | 'to' | SavedPlaceKind | null;
   onRequestPickLocation?: (field: 'from' | 'to' | SavedPlaceKind) => void;
@@ -134,6 +145,10 @@ const getText = (language: 'fr' | 'en') => {
     schedule: isFr ? 'Date et heure' : 'Date and time',
     prefer: isFr ? 'Préférer' : 'Prefer',
     walkBalanced: isFr ? 'Équilibré' : 'Balanced',
+    pmr: isFr ? 'Accès PMR' : 'Step-free access',
+    pmrHint: isFr
+      ? 'Uniquement des trajets praticables en fauteuil : ni escalier en correspondance, ni arrêt non repris.'
+      : 'Only step-free journeys: no stairs-only transfers, no stops that are not fitted.',
     preferWalk: isFr ? 'Plus de marche' : 'More walking',
     preferTransit: isFr ? 'Moins de marche' : 'Less walking',
     walkSpeed: isFr ? 'Vitesse de marche' : 'Walking speed',
@@ -147,6 +162,7 @@ const getText = (language: 'fr' | 'en') => {
     workLabel: isFr ? 'Travail' : 'Work',
     whereTo: isFr ? 'Où allez-vous ?' : 'Where to?',
     recents: isFr ? 'Recherches récentes' : 'Recent searches',
+    visitTitle: isFr ? 'À visiter' : 'Worth a visit',
   };
 };
 
@@ -221,18 +237,6 @@ const buildCalendarCells = (monthDate: Date) => {
   });
 };
 
-const formatMinutesCompact = (minutes: number) => {
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${hours}h${String(mins).padStart(2, '0')}`;
-};
-
-const formatDurationLabel = (value: string) => {
-  const minutes = Number(String(value).match(/\d+/)?.[0] || 0);
-  return minutes > 0 ? formatMinutesCompact(minutes) : value;
-};
-
 /**
  * Le trait qui sépare deux familles de résultats.
  *
@@ -255,7 +259,7 @@ function SectionRule({ label, isLight }: { label: string; isLight: boolean }) {
   );
 }
 
-export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, onItinerariesUpdated, onStartNavigation, lineLookup, trafficInfo, pickMode, onRequestPickLocation, onCancelPickLocation, recentPlaces = [], sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute, theme, currentLocation, variant = 'planner', onPickJourney }: RouteSidebarProps) => {
+export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, onItinerariesUpdated, onStartNavigation, onOpenLine, lineLookup, trafficInfo, pickMode, onRequestPickLocation, onCancelPickLocation, recentPlaces = [], sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute, theme, currentLocation, variant = 'planner', onPickJourney }: RouteSidebarProps) => {
   const text = getText(language);
   const isLight = theme === 'light';
   const isPicker = variant === 'favoritePicker';
@@ -267,7 +271,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
    * champ et laisse un bandeau pour la rappeler. C'est un bouton, pas un
    * glissement : on sait ce qu'on obtient avant de le faire.
    */
-  const [mapPeek, setMapPeek] = useState(false);
   /**
    * Compteur d'ouvertures : il sert de clé pour rejouer l'arrivée en cascade.
    * Il s'incrémente pendant le rendu et non dans un effet — un effet
@@ -306,9 +309,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
    * le GreLines Trip est un trajet mixte, pas une promenade.
    */
   const [bikeResults, setBikeResults] = useState<RouteItinerary[]>([]);
-  // Les options en véhicule partagé arrivent après les itinéraires : elles
-  // demandent la flotte des opérateurs en plus du routeur, et ne doivent pas
-  // retarder l'affichage des transports en commun.
   const [sharedResults, setSharedResults] = useState<RouteItinerary[]>([]);
   const [uberResult, setUberResult] = useState<RouteItinerary | null>(null);
   const [taxiResult, setTaxiResult] = useState<RouteItinerary | null>(null);
@@ -389,7 +389,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       if (dragStartRef.current == null) return;
       const offset = event.touches[0].clientY - dragStartRef.current;
       if (offset <= 0 || node.scrollTop > 0) {
-        // Le doigt remonte, ou la liste n'est plus en haut : elle reprend la main.
         dragStartRef.current = null;
         hasBuzzedRef.current = false;
         if (dragYRef.current !== 0) {
@@ -399,8 +398,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         return;
       }
       if (event.cancelable) event.preventDefault();
-      // Le seuil vient d'être franchi : une secousse, ici, tant que le geste
-      // est encore en cours.
       if (offset > DRAG_HINT_PX && !hasBuzzedRef.current) {
         hasBuzzedRef.current = true;
         hapticTap();
@@ -496,6 +493,17 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     storedWalk.priorityIndex <= 0 ? 'transit' : storedWalk.priorityIndex >= 2 ? 'walk' : 'balanced'
   );
   const [walkSpeed, setWalkSpeed] = useState(walkSpeedMs(storedWalk));
+
+  /*
+   * Les itinéraires accessibles.
+   *
+   * Le réglage vit avec les autres, dans « Accessibilité » : celui qui en a
+   * besoin l'allume une fois et ne le retrouve pas éteint au trajet suivant.
+   * L'interrupteur des options de recherche est le même — on peut le lever le
+   * temps d'un trajet sans aller dans les réglages, et la recherche repart.
+   */
+  const { settings: perf, setSetting } = usePerfSettings();
+  const wheelchairRouting = perf.pmrRouting;
   /*
    * Les réseaux acceptés dans la recherche.
    *
@@ -510,7 +518,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       const next = current.includes(code)
         ? current.filter(entry => entry !== code)
         : [...current, code];
-      // Tout décocher ne renverrait plus rien : le dernier réseau reste.
       const kept = next.length > 0 ? next : current;
       saveRouteNetworks(kept);
       return kept;
@@ -814,7 +821,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     </>
   );
 
-
   const updateDraftScheduleTime = (hour: number, minute: number) => {
     setDraftScheduleTime(`${pad2(hour)}:${pad2(minute)}`);
     setDraftScheduleIsNow(false);
@@ -883,12 +889,8 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     setRouteError(null);
     setRouteLoading(false);
     setRefreshing(false);
-    setMapPeek(false);
     setDragY(0);
     dragYRef.current = 0;
-    // `clearAllResults` est redéfinie à chaque rendu et ne lit que des setters,
-    // qui sont stables : la citer en dépendance ferait rejouer l'effacement à
-    // chaque frappe dans le champ de départ.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
@@ -1081,9 +1083,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       _onItinerarySelected?.(null);
     }
 
-    // Véhicules partagés et VTC : calculés en parallèle, jamais attendus. Ils
-    // n'ont pas de sens en mode « arriver à » — on ne réserve pas une
-    // trottinette pour dans trois heures — et sont donc simplement omis.
     const sharedToken = ++sharedRequestRef.current;
     if (scheduleMode !== 'arrive') {
       const [hours, minutes] = parseTimeParts(queryTime);
@@ -1122,6 +1121,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         time: queryTime,
         walkReluctance,
         walkSpeed,
+        wheelchair: wheelchairRouting,
       });
       setRouteResults(itineraries);
       onItinerariesUpdated?.(itineraries);
@@ -1146,6 +1146,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         date: queryDate,
         time: queryTime,
         mode: 'BICYCLE,TRANSIT',
+        wheelchair: wheelchairRouting,
       })
         .then(found => {
           if (bikeRequestRef.current === bikeToken) setBikeResults(found);
@@ -1188,6 +1189,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     scheduleMode,
     walkReluctance,
     walkSpeed,
+    wheelchairRouting,
     text.routeError,
     text.noRoutes,
     _onItinerarySelected,
@@ -1276,7 +1278,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     setSharedResults([]);
     setUberResult(null);
     setTaxiResult(null);
-    // Les requêtes en vol ne doivent pas repeupler la liste qu'on vient de vider.
     sharedRequestRef.current += 1;
     bikeRequestRef.current += 1;
     onItinerariesUpdated?.([]);
@@ -1306,9 +1307,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     const isCurrentPosition = location.id === CURRENT_POSITION_ID;
     const isDragging = dragState?.field === field;
     const isDropTarget = dragState != null && dragState.field !== field && dragOverEndpoint === field;
-    // Le glisser-déposer entre les deux points reste une affaire de souris : au
-    // doigt, il confisquerait le défilement de la page pour un geste que le
-    // bouton d'inversion rend déjà.
     const canDrag = Boolean(!isMobile && fromSelection && toSelection);
 
     if (isDragging) {
@@ -1368,8 +1366,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     const stopSuggestions = suggestions.filter(suggestion => suggestion.kind === 'stop');
     const addressSuggestions = suggestions.filter(suggestion => suggestion.kind === 'address');
 
-    // Au doigt, une suggestion se vise : les rangées sont plus hautes et le
-    // libellé garde sa taille de lecture.
     const rowClass = isMobile
       ? 'flex w-full items-center gap-3 px-4 py-3.5 text-left transition active:bg-slate-800/70'
       : 'flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-slate-800';
@@ -1517,12 +1513,11 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       scheduleIsNow ? 'now' : 'custom',
       walkReluctance,
       walkSpeed,
+      wheelchairRouting ? 'pmr' : 'any',
     ].join('|');
     if (lastAutoSearchKeyRef.current === searchKey) return;
     lastAutoSearchKeyRef.current = searchKey;
     handleSearch();
-    // handleSearch depends on parent callbacks that can change after the search
-    // result is stored. The key above is the actual trigger for new searches.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isOpen,
@@ -1535,6 +1530,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     scheduleIsNow,
     walkReluctance,
     walkSpeed,
+    wheelchairRouting,
   ]);
 
   useEffect(() => {
@@ -1565,35 +1561,16 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   );
 
   /**
-   * Les résultats, rangés en trois temps.
+   * Le titre du trajet ouvert.
    *
-   * `transit` — la liste ordinaire, celle qu'on vient chercher.
-   * `greLinesTrip` — le meilleur trajet mêlant vélo et transport, et lui seul :
-   *   en proposer trois variantes noierait l'idée. On garde le plus court.
-   * `others` — tout ce qui ne roule pas sur le réseau : trottinette, voiture
-   *   partagée, VTC, taxi. Rangé à part parce que cela se paie.
+   * C'est celui que portait sa carte dans la liste : « Arrive en premier », «
+   * Le moins de marche ». La fiche le reprend, faute de quoi l'on ne saurait
+   * plus laquelle des trois on a touchée.
    */
-  const sections = useMemo(() => {
-    const toMinutes = (itinerary: RouteItinerary): number => {
-      const match = /(\d+)/.exec(itinerary.dur ?? '');
-      return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
-    };
-
-    const accepted = new Set(routeNetworks);
-    const kept = (itinerary: RouteItinerary) => itineraryUsesOnly(itinerary.allLegs ?? [], accepted);
-
-    const transit = routeResults.filter(itinerary => !itinerary.bikeTransit && kept(itinerary));
-    const mixed = [...routeResults, ...bikeResults].filter(
-      itinerary => itinerary.bikeTransit && kept(itinerary),
-    );
-    const best = mixed.length
-      ? mixed.reduce((shortest, candidate) =>
-          toMinutes(candidate) < toMinutes(shortest) ? candidate : shortest,
-        )
-      : null;
-
-    return { transit, greLinesTrip: best, others: operatorResults };
-  }, [routeResults, bikeResults, operatorResults, routeNetworks]);
+  const selectedLabel = useMemo(
+    () => (_selectedItinerary ? journeyLabelFor(currentResults, _selectedItinerary, language) : null),
+    [currentResults, _selectedItinerary, language],
+  );
 
   const buildShareUrl = () => {
     const url = new URL('/app', window.location.origin);
@@ -1665,7 +1642,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
 
   /** La carte ne reste découverte que tant qu'il y a un trajet à y regarder. */
   useEffect(() => {
-    if (!isOpen || !_selectedItinerary) setMapPeek(false);
   }, [isOpen, _selectedItinerary]);
 
   useEffect(() => {
@@ -1734,47 +1710,129 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
    * page vers la barre de navigation, partager. Sans filet en dessous : le
    * trait séparait un titre du contenu, il n'y a plus de titre.
    */
+  /**
+   * L'en-tête s'efface dès qu'on descend dans la fiche.
+   *
+   * Quatre boutons en haut d'un écran qu'on parcourt du pouce, c'est quatre
+   * boutons qui prennent la place des noms d'arrêts. Ils reviennent au premier
+   * geste vers le haut, et de toute façon dès qu'on est revenu en tête.
+   */
+  /**
+   * Dans quel sens on vient de passer d'un écran à l'autre.
+   *
+   * Toucher un itinéraire fait venir la fiche par la droite ; la flèche de
+   * retour ramène la liste par la gauche. C'est le sens qui dit qu'on avance
+   * ou qu'on revient, et il faut donc s'en souvenir entre deux rendus : au
+   * moment où la fiche se monte, le fait qu'on vient de la liste n'est plus
+   * lisible nulle part.
+   */
+  const [pageDirection, setPageDirection] = useState<'forward' | 'back'>('forward');
+  const hadItineraryRef = useRef(false);
+
+  useEffect(() => {
+    const has = Boolean(_selectedItinerary);
+    if (has !== hadItineraryRef.current) setPageDirection(has ? 'forward' : 'back');
+    hadItineraryRef.current = has;
+  }, [_selectedItinerary]);
+
+  /* La clé change à chaque bascule : sans elle, React réutilise le nœud et
+     l'animation, déjà jouée, ne se rejoue pas. */
+  const pageKey = `${_selectedItinerary ? 'detail' : 'list'}-${pageDirection}`;
+
+  /**
+   * Le thème que voient les résultats et la fiche.
+   *
+   * Le panneau de l'ordinateur est peint en `slate-950`, sombre quel que soit
+   * le réglage de l'application : lui passer « clair » y aurait écrit du texte
+   * ardoise sur du noir. Sur téléphone, la page suit le thème comme le reste.
+   */
+  const panelTheme: 'light' | 'dark' = isMobile ? (theme === 'light' ? 'light' : 'dark') : 'dark';
+  const pageAnimationClass = pageDirection === 'forward' ? 'gl-page-forward' : 'gl-page-back';
+
+  const [headerHidden, setHeaderHidden] = useState(false);
+  const lastScrollRef = useRef(0);
+
+  const handleBodyScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const top = event.currentTarget.scrollTop;
+    const previous = lastScrollRef.current;
+    lastScrollRef.current = top;
+    if (top < 24) setHeaderHidden(false);
+    else if (top > previous + 4) setHeaderHidden(true);
+    else if (top < previous - 8) setHeaderHidden(false);
+  }, []);
+
+  /* Changer de trajet, ou revenir à la liste, rend l'en-tête. */
+  useEffect(() => {
+    setHeaderHidden(false);
+    lastScrollRef.current = 0;
+  }, [_selectedItinerary]);
+
   const mobileHeaderNode = (
-    <header className="flex-shrink-0" style={{ paddingTop: safeTop }}>
+    <header
+      className="flex-shrink-0 overflow-hidden transition-[max-height,opacity] duration-200 ease-out"
+      style={{
+        paddingTop: safeTop,
+        maxHeight: headerHidden ? 0 : 200,
+        opacity: headerHidden ? 0 : 1,
+      }}
+    >
       {_selectedItinerary && !sharedRouteExpired ? (
-        <div className="flex items-center gap-1 px-2 pb-1">
+        /*
+         * Trois boutons à droite, tous ronds et tous gris, sauf « Go ».
+         *
+         * Le partage flottait auparavant seul, sans fond, entre le titre et le
+         * bord : on ne savait pas s'il appartenait au titre ou à la fermeture.
+         * Rangé dans la même pastille grise que la croix, il se lit comme ce
+         * qu'il est, une commande de la barre, et le bleu de « Go » reste la
+         * seule couleur de l'écran.
+         */
+        <div className="flex items-center gap-2 px-3 pb-2">
           <button
             type="button"
             onClick={() => _onItinerarySelected?.(null)}
             className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition active:scale-95 ${
-              isLight ? 'text-slate-700 active:bg-slate-200' : 'text-slate-200 active:bg-slate-800'
+              isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-white'
             }`}
             aria-label={text.selectRoute}
           >
             <ArrowLeftIcon className="h-5 w-5" />
           </button>
 
-          {/* « Trajet » n'est pas un titre mais un bouton : le chevron dit où
-              il mène — vers le bas, dans le bandeau posé sur la carte. Il replie
-              la page comme « Voir la carte », il ne la ferme pas : on ne perd
-              pas son trajet en voulant y jeter un œil. */}
-          <button
-            type="button"
-            onClick={() => setMapPeek(true)}
-            className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full py-2 transition active:scale-95 ${
-              isLight ? 'text-slate-900 active:bg-slate-200' : 'text-white active:bg-slate-800'
-            }`}
-          >
-            <ChevronDownIcon className="h-4 w-4 flex-shrink-0 text-slate-400" />
-            <span className="truncate text-base font-bold">
-              {language === 'fr' ? 'Trajet' : 'Journey'}
-            </span>
-          </button>
+          <div className="flex-1" />
+
+          {/* « Go » lance le guidage. Il était en bas de l'écran, sous le
+              pouce mais hors de vue dès qu'on lisait la fiche. */}
+          {onStartNavigation && !_selectedItinerary.shared && !_selectedItinerary.uber && (
+            <button
+              type="button"
+              onClick={onStartNavigation}
+              className="flex h-11 flex-shrink-0 items-center gap-1.5 rounded-full bg-blue-600 px-4 text-[15px] font-bold text-white transition active:scale-95 active:bg-blue-700"
+            >
+              <PlayIcon className="h-4 w-4" />
+              Go
+            </button>
+          )}
 
           <button
             type="button"
             onClick={copyShareUrl}
             className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition active:scale-95 ${
-              isLight ? 'text-slate-700 active:bg-slate-200' : 'text-slate-200 active:bg-slate-800'
+              isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-white'
             }`}
             aria-label={text.shareJourney}
           >
             <ArrowUpOnSquareIcon className="h-5 w-5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={text.close}
+            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition active:scale-95 ${
+              isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-white'
+            }`}
+          >
+            <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
       ) : (
@@ -1926,10 +1984,63 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           </div>
         )}
 
-        {!selection && renderLocationSuggestions(suggestions, onSelect)}
+        {/* Sur téléphone les réponses ne flottent plus sous le champ : elles
+            prennent l'écran, en pleine largeur, juste en dessous. */}
+        {!selection && !isMobile && renderLocationSuggestions(suggestions, onSelect)}
       </div>
     );
   };
+
+  /**
+   * On est en train de chercher.
+   *
+   * Tant qu'une requête est en cours de frappe, l'écran ne montre plus que le
+   * champ et ses réponses : les raccourcis, la bande des lieux et les
+   * recherches récentes disparaissent. Ils répondaient à « où aller » ; la
+   * question est posée, ils n'ont plus rien à dire.
+   */
+  const activeQuery = !toSelection && toQuery.trim()
+    ? toQuery.trim()
+    : !fromSelection && fromQuery.trim()
+      ? fromQuery.trim()
+      : '';
+  const isSearching = isMobile && activeQuery.length > 0;
+  const activeSuggestions = !toSelection && toQuery.trim() ? toSuggestions : fromSuggestions;
+  const selectActive = !toSelection && toQuery.trim() ? handleSelectTo : handleSelectFrom;
+
+  /**
+   * Les lignes que la recherche trouve.
+   *
+   * Une ligne n'est pas une destination : on ne la choisit pas comme point
+   * d'arrivée. Elle paraît quand même dans les réponses, parce que taper « A »
+   * en cherchant un arrêt veut souvent dire qu'on cherche le tram A, et qu'il
+   * valait mieux le proposer que de faire semblant de ne pas l'avoir compris.
+   */
+  const matchingLines = useMemo(() => {
+    const query = activeQuery.toLowerCase();
+    if (!query || !lineLookup) return [];
+    const seen = new Set<string>();
+    const found: AllLinesLine[] = [];
+    for (const line of lineLookup.values()) {
+      if (seen.has(line.id)) continue;
+      const short = String(line.shortName ?? '').toLowerCase();
+      const long = String(line.longName ?? '').toLowerCase();
+      /*
+       * Le numéro d'abord, le nom complet seulement s'il commence par la
+       * requête.
+       *
+       * `long.includes(query)` rendait quatre lignes pour « gare » : le mot
+       * traîne au milieu de la moitié des libellés du réseau, et l'on cherchait
+       * un arrêt, pas une ligne qui y passe.
+       */
+      if (short === query || (query.length >= 2 && short.startsWith(query)) || (query.length >= 4 && long.startsWith(query))) {
+        seen.add(line.id);
+        found.push(line);
+      }
+      if (found.length >= 4) break;
+    }
+    return found;
+  }, [activeQuery, lineLookup]);
 
   /** Rangée d'action du téléphone : pleine largeur, hauteur d'un doigt. */
   const quickRowClass = isLight
@@ -1941,17 +2052,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
    * barre d'arrivée, et les raccourcis cèdent la place aux itinéraires.
    */
   const hasDestination = Boolean(toSelection);
-
-  /** Carte d'itinéraire dans la liste des résultats — ordinateur seulement. */
-  const resultCardClass = (isSelected: boolean) => {
-    const base = 'w-full rounded-2xl border p-3 text-left transition';
-    if (isSelected) return `${base} border-blue-500 ${isLight ? 'bg-white' : 'bg-slate-900'} shadow-[0_0_0_1px_rgba(59,130,246,0.7)]`;
-    return `${base} ${
-      isLight
-        ? 'border-slate-200 bg-white hover:border-slate-300'
-        : 'border-slate-800 bg-slate-900/80 hover:border-slate-600 hover:bg-slate-900'
-    }`;
-  };
 
   /**
    * L'écran du planificateur, au téléphone. Il n'y en a qu'un.
@@ -2042,7 +2142,8 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             <XMarkIcon className="h-5 w-5" />
           </span>
         )}
-        {!toSelection && renderLocationSuggestions(toSuggestions, handleSelectTo)}
+        {/* Plus de menu flottant sous le champ : les réponses prennent l'écran,
+            en pleine largeur, sous les deux champs. */}
       </div>
     </div>
   );
@@ -2067,8 +2168,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       key={key}
       type="button"
       onClick={() => {
-        // L'appui maintenu a déjà agi : la tape qui le suit ne doit pas
-        // enchaîner sur le trajet.
         if (holdFiredRef.current) {
           holdFiredRef.current = false;
           return;
@@ -2111,7 +2210,10 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         </div>
       ) : !_selectedItinerary ? (
         /* SEARCH MODE */
-        <div className={`space-y-4 p-4 ${isLight ? 'text-slate-900' : ''}`}>
+        <div
+          key={pageKey}
+          className={`space-y-4 p-4 ${isMobile ? pageAnimationClass : ''} ${isLight ? 'text-slate-900' : ''}`}
+        >
         {isMobile ? (
           /* `relative z-40` : les blocs suivants s'animent, et une animation
              crée un contexte d'empilement — sans quoi les suggestions, pourtant
@@ -2223,16 +2325,31 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         {/* Les macarons restent tant qu'il n'y a pas d'itinéraire à lire :
             une arrivée sans départ n'est pas un écran de résultats, et c'est
             justement là qu'on a besoin d'un domicile ou d'un travail. */}
-        {isMobile && currentResults.length === 0 && (
+        {/* Les réponses de la recherche, en pleine largeur.
+            Elles débordent la marge de la page : une liste qui s'arrête à
+            vingt pixels du bord se lit comme un encart, alors que c'est tout
+            l'écran qui répond. */}
+        {isSearching && (
+          <div className="-mx-4">
+            <SearchResultsList
+              lines={matchingLines}
+              stops={activeSuggestions.filter(suggestion => suggestion.kind === 'stop')}
+              addresses={activeSuggestions.filter(suggestion => suggestion.kind === 'address')}
+              language={language}
+              isLight={isLight}
+              trafficInfo={trafficInfo}
+              onSelectLocation={selectActive}
+              onSelectLine={onOpenLine}
+            />
+          </div>
+        )}
+
+        {isMobile && !isSearching && currentResults.length === 0 && (
           <>
             <div className="gl-stagger relative z-0 space-y-2" style={{ animationDelay: '40ms' }}>
               {renderMobileActionRow('map', MapPinIcon, text.chooseOnMap, undefined, () => onRequestPickLocation?.('to'))}
               {(['home', 'work'] as const).map(kind => {
                 const place = savedPlaces[kind];
-                // Un lieu enregistré devient la destination ; un lieu vide
-                // ouvre la feuille qui le définit. Tant qu'il est vide, la
-                // rangée ne porte que son nom : « définir mon domicile » disait
-                // ce que le geste fait déjà.
                 return renderMobileActionRow(
                   kind,
                   kind === 'home' ? HomeIcon : BriefcaseIcon,
@@ -2244,9 +2361,57 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
               })}
             </div>
 
+            {/* Ce qu'il y a à voir, avant ce qu'on a déjà cherché.
+                La feuille d'accueil pose la même bande : on y répond à « où
+                aller », qui est la question de cet écran tant qu'aucune
+                destination n'est saisie. Toucher « Y aller » remplit la
+                destination sans quitter la page. */}
+            <div className="gl-stagger" style={{ animationDelay: '70ms' }}>
+              <h3
+                style={{
+                  fontSize: '15px',
+                  fontWeight: 700,
+                  letterSpacing: 'normal',
+                  textTransform: 'none',
+                  color: isLight ? '#0f172a' : '#ffffff',
+                  margin: '0 0 12px',
+                  paddingLeft: 4,
+                }}
+              >
+                {text.visitTitle}
+              </h3>
+              <PlacesCarousel
+                language={language}
+                isLight={isLight}
+                onNavigate={place =>
+                  handleSelectTo({
+                    id: `place:${place.id}`,
+                    label: place.title,
+                    lat: place.lat,
+                    lon: place.lon,
+                    kind: 'address',
+                  })
+                }
+              />
+            </div>
+
             {recentPlaces.length > 0 && (
               <div className="gl-stagger space-y-2" style={{ animationDelay: '80ms' }}>
-                <h3 className="px-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                {/* Écrit en clair : `.text-size-* h3` fixe une taille hors
+                    layer, que les classes utilitaires ne peuvent pas défaire, et
+                    le titre sortait en capitales espacées d'une taille qui
+                    n'était pas la sienne. */}
+                <h3
+                  style={{
+                    fontSize: '15px',
+                    fontWeight: 700,
+                    letterSpacing: 'normal',
+                    textTransform: 'none',
+                    color: isLight ? '#0f172a' : '#ffffff',
+                    margin: '0 0 4px',
+                    paddingLeft: 4,
+                  }}
+                >
                   {text.recents}
                 </h3>
                 {recentPlaces.slice(0, 5).map(place => renderMobileActionRow(
@@ -2333,7 +2498,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
               <ArrowPathIcon className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
 
-
             {/* Sur ordinateur, le choix de la date reste une boîte accrochée au
                 bouton. Sur téléphone, le même contenu prend place dans une
                 feuille — voir plus bas. */}
@@ -2381,6 +2545,24 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                     className="mt-3 w-full accent-blue-500"
                   />
                 </div>
+                {/* L'accès en fauteuil, au même endroit que sur téléphone :
+                    dans les options du trajet, à la suite de la marche. */}
+                <button
+                  type="button"
+                  onClick={() => setSetting('pmrRouting', !wheelchairRouting)}
+                  aria-pressed={wheelchairRouting}
+                  className={`mt-3 flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                    wheelchairRouting
+                      ? 'bg-blue-600 text-white'
+                      : isLight
+                        ? 'text-slate-700 hover:bg-slate-100'
+                        : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <FaWheelchair className="h-4 w-4 flex-shrink-0" />
+                  {text.pmr}
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setActiveScheduleMenu(null)}
@@ -2403,27 +2585,18 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           un itinéraire » disait ce que la liste montre déjà. Les deux autres
           portent le leur, parce qu'ils changent de nature.
         */}
+        {/* Les résultats se lisent en cartes : à quoi sert ce trajet, quand il
+            part, par où il passe, combien il dure. La frise qui les posait sur
+            un axe de temps commun a été retirée — elle était juste, et l'on y
+            comparait des largeurs quand on cherchait une réponse. */}
         {isMobile && currentResults.length > 0 && (
-          <div className="gl-stagger -mx-4" style={{ animationDelay: '60ms' }}>
-            {/*
-              Une seule frise, trois catégories posées dessus.
-
-              Une frise par bloc, c'était trois pistes de défilement et trois
-              échelles : on poussait les trajets du réseau vers la droite, les
-              autres restaient en place, et les mêmes heures ne tombaient plus
-              à la même verticale d'un bloc à l'autre. Ici l'axe est commun,
-              donc comparable, et le doigt emmène tout le tableau.
-            */}
-            <JourneyTimelineList
-              sections={[
-                { label: null, journeys: sections.transit },
-                { label: text.greLinesTrip, journeys: sections.greLinesTrip ? [sections.greLinesTrip] : [] },
-                { label: text.otherOptions, journeys: sections.others },
-              ]}
+          <div className="gl-stagger" style={{ animationDelay: '60ms' }}>
+            <JourneyResults
+              journeys={currentResults}
               language={language}
               stops={stops}
               lineLookup={lineLookup}
-              theme={theme}
+              theme={panelTheme}
               selected={selectedItinerary}
               onSelect={itinerary => _onItinerarySelected?.(itinerary)}
             />
@@ -2431,125 +2604,16 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         )}
 
         {!isMobile && currentResults.length > 0 && (
-          <div className="space-y-3 pt-2">
-            {currentResults.map((itinerary: RouteItinerary, idx) => {
-              const isSelected = selectedItinerary != null && selectedItinerary.dep === itinerary.dep && selectedItinerary.arr === itinerary.arr && selectedItinerary.dur === itinerary.dur;
-              const fareChip = journeyFareChip(itinerary, language);
-              const brand = journeyOperatorBrand(itinerary, theme === 'light' ? 'light' : 'dark');
-
-              // Véhicule partagé ou VTC : la marque tient lieu de ligne, et la
-              // carte s'en tient à ce qui décide — la marque, la durée, le prix.
-              if (brand) {
-                return (
-                  <button
-                    key={`${brand.name}-${idx}`}
-                    type="button"
-                    onClick={() => handleResultTap(itinerary)}
-                    className={resultCardClass(isSelected)}
-                  >
-                    {/* Largeur bornée : un logo introuvable ou aux proportions
-                        inattendues ne doit pas déformer la carte. */}
-                    <img
-                      src={brand.logo}
-                      alt={brand.name}
-                      className="mb-2 h-7 w-auto max-w-[112px] object-contain object-left"
-                    />
-                    <div className="flex items-baseline justify-between gap-3">
-                      <div className="text-2xl font-bold leading-none text-white">
-                        {formatDurationLabel(itinerary.dur)}
-                      </div>
-                      {fareChip && (
-                        <span className="flex-shrink-0 rounded-full bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-200">
-                          {fareChip}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-2 space-y-0.5 text-sm leading-tight text-slate-400">
-                      <div>{text.expectedDeparture} {itinerary.dep}</div>
-                      <div>{text.estimatedArrival} {itinerary.arr}</div>
-                    </div>
-                  </button>
-                );
-              }
-
-              const firstTransitLeg = (itinerary.allLegs || []).find((leg: any) => leg.mode !== 'WALK');
-              const displayLegs = (itinerary.allLegs || [])
-                .filter((leg: any) => leg.mode !== 'WALK' || Math.round((leg.duration || 0) / 60) > 0)
-                .slice(0, 4);
-              return (
-                <button
-                  key={`${itinerary.dep}-${idx}`}
-                  type="button"
-                  onClick={() => handleResultTap(itinerary)}
-                  className={resultCardClass(isSelected)}
-                >
-                  <div className="min-w-0">
-                      <div className="flex items-baseline justify-between gap-3">
-                        <div className="text-2xl font-bold leading-none text-white">{formatDurationLabel(itinerary.dur)}</div>
-                        {/* Le prix se lit à côté de la durée : c'est l'autre
-                            critère de choix entre deux itinéraires. */}
-                        {fareChip && (
-                          <span className="flex-shrink-0 rounded-full bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-200">
-                            {fareChip}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-2 space-y-0.5 text-sm leading-tight text-slate-400">
-                        <div>{text.expectedDeparture} {firstTransitLeg?.startTime ? new Date(firstTransitLeg.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : itinerary.dep}</div>
-                        <div>{text.estimatedArrival} {itinerary.arr}</div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                        {displayLegs.map((leg: any, legIndex: number) => {
-                          const isWalk = leg.mode === 'WALK';
-                          const durationMin = Math.round((leg.duration || 0) / 60);
-                          const line = resolveRouteLine({
-                            routeShortName: leg.routeShortName,
-                            route: leg.route,
-                            routeId: leg.routeId,
-                            lineLookup,
-                            stops,
-                          });
-                          const normalized = line?.normalized || '';
-                          const hasTraffic = normalized ? Boolean(trafficInfo?.has(normalized)) : false;
-                          return (
-                            <div key={`${leg.mode}-${legIndex}`} className="flex items-center gap-1.5">
-                              {legIndex > 0 && <span className="text-[10px] text-white">▶</span>}
-                              {isWalk ? (
-                                <span className="inline-flex h-7 items-center gap-1 rounded-full bg-slate-800 px-2 text-xs font-semibold text-slate-400">
-                                  <FaWalking className="h-3 w-3" />
-                                  {formatMinutesCompact(durationMin)}
-                                </span>
-                              ) : line ? (
-                                <>
-                                  <LineBadge
-                                    line={{ id: line.id, shortName: line.shortName, color: line.color, textColor: line.textColor, hasTraffic }}
-                                    size="sm"
-                                  />
-                                  {/* Le mode décide seul du pictogramme : un
-                                      tramway portait ici l'icône du train, et
-                                      un TER celle du bus. */}
-                                  <TransportModeIcon mode={leg.mode} className="h-5 w-5 text-slate-400" />
-                                </>
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                        {(itinerary.allLegs || []).length > displayLegs.length && (
-                          <span className="rounded-full bg-slate-800 px-2 py-1 text-xs font-semibold text-slate-400">+{(itinerary.allLegs || []).length - displayLegs.length}</span>
-                        )}
-                      </div>
-                  </div>
-                  {itinerary.legs.length > 0 && !isMobile && (
-                    <div className="mt-2 text-[11px] text-slate-500">
-                      {itinerary.legs.length > 3 && (
-                        <span>{text.extraSteps(itinerary.legs.length - 3)}</span>
-                      )}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+          <div className="pt-2">
+            <JourneyResults
+              journeys={currentResults}
+              language={language}
+              stops={stops}
+              lineLookup={lineLookup}
+              theme={panelTheme}
+              selected={selectedItinerary}
+              onSelect={handleResultTap}
+            />
           </div>
         )}
 
@@ -2562,18 +2626,23 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       ) : (
         /* DETAILS MODE - Show selected itinerary details */
         _selectedItinerary && (
-          <div className={isMobile ? 'gl-stagger' : undefined}>
-            {/* Le guidage pas-à-pas n'a de sens qu'en mobilité, et sur
-                téléphone son bouton vit désormais dans la barre d'action du
-                bas : il y reste sous le pouce quel que soit le défilement. La
-                fiche, elle, ne porte plus que le trajet. */}
-            <JourneyDetailsPreview
+          <div
+            key={pageKey}
+            /* La même fiche des deux côtés : le panneau de l'ordinateur est une
+               colonne de la largeur d'un téléphone, et la frise y tenait sans
+               marge, collée aux deux bords. */
+            className={`${pageAnimationClass} px-5 pb-10 pt-2`}
+          >
+            {/* Le guidage vit dans l'en-tête ; la fiche ne porte que le
+                trajet. */}
+            <JourneyDetail
               journey={_selectedItinerary as RouteItinerary}
+              label={selectedLabel}
               language={language}
               stops={stops}
               lineLookup={lineLookup}
+              theme={panelTheme}
               trafficInfo={trafficInfo}
-              theme={theme}
             />
           </div>
         )
@@ -2587,10 +2656,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   const creditNode = null;
 
   if (isMobile) {
-    const canNavigate = Boolean(
-      onStartNavigation && _selectedItinerary && !_selectedItinerary.shared && !_selectedItinerary.uber,
-    );
-    const showActionBar = Boolean(_selectedItinerary) && !sharedRouteExpired && !isPicker;
     /**
      * Choisir un point sur la carte : la page pleine la couvrirait entièrement.
      * Elle s'efface donc le temps du geste, et un bandeau dit ce qu'on attend.
@@ -2599,7 +2664,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
      * en dessous à montrer — la page des favoris n'est pas une carte.
      */
     const isPicking = Boolean(pickMode) && !isPicker;
-    const isPanelVisible = isOpen && (isPicker || (!mapPeek && !isPicking));
+    const isPanelVisible = isOpen && (isPicker || !isPicking);
     /** Une barre d'ajout se pose sous les résultats, tant qu'il y en a. */
     const showPickerBar = isPicker && currentResults.length > 0;
 
@@ -2659,6 +2724,45 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             <p className="tabular mt-0.5 text-center text-xs text-slate-400">
               {WALK_SPEEDS[speedIndex].kmh.toLocaleString('fr-FR', { minimumFractionDigits: 1 })} km/h
             </p>
+
+            {/*
+              L'accès en fauteuil.
+
+              À côté des réglages de marche, parce que c'est de cela qu'il
+              s'agit : de la façon dont on franchit ce qui sépare deux quais.
+              Le même interrupteur se trouve dans les réglages, section
+              « Accessibilité » — c'est le même état, on le lève d'où l'on est.
+            */}
+            <SectionRule label={text.pmr} isLight={isLight} />
+            <button
+              type="button"
+              onClick={() => setSetting('pmrRouting', !wheelchairRouting)}
+              aria-pressed={wheelchairRouting}
+              className="flex w-full items-center gap-3 py-2.5 text-left"
+            >
+              <span
+                className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border transition ${
+                  wheelchairRouting
+                    ? 'border-blue-600 bg-blue-600'
+                    : isLight
+                      ? 'border-slate-300'
+                      : 'border-slate-600'
+                }`}
+              >
+                {wheelchairRouting && <CheckIcon className="h-3.5 w-3.5 text-white" />}
+              </span>
+              <FaWheelchair
+                className={`h-4 w-4 flex-shrink-0 ${wheelchairRouting ? 'text-blue-500' : 'text-slate-400'}`}
+              />
+              <span
+                className={`text-sm ${
+                  wheelchairRouting ? (isLight ? 'text-slate-900' : 'text-white') : 'text-slate-400'
+                }`}
+              >
+                {text.pmr}
+              </span>
+            </button>
+            <p className="pb-2 text-xs leading-snug text-slate-500">{text.pmrHint}</p>
 
             {/*
               Les réseaux à retenir dans le calcul.
@@ -2752,47 +2856,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
 
         {/* Trajet choisi, page repliée : il ne reste qu'un bandeau posé sur la
             carte, qui redit l'essentiel et ramène à la fiche d'un doigt. */}
-        {mapPeek && _selectedItinerary && !isPicker && (
-            <div
-              className="gl-rise fixed inset-x-0 bottom-0 z-[1000] px-3"
-              style={{ paddingBottom: safeBottom }}
-            >
-              <div
-                className={`flex items-center gap-2 rounded-3xl border p-2 shadow-2xl ${
-                  isLight
-                    ? 'border-slate-200 bg-white/95 shadow-slate-400/30'
-                    : 'border-slate-800 bg-slate-950/95 shadow-black/50'
-                } backdrop-blur`}
-              >
-                <button
-                  type="button"
-                  onClick={() => setMapPeek(false)}
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-2 py-2 text-left transition active:scale-[0.99]"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className={`block text-lg font-extrabold leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                      {formatDurationLabel(_selectedItinerary.dur)}
-                    </span>
-                    <span className="block truncate text-xs text-slate-500">
-                      {_selectedItinerary.dep} → {_selectedItinerary.arr}
-                    </span>
-                  </span>
-                  <ChevronUpIcon className="h-5 w-5 flex-shrink-0 text-slate-400" />
-                </button>
-                {canNavigate && (
-                  <button
-                    type="button"
-                    onClick={onStartNavigation}
-                    className="flex h-12 flex-shrink-0 items-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-bold text-white transition active:scale-95 active:bg-blue-700"
-                  >
-                    <PlayIcon className="h-4 w-4" />
-                    {language === 'fr' ? 'Démarrer' : 'Start'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
         {/* La page du planificateur : plein écran, du haut au bas, en trois
             bandes — en-tête figé, contenu qui défile, actions sous le pouce. */}
         {/* Le glissement est en CSS et non piloté en JavaScript : si l'animation
@@ -2813,21 +2876,13 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                  point d'origine des transformations — jusqu'à la hauteur du
                  bandeau, comme aspirée par lui. Refermée, en revanche, elle
                  s'en va simplement par le bas. */
-              : mapPeek
-              ? 'scale-x-[0.86] scale-y-[0.06] opacity-0'
               : 'translate-y-full scale-100'
           } ${isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-white'}`}
           style={{
             pointerEvents: isPanelVisible ? 'auto' : 'none',
-            // Le doigt qui tire la page prend la main sur la transition — sauf
-            // pour le choix d'un favori, qui glisse latéralement et n'a rien à
-            // faire d'un geste vertical.
             transform: dragY > 0 && !isPicker ? `translateY(${dragY}px)` : undefined,
             transition: dragY > 0 && !isPicker
               ? 'none'
-              // L'effacement attend que le rétrécissement soit engagé : mené de
-              // front, il emportait la page avant qu'on ait vu où elle allait,
-              // et l'aspiration ne se lisait pas.
               : 'transform 320ms cubic-bezier(0.32,0.72,0,1), opacity 160ms linear 160ms',
           }}
           aria-hidden={!isPanelVisible}
@@ -2901,6 +2956,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                déplaçable : un mouvement circulaire du pouce décalait la page
                entière, alors qu'on croyait ne toucher que la frise. */
             className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
+            onScroll={handleBodyScroll}
             onPointerDown={isPicker ? undefined : handleDragStart}
             onPointerMove={isPicker ? undefined : handleDragMove}
             onPointerUp={isPicker ? undefined : handleDragEnd}
@@ -2931,39 +2987,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             </div>
           )}
 
-          {showActionBar && (
-            <div
-              className={`flex-shrink-0 border-t px-3 pt-3 ${
-                isLight ? 'border-slate-200 bg-white/95' : 'border-slate-800 bg-slate-950/95'
-              } backdrop-blur`}
-              style={{ paddingBottom: safeBottom }}
-            >
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMapPeek(true)}
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-bold transition active:scale-[0.98] ${
-                    isLight
-                      ? 'border-slate-200 bg-white text-slate-800'
-                      : 'border-slate-800 bg-slate-900 text-slate-100'
-                  }`}
-                >
-                  <MapIcon className="h-5 w-5" />
-                  {language === 'fr' ? 'Voir la carte' : 'View map'}
-                </button>
-                {canNavigate && (
-                  <button
-                    type="button"
-                    onClick={onStartNavigation}
-                    className="flex flex-[1.3] items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] active:bg-blue-700"
-                  >
-                    <PlayIcon className="h-5 w-5" />
-                    {language === 'fr' ? 'Démarrer' : 'Start'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Définir un lieu enregistré : une feuille par-dessus la page, ouverte

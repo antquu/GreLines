@@ -32,9 +32,6 @@ export function useTranslated(
   useEffect(() => {
     if (!enabled || language === 'fr' || !source.trim()) return;
     requestTranslation(source, language);
-    // Le composant se redessine quand une traduction arrive, quelle qu'elle
-    // soit : elles arrivent par paquets, et un abonnement par texte coûterait
-    // plus cher que le redessin.
     return subscribeTranslations(() => bump(n => n + 1));
   }, [source, language, enabled]);
 

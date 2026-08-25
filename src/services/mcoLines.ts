@@ -70,8 +70,6 @@ export async function getMcoLines(): Promise<McoLine[]> {
 
       const features: any[] = Array.isArray(geo?.features) ? geo.features : [];
       const lines: McoLine[] = features.map(feature => {
-        // « MCO_VOIR » côté géographie, « MCO:VOIR » côté horaires : le même
-        // identifiant, deux séparateurs.
         const rawCode = String(feature?.properties?.CODE ?? feature?.properties?.id ?? '');
         const id = rawCode.replace('_', ':');
         const code = id.split(':')[1] ?? id;
@@ -114,9 +112,6 @@ export function midpointOf(geometry: McoLine['geometry']): [number, number] | nu
       ? (geometry.coordinates as number[][][])
       : [geometry.coordinates as number[][]];
 
-  // La plus longue des branches porte l'étiquette : les autres sont des
-  // variantes ou des antennes, et deux étiquettes pour une liaison se
-  // marcheraient dessus.
   let longest: number[][] = [];
   for (const part of parts) if (part.length > longest.length) longest = part;
   if (longest.length === 0) return null;

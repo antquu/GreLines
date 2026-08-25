@@ -43,8 +43,6 @@ export function cardStatusCode(card: OuraCard): string | null {
 
 export function cardStatusSentence(card: OuraCard, language: 'fr' | 'en'): string | null {
   const isFr = language === 'fr';
-  // Supprimée ou désactivée, c'est la même chose pour son porteur : la carte ne
-  // sert plus à rien. Inutile de lui expliquer une nuance d'administration.
   switch (cardBlockedBy(card)) {
     case 'grelines':
       return isFr

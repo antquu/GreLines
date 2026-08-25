@@ -40,10 +40,6 @@ export interface Line {
 export interface Departure {
   lineId: string;
   
-
-
-
-
   routeId?: string;
   lineName: string;
   lineShortName?: string;

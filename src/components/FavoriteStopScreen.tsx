@@ -75,9 +75,6 @@ export function FavoriteStopScreen({
           <button
             key={`${group.lineId}|${group.destination}`}
             type="button"
-            // Toucher une direction ouvre la fiche de l'arrêt filtrée sur sa
-            // ligne : on vient de dire laquelle des dix on regarde, la fiche
-            // n'a aucune raison de rouvrir les neuf autres.
             onClick={() => onOpenStop(group.lineId)}
             className={`flex w-full gap-3 px-5 py-6 text-left transition active:scale-[0.99] ${
               index > 0 ? `border-t ${separatorClass}` : ''

@@ -1,17 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 const DB_NAME = 'greLines';
 const DB_VERSION = 1;
 const STORE = 'cache';
@@ -68,12 +55,6 @@ async function withStore<T>(
   });
 }
 
-
-
-
-
-
-
 export async function idbGet<T>(
   key: string,
   options?: { allowStale?: boolean },
@@ -89,7 +70,6 @@ export async function idbGet<T>(
   return { value: entry.value, stale };
 }
 
-
 export async function idbSet<T>(key: string, value: T, ttlMs: number): Promise<void> {
   const entry: Entry<T> = { value, expires: Date.now() + ttlMs };
   await withStore('readwrite', (store) => store.put(entry, key));
@@ -99,17 +79,9 @@ export async function idbDelete(key: string): Promise<void> {
   await withStore('readwrite', (store) => store.delete(key));
 }
 
-
 export async function idbClear(): Promise<void> {
   await withStore('readwrite', (store) => store.clear());
 }
-
-
-
-
-
-
-
 
 export async function mapWithConcurrency<T, R>(
   items: T[],

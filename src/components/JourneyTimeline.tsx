@@ -23,8 +23,6 @@ const formatDuration = (minutes: number): string => {
 };
 
 export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLookup, getLineDisruptions }: JourneyTimelineProps) => {
-  // Arrêts intermédiaires repliés par défaut : on ouvre le tronçon dont on veut
-  // connaître le détail, pas les vingt arrêts de tout le trajet.
   const [expandedLegs, setExpandedLegs] = useState<Set<number>>(new Set());
 
   const toggleLeg = (index: number) => {
@@ -45,7 +43,6 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
   const depIsAddress = (journey.rawDep ?? journey.depName ?? '').includes('::');
   const arrIsAddress = (journey.rawArr ?? journey.arrName ?? '').includes('::');
 
-  // Filter out unnecessary walk segments
   const filteredLegs = allLegs.filter((leg, i, arr) => {
     if (leg.mode !== 'WALK') return true;
     const isFirst = arr.slice(0, i).every((l) => l.mode === 'WALK');
@@ -86,7 +83,6 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
         );
       }
 
-      // Transit start
       items.push(
         <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
           <div className="flex flex-col items-center w-8 flex-shrink-0">
@@ -120,8 +116,6 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
         </div>,
       );
 
-      // Transit bar with stops info — dépliable sur les arrêts desservis entre
-      // la montée et la descente.
       const intermediateStops: JourneyIntermediateStop[] = Array.isArray(leg.intermediateStops)
         ? leg.intermediateStops
         : [];
@@ -183,7 +177,6 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
         </div>,
       );
 
-      // Transit end
       const nextLeg = filteredLegs[i + 1];
       const nextIsTransit = nextLeg && nextLeg.mode !== 'WALK';
 
@@ -241,7 +234,6 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
       }
     }
 
-    // Walk segments
     if (isWalk && durationMin >= 1) {
       items.push(
         <div key={`walk-${i}`} className="flex gap-3 items-center">

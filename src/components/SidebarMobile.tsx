@@ -15,9 +15,9 @@ import {
   LAST_SNAP,
 } from './MapSheet';
 import { NAV_ITEM_WIDTH } from './MobileNavBar';
-import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ExclamationTriangleIcon, CheckIcon, StarIcon, MapIcon, ClockIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/solid';
-import { StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline';
-import { isFavorite, removeFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
+import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, MapIcon, ClockIcon, ArrowsRightLeftIcon, ExclamationTriangleIcon, CheckIcon, BookmarkIcon } from '@heroicons/react/24/solid';
+import { BookmarkIcon as BookmarkOutlineIcon } from '@heroicons/react/24/outline';
+import { isFavorite, removeFavoriteAndNotify, setFavoriteAndNotify, subscribeFavorites } from '../services/favorites';
 import { AddFavoriteModal } from './AddFavoriteModal';
 import { TransportModeIcon } from './TransportModeIcon';
 import { normalizeMode } from '../utils/transportMode';
@@ -27,6 +27,11 @@ import { resolveLineStyle, isGrenobleNetworkLine } from '../utils/lineColors';
 import { LineBadge } from './LineBadge';
 import { DepartureLineBadge } from './DepartureLineBadge';
 import { LastRunRibbon, LAST_RUN_TEXT } from './LastRunRibbon';
+import { DepartureQuickActions } from './DepartureQuickActions';
+import { FaWheelchair } from 'react-icons/fa';
+import { useAccessibleStops } from '../hooks/useAccessibleStops';
+import { usePerfSettings } from '../hooks/usePerfSettings';
+import { isStopAccessible } from '../services/stopAccessibility';
 import { TclSidebar } from './TclSidebar';
 import { isTclId } from '../services/tclNetwork';
 import { getTimetable, isLastDeparture, toTimetableRouteId, type Timetable } from '../services/timetable';
@@ -41,10 +46,6 @@ interface SidebarMobileProps {
   onOpen: () => void;
   initialSelectedLines?: Set<string>;
   
-
-
-
-
   selectedLines?: Set<string>;
   onSelectedLinesChange?: (lines: Set<string>) => void;
   compactMode: boolean;
@@ -105,14 +106,6 @@ const renderDepartureTime = (timeString: string) => {
   return timeString;
 };
 
-
-
-
-
-
-
-
-
 function modeLabel(mode: ReturnType<typeof normalizeMode>, text: { bus: string; tramway: string; train: string; metro: string }): string {
   if (mode === 'METRO') return text.metro;
   if (mode === 'RAIL') return text.train;
@@ -133,8 +126,6 @@ const isRoundLine = (lineId: string): boolean => {
   const match = /^C(\d+)$/.exec(code);
   return !!match && parseInt(match[1], 10) >= 1 && parseInt(match[1], 10) <= 14;
 };
-
-
 
 /**
  * L'affluence, en trois silhouettes.
@@ -173,11 +164,6 @@ const OccupancyDisplay = ({
     </div>
   );
 };
-
-
-
-
-
 
 interface StopTrafficAlertsProps {
   stop: Pick<StopDetail, 'id' | 'name' | 'lines'>;
@@ -260,6 +246,12 @@ const CopyButton = ({ value, copyLabel, copiedLabel }: { value: string; copyLabe
 
 export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, selectedLines: controlledSelectedLines, onSelectedLinesChange, compactMode, autoSync, refreshIntervalMs, language, theme = 'dark', onPlanRouteFromStop, onOpenTimetable, onOpenLine }: SidebarMobileProps) => {
   const [currentStopDetail, setCurrentStopDetail] = useState<StopDetail | null>(null);
+  /* Les arrêts où l'on peut monter en fauteuil. La liste vient d'un fichier
+     statique tiré du GTFS : l'API du réseau ne porte pas ce renseignement. */
+  const accessibleStops = useAccessibleStops();
+  /* Le mode développeur : il décide seul de l'horodatage en pied de fiche. */
+  const { settings: perf } = usePerfSettings();
+  const stopIsAccessible = isStopAccessible(accessibleStops, currentStopDetail);
   const [departures, setDepartures] = useState<Departure[]>([]);
   const [internalSelectedLines, setInternalSelectedLines] = useState<Set<string>>(initialSelectedLines || new Set());
   const isControlled = controlledSelectedLines !== undefined;
@@ -423,7 +415,6 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
 
     void load();
     return () => { active = false; };
-    // `timetables` est volontairement absent : il est alimenté par cet effet.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentStopDetail?.id]);
 
@@ -462,7 +453,6 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
   }, [currentStopDetail]);
 
   useEffect(() => {
-    // In controlled mode, the parent owns selectedLines — don't fight it.
     if (isControlled) return;
     if (initialSelectedLines && initialSelectedLines.size > 0 && !hasAppliedInitialLines) {
       setInternalSelectedLines(new Set(initialSelectedLines));
@@ -507,8 +497,6 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
    * vient de cocher une ligne fermerait l'arrêt qu'on est en train de filtrer.
    */
 
-  // L'avertissement se lit par-dessus la fiche : autant qu'elle soit déjà
-  // dépliée en dessous quand on l'acquitte.
   useEffect(() => {
     if (showTclWarning) sheetRef.current?.snapTo(fullIndex);
   }, [showTclWarning, fullIndex]);
@@ -538,13 +526,6 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
       onClose={onClose}
       snapPoints={snapPoints}
       initialSnap={peekIndex}
-      // Descendre au palier de la barre d'onglets n'est pas se poser, c'est
-      // rendre la place : la fiche se referme et l'accueil reparaît, à la même
-      // hauteur et à la même largeur. Le relais ne se voit pas.
-      //
-      // On n'écoute qu'une fois la feuille arrivée : la bibliothèque annonce
-      // les paliers traversés pendant l'ouverture, et la fiche se serait
-      // refermée avant d'avoir paru.
       onSnap={index => {
         if (index > NAVBAR_SNAP) { hasSettledRef.current = true; return; }
         if (hasSettledRef.current) onClose();
@@ -574,7 +555,17 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                     className="mb-2 w-auto object-contain object-left" style={{ height: 30 }}
                   />
                 )}
-                <h2 className="text-2xl font-extrabold text-white leading-tight">{currentStopDetail.name}</h2>
+                <h2 className="text-2xl font-extrabold text-white leading-tight">
+                  {currentStopDetail.name}
+                  {/* Comme sur l'ordinateur : le fauteuil termine le nom. */}
+                  {stopIsAccessible && (
+                    <FaWheelchair
+                      className="ml-2 inline-block h-[0.7em] w-[0.7em] align-baseline text-blue-400"
+                      title={language === 'fr' ? 'Arrêt accessible en fauteuil' : 'Wheelchair accessible stop'}
+                      aria-label={language === 'fr' ? 'Arrêt accessible en fauteuil' : 'Wheelchair accessible stop'}
+                    />
+                  )}
+                </h2>
                 {currentStopDetail.city && <p className="text-sm text-slate-400 mt-0.5">{currentStopDetail.city}</p>}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
@@ -592,19 +583,49 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                 </button>
                 <button
                   onClick={() => {
-                    if (isFav) removeFavoriteAndNotify(currentStopDetail.id);
-                    else setIsFavoriteModalOpen(true);
+                  if (isFav) {
+                      removeFavoriteAndNotify(currentStopDetail.id);
+                      return;
+                    }
+                    /*
+                     * L'étoile enregistre, et c'est tout.
+                     *
+                     * Elle ouvrait une fenêtre qui demandait quelles lignes
+                     * suivre. La question se posait à chaque arrêt mis en favori,
+                     * et la réponse était « toutes » à peu près à chaque fois :
+                     * on met un arrêt en favori parce qu'on y passe, pas parce
+                     * qu'on y prend une ligne et une seule. Le tri par ligne
+                     * existe toujours, mais là où il sert — dans la fiche du
+                     * favori, une fois qu'on l'a ouverte.
+                     *
+                     * La fenêtre ne reparaît que pour dire ce qu'on ne peut pas
+                     * deviner : que la liste est pleine.
+                     */
+                    const saved = setFavoriteAndNotify({
+                      stopId: currentStopDetail.id,
+                      stopName: currentStopDetail.name,
+                      city: currentStopDetail.city,
+                      lines: 'all',
+                      addedAt: Date.now(),
+                    });
+                    if (!saved) setIsFavoriteModalOpen(true);
                   }}
-                  className={`w-9 h-9 flex items-center justify-center border rounded-full transition ${
-                    isFav
-                      ? 'bg-amber-500/20 border-amber-500/40'
-                      : 'bg-slate-800 border-slate-700 hover:bg-slate-700'
-                  }`}
-                  aria-label={isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                  /* Le bouton ne change pas d'habit selon l'état : il garde le
+                     sien, celui de ses voisins. C'est le signet qu'il porte qui
+                     dit tout — creux, l'arrêt n'est pas gardé ; plein et bleu,
+                     il l'est. Un bouton qui change de couleur en même temps que
+                     son pictogramme dit deux fois la même chose, et fait
+                     sauter la rangée à chaque clic. */
+                  className="w-9 h-9 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-full transition hover:bg-slate-700"
+                  aria-label={
+                  isFav
+                    ? language === 'fr' ? 'Retirer des favoris' : 'Remove from favourites'
+                    : language === 'fr' ? 'Ajouter aux favoris' : 'Add to favourites'
+                }
                 >
                   {isFav
-                    ? <StarIcon className="w-4 h-4 text-amber-400" />
-                    : <StarOutlineIcon className="w-4 h-4 text-white" />}
+                    ? <BookmarkIcon className="w-4 h-4 text-blue-400" />
+                    : <BookmarkOutlineIcon className="w-4 h-4 text-white" />}
                 </button>
                 <button
                   onClick={onClose}
@@ -632,8 +653,6 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                 <button
                   ref={exportButtonRef}
                   onClick={() => {
-                    // Build the URL using the user's current path so shared
-                    // links land on the same route they were copied from.
                     const path = window.location.pathname;
                     const qs = selectedLines.size === 0
                       ? `T1=ALL_${currentStopDetail.id}`
@@ -734,9 +753,6 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                   const isExpanded = expandedItems.has(itemKey);
                   const departureLine = currentStopDetail.lines.find(l => l.id === departure.lineId || l.shortName === departure.lineShortName || l.shortName === departure.lineId);
                   const secondLine = second ? currentStopDetail.lines.find(l => l.id === second.lineId || l.shortName === second.lineShortName || l.shortName === second.lineId) : undefined;
-                  // Identifiant réseau compris : « C1 » tout court ne dit pas si
-                  // l'on parle de la Chrono 1 ou de la C1 du TER, qui se croisent
-                  // en gare de Grenoble.
                   const departureRef = departureLine?.routeId || departure.routeId || departure.lineId;
                   const secondRef = second ? (secondLine?.routeId || second.routeId || second.lineId) : '';
                   const departureIsSem = isGrenobleNetworkLine(departureRef);
@@ -753,8 +769,18 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                     getMinutesUntilDeparture(departure),
                   );
 
-                  // Tram ou chrono ou ligne avec trafic + second départ → expandable
-                  if ((isTram || isChrono || hasTrafficAlert) && second) {
+                  /*
+                   * Un passage suivant connu, et la ligne se déplie.
+                   *
+                   * Le dépliement était réservé aux trams, aux chrono et aux
+                   * lignes perturbées ; sur toutes les autres, le second
+                   * passage se lisait en petit sous le premier — quand il se
+                   * lisait. Or c'est le même besoin pour tout le monde :
+                   * « celui-là, je le rate, c'est dans combien de temps le
+                   * suivant ? ». Ce qui décide n'est donc pas la sorte de
+                   * ligne mais le fait qu'on connaisse un passage de plus.
+                   */
+                  if (second) {
                     return (
                       <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
                         className="border border-slate-700 rounded-2xl overflow-hidden bg-slate-800">
@@ -865,42 +891,35 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                             {/* Actions du passage : la fiche horaire répond à la
                                 question « et le prochain, c'est quand ? » que le
                                 temps réel seul ne couvre pas. */}
-                            <div className="flex flex-wrap gap-2 border-t border-slate-700/70 pt-4">
-                              <button
-                                type="button"
-                                onClick={() => onOpenTimetable?.({
-                                  line: departureLine ?? { id: departure.lineId, shortName: departure.lineShortName },
-                                  headsign: departure.destination,
-                                })}
-                                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
-                              >
-                                <ClockIcon className="h-4 w-4" />
-                                {text.timetable}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onOpenLine?.(departureLine ?? { id: departure.lineId, shortName: departure.lineShortName })}
-                                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
-                              >
-                                <MapIcon className="h-4 w-4" />
-                                {text.seeLine}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => currentStopDetail && onPlanRouteFromStop?.(currentStopDetail)}
-                                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
-                              >
-                                <ArrowsRightLeftIcon className="h-4 w-4" />
-                                {text.planRoute}
-                              </button>
-                            </div>
+                            <DepartureQuickActions
+                              style={departureStyle}
+                              actions={[
+                                {
+                                  label: text.timetable,
+                                  Icon: ClockIcon,
+                                  onSelect: () => onOpenTimetable?.({
+                                    line: departureLine ?? { id: departure.lineId, shortName: departure.lineShortName },
+                                    headsign: departure.destination,
+                                  }),
+                                },
+                                {
+                                  label: text.seeLine,
+                                  Icon: MapIcon,
+                                  onSelect: () => onOpenLine?.(departureLine ?? { id: departure.lineId, shortName: departure.lineShortName }),
+                                },
+                                {
+                                  label: text.planRoute,
+                                  Icon: ArrowsRightLeftIcon,
+                                  onSelect: () => currentStopDetail && onPlanRouteFromStop?.(currentStopDetail),
+                                },
+                              ]}
+                            />
                           </div>
                         </motion.div>
                       </motion.div>
                     );
                   }
 
-                  // Single tram without second
                   if (isTram) {
                     return (
                       <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
@@ -930,9 +949,6 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                     );
                   }
 
-                  // Regular bus. Toutes les rangées ont la même teinte : le vert
-                  // « prochain » et l'ambre « imminent » colorisaient une
-                  // information que l'ordre de la liste et l'heure disent déjà.
                   return (
                     <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
                       className="flex items-center justify-between p-3 rounded-2xl border border-slate-700 bg-slate-800 transition hover:bg-slate-750">
@@ -965,6 +981,29 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                   <p className="text-center text-slate-500 py-10 text-sm">{text.noDeparturesAvailable}</p>
                 )}
               </div>
+
+              {/*
+                L'heure de la dernière requête, en mode développeur seulement.
+
+                Une fiche d'arrêt se rafraîchit toute seule, à l'intervalle réglé. Quand on
+                travaille dessus, la question qui revient est « est-ce que ça vient de se
+                rafraîchir, ou est-ce que je regarde des chiffres d'il y a deux minutes ? ».
+                Le seul moyen d'y répondre était de regarder la console.
+
+                Hors mode développeur, rien : un horodatage sous une liste de départs
+                n'apprend rien à qui prend le tram, et sème le doute sur la fraîcheur du
+                reste.
+              */}
+              {perf.devMode && currentStopDetail.lastUpdate && (
+                <p className="tabular px-1 pt-4 text-center text-[11px] text-slate-500">
+                  {language === 'fr' ? 'Dernière requête effectuée à ' : 'Last request at '}
+                  {currentStopDetail.lastUpdate.toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-GB', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                </p>
+              )}
             </div>
               </>
             )}

@@ -24,9 +24,6 @@ export function openExternal(url: string): void {
   if (typeof window === 'undefined') return;
 
   if (isStandaloneApp()) {
-    // Un lien synthétique plutôt que `window.open` : `rel="external"` avec
-    // `target="_blank"` est la seule formulation que Safari et Chrome mobile
-    // honorent en sortant de la fenêtre installée.
     const link = document.createElement('a');
     link.href = url;
     link.target = '_blank';

@@ -42,7 +42,6 @@ const getText = (language: 'fr' | 'en') => {
   };
 };
 
-
 /** Hauteur d'une rangée. Fixe, parce que deux colonnes doivent s'aligner. */
 const ROW_HEIGHT = 46;
 /**
@@ -424,8 +423,6 @@ export function TimetableSidebar({
     let active = true;
     const controller = new AbortController();
 
-    // Le chargement démarre dans une micro-tâche : mettre l'état à jour dans le
-    // corps de l'effet enchaînerait un rendu en cascade juste avant la requête.
     queueMicrotask(() => {
       if (!active) return;
       setLoading(true);
@@ -435,7 +432,6 @@ export function TimetableSidebar({
       .then(result => {
         if (!active) return;
         setTimetable(result);
-        // Le sens présélectionné est celui du passage qu'on consultait.
         const match = preferredHeadsign
           ? result?.directions.find(direction =>
               preferredHeadsign.toLowerCase().includes(direction.headsign.toLowerCase()) ||
@@ -449,10 +445,6 @@ export function TimetableSidebar({
   }, [isOpen, line?.id, line?.shortName, preferredHeadsign]);
 
   const direction = timetable?.directions.find(item => item.key === directionKey) ?? timetable?.directions[0];
-  // Même résolution que la fiche de ligne : une ligne sans couleur déclarée
-  // reçoit celle que l'application lui attribue d'après son identifiant. Se
-  // rabattre sur un gris ardoise donnait un tronc invisible sur fond sombre —
-  // la timeline était bien là, on ne la voyait simplement pas.
   const lineStyle = line ? resolveLineStyle(line.id, line.color, line.textColor) : {};
   const lineColor = (lineStyle as { backgroundColor?: string }).backgroundColor || '#475569';
 
@@ -544,8 +536,6 @@ export function TimetableSidebar({
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -420, opacity: 0 }}
               transition={{ duration: 0.28, ease: 'easeOut' }}
-              // Décalée d'une largeur de panneau : elle se pose à droite de la
-              // fiche d'arrêt, sans la masquer.
               className="fixed left-96 top-0 z-[55] h-screen w-96 overflow-y-auto overflow-x-hidden border-r border-slate-800 bg-slate-900 shadow-2xl"
             >
               <div className="p-6 pb-12">{body}</div>
@@ -556,9 +546,6 @@ export function TimetableSidebar({
     );
   }
 
-  // Sur mobile, la fiche horaire prend tout l'écran, comme la visionneuse de
-  // plan : c'est un tableau qu'on lit de haut en bas, une feuille l'aurait
-  // toujours amputé d'un tiers pour montrer une carte qu'on ne regarde pas.
   return (
     <AnimatePresence>
       {isOpen && line && (

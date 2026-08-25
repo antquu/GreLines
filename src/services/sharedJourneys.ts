@@ -137,8 +137,6 @@ async function buildOption(
   const arrival = walkEnd + rideSeconds * 1000;
   const rideMinutes = Math.max(1, Math.round(rideSeconds / 60));
 
-  // Une station Citiz porte un nom ; une trottinette posée sur un trottoir n'en
-  // a pas — on la désigne alors par ce qu'elle est.
   const pickupName =
     nearest.point.name ||
     [formFactorLabel(formFactor, 'fr'), SHARED_OPERATOR_LABELS[operator]].filter(Boolean).join(' ');

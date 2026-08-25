@@ -43,8 +43,6 @@ export function DepartureLineBadge({
     return (
       <div
 
-
-
         className={`relative flex flex-shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl ${sizeClass}`}
         style={{ backgroundColor: SNCF_TER_COLOR, color: '#ffffff' }}
       >

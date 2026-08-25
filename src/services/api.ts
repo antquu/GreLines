@@ -6,7 +6,6 @@ import { idbGet, idbSet, mapWithConcurrency } from './persistentCache';
 
 const TAG_API_BASE = 'https://data.mobilites-m.fr/api/routers/default';
 
-
 const TAG_HEADERS = {
   
 };
@@ -168,6 +167,16 @@ async function buildOtpParams(
     walkSpeed?: number;
     /** Modes autorisés, tels qu'OTP les attend. Marche et transport par défaut. */
     mode?: string;
+    /**
+     * N'accepter que ce qui se franchit en fauteuil.
+     *
+     * OTP écarte alors les correspondances par escalier, les arrêts dont le
+     * GTFS dit qu'on n'y monte pas, et les courses non équipées. Le calcul
+     * rend parfois moins d'itinéraires, parfois aucun : c'est le
+     * renseignement du réseau qui parle, et il vaut mieux qu'une réponse
+     * qu'on ne pourrait pas suivre.
+     */
+    wheelchair?: boolean;
   },
 ): Promise<URLSearchParams> {
   const queryTime = new Date();
@@ -189,7 +198,7 @@ async function buildOtpParams(
     bannedAgencies: 'MCO:MC',
     walkSpeed: String(options?.walkSpeed ?? 1.4),
     numItineraries: '4',
-    wheelchair: 'false',
+    wheelchair: options?.wheelchair ? 'true' : 'false',
   });
   return params;
 }
@@ -278,6 +287,8 @@ export async function planItineraries(options: {
    * « GreLines Trip » propose.
    */
   mode?: string;
+  /** N'accepter que des itinéraires praticables en fauteuil. */
+  wheelchair?: boolean;
 }): Promise<RouteItinerary[]> {
   const params = await buildOtpParams(
     options.fromLatitude,
@@ -291,6 +302,7 @@ export async function planItineraries(options: {
       walkReluctance: options.walkReluctance,
       walkSpeed: options.walkSpeed,
       mode: options.mode,
+      wheelchair: options.wheelchair,
     },
   );
 
@@ -302,9 +314,6 @@ export async function planItineraries(options: {
     return itineraries.map((it: any) => {
       const parsed = parseOtpItinerary(it, options.fromName, options.toName);
       const legs: any[] = Array.isArray(it.legs) ? it.legs : [];
-      // Un trajet n'est « vélo + transport » que s'il contient les deux : le
-      // planificateur renvoie aussi, dans la même réponse, des trajets tout à
-      // vélo, qui appartiennent aux autres options et non au GreLines Trip.
       parsed.bikeTransit =
         legs.some(leg => leg?.mode === 'BICYCLE') &&
         legs.some(leg => leg?.mode && leg.mode !== 'BICYCLE' && leg.mode !== 'WALK');
@@ -354,9 +363,6 @@ export async function planDirectItinerary(options: {
     if (!itinerary) return null;
 
     const legs: any[] = Array.isArray(itinerary.legs) ? itinerary.legs : [];
-    // Un trajet mono-mode tient presque toujours en un seul tronçon ; on garde
-    // le plus long comme tracé de référence et on concatène le reste pour le
-    // cadrage de la carte.
     const encoded = legs
       .map(leg => String(leg?.legGeometry?.points ?? ''))
       .filter(Boolean)
@@ -377,10 +383,8 @@ export async function planDirectItinerary(options: {
   }
 }
 
-// Cache pour stocker l'occupancy par tram (ligne + destination)
 const occupancyCache = new Map<string, 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED'>();
 
-// Helper: Generate random occupancy for mock data
 const getRandomOccupancy = (): 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED' => {
   const rand = Math.random();
   if (rand < 0.25) return 'EMPTY';
@@ -389,7 +393,6 @@ const getRandomOccupancy = (): 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED' => {
   return 'CROWDED';
 };
 
-// Helper: Get occupancy for a specific tram (cached)
 function getTramOccupancy(lineId: string, destination: string): 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED' {
   const key = `${lineId}::${destination}`;
   if (!occupancyCache.has(key)) {
@@ -398,19 +401,12 @@ function getTramOccupancy(lineId: string, destination: string): 'EMPTY' | 'LIGHT
   return occupancyCache.get(key)!;
 }
 
-// Cache simple avec génériques
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 2 * 60 * 1000; // 2 min (plus court pour avoir des données plus fraîches)
-// Les départs bougent en permanence : TTL court, indépendant du reste.
 const DEPARTURES_CACHE_DURATION = 30 * 1000;
-// Le catalogue des lignes ne change qu'au changement de service : TTL long.
 const ROUTES_CACHE_DURATION = 6 * 60 * 60 * 1000;
-// Snapshot des arrêts en IndexedDB : frais 24 h, réutilisable périmé 7 jours
-// (on affiche l'ancien immédiatement et on rafraîchit en tâche de fond).
 const STOPS_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
 const STOPS_SNAPSHOT_KEY = 'stopsSnapshot_v3';
-// v2 : les entrées v1 ne contenaient que le réseau SEM et excluaient les
-// autres réseaux ainsi que le filtrage des lignes scolaires.
 const ROUTES_SNAPSHOT_KEY = 'routes_v2';
 const TRAFFIC_LINES_STORAGE_KEY = 'greLines_trafficLinesCache_v1';
 const TRAFFIC_LINES_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -429,8 +425,6 @@ type StopLinesCacheEntry = { data: Line[]; timestamp: number };
 type StopLinesCacheStore = { version: 1; entries: Record<string, StopLinesCacheEntry> };
 const stopLinesCache = new Map<string, StopLinesCacheEntry>();
 const stopLinesInflight = new Map<string, Promise<Line[]>>();
-// v2 : les entrées v1 ne portaient pas `routeId`, sans lequel deux lignes
-// homonymes de réseaux différents (« C1 » Chrono et « C1 » TER) se confondent.
 const STOP_LINES_CACHE_STORAGE_KEY = 'greLines_stopLinesCache_v2';
 const STOP_LINES_CACHE_MAX_ENTRIES = 500;
 let stopLinesCacheHydrated = false;
@@ -481,13 +475,8 @@ export const NETWORKS: NetworkDefinition[] = [
   { code: 'TRA', provider: 'mtag', label: 'Transaltitude', defaultEnabled: true },
   { code: 'MCO', provider: 'mtag', label: "M'Covoit ligne+", defaultEnabled: true },
   { code: 'SNC', provider: 'mtag', label: 'TER — SNCF', defaultEnabled: true, addedInRevision: 2 },
-  // 222 lignes dont 198 scolaires : de loin le réseau le plus lourd, et le
-  // moins utile au quotidien dans l'agglomération. Proposé, mais éteint.
   { code: 'C38', provider: 'mtag', label: 'Cars Région (C38)', defaultEnabled: false },
 
-  // Lyon. Déclaré pour que la couche fournisseur soit exercée par du réel, mais
-  // éteint : rien ne le charge encore. L'activer aujourd'hui n'afficherait
-  // qu'un réseau vide.
   { code: 'TCL', provider: 'tcl', label: 'TCL — Lyon', defaultEnabled: false, addedInRevision: 3 },
 ];
 
@@ -599,8 +588,6 @@ const GEN_PREFIX_NETWORKS = new Set(
 );
 
 function normalizeRouteCode(value: string): string {
-  // Le dépouillement dépend du fournisseur : MTAG retire « SEM: », TCL isole
-  // le code au milieu d'un identifiant NeTEx.
   return localCode(value);
 }
 
@@ -611,8 +598,6 @@ function formatRouteId(value: string, network: string = 'SEM'): string {
 
 function formatClusterId(stopId: string): string {
   const raw = String(stopId);
-  // Un identifiant d'un autre fournisseur ne se réécrit pas : la notion de
-  // cluster préfixé n'existe que chez MTAG.
   if (providerOf(raw)?.id === 'tcl') return raw;
 
   const network = networkOf(raw);
@@ -697,7 +682,6 @@ function hydrateTrafficLinesCache(): void {
       parsed.entries.filter(([key, value]) => typeof key === 'string' && Array.isArray(value))
     );
   } catch {
-    // Ignore corrupted cache and rebuild lazily.
   }
 }
 
@@ -709,7 +693,6 @@ function persistTrafficLinesCache(map: Map<string, TrafficDetail[]>): void {
       entries: Array.from(map.entries()),
     }));
   } catch {
-    // Ignore quota issues.
   }
 }
 
@@ -728,7 +711,6 @@ function hydrateStopLinesCache(): void {
       stopLinesCache.set(stopId, { data: entry.data as Line[], timestamp: entry.timestamp });
     }
   } catch {
-    // Ignore corrupted cache and rebuild lazily.
   }
 }
 
@@ -744,7 +726,6 @@ function persistStopLinesCache(): void {
     };
     window.localStorage.setItem(STOP_LINES_CACHE_STORAGE_KEY, JSON.stringify(payload));
   } catch {
-    // If storage is full or unavailable, we simply keep the in-memory cache.
   }
 }
 
@@ -839,8 +820,6 @@ export function groupNearbyStopsByName(stops: Stop[]): Stop[][] {
       groups.push(bucket);
       continue;
     }
-    // Agrégation gloutonne : chaque arrêt rejoint le premier groupe dont un
-    // membre est assez proche, sinon il en ouvre un nouveau.
     const clusters: Stop[][] = [];
     for (const stop of bucket) {
       const target = clusters.find(cluster =>
@@ -883,7 +862,6 @@ export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
       trafficMap.set(line, existing);
     };
 
-    // cas 1: format object de clés dynamiques
     if (typeof data === 'object' && !Array.isArray(data)) {
       for (const key of Object.keys(data)) {
         if (!data[key] || typeof data[key] !== 'object') continue;
@@ -894,14 +872,12 @@ export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
             addDetail(lineCode, info);
           }
         }
-        // parfois la propriété peut venir de listeInfos
         if (Array.isArray(info.listeLigne)) {
           (info.listeLigne as string[]).forEach((lineCode) => addDetail(lineCode, info));
         }
       }
     }
 
-    // cas 2: format générique tableau
     const listeInfos = data?.listeInfos;
     if (Array.isArray(listeInfos)) {
       for (const info of listeInfos) {
@@ -932,8 +908,6 @@ async function loadRoutes(): Promise<Line[]> {
   const cached = getFromCache<Line[]>(cacheKey, ROUTES_CACHE_DURATION);
   if (cached) return cached;
 
-  // Deuxième niveau : IndexedDB. Évite de refaire la requête à chaque
-  // rechargement de page, pas seulement pendant la session courante.
   const persisted = await idbGet<Line[]>(ROUTES_SNAPSHOT_KEY);
   if (persisted && Array.isArray(persisted.value) && persisted.value.length > 0) {
     setCache(cacheKey, persisted.value);
@@ -946,9 +920,6 @@ async function loadRoutes(): Promise<Line[]> {
     const trafficLines = await getTrafficLines();
 
     const lines = routes
-      // Toutes les lignes de tous les réseaux sont conservées ici : le tri par
-      // réseau se fait plus tard, selon la sélection de l'utilisateur. Seules
-      // les lignes scolaires sont écartées d'emblée.
       .filter((r: any) => networkOf(String(r?.id || '')) !== null && !isSchoolRoute(r?.type))
       .map((route: any) => {
         const routeId = String(route.id);
@@ -959,8 +930,6 @@ async function loadRoutes(): Promise<Line[]> {
           routeId,
           name: route.longName || route.shortName || id,
           shortName: route.shortName || id,
-          // Une ligne SNCF est un train, même quand l'API l'annonce en autocar :
-          // c'est un quai de gare et un autre titre de transport.
           type: isSncfLine(routeId) ? 'RAIL' : (route.type || 'BUS'),
           color: route.color || '#666666',
           hasTraffic: details.length > 0,
@@ -1040,9 +1009,6 @@ function lineMatchesPrefixes(line: Line, prefixes: string[]): boolean {
 async function buildStopsFromLines(lines: Line[]): Promise<Stop[]> {
   const stopsMap = new Map<string, Stop>();
 
-  // Auparavant cette boucle était séquentielle : une centaine de requêtes
-  // `/clusters` enchaînées une par une, soit plusieurs dizaines de secondes
-  // avant le premier arrêt affiché. On les lance par paquets de 8.
   const clustersPerLine = await mapWithConcurrency(lines, 8, async (line) => {
     try {
       const routeRef = line.routeId ?? formatRouteId(line.id, networkOf(line.routeId || '') || 'SEM');
@@ -1085,7 +1051,6 @@ async function buildStopsFromLines(lines: Line[]): Promise<Stop[]> {
     const mergedClusterIds = Array.from(group.clusterIds).filter(Boolean);
 
     if (group.stopIds.length > 1) {
-      // Combine similar stops into one without extra console noise
     }
 
     if (mergedClusterIds.length > 0) {
@@ -1108,7 +1073,6 @@ async function buildStopsFromLines(lines: Line[]): Promise<Stop[]> {
   return mergedStops;
 }
 
-// Cache global : stopId → { stop, clusterIds }
 type StopWithCluster = { stop: Stop; clusterIds: string[] };
 let stopsWithClusterCache = new Map<string, StopWithCluster>();
 
@@ -1195,8 +1159,6 @@ export async function getStopsByPrefixes(prefixes: string[]): Promise<Stop[]> {
       if (stops) {
         setCache(memoryKey, stops);
         if (persisted.stale) {
-          // Snapshot périmé : on rend la main tout de suite avec les anciennes
-          // données et on rafraîchit derrière.
           void revalidateStops(memoryKey, persistKey, sorted);
         }
         return stops;
@@ -1224,7 +1186,6 @@ async function revalidateStops(memoryKey: string, persistKey: string, prefixes: 
     setCache(memoryKey, fresh);
     void idbSet(persistKey, snapshotFromState(fresh), STOPS_SNAPSHOT_TTL_MS);
   } catch {
-    // On garde le snapshot périmé : mieux que rien.
   }
 }
 
@@ -1234,8 +1195,6 @@ async function revalidateStops(memoryKey: string, persistKey: string, prefixes: 
  */
 export async function getAllStops(prefixes: string[] = activeMtagNetworks()): Promise<Stop[]> {
   try {
-    // Toute la logique de cache (mémoire → IndexedDB → réseau) et la
-    // déduplication des appels concurrents vivent dans getStopsByPrefixes.
     return await getStopsByPrefixes(prefixes);
   } catch {
     return [];
@@ -1256,13 +1215,11 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
   } else {  }
 
   try {
-    // Étape critique : trouver les BONNES cluster IDs
     let clusterIds = [stopId];
 
     if (stopsWithClusterCache.has(stopId)) {
       clusterIds = getClusterIdsForStopId(stopId);
     } else {
-      // fallback : on recharge tout (pas idéal mais évite plantage)
       await getAllStops();
       if (stopsWithClusterCache.has(stopId)) {
         clusterIds = getClusterIdsForStopId(stopId);
@@ -1272,15 +1229,9 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
     }const departures: Departure[] = [];
     const seen = new Set<string>();
 
-    // Un arrêt fusionné peut couvrir plusieurs clusters : on interroge tous
-    // les clusters en parallèle plutôt qu'en file d'attente.
     const responses = await Promise.all(
       clusterIds.map(async (clusterId) => {
         try {
-          // Les routes du cluster voyagent avec les passages : c'est d'elles
-          // que vient le mode de chaque ligne, et sans elles un tramway se
-          // présente en bus. La ressource est mise en cache, donc l'appel ne
-          // coûte rien après le premier arrêt ouvert sur ce cluster.
           const [res] = await Promise.all([
             axios.get(`${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes`, { headers: TAG_HEADERS }),
             loadClusterRoutes(clusterId).catch(() => []),
@@ -1385,10 +1336,6 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
 
           if (depUnix < now - 300) continue;
 
-          // La clé ne porte pas le cluster : un arrêt fusionné couvre plusieurs
-          // poteaux, et le même passage remonte une fois par poteau interrogé.
-          // Le compter deux fois donnait un « prochain » et un « suivant »
-          // identiques à la minute près — c'était le même véhicule.
           const key = `${lineId}|${destination}|${depUnix}|${patternRouteId ?? ''}`;
           if (seen.has(key)) continue;
           seen.add(key);
@@ -1401,14 +1348,8 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
             destination,
             departureTime: minutes,
             realtime: t.realtimeArrival !== undefined || t.realtimeDeparture !== undefined,
-            // Le mode vient du réseau, pas du préfixe : le TER exploite aussi
-            // des autocars de substitution, qui restent des bus.
-            // Un TER reste un train même si l'API annonce l'autocar de
-            // substitution : le voyageur va en gare, pas à un arrêt de bus.
             type: patternRouteId && isSncfLine(patternRouteId)
               ? 'RAIL'
-              // Le registre d'abord, le pattern ensuite : celui-ci n'annonce
-              // plus son mode, mais rien ne dit qu'il ne le refera pas.
               : modeToDepartureType(
                   (patternRouteId ? routeModes.get(patternRouteId) : undefined) ?? pattern.mode,
                 ),
@@ -1422,14 +1363,10 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
   departures.sort((a, b) => a.departureTime - b.departureTime);
 }
 
-
 /**
  * Get all lines serving a specific stop
  */
 export async function getStopLines(stopId: string): Promise<Line[]> {
-  // Lyon a son propre fournisseur : les lignes d'un arrêt lyonnais ne se
-  // demandent pas à l'API grenobloise. Cette porte unique évite d'avoir à y
-  // penser à chaque appelant — carte, fiche d'arrêt, favoris.
   if (providerOf(stopId)?.id === 'tcl') {
     const { getTclLinesForStop } = await import('./tclNetwork');
     return getTclLinesForStop(stopId);
@@ -1454,14 +1391,8 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
           for (const route of routes) {
             const routeId = String(route.id);
             const lineId = normalizeRouteCode(routeId);
-            // Indexé sur l'identifiant complet : « SEM:C1 » (Chrono 1) et
-            // « SNC:C1 » (car TER) desservent tous deux la gare de Grenoble,
-            // et le code nu les confondrait en une seule ligne.
             if (routeMap.has(routeId)) continue;
 
-            // L'infotrafic MTAG ne couvre que le réseau grenoblois : sans ce
-            // garde-fou, la « C1 » du TER héritait des perturbations de la
-            // Chrono 1, qu'elle ne croise qu'en gare.
             const details = isSncfLine(routeId) ? [] : (trafficLines.get(lineId) || []);
             routeMap.set(routeId, {
               id: lineId,
@@ -1550,8 +1481,6 @@ export async function getStopDetail(stopId: string, prefixes: string[] = activeM
     }
     if (!stop) return null;
 
-    // Lignes desservies et prochains passages sont indépendants : les deux
-    // requêtes partent ensemble au lieu de s'attendre.
     const [lines, departures] = await Promise.all([
       getStopLines(stop.id),
       getDepartures(stop.id),
@@ -1571,9 +1500,6 @@ export async function getStopDetail(stopId: string, prefixes: string[] = activeM
  * (sans recharger les routes) - utilisé pour la mise à jour périodique
  */
 export async function refreshStopDepartures(stopDetail: StopDetail): Promise<StopDetail> {
-  // Un arrêt lyonnais ne se rafraîchit pas contre l'API grenobloise : elle ne
-  // le connaît pas et rend une liste vide, qui effaçait les passages qu'on
-  // venait d'obtenir. Le rafraîchissement passe par son propre fournisseur.
   if (providerOf(stopDetail.id)?.id === 'tcl') {
     const { getTclStopDetail } = await import('./tclNetwork');
     return (await getTclStopDetail(stopDetail.id)) ?? stopDetail;
@@ -1581,8 +1507,6 @@ export async function refreshStopDepartures(stopDetail: StopDetail): Promise<Sto
 
   try {    // Bypass le cache pour avoir les données fraiches
     const departures = await getDepartures(stopDetail.id, true);
-
-    // L'occupancy est déjà fixée dans getDepartures, pas besoin de la régénérer
 
     return {
       ...stopDetail,

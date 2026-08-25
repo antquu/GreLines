@@ -3,13 +3,6 @@ import { TbTrainFilled } from 'react-icons/tb';
 import { IoMdTrain } from 'react-icons/io';
 import { normalizeMode, type TransportMode } from '../utils/transportMode';
 
-
-
-
-
-
-
-
 export function TransportModeIcon({
   mode,
   className = 'w-3.5 h-3.5',

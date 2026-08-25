@@ -100,15 +100,12 @@ function rememberSent(signal: CrowdSignal) {
     const raw = localStorage.getItem(THROTTLE_KEY);
     const map = raw ? (JSON.parse(raw) as Record<string, number>) : {};
     const now = Date.now();
-    // On profite du passage pour oublier ce qui a expiré : sans quoi la clé
-    // grossit d'une entrée par arrêt visité et ne rétrécit jamais.
     for (const [key, at] of Object.entries(map)) {
       if (typeof at !== 'number' || now - at > THROTTLE_MS) delete map[key];
     }
     map[throttleKey(signal)] = now;
     localStorage.setItem(THROTTLE_KEY, JSON.stringify(map));
   } catch {
-    // Navigation privée : le garde-fou ne vaudra que pour cette page.
   }
 }
 
@@ -121,7 +118,6 @@ function rememberSent(signal: CrowdSignal) {
 export async function publishSignal(signal: CrowdSignal): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
   if (signal.value !== 1 && signal.value !== 2 && signal.value !== 3) return;
-  // Un signalement qui ne porte ni sur une ligne ni sur un arrêt ne se relit pas.
   const line = normalizeLine(signal.lineId);
   if (!line && !signal.stopId) return;
   if (recentlySent(signal)) return;
@@ -138,7 +134,6 @@ export async function publishSignal(signal: CrowdSignal): Promise<void> {
       reported_at: new Date().toISOString(),
     });
   } catch {
-    // Rien à rattraper.
   }
 }
 

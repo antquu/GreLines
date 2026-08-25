@@ -1,27 +1,9 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { idbGet, idbSet } from './persistentCache';
 
 const ENDPOINT = 'https://data.mobilites-m.fr/api/ficheHoraires/json';
 
-
 const TIMETABLE_TTL_MS = 60 * 60 * 1000;
-
 
 const TRIPS_PER_DIRECTION = 40;
 
@@ -71,9 +53,7 @@ interface RawDirection {
   trips?: Array<{ tripId?: string }>;
 }
 
-
 export function formatTimetableTime(secondsFromMidnight: number): string {
-  
   
   const total = Math.floor(secondsFromMidnight) % 86400;
   const hours = Math.floor(total / 3600);
@@ -99,8 +79,6 @@ function parseTimetable(routeId: string, payload: Record<string, RawDirection>):
 
     directions.push({
       key,
-      // Le sens n'est pas nommé par l'API : son terminus le désigne, comme sur
-      // une girouette de bus.
       headsign: stops[stops.length - 1]?.name || '',
       stops,
       tripCount: Array.isArray(raw?.trips) ? raw.trips.length : 0,
@@ -122,9 +100,6 @@ export async function getTimetable(
   options?: { signal?: AbortSignal },
 ): Promise<Timetable | null> {
   const hourSlot = Math.floor(Date.now() / TIMETABLE_TTL_MS) * TIMETABLE_TTL_MS;
-  // v2 : les fiches mises en cache avant la correction des trous « | » portent
-  // des heures décalées d'un arrêt à l'autre. Changer la clé les périme au lieu
-  // de les servir encore pendant une heure.
   const cacheKey = `timetable_v2_${routeId}_${hourSlot}`;
 
   const cached = await idbGet<Timetable>(cacheKey);
@@ -138,7 +113,6 @@ export async function getTimetable(
 
   try {
     const response = await fetch(`${ENDPOINT}?${params.toString()}`, { signal: options?.signal });
-    // 204 : pas de service à cette heure-ci.
     if (!response.ok || response.status === 204) return null;
 
     const payload = (await response.json()) as Record<string, RawDirection>;
@@ -212,8 +186,6 @@ export function isLastDeparture(
   const now = new Date();
   const nowSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
   const departureSeconds = nowSeconds + departureInMinutes * 60;
-  // La dernière course d'un service de nuit dépasse minuit : la comparaison se
-  // fait donc sur une horloge de plus de 24 h.
   const normalizedLatest = latest < nowSeconds ? latest + 86400 : latest;
 
   return Math.abs(normalizedLatest - departureSeconds) <= toleranceMinutes * 60;

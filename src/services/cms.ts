@@ -12,11 +12,6 @@ export interface CmsPopup {
   priority: number;
 }
 
-
-
-
-
-
 export async function getActivePopups(context?: { lineId?: string; stopId?: string }): Promise<CmsPopup[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
@@ -77,12 +72,6 @@ export interface TripSurveyAnswers {
   onTime?: boolean;
   comment?: string;
 }
-
-
-
-
-
-
 
 export async function submitTripSurvey(answers: TripSurveyAnswers): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return false;
@@ -162,10 +151,6 @@ export interface LineOverrideEntry {
   hidden: boolean;
 }
 
-
-
-
-
 export async function getStopOverrides(): Promise<Map<string, StopOverrideEntry>> {
   if (!isSupabaseConfigured || !supabase) return new Map();
 
@@ -177,11 +162,6 @@ export async function getStopOverrides(): Promise<Map<string, StopOverrideEntry>
     return new Map();
   }
 }
-
-
-
-
-
 
 export async function getLineOverrides(): Promise<Map<string, LineOverrideEntry>> {
   if (!isSupabaseConfigured || !supabase) return new Map();
@@ -208,11 +188,6 @@ export interface FooterConfig {
   showClock: boolean;
 }
 
-
-
-
-
-
 export function subscribeToCmsChanges(onChange: () => void): () => void {
   if (!isSupabaseConfigured || !supabase) return () => {};
 
@@ -230,11 +205,6 @@ export function subscribeToCmsChanges(onChange: () => void): () => void {
 }
 
 const DEFAULT_FOOTER: FooterConfig = { message: null, color: '#fbbf24', showClock: true };
-
-
-
-
-
 
 export async function getFooterConfig(): Promise<FooterConfig> {
   if (!isSupabaseConfigured || !supabase) return DEFAULT_FOOTER;

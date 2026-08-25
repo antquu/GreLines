@@ -117,8 +117,6 @@ export function FavoritesScreen({
   /** Trajet en cours de renommage, ou `null`. */
   const [renaming, setRenaming] = useState<FavoriteJourney | null>(null);
 
-  // Quitter les Favoris referme ce qu'on y avait ouvert : revenir plus tard sur
-  // une page de détail qu'on croyait avoir quittée serait déroutant.
   useEffect(() => {
     if (!isOpen) {
       setOpenStopId(null);
@@ -127,8 +125,6 @@ export function FavoritesScreen({
     }
   }, [isOpen]);
 
-  // La page de détail garde son contenu le temps de sortir de l'écran : on
-  // conserve donc le dernier favori affiché, même une fois refermée.
   const lastStopRef = useRef<FavoriteDetail | undefined>(undefined);
   const lastJourneyRef = useRef<FavoriteJourney | undefined>(undefined);
   const openStop = stopDetails.find(entry => entry.favorite.stopId === openStopId);
@@ -154,8 +150,6 @@ export function FavoritesScreen({
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-40"
           style={{ paddingTop: 'max(env(safe-area-inset-top), 1.25rem)' }}
           onScroll={event => {
-            // Même règle que le Compte : c'est le sens du geste qui décide, pas
-            // la hauteur atteinte. On lit vers le bas, on cherche vers le haut.
             const top = event.currentTarget.scrollTop;
             const previous = lastScrollRef.current;
             lastScrollRef.current = top;
@@ -367,8 +361,6 @@ function RenameSheet({
 }) {
   const [value, setValue] = useState('');
 
-  // Le champ part du nom actuel — ou du nom par défaut, qu'on peut ainsi
-  // retoucher au lieu de tout retaper.
   useEffect(() => {
     if (journey) setValue(journey.name ?? defaultJourneyTitle(journey));
   }, [journey]);

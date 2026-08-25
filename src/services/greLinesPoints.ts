@@ -80,7 +80,6 @@ export function awardTrip(contributions: {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(total));
   } catch {
-    // Navigation privée : le trajet compte pour cette session seulement.
   }
 
   return { points, travellersHelped, total };

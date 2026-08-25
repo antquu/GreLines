@@ -40,8 +40,6 @@ function writeSeen(seen: Set<string>): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...seen].slice(-MAX_REMEMBERED)));
   } catch {
-    // Stockage refusé : l'avis se represente à la prochaine ouverture. C'est
-    // moins bien que de l'annoncer une fois, c'est mieux que de le taire.
   }
 }
 
@@ -82,24 +80,17 @@ export function useCardNotices(enabled: boolean): {
       for (const card of cards) {
         const notifications = await listNotifications(card.cardCode);
         if (cancelled) return;
-        // Le plus récent d'abord : `listNotifications` rend déjà la liste
-        // triée. On s'arrête au premier inconnu — annoncer le troisième
-        // message d'hier avant celui de ce matin n'aurait aucun sens.
         const fresh = notifications.find(entry => !seen.has(entry.id));
         if (fresh) {
           setNotice({ notification: fresh, card, cardLabel: labelOf(card) });
           return;
         }
-        // Rien de neuf sur cette carte : on note quand même ce qu'on a vu, pour
-        // qu'un message effacé puis réécrit ne reparte pas de zéro.
         notifications.forEach(entry => seen.add(entry.id));
       }
       writeSeen(seen);
     };
 
     void check();
-    // Un message écrit depuis le panneau d'administration arrive en direct :
-    // on revérifie plutôt que d'attendre la prochaine ouverture.
     const unsubscribe = subscribeToCards(() => { void check(); });
 
     return () => {

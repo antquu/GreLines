@@ -70,8 +70,6 @@ function OperatorLogo({ operator }: { operator: SharedOperator }) {
   const box = LOGOS[operator];
   const width = box.x1 - box.x0;
   const height = box.y1 - box.y0;
-  // La toile fait 1414 × 849 : la zone utile, remise à ses proportions, vaut
-  // `largeur / hauteur × 1,665`.
   const drawn = LOGO_WIDTH / ((width / height) * (1414 / 849));
 
   return (

@@ -1,13 +1,4 @@
 
-
-
-
-
-
-
-
-
-
 export interface AddressResult {
   
   label: string;
@@ -20,16 +11,12 @@ export interface AddressResult {
   
   lon: number;
   
-
-
-
   score: number;
   
   id: string;
 }
 
 const BAN_ENDPOINT = 'https://api-adresse.data.gouv.fr/search/';
-
 
 const GRENOBLE_LAT = 45.1885;
 const GRENOBLE_LON = 5.7245;
@@ -53,13 +40,6 @@ interface BanResponse {
   type: 'FeatureCollection';
   features: BanFeature[];
 }
-
-
-
-
-
-
-
 
 export const searchAddresses = async (
   query: string,

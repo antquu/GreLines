@@ -24,7 +24,6 @@ export function isCarpoolStop(stopId: string | undefined | null): boolean {
   return String(stopId ?? '').toUpperCase().startsWith(CARPOOL_PREFIX);
 }
 
-
 /**
  * Une ligne relève du covoiturage.
  *

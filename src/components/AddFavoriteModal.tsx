@@ -52,8 +52,6 @@ interface MinimalLine {
   type?: string;
 }
 
-// Matches the priority/shape logic used in Sidebar.tsx exactly, so lines
-// look and sort the same way everywhere in the app.
 function priority(l: MinimalLine) {
   const n = (l.shortName || l.id).toUpperCase();
   if (n === 'A' || n === 'B' || n === 'C' || n === 'D' || n === 'E') return 0;

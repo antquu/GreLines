@@ -9,12 +9,20 @@ import {
   CircleStackIcon,
   InformationCircleIcon,
   CommandLineIcon,
+  BellIcon,
+  ChatBubbleLeftRightIcon,
+  UserCircleIcon,
+  ArrowRightIcon,
 } from '@heroicons/react/24/solid';
+import { FaWheelchair } from 'react-icons/fa';
+import { MinimalScreen } from './MinimalScreen';
+import { HelpContactScreen } from './HelpContactScreen';
 import { createContext, useContext, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type React from 'react';
 import { MobileNotificationPrompt } from './MobileNotificationPrompt';
 import { usePerfSettings } from '../hooks/usePerfSettings';
-import { idbClear } from '../services/persistentCache';
+import { resetAllCaches } from '../utils/resetCaches';
 import {
   NETWORK_ASSETS,
   NETWORK_TILES,
@@ -97,11 +105,6 @@ interface SettingsPanelProps {
   contentRef: React.RefObject<HTMLDivElement | null>;
   panelRef: React.RefObject<HTMLDivElement | null>;
 }
-
-
-
-
-
 
 const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
   <motion.button
@@ -263,7 +266,6 @@ const GroupSurface = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-
 /**
  * Une grille de plaques à cocher.
  *
@@ -355,19 +357,32 @@ export function SettingsPanel({
   const { settings: perf, setSetting, resetSettings } = usePerfSettings();
   /** Les conditions et le sort des données, dans leur propre feuille. */
   const [isLegalOpen, setIsLegalOpen] = useState(false);
+  /**
+   * La page ouverte par-dessus l'index, dans l'écran Compte.
+   *
+   * Les réglages y étaient posés à plat : cinq sections l'une sous l'autre,
+   * une trentaine d'interrupteurs à traverser pour changer de thème. C'est
+   * devenu un sommaire — une rangée par section, qui ouvre sa page. On ne lit
+   * plus que ce qu'on est venu chercher.
+   */
+  const [openSection, setOpenSection] = useState<string | null>(null);
+  /** L'encart d'aide, refermé pour de bon une fois qu'on l'a lu. */
+  const [helpCardClosed, setHelpCardClosed] = useState(() => {
+    try {
+      return localStorage.getItem('greLines_helpCardClosed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [isNotificationPromptOpen, setIsNotificationPromptOpen] = useState(false);
   const [notificationsOn, setNotificationsOn] = useState(
     () => notificationPermission() === 'granted' && notificationsEnabled(),
   );
   const tripNotificationPermission = notificationPermission();
-  // Pas de `if (!isOpen) return null` ici : démonter le panneau à la fermeture
-  // supprimerait son animation de sortie. La feuille mobile gère elle-même son
-  // état fermé, et la fenêtre desktop est encadrée par <AnimatePresence>.
   const resolvedTheme = uiTheme ?? (theme === 'light' ? 'light' : 'dark');
   const isLight = resolvedTheme === 'light';
   const dev = text.dev;
-  // Le mode développeur est réservé à l'ordinateur : ses options supposent un
-  // curseur, un écran large, et n'ont pas de sens sur mobile.
+  const isFrench = language === 'fr';
   const devAvailable = !isMobile;
 
   const handleClose = () => setSettingsState('closed');
@@ -403,21 +418,19 @@ export function SettingsPanel({
     setSetting('networks', toggleNetworkCodes(perf.networks, codes));
   };
 
-  // Tab metadata used by both mobile and desktop. Each tab has an icon (only
-  // shown on desktop's Finder-style sidebar), a key, and a label.
   const tabs = [
     { key: 'general', label: text.settings.general, icon: Cog6ToothIcon },
     { key: 'display', label: text.settings.display, icon: PaintBrushIcon },
+    /* L'accessibilité a sa section : elle ne se règle pas comme un thème, et
+       la ranger dans « Affichage » l'aurait rendue introuvable pour qui la
+       cherche par son nom. */
+    { key: 'accessibility', label: isFrench ? 'Accessibilité' : 'Accessibility', icon: FaWheelchair },
     { key: 'data', label: text.settings.data, icon: CircleStackIcon },
-    // La section Développeur se place juste sous Données, et seulement quand le
-    // mode développeur est actif.
     ...(devAvailable && perf.devMode
       ? [{ key: 'dev', label: dev.section, icon: CommandLineIcon }]
       : []),
     { key: 'about', label: text.settings.about, icon: InformationCircleIcon },
   ];
-
-  // ── Tab contents (shared between mobile + desktop) ───────────────────────
 
   /*
    * Le contenu des onglets : des éléments, pas des composants.
@@ -433,6 +446,60 @@ export function SettingsPanel({
    * En éléments, React reconcilie au lieu de remonter : seul ce qui a changé
    * change.
    */
+  /**
+   * Les notifications, sur leur propre page.
+   *
+   * Une seule question — être prévenu pendant un trajet, ou non — mais c'est
+   * celle qu'on vient rouvrir le plus souvent après l'avoir refusée une fois,
+   * et elle se perdait au milieu de la langue et du rafraîchissement.
+   */
+  const notificationsContent = (
+    <>
+          <Group>
+            <Row label="Notification" last>
+              <span className="hidden">
+                <span className="block text-[15px] font-medium text-white">
+                  {language === 'fr' ? 'Notification' : 'Notification'}
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-400">
+                  {tripNotificationPermission === 'granted'
+                    ? language === 'fr'
+                      ? 'Activées pour les trajets'
+                      : 'Enabled for trips'
+                    : tripNotificationPermission === 'denied'
+                    ? language === 'fr'
+                      ? 'Autorisation refusée'
+                      : 'Permission denied'
+                    : language === 'fr'
+                    ? 'Configurer les notifications de trajet'
+                    : 'Set up trip notifications'}
+                </span>
+              </span>
+              <Toggle value={notificationsOn} onChange={handleNotificationsToggle} />
+            </Row>
+          </Group>
+
+          <MobileNotificationPrompt
+            isOpen={isNotificationPromptOpen}
+            language={language}
+            onEnable={async () => {
+              await handleTripNotificationsEnable();
+              setIsNotificationPromptOpen(false);
+            }}
+            onDismiss={() => {
+              setNotificationsEnabled(false);
+              setNotificationsOn(false);
+              setIsNotificationPromptOpen(false);
+            }}
+          />
+      <p className="px-4 text-xs leading-relaxed text-slate-500">
+        {isFrench
+          ? 'GreLines ne prévient que pendant un trajet : le moment de partir, la correspondance, l’arrêt où descendre. Ni promotion, ni rappel, ni nouveauté.'
+          : 'GreLines only alerts you during a trip: when to leave, your connection, the stop to get off at. No promotions, no reminders, no news.'}
+      </p>
+    </>
+  );
+
   const generalContent = (
     <>
       {/* Le compte, en tête de section.
@@ -441,7 +508,10 @@ export function SettingsPanel({
           met après. La ligne change de forme selon qu'il existe — invitation
           d'un côté, profil de l'autre — mais garde sa place, pour qu'on n'ait pas
           à la chercher une fois créé. */}
-      {isMobile && onOpenAccount && (
+      {/* Dans l'écran Compte, cette porte est montée en tête de sommaire, en
+          grand : elle n'a plus à figurer ici. Ailleurs — la feuille des
+          réglages du téléphone —, elle reste la première ligne. */}
+      {isMobile && variant !== 'inline' && onOpenAccount && (
         <div className="mb-6">
           {/* Son propre cadre, même à l'air libre.
               Les autres rangées se passent de bordure dans l'écran Compte, où
@@ -530,47 +600,10 @@ export function SettingsPanel({
         </Row>
       </Group>
 
-      {isMobile && (
-        <>
-          <Group>
-            <Row label="Notification" last>
-              <span className="hidden">
-                <span className="block text-[15px] font-medium text-white">
-                  {language === 'fr' ? 'Notification' : 'Notification'}
-                </span>
-                <span className="mt-0.5 block text-xs text-slate-400">
-                  {tripNotificationPermission === 'granted'
-                    ? language === 'fr'
-                      ? 'Activées pour les trajets'
-                      : 'Enabled for trips'
-                    : tripNotificationPermission === 'denied'
-                    ? language === 'fr'
-                      ? 'Autorisation refusée'
-                      : 'Permission denied'
-                    : language === 'fr'
-                    ? 'Configurer les notifications de trajet'
-                    : 'Set up trip notifications'}
-                </span>
-              </span>
-              <Toggle value={notificationsOn} onChange={handleNotificationsToggle} />
-            </Row>
-          </Group>
-
-          <MobileNotificationPrompt
-            isOpen={isNotificationPromptOpen}
-            language={language}
-            onEnable={async () => {
-              await handleTripNotificationsEnable();
-              setIsNotificationPromptOpen(false);
-            }}
-            onDismiss={() => {
-              setNotificationsEnabled(false);
-              setNotificationsOn(false);
-              setIsNotificationPromptOpen(false);
-            }}
-          />
-        </>
-      )}
+      {/* La feuille des réglages du téléphone garde les notifications dans
+          « Général », là où elles ont toujours été. L'écran Compte, lui, leur
+          donne leur propre page — c'est le même bloc, monté à deux endroits. */}
+      {isMobile && variant !== 'inline' && notificationsContent}
 
       {/* Rien à installer si l'app tourne déjà depuis l'écran d'accueil : dans
           ce cas `showInstallGuide` est faux et la ligne disparaît. */}
@@ -615,8 +648,6 @@ export function SettingsPanel({
                 onChange={() => {
                   const next = !perf.devMode;
                   setSetting('devMode', next);
-                  // Sortir du mode développeur ne doit pas laisser l'overlay
-                  // affiché ni l'onglet Développeur sélectionné dans le vide.
                   if (!next) {
                     setSetting('devOverlay', false);
                     if (activeTab === 'dev') setActiveTab('general');
@@ -783,6 +814,38 @@ export function SettingsPanel({
     </>
   );
 
+  /**
+   * L'accessibilité.
+   *
+   * Un seul interrupteur ici, celui qui change la carte. Il en allume un second
+   * qui ne se montre pas dans cette page : l'accès en fauteuil dans le calcul
+   * d'itinéraire, qui se règle là où l'on règle la vitesse de marche — dans les
+   * options de la recherche, avec le reste de ce qui décide d'un trajet. Un
+   * réglage de trajet posé dans les réglages de l'application se cherche deux
+   * fois : une fois ici, une fois là-bas.
+   */
+  const accessibilityContent = (
+    <>
+      <Group>
+        <Row label={isFrench ? 'Mode accessibilité' : 'Accessibility mode'} last>
+          <Toggle
+            value={perf.accessibility}
+            onChange={() => {
+              const next = !perf.accessibility;
+              setSetting('accessibility', next);
+              setSetting('pmrRouting', next);
+            }}
+          />
+        </Row>
+      </Group>
+      <p className="px-4 text-xs leading-relaxed text-slate-500">
+        {isFrench
+          ? 'Tous les arrêts ne sont pas renseignés : sans pastille ne veut pas dire inaccessible.'
+          : 'Not every stop carries the information: no badge does not mean unfitted.'}
+      </p>
+    </>
+  );
+
   const dataContent = (
     <>
       <Group>
@@ -845,13 +908,8 @@ export function SettingsPanel({
 
       <Group>
         <button
-          onClick={async () => {
-            localStorage.clear();
-            // Le cache persistant (arrêts, lignes, tracés) vit dans IndexedDB
-            // depuis l'optimisation du chargement : le vider aussi, sinon le
-            // bouton ne fait plus qu'une partie du travail.
-            await idbClear().catch(() => {});
-            window.location.reload();
+          onClick={() => {
+            void resetAllCaches();
           }}
           className="w-full flex items-center justify-between rounded-2xl px-4 py-3 hover:bg-slate-700/40 transition"
         >
@@ -925,9 +983,94 @@ export function SettingsPanel({
         </Group>
       )}
 
-      <p className="text-sm text-slate-400 mb-2 px-1">{text.misc.aboutDescription1}</p>
-      <p className="text-sm text-slate-400 mb-5 px-1">{text.misc.aboutDescription2}</p>
+      {/*
+        Le remerciement au fournisseur de données, écrit ici et non dans
+        `grelines.json`.
 
+        Il y figurait deux fois, dans une seule chaîne qui portait les deux
+        langues à la suite — « Thanks to… / Merci à… » —, parce que le fichier
+        ne sait pas ce qu'est une traduction. Ce n'est pas un crédit d'équipe
+        qu'on ajoute au fil des arrivées : c'est une mention qui engage, elle se
+        relit et se déploie avec le code, et elle se dit dans la langue de celui
+        qui la lit.
+      */}
+      <Group title={isFrench ? 'Données' : 'Data'}>
+        <Row
+          label={
+            isFrench
+              ? 'Merci à la Métropole de Grand Lyon de fournir ses données gratuitement.'
+              : 'Thanks to Métropole de Grand Lyon for providing their data free of charge.'
+          }
+          last
+        >
+          <a
+            href="https://data.grandlyon.com/portail/fr/accueil"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[15px] text-blue-400 hover:underline"
+          >
+            data.grandlyon.com
+          </a>
+        </Row>
+      </Group>
+
+      {/*
+        Les projets voisins.
+
+        Sur téléphone, trois cartes à parts égales : le logotype en haut à
+        gauche, une flèche en bas à droite. C'est le dessin des actions d'un
+        passage, dans la fiche d'un arrêt — un carré de couleur qui mène
+        ailleurs veut dire la même chose d'un bout à l'autre de l'application,
+        et une barre de trois logotypes de la hauteur d'un doigt ne disait pas
+        qu'on pouvait la toucher.
+
+        Pas de titre au-dessus : trois logotypes alignés sous « À propos » se
+        passent d'être annoncés.
+
+        Sur ordinateur, la barre reste : le curseur montre déjà ce qui se
+        touche, et un carré de cent pixels de haut n'y apporterait rien.
+      */}
+      {isMobile ? (
+        <div className="mb-2 grid grid-cols-3 gap-2">
+          {[
+            {
+              href: 'https://gre-go.vercel.app/',
+              alt: 'GreGo',
+              src: resolvedTheme === 'dark' ? '/assets/GreGoLOGO.png' : '/assets/grego_light.png',
+              height: 'h-7',
+            },
+            {
+              href: 'https://grelines-og.vercel.app/',
+              alt: 'OG',
+              src: resolvedTheme === 'dark' ? '/assets/og_dark.png' : '/assets/og_light.png',
+              height: 'h-5',
+            },
+            {
+              href: 'https://github.com/antquu/GreLines',
+              alt: 'GitHub',
+              /* Le logotype GitHub existe en deux versions : la claire ne se
+                 voit pas sur un fond clair, et inversement. */
+              src: isLight ? '/assets/GitHub_LOGO_dark.png' : '/assets/GitHubLOGO.png',
+              height: 'h-6',
+            },
+          ].map(entry => (
+            <a
+              key={entry.href}
+              href={entry.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex min-h-[86px] min-w-0 flex-col justify-between rounded-2xl border p-3 transition active:scale-[0.97] ${
+                isLight ? 'border-slate-200 bg-white' : 'border-slate-800 bg-slate-900'
+              }`}
+            >
+              <img src={entry.src} alt={entry.alt} className={`${entry.height} w-auto object-contain object-left`} />
+              <ArrowRightIcon
+                className={`ml-auto h-5 w-5 flex-shrink-0 ${isLight ? 'text-slate-400' : 'text-slate-500'}`}
+              />
+            </a>
+          ))}
+        </div>
+      ) : (
       <div className="flex gap-2 mb-2">
         <a
           href="https://gre-go.vercel.app/"
@@ -981,6 +1124,7 @@ export function SettingsPanel({
           <span className={`text-xs ${isLight ? 'text-slate-900' : 'text-white'}`}>Project</span>
         </a>
       </div>
+      )}
     </div>
   );
 
@@ -989,6 +1133,8 @@ export function SettingsPanel({
       case 'display': return displayContent;
       case 'data':    return dataContent;
       case 'dev':     return devAvailable && perf.devMode ? devContent : generalContent;
+      case 'notifications': return notificationsContent;
+      case 'accessibility': return accessibilityContent;
       case 'about':   return aboutContent;
       case 'general':
       default:        return generalContent;
@@ -997,25 +1143,190 @@ export function SettingsPanel({
 
   const renderTab = () => renderTabByKey(activeTab);
 
-  // ── Réglages à nu : toutes les sections à la suite, sans habillage ───────
+  /*
+   * L'écran Compte : un sommaire, et des pages derrière.
+   *
+   * Les réglages y étaient posés à plat sous le portefeuille — cinq sections,
+   * une trentaine d'interrupteurs à faire défiler pour changer de thème. On y
+   * arrivait par le portefeuille, et l'on repartait sans avoir trouvé.
+   *
+   * C'est une liste de portes maintenant : une rangée par sujet, qui ouvre sa
+   * page. Le portefeuille reste au-dessus, le compte juste après, et le reste
+   * se lit en trois lignes.
+   */
   if (variant === 'inline') {
+    const sections: Array<{ key: string; label: string; Icon: typeof BellIcon }> = [
+      { key: 'notifications', label: isFrench ? 'Notifications' : 'Notifications', Icon: BellIcon },
+      { key: 'general', label: text.settings.general, Icon: Cog6ToothIcon },
+      { key: 'display', label: isFrench ? 'Apparence' : 'Appearance', Icon: PaintBrushIcon },
+      { key: 'data', label: text.settings.data, Icon: CircleStackIcon },
+      {
+        key: 'accessibility',
+        label: isFrench ? 'Accessibilité' : 'Accessibility',
+        Icon: FaWheelchair as unknown as typeof BellIcon,
+      },
+    ];
+
+    const helpSections: Array<{ key: string; label: string; Icon: typeof BellIcon }> = [
+      { key: 'help', label: isFrench ? 'Aide et contact' : 'Help and contact', Icon: ChatBubbleLeftRightIcon },
+      { key: 'about', label: text.settings.about, Icon: InformationCircleIcon },
+    ];
+
+    const rowInk = isLight ? 'text-slate-900' : 'text-white';
+    const rowSurface = isLight ? 'bg-white' : 'bg-black';
+    const rule = isLight ? 'border-slate-200' : 'border-slate-900';
+
+    /** Un groupe de portes, d'un seul tenant, séparées par un trait. */
+    const list = (entries: Array<{ key: string; label: string; Icon: typeof BellIcon }>) => (
+      <div className={`overflow-hidden rounded-2xl ${rowSurface}`}>
+        {entries.map((entry, index) => (
+          <button
+            key={entry.key}
+            type="button"
+            onClick={() => setOpenSection(entry.key)}
+            className={`flex w-full items-center gap-4 px-4 py-4 text-left transition active:bg-slate-500/10 ${
+              index > 0 ? `border-t ${rule}` : ''
+            }`}
+          >
+            <entry.Icon className={`h-6 w-6 flex-shrink-0 ${rowInk}`} />
+            <span className={`min-w-0 flex-1 text-[17px] font-semibold ${rowInk}`}>{entry.label}</span>
+            <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${rowInk}`} />
+          </button>
+        ))}
+      </div>
+    );
+
+    const openLabel =
+      [...sections, ...helpSections].find(entry => entry.key === openSection)?.label ?? '';
+
     return (
       <SettingsLight value={isLight}>
       <BareSettings value>
-      <div className="space-y-8">
-        {tabs.map(tab => (
-          <section key={tab.key}>
-            <h3
-              className={`mb-3 px-1 text-[22px] font-extrabold leading-none ${
-                isLight ? 'text-slate-900' : 'text-white'
-              }`}
+      <div className="space-y-6">
+        {/* Le compte, en grand : c'est une porte, pas un réglage. */}
+        {onOpenAccount && (
+          <button
+            type="button"
+            onClick={onOpenAccount}
+            className={`flex w-full items-center gap-4 rounded-2xl px-4 py-4 text-left transition active:scale-[0.99] ${rowSurface}`}
+          >
+            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-2xl">
+              {accountAvatar ? <span aria-hidden>{accountAvatar}</span> : <UserCircleIcon className="h-9 w-9 text-white" />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className={`block truncate text-[19px] font-bold ${rowInk}`}>
+                {accountPseudo ?? (isFrench ? 'Connecter son compte' : 'Connect your account')}
+              </span>
+              <span className="block text-[15px] text-slate-500">
+                {isFrench ? 'Compte' : 'Account'}
+              </span>
+            </span>
+            <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${rowInk}`} />
+          </button>
+        )}
+
+        {/*
+          L'encart d'aide.
+
+          Il porte une seule chose : qu'il existe un endroit où signaler ce qui
+          se passe mal, et un numéro à composer. On ne le cherche pas avant d'en
+          avoir besoin — c'est pourquoi il se montre de lui-même, une fois, et
+          se referme pour de bon.
+        */}
+        {!helpCardClosed && (
+          <div className="relative overflow-hidden rounded-3xl" style={{ backgroundColor: '#1d4ed8' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setHelpCardClosed(true);
+                try {
+                  localStorage.setItem('greLines_helpCardClosed', '1');
+                } catch {
+                }
+              }}
+              className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white transition active:scale-90"
+              aria-label={isFrench ? 'Fermer' : 'Close'}
             >
-              {tab.label}
-            </h3>
-            {renderTabByKey(tab.key)}
-          </section>
-        ))}
+              <XMarkIcon className="h-5 w-5" style={{ color: '#1d4ed8' }} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOpenSection('help')}
+              className="block w-full text-left"
+            >
+              <p className="px-5 pr-14 pt-5 text-[1.35rem] font-bold leading-snug text-white">
+                {isFrench ? 'Aide et contact' : 'Help and contact'}
+              </p>
+              <p className="mt-2 px-5 pb-4 pr-10 text-[15px] leading-relaxed text-white/80">
+                {isFrench
+                  ? 'Un incident, un comportement, un objet oublié : à qui s’adresser, et le numéro à composer.'
+                  : 'An incident, a behaviour, something left behind: who to talk to, and the number to call.'}
+              </p>
+
+              {/* Les mêmes formes que le bandeau du portefeuille : c'est la
+                  langue de l'application pour ce genre d'encart. */}
+              <svg viewBox="0 0 320 46" className="block w-full" aria-hidden>
+                <g fill="#ffffff" opacity="0.9">
+                  <path d="M4 46a26 26 0 0 0 26-26H17a13 13 0 0 1-13 13z" />
+                  <rect x="46" y="6" width="16" height="16" />
+                  <circle cx="92" cy="34" r="9" />
+                  <rect x="124" y="2" width="11" height="40" transform="rotate(22 129 22)" />
+                  <rect x="180" y="14" width="14" height="14" />
+                  <path d="M220 34a22 22 0 0 1 22-22v12a10 10 0 0 0-10 10z" />
+                  <rect x="272" y="28" width="16" height="16" transform="rotate(45 280 36)" />
+                  <circle cx="316" cy="16" r="10" />
+                </g>
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {list(sections)}
+        {list(helpSections)}
       </div>
+
+      {/*
+        Chaque section a sa page, qui entre par la droite comme le reste de
+        l'application. Le contenu est celui des onglets : il n'y en a qu'un
+        seul jeu, et il sert aussi à la feuille du téléphone.
+
+        Elles sont montées dans le corps du document, et non ici.
+
+        L'écran Compte glisse latéralement, donc porte une `transform` — et une
+        `transform` fait d'un élément le repère de tous les `fixed` qu'il
+        contient, en même temps qu'elle les enferme dans son plan. Une page
+        posée à l'intérieur restait donc sous la barre d'onglets, quel que soit
+        son `z-index`. Sortie dans le corps du document, elle recouvre l'écran
+        entier — comme la page du compte, qui a toujours été montée là.
+      */}
+      {createPortal(
+        <>
+          <MinimalScreen
+            isOpen={openSection !== null && openSection !== 'help'}
+            title={openLabel}
+            isLight={isLight}
+            onBack={() => setOpenSection(null)}
+          >
+            {/* La marge latérale appartient à la page, pas aux sections :
+                celles-ci servent aussi la feuille du téléphone et le panneau du
+                bureau, qui apportent la leur. Sans elle, les interrupteurs
+                touchaient le bord de l'écran. */}
+            <div className="px-4 pb-10">
+              {openSection && openSection !== 'help' ? renderTabByKey(openSection) : null}
+            </div>
+          </MinimalScreen>
+
+          <HelpContactScreen
+            isOpen={openSection === 'help'}
+            language={language}
+            isLight={isLight}
+            onBack={() => setOpenSection(null)}
+          />
+        </>,
+        document.body,
+      )}
+
       {/* La feuille des conditions vit à côté des réglages, pas dedans : elle
           doit pouvoir se poser par-dessus eux, quelle que soit leur forme. */}
       <LegalSheet
@@ -1030,7 +1341,6 @@ export function SettingsPanel({
     );
   }
 
-  // ── Mobile: iOS-style settings sheet ─────────────────────────────────────
   if (isMobile) {
     return (
       <>
@@ -1089,7 +1399,6 @@ export function SettingsPanel({
     );
   }
 
-  // ── Desktop: Finder-style draggable window ───────────────────────────────
   return (
     <SettingsLight value={isLight}>
     <AnimatePresence>
@@ -1121,12 +1430,6 @@ export function SettingsPanel({
   );
 }
 
-// ─── Desktop Finder-style window (draggable) ─────────────────────────────────
-// Two-column layout: a translucent sidebar on the left (Finder-y), main panel
-// on the right. The whole window is draggable by the title bar (mouse-down on
-// the bar starts a drag, mouse-up anywhere releases). Position is local state
-// so the parent doesn't have to know.
-
 interface DesktopFinderWindowProps {
   panelRef: React.RefObject<HTMLDivElement | null>;
   contentRef: React.RefObject<HTMLDivElement | null>;
@@ -1149,8 +1452,6 @@ function DesktopFinderWindow({
   title,
   children,
 }: DesktopFinderWindowProps) {
-  // Initial position: roughly centered-up. We use `pos` as the live transform
-  // so framer-motion doesn't have to re-mount the panel on each update.
   const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const dragOriginRef = useRef<{ mouseX: number; mouseY: number; posX: number; posY: number } | null>(null);
 
@@ -1160,8 +1461,6 @@ function DesktopFinderWindow({
    * dropping the drag, and we always clean them up on `mouseup`.
    */
   const onTitleMouseDown = (e: React.MouseEvent) => {
-    // Ignore clicks on the close button and other interactive elements inside
-    // the title bar.
     if ((e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
     dragOriginRef.current = {

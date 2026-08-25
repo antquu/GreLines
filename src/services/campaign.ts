@@ -76,7 +76,6 @@ export async function recordCampaignVisit(visit: CampaignVisit): Promise<void> {
       medium: visit.medium ?? null,
     });
   } catch {
-    // Un compteur manqué ne doit jamais empêcher la page de s'ouvrir.
   }
 }
 

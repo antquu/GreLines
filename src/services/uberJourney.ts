@@ -110,8 +110,6 @@ export async function planUberJourney(options: {
     mode: 'CAR',
   });
 
-  // La durée d'Uber tient compte du trafic ; celle du routeur, non. On garde
-  // donc la première quand elle existe, et le tracé du second dans tous les cas.
   const rideSeconds = product.durationSeconds ?? ride?.durationSeconds ?? 0;
   if (rideSeconds <= 0) return null;
 

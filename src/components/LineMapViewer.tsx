@@ -19,17 +19,10 @@ interface LineMapViewerProps {
 
 const PLAN_ENDPOINT = 'https://data.mobilites-m.fr/api/planligne/pdf';
 
-
 const PLAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-
-
-
-
 
 const RASTER_WIDTH = 3400;
 const MAX_RASTER_PIXELS = 12e6;
-
 
 const PREVIEW_WIDTH = 1100;
 
@@ -66,7 +59,6 @@ const getText = (language: 'fr' | 'en') => {
   };
 };
 
-
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
   return new Promise(resolve => {
     canvas.toBlob(
@@ -82,12 +74,6 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
 
 type PdfDocument = Awaited<ReturnType<typeof import('pdfjs-dist')['getDocument']>['promise']>;
 
-
-
-
-
-
-
 async function openPdf(bytes: ArrayBuffer): Promise<PdfDocument> {
   const [{ getDocument, GlobalWorkerOptions }, workerUrl] = await Promise.all([
     import('pdfjs-dist'),
@@ -95,11 +81,8 @@ async function openPdf(bytes: ArrayBuffer): Promise<PdfDocument> {
   ]);
   GlobalWorkerOptions.workerSrc = workerUrl;
 
-  
-  
   return getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise;
 }
-
 
 async function rasterize(doc: PdfDocument, targetWidth: number): Promise<PlanPage[]> {
   const pages: PlanPage[] = [];
@@ -119,15 +102,9 @@ async function rasterize(doc: PdfDocument, targetWidth: number): Promise<PlanPag
     const context = canvas.getContext('2d', { alpha: false });
     if (!context) continue;
 
-    
-    
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, canvas.width, canvas.height);
 
-    
-    
-    
-    
     await page.render({ canvas, canvasContext: context, viewport, intent: 'print' }).promise;
 
     const blob = await canvasToBlob(canvas);
@@ -140,20 +117,6 @@ async function rasterize(doc: PdfDocument, targetWidth: number): Promise<PlanPag
 
   return pages;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export function LineMapViewer({
   isOpen,
@@ -183,8 +146,6 @@ export function LineMapViewer({
   const pinch = useRef<{ distance: number; zoom: number; mid: { x: number; y: number } } | null>(null);
   const labelFrame = useRef(0);
 
-  
-
   useEffect(() => {
     if (!isOpen || !routeId) return;
     let active = true;
@@ -194,7 +155,6 @@ export function LineMapViewer({
     setStatus('loading');
     setPageUrls([]);
     setPdfUrl(null);
-    
     
     natural.current = { width: 0, height: 0 };
 
@@ -208,9 +168,6 @@ export function LineMapViewer({
         created.push(url);
         return { url, width: page.width, height: page.height };
       });
-      // Décoder avant d'échanger l'image : sinon le remplacement de la
-      // prévisualisation par la version définitive laisse un blanc le temps du
-      // décodage.
       await Promise.all(
         urls.map(page => {
           const image = new Image();
@@ -246,12 +203,8 @@ export function LineMapViewer({
 
     (async () => {
       try {
-        // Chemin rapide : le plan a déjà été rastérisé lors d'une visite
-        // précédente, on affiche l'image sans réveiller pdf.js.
         const raster = await idbGet<RasterCache>(rasterKey);
         if (raster?.value?.pages?.length && (await publish(raster.value.pages))) {
-          // Le PDF d'origine n'est utile que pour le bouton de téléchargement :
-          // on le récupère en fond, sans bloquer l'affichage.
           void loadBytes().then(attachDownload).catch(() => {});
           return;
         }
@@ -262,9 +215,6 @@ export function LineMapViewer({
 
         const doc = await openPdf(bytes);
         try {
-          // Deux passes : une basse définition affichée tout de suite, puis la
-          // définition de travail. Rastériser directement en 3000 px laisserait
-          // plusieurs secondes d'écran vide sur un téléphone.
           const preview = await rasterize(doc, PREVIEW_WIDTH);
           if (!active) return;
           if (!(await publish(preview))) throw new Error('empty');
@@ -297,9 +247,6 @@ export function LineMapViewer({
     const viewport = viewportRef.current;
     if (!element || !viewport) return;
 
-    // Bornes du déplacement : le plan reste collé aux bords de la fenêtre, et
-    // se centre sur l'axe où il est plus petit qu'elle. Sans ça, un geste un
-    // peu vif l'envoie hors de l'écran et il faut le retrouver à tâtons.
     const scale = fit.current * view.current.zoom;
     const width = natural.current.width * scale;
     const height = natural.current.height * scale;
@@ -315,8 +262,6 @@ export function LineMapViewer({
     const { x, y } = view.current;
     element.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
 
-    // Le pourcentage affiché passe par React : on le limite à une image pour
-    // ne pas re-rendre l'arbre à chaque événement de pointeur.
     if (!labelFrame.current) {
       labelFrame.current = requestAnimationFrame(() => {
         labelFrame.current = 0;
@@ -363,7 +308,6 @@ export function LineMapViewer({
     [zoomAt],
   );
 
-  // Encombrement du plan, en points PDF : les pages sont empilées.
   const layout = useMemo(
     () => ({
       width: pageUrls.length ? Math.max(...pageUrls.map(page => page.width)) : 0,
@@ -376,23 +320,17 @@ export function LineMapViewer({
 
   useEffect(() => {
     if (!layout.width) return;
-    // Le passage de la prévisualisation à la version définitive ne change pas
-    // la taille en points : inutile — et déplaisant — de recadrer le plan que
-    // l'utilisateur est peut-être déjà en train d'explorer.
     const unchanged = natural.current.width === layout.width && natural.current.height === layout.height;
     natural.current = layout;
     if (unchanged) applyTransform();
     else fitToViewport();
   }, [layout, applyTransform, fitToViewport]);
 
-  // Rotation de l'écran, fenêtre redimensionnée : on recadre.
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport || typeof ResizeObserver === 'undefined') return;
     let last = { width: viewport.clientWidth, height: viewport.clientHeight };
     const observer = new ResizeObserver(() => {
-      // `ResizeObserver` se déclenche dès l'observation : sans cette garde, le
-      // simple fait de remonter l'effet remettrait le zoom à zéro.
       if (viewport.clientWidth === last.width && viewport.clientHeight === last.height) return;
       last = { width: viewport.clientWidth, height: viewport.clientHeight };
       fitToViewport();
@@ -432,7 +370,6 @@ export function LineMapViewer({
       const [a, b] = [...pointers.current.values()];
       const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      // Le pincement déplace aussi le plan : on suit le milieu des deux doigts.
       view.current.x += mid.x - pinch.current.mid.x;
       view.current.y += mid.y - pinch.current.mid.y;
       pinch.current.mid = mid;
@@ -457,8 +394,6 @@ export function LineMapViewer({
     else zoomAt(2.5, point.x, point.y);
   };
 
-  // La molette zoome ; il faut un écouteur non passif pour couper le
-  // défilement de la page, ce que React ne permet pas en JSX.
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport || status !== 'ready') return;
@@ -474,7 +409,6 @@ export function LineMapViewer({
 
   useEffect(() => () => { if (labelFrame.current) cancelAnimationFrame(labelFrame.current); }, []);
 
-  // Échap ferme la visionneuse, comme partout ailleurs dans l'application.
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
@@ -490,9 +424,6 @@ export function LineMapViewer({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
-          // Fond opaque et sans flou : un `backdrop-blur` plein écran oblige le
-          // compositeur à refiltrer toute la surface à chaque image de la carte
-          // qui continue de tourner derrière.
           className="fixed inset-0 z-[10005] flex flex-col bg-slate-950"
         >
           {/* Bandeau : identité de la ligne à gauche, commandes à droite. */}
@@ -576,8 +507,6 @@ export function LineMapViewer({
               </p>
             )}
             {status === 'ready' && (
-              // Une seule couche transformée : zoom et déplacement ne coûtent
-              // qu'une recomposition GPU, jamais un redessin.
               <div
                 ref={contentRef}
                 className="absolute left-0 top-0 origin-top-left will-change-transform"

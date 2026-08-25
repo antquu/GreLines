@@ -107,7 +107,6 @@ export function getOccupancyAt(
   const times = byDirection[key]?.times;
   if (!times) return null;
 
-  // Les tranches sont indexées en secondes depuis minuit, par pas de `step`.
   const stepSeconds = Math.max(1, (dataset.step || 15) * 60);
   const seconds = when.getHours() * 3600 + when.getMinutes() * 60;
   const bucket = Math.floor(seconds / stepSeconds) * stepSeconds;

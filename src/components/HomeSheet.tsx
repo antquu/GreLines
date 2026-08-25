@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { resolveLineStyle } from '../utils/lineColors';
-// `react-modal-sheet` déclare `motion` en pair, mais `motion/react` n'est qu'un
-// réexport de `framer-motion` — la même instance, donc les mêmes `MotionValue`.
-// On importe depuis `framer-motion`, seul paquet que ce projet déclare.
 import { motion, useMotionTemplate, AnimatePresence } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
 import {
@@ -26,6 +23,8 @@ import {
 } from '@heroicons/react/24/solid';
 import { MobileNavBar, NAV_ITEM_WIDTH, type MobileNavItem } from './MobileNavBar';
 import { loadRecentStops, type RecentStop } from '../utils/recentStops';
+import { PlacesCarousel } from './PlacesCarousel';
+import type { Place } from '../services/places';
 
 /**
  * Les visages du nuage de profil.
@@ -141,10 +140,6 @@ function SheetHeaderSwap({
   if (!searchBar) return <>{navBar}</>;
 
   return (
-    // La case se hisse au-dessus du contenu : la liste de résultats de la
-    // recherche déborde de l'en-tête, et le corps de la feuille — qui porte une
-    // opacité animée, donc son propre contexte d'empilement — passerait sinon
-    // par-dessus elle.
     <div className="relative z-30" style={{ height: HEADER_SWAP_HEIGHT }}>
       <motion.div
         className="absolute inset-x-0 top-0"
@@ -175,15 +170,9 @@ function SheetBackdrop({ onTap, snapIdx }: { onTap: () => void; snapIdx: number 
 
   return (
     <Sheet.Backdrop
-      // Le voile n'écoute la tape qu'à partir du deuxième palier. C'est aussi ce
-      // qui le rend traversant : la bibliothèque n'active `pointer-events` que
-      // sur un voile cliquable, et impose cette règle après nos styles. Repliée
-      // sur la carte, la feuille laisse donc passer tous les gestes.
       {...(snapIdx > 1 ? { onTap } : {})}
       style={{
         backgroundColor,
-        // L'opacité par défaut suit l'ouverture de la feuille ; ici c'est la
-        // couleur qui porte le fondu, sur les seuls paliers hauts.
         opacity: 1,
         zIndex: 9,
       }}
@@ -210,6 +199,14 @@ interface HomeSheetProps {
    */
   locked?: boolean;
   /**
+   * Lequel des écrans pleine page a verrouillé la feuille.
+   *
+   * La barre allume l'onglet de ce qu'on regarde. Sans cette précision, tout
+   * écran verrouillant allumait « Compte » : ouvrir les favoris allumait donc
+   * le profil, ce qui désignait un écran où l'on n'était pas.
+   */
+  lockedScreen?: 'account' | 'favorites';
+  /**
    * La recherche est ouverte : la liste de résultats a le geste vertical.
    *
    * Cette liste est posée dans l'en-tête de la feuille, c'est-à-dire dans la
@@ -230,16 +227,18 @@ interface HomeSheetProps {
   onOpenItinerary: () => void;
   /** Ouvre l'explorateur de lignes (recherche mobile focalisée). */
   onOpenLines?: () => void;
+  /**
+   * « Y aller » depuis un lieu du carrousel.
+   *
+   * La feuille ne sait pas calculer un itinéraire : elle rend le lieu à la
+   * page, qui en fait une destination et ouvre le panneau de recherche.
+   */
+  onNavigateToPlace?: (place: Place) => void;
   /** Catalogue complet des lignes du réseau, pour le bandeau défilant. */
   allLines?: MarqueeLine[];
   onSnapChange?: (snapIdx: number) => void;
   onSheetProgress?: (progress: number) => void;
   
-
-
-
-
-
   snapToMiniSignal?: number;
   
   openToMidSignal?: number;
@@ -306,22 +305,16 @@ const getText = (language: 'fr' | 'en') => ({
   settingsLabel: language === 'fr' ? 'Réglages' : 'Settings',
   walletLabel: language === 'fr' ? 'GreLines Wallet' : 'GreLines Wallet',
   linesLabel: language === 'fr' ? 'Explorer les lignes' : 'Explore lines',
+  visitTitle: language === 'fr' ? 'À visiter' : 'Worth a visit',
   remove: language === 'fr' ? 'Retirer' : 'Remove',
   direction: language === 'fr' ? 'Direction' : 'To',
 });
-
-
-
-
-
 
 function isRoundLine(label: string): boolean {
   const n = label.toUpperCase().trim();
   if (n === 'A' || n === 'B' || n === 'C' || n === 'D' || n === 'E') return true;
   return /^C\d+$/.test(n);
 }
-
-
 
 function sortLinesForBadge<T extends MarqueeLine>(lines: T[]): T[] {
   const priority = (l: T) => {
@@ -418,7 +411,6 @@ function LinesMarquee({ lines }: { lines: MarqueeLine[] }) {
     const track = trackRef.current;
     if (!track) return;
     const update = () => {
-      // La piste contient deux copies : une boucle = la moitié de sa largeur.
       const loopWidth = track.scrollWidth / 2;
       if (loopWidth > 0) {
         setDurationSec(Math.max(8, loopWidth / LINES_MARQUEE_SPEED_PX_PER_SEC));
@@ -452,9 +444,6 @@ function LinesMarquee({ lines }: { lines: MarqueeLine[] }) {
     </div>
   );
 }
-
-
-
 
 /* Note: QuickCircle component is defined but not currently used
 const QuickCircle = ({
@@ -493,6 +482,7 @@ export const HomeSheet = ({
   onOpenAccount,
   onOpenFavorites,
   locked = false,
+  lockedScreen,
   searchOpen = false,
   onLeaveAccount,
   onLeaveFavorites,
@@ -507,6 +497,7 @@ export const HomeSheet = ({
   account,
   accountPhotoUrl,
   walletCardCount = 0,
+  onNavigateToPlace,
   onOpenProfile,
   atmoReport,
   atmoLoading,
@@ -573,8 +564,6 @@ export const HomeSheet = ({
       };
     };
 
-    // Le remplissage initial se fait de proche en proche : chaque visage voit
-    // ceux déjà posés, sinon rien ne les empêcherait de tomber au même endroit.
     const initial: HomeFace[] = [];
     for (let i = 0; i < 5; i++) initial.push(draw(initial));
     setHomeCloud(initial);
@@ -584,8 +573,6 @@ export const HomeSheet = ({
         if (current.length === 0) return current;
         const next = [...current];
         const index = Math.floor(Math.random() * next.length);
-        // Le nouveau visage évite tous les autres, celui qu'il remplace excepté :
-        // sa place se libère à l'instant même.
         next[index] = draw(current.filter((_, i) => i !== index));
         return next;
       });
@@ -600,10 +587,6 @@ export const HomeSheet = ({
   const titleClass = isLight ? 'text-slate-900' : 'text-white';
   const mutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
 
-  // Bandeau défilant : uniquement les trams A→E, les Chrono C1→C11 et les
-  // Proximo bleus. Les codes C1…C11 existent aussi côté TER (SNC:C1, bleu
-  // marine) : on ne garde que ceux du réseau urbain (SEM / SE2) pour éviter
-  // d'afficher la pastille TER à la place de la ligne Chrono.
   const marqueeLines = useMemo(
     () => sortLinesForBadge(dedupeByCode(allLines.filter(isMarqueeLine))),
     [allLines]
@@ -613,7 +596,6 @@ export const HomeSheet = ({
     if (!currentLocation) return [];
     return findClosestStops(stops, currentLocation.lat, currentLocation.lon, 5);
   }, [stops, currentLocation?.lat, currentLocation?.lon]);
-
 
   /**
    * Pre-fetch the lines serving each nearby stop so the cards can show line
@@ -626,7 +608,6 @@ export const HomeSheet = ({
     if (!isOpen || nearby.length === 0) return;
     let cancelled = false;
     nearby.forEach(({ stop }) => {
-      // Skip stops we've already loaded for this session.
       if (nearbyLines[stop.id]) return;
       getStopLines(stop.id)
         .then(lines => {
@@ -649,7 +630,6 @@ export const HomeSheet = ({
    */
   const [activeTab, setActiveTab] = useState('home');
 
-
   /**
    * Largeur de l'écran, suivie pour recalculer la pastille : elle doit rester
    * centrée et à la largeur de ses onglets quelle que soit l'orientation.
@@ -663,18 +643,12 @@ export const HomeSheet = ({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Hold the latest `onSheetProgress` in a ref so the ProgressWatcher's RAF
-  // loop never sees a stale closure AND we don't have to put the callback in
-  // any effect's deps array (it changes on every parent render, which would
-  // otherwise re-run effects and snap the sheet back to its initial state).
   const onSheetProgressRef = useRef(onSheetProgress);
   useEffect(() => { onSheetProgressRef.current = onSheetProgress; }, [onSheetProgress]);
 
   const handleSnapChange = (idx: number) => {
     setSnapIdx(idx);
     onSnapChange?.(idx);
-    // Quitter le palier haut ramène la liste en tête : redescendre sur une page
-    // à moitié défilée laisserait voir un morceau de contenu sans son titre.
     if (idx !== LAST_SNAP && scrollRef.current) {
       scrollRef.current.scrollTo({ top: 0, behavior: 'instant' });
     }
@@ -719,8 +693,6 @@ export const HomeSheet = ({
       key: 'favorites',
       label: text.navFavorites,
       Icon: StarIcon,
-      // Les favoris sont une page eux aussi : arrêts et trajets s'y consultent
-      // pour eux-mêmes, pas du coin de l'œil au-dessus de la carte.
       onSelect: () => {
         setActiveTab('favorites');
         onOpenFavorites();
@@ -730,8 +702,6 @@ export const HomeSheet = ({
       key: 'account',
       label: text.navAccount,
       Icon: UserCircleIcon,
-      // Le compte est une page, pas une section de la feuille : on la quitte
-      // pour lui, comme pour l'itinéraire.
       onSelect: () => {
         setActiveTab('account');
         onLeaveFavorites?.();
@@ -799,9 +769,11 @@ export const HomeSheet = ({
    */
   useEffect(() => {
     if (!isOpen) return;
-    // Une carte Oura se referme sur l'écran Compte : la barre garde cet onglet.
-    setActiveTab(locked ? 'account' : 'home');
-  }, [isOpen, locked]);
+    /* Un écran pleine page garde son onglet allumé : une carte Oura se referme
+       sur le Compte, les favoris sur les Favoris. Sans écran par-dessus, on
+       revient sur « Autour », qui est la carte. */
+    setActiveTab(locked ? lockedScreen ?? 'account' : 'home');
+  }, [isOpen, locked, lockedScreen]);
 
   useEffect(() => {
     if (snapToMiniSignal === undefined) return;
@@ -811,11 +783,9 @@ export const HomeSheet = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapToMiniSignal]);
 
-  // Snap to mid (0.6) when the geoloc button is tapped — shows nearby stops.
   useEffect(() => {
     if (openToMidSignal === undefined || openToMidSignal === 0) return;
     if (!isOpen) return;
-    // snapPoints = [0, 0.15, 0.6, 1] → index 2 = 0.6
     sheetRef.current?.snapTo(2);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openToMidSignal]);
@@ -826,18 +796,11 @@ export const HomeSheet = ({
       style={{ zIndex: 10 }}
       isOpen={isOpen}
       onClose={onClose}
-      // Le premier palier vaut la hauteur de la barre d'onglets, en pixels : la
-      // pastille doit tenir dedans exactement, sans marge vide au-dessous.
       snapPoints={mapSheetSnapPoints({ bottomInset: safeBottom, noHandle: locked, compact: navCompact })}
       initialSnap={1}
       disableDrag={locked || searchOpen}
       disableDismiss
       onSnap={handleSnapChange}
-      // Live drag progress. The lib calls this on every animation frame
-      // with the *vertical translation* of the sheet in pixels (0 = full,
-      // viewportHeight = closed). We normalize it to a [0..1] "openness"
-      // fraction where 1 = full and 0 = closed, and forward it to the
-      // parent so it can animate elements that should follow the sheet.
       onOpenStart={() => {/* no-op, lib hook */}}
     >
 	    <MapSheetShell isLight={isLight} bottomInset={safeBottom} collapsedPadding={collapsedPadding}>
@@ -1059,6 +1022,21 @@ export const HomeSheet = ({
                 </section>
               )}
 
+	              {/* Ce qu'il y a à voir au bout des lignes.
+	                  La feuille répond jusqu'ici à « quand part le prochain » ;
+	                  cette bande répond à « et pour aller où ». Elle vient après
+	                  les arrêts, avant les accès rapides : on ne la cherche pas,
+	                  on tombe dessus en descendant. */}
+	              <section>
+	                <h3 className={`mb-3 px-1 text-xs font-semibold uppercase tracking-wider ${mutedClass}`}>
+	                  {text.visitTitle}
+	                </h3>
+	                <PlacesCarousel
+	                  language={language}
+	                  isLight={isLight}
+	                  onNavigate={onNavigateToPlace}
+	                />
+	              </section>
 
 	              <section>
 	                <h3 className={`mb-3 px-1 text-xs font-semibold uppercase tracking-wider ${mutedClass}`}>
@@ -1122,7 +1100,12 @@ export const HomeSheet = ({
 	                            src="/assets/oura.png"
 	                            alt=""
 	                            draggable={false}
-	                            className="absolute top-0 h-7 w-auto rounded-[3px] shadow-[0_1px_4px_rgba(0,0,0,0.3)]"
+	                            /* Sans ombre : le gabarit laisse une marge
+	                               transparente autour du carton, et l'ombre se
+	                               posait donc sur le cadre de l'image — un
+	                               rectangle gris flottant à côté de la carte,
+	                               qu'on lisait comme une bordure sur fond clair. */
+	                            className="absolute top-0 h-7 w-auto rounded-[3px]"
 	                            style={{ left: index * 9, zIndex: index }}
 	                          />
 	                        ),

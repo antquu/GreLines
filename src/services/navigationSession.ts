@@ -51,7 +51,6 @@ export function saveNavigationSession(itinerary: RouteItinerary): void {
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   } catch {
-    // Un guidage non mémorisé reste un guidage : on n'interrompt rien.
   }
 }
 
@@ -75,7 +74,6 @@ export function saveNavigationStep(itinerary: RouteItinerary, currentStepIndex: 
     session.currentStepIndex = Math.max(0, Math.floor(currentStepIndex));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   } catch {
-    // Le guidage continue si le stockage est indisponible.
   }
 }
 

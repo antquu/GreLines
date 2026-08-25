@@ -11,22 +11,11 @@ export interface FavoriteDetail {
   loading: boolean;
 }
 
-
-
-
-
-
-
-
-
-
 export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = true): FavoriteDetail[] {
   const [details, setDetails] = useState<FavoriteDetail[]>(() =>
     favorites.map(fav => ({ favorite: fav, detail: null, loading: true }))
   );
 
-  
-  
   const detailsRef = useRef<FavoriteDetail[]>(details);
   detailsRef.current = details;
 
@@ -38,7 +27,6 @@ export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = tru
 
     let cancelled = false;
 
-    
     setDetails(favorites.map(fav => ({ favorite: fav, detail: null, loading: true })));
 
     const loadInitial = async () => {
@@ -47,8 +35,6 @@ export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = tru
         return;
       }
 
-      
-      
       try {
         const firstDetail = await getStopDetail(favorites[0].stopId);
         if (!cancelled) {
@@ -68,8 +54,6 @@ export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = tru
         }
       }
 
-      
-      
       const rest = await Promise.all(
         favorites.slice(1).map(async fav => {
           try {
@@ -94,7 +78,6 @@ export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = tru
 
     loadInitial();
 
-    
     const interval = setInterval(async () => {
       const current = detailsRef.current;
       const refreshed = await Promise.all(
@@ -115,8 +98,6 @@ export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = tru
       cancelled = true;
       clearInterval(interval);
     };
-    
-    
     
   }, [enabled, favorites.map(f => `${f.stopId}:${f.lines === 'all' ? 'all' : f.lines.join(',')}`).join('|')]);
 

@@ -109,9 +109,6 @@ export async function planTaxiJourney(options: {
 
   const departAt = (options.departAt ?? new Date()).getTime();
 
-  // Le taxi ne vient pas instantanément : le temps d'approche est compté à part
-  // du trajet lui-même, faute de quoi l'heure d'arrivée serait celle d'une
-  // voiture déjà garée devant la porte.
   const rideSeconds = ride.durationSeconds;
   const arrival = departAt + (rideSeconds + PICKUP_DELAY_MIN * 60) * 1000;
   const rideMinutes = Math.max(1, Math.round(rideSeconds / 60));

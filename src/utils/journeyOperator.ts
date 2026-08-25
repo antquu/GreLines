@@ -35,7 +35,6 @@ export function journeyOperatorBrand(
       name: journey.taxi.company,
       logo: isDark ? '/assets/taxis-grenoblois_light.png' : '/assets/taxis-grenoblois.png',
       color: '#f59e0b',
-      // Pastille ambre : le logo sombre s'y lit, le clair s'y noierait.
       chipColor: '#f59e0b',
       chipLogo: '/assets/taxis-grenoblois.png',
     };
@@ -46,7 +45,6 @@ export function journeyOperatorBrand(
       name: 'Uber',
       logo: isDark ? '/assets/uber_light.png' : '/assets/uber.png',
       color: isDark ? '#ffffff' : '#000000',
-      // Uber se porte en noir quel que soit le thème : c'est sa pastille.
       chipColor: '#000000',
       chipLogo: '/assets/uber_light.png',
     };

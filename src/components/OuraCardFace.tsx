@@ -30,8 +30,24 @@ interface OuraCardFaceProps {
   statusLabel?: string | null;
   /** Force le recto, même quand on saurait remplir le verso. */
   forceFront?: boolean;
+  /**
+   * L'ombre portée de la carte.
+   *
+   * Elle ne se pose pas sur l'élément : le gabarit laisse une marge
+   * transparente tout autour du carton, et une ombre posée sur le cadre
+   * dessinait un rectangle flottant à un demi-centimètre de la carte — visible
+   * comme une bordure sur fond clair. On la donne donc à une couche calée sur
+   * les bords réels du carton, glissée dessous.
+   */
+  shadowClassName?: string;
   className?: string;
 }
+
+/**
+ * Les bords réels du carton dans le gabarit, en pourcentages de l'image.
+ * Mesurés sur la zone opaque des deux PNG.
+ */
+const CARD_BOUNDS = { top: '5.5%', right: '6.4%', bottom: '7.2%', left: '6%' };
 
 /** La fonte du carton. */
 const CARD_FONT = 'Arial, Helvetica, sans-serif';
@@ -53,6 +69,7 @@ export function OuraCardFace({
   disabled = false,
   statusLabel,
   forceFront = false,
+  shadowClassName = '',
   className = '',
 }: OuraCardFaceProps) {
   const isComplete = Boolean(!forceFront && cardCode && (firstName || lastName));
@@ -62,6 +79,15 @@ export function OuraCardFace({
       className={`relative w-full rounded-[4.5%] ${className}`}
       style={{ containerType: 'inline-size', aspectRatio: '1024 / 630' }}
     >
+      {/* L'ombre, calée sur le carton et non sur le gabarit. */}
+      {shadowClassName && (
+        <div
+          className={`pointer-events-none absolute rounded-[5%] ${shadowClassName}`}
+          style={CARD_BOUNDS}
+          aria-hidden
+        />
+      )}
+
       {/* Une carte coupée perd ses couleurs : on la reconnaît avant même
           d'avoir lu ce qui est écrit dessus. */}
       <img
@@ -88,10 +114,6 @@ export function OuraCardFace({
               className="absolute object-cover"
               style={{ left: '9.2%', top: '11.2%', width: '19%', height: '36.4%' }}
               draggable={false}
-              // Le fichier peut avoir disparu du bucket alors que la ligne le
-              // désigne encore. Une carte sans visage reste lisible ; une carte
-              // avec une icône d'image cassée à la place du visage donne à
-              // croire que c'est la carte qui est abîmée.
               onError={event => { event.currentTarget.style.display = 'none'; }}
             />
           )}

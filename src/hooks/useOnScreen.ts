@@ -23,8 +23,6 @@ export function useOnScreen<T extends HTMLElement>(): [React.RefObject<T | null>
       entries => {
         if (entries.some(entry => entry.isIntersecting)) setSeen(true);
       },
-      // Un peu avant d'arriver : la traduction a le temps de revenir pendant
-      // que le doigt finit son geste.
       { rootMargin: '200px 0px' },
     );
     observer.observe(node);

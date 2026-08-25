@@ -10,9 +10,19 @@
          champs sont déjà à 16 px, taille en dessous de laquelle iOS zoome de
          lui-même à la saisie ; il ne restait que le geste. La carte, elle, gère
          son propre pincement : c'est MapLibre qui l'écoute, pas le navigateur. -->
+    <!-- `viewport-fit=cover` : la page va jusqu'aux bords de l'écran, encoche
+         comprise. Sans lui, une application installée sur un téléphone à
+         encoche est mise en boîte — le système remplit les zones sûres d'une
+         bande unie, et `env(safe-area-inset-*)` vaut zéro partout. Les seize
+         écrans qui réservent déjà cette marge en haut, et la feuille qui la
+         mesure en bas, travaillaient donc dans le vide.
+
+         Avec lui, la carte passe sous l'encoche — ce qu'on veut d'une carte —
+         et ce sont ces marges-là qui gardent les titres et les boutons à
+         l'écart. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <title>Horaires en temps réel des transports de Grenoble (Tag, TER, Citiz) \ GreLines</title>
     <meta
@@ -27,6 +37,19 @@
     <meta name="apple-mobile-web-app-title" content="GreLines" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- La barre d'état par-dessus la carte, et non à côté.
+
+         Sans ce réglage, iOS réserve la hauteur de l'encoche à la barre d'état
+         et la peint en noir : c'est la bande qu'on voyait au-dessus de la
+         carte, avec l'heure et la batterie posées dessus. « black-translucent »
+         la rend transparente et laisse la page passer dessous — la carte
+         remonte jusqu'au bord de l'écran, l'heure et les icônes se détachent
+         par-dessus en blanc.
+
+         Les écrans qui ont du texte en haut gardent leur marge :
+         `env(safe-area-inset-top)`, qui devient enfin non nulle, les tient à
+         l'écart de l'encoche. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
     <meta
       name="keywords"
@@ -58,6 +81,11 @@
     <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
     <link rel="preconnect" href="https://data.mobilites-m.fr" crossorigin />
 
+    <!-- L'écran de chargement du téléphone montre la tour Perret. La petite
+         version part avec la page : c'est elle qui tient l'écran le temps que
+         la grande arrive, et la demander depuis React aurait attendu que le
+         paquet JavaScript soit lu. -->
+    <link rel="preload" href="/assets/places/tour-perret-low.jpg" as="image" fetchpriority="high" />
     <link rel="preload" href="/fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/Inter-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
 

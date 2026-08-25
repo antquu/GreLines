@@ -22,9 +22,6 @@
  *   conteneur.
  */
 
-// `react-modal-sheet` déclare `motion` en pair, mais `motion/react` n'est qu'un
-// réexport de `framer-motion` — la même instance, donc les mêmes `MotionValue`.
-// On importe depuis `framer-motion`, seul paquet que ce projet déclare.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { interpolate, motion, useMotionTemplate, useTransform } from 'framer-motion';
 import { Sheet } from 'react-modal-sheet';
@@ -70,20 +67,25 @@ export const LAST_SNAP = 3;
 export const NAVBAR_SNAP = 1;
 
 /**
- * Hauteur de la zone réservée au bas de l'écran (barre d'accueil iPhone).
+ * Ce que la feuille réserve en bas de l'écran : rien.
  *
- * `env(safe-area-inset-bottom)` ne se lit pas depuis JavaScript : on la mesure
- * une fois avec un élément témoin, pour l'ajouter au palier bas.
+ * Elle mesurait `env(safe-area-inset-bottom)` — la barre d'accueil de
+ * l'iPhone — pour s'en écarter. Tant que la page était mise en boîte par le
+ * système, cette mesure valait zéro et la barre d'onglets se posait au ras du
+ * bord. Le jour où la page est passée en pleine hauteur (`viewport-fit=cover`),
+ * la mesure est devenue réelle et la barre est remontée d'autant : ce n'était
+ * plus la même application.
+ *
+ * On garde donc le dessin d'avant. La barre d'accueil de l'iPhone est un trait
+ * qui flotte par-dessus le contenu, comme au-dessus d'une carte plein écran —
+ * elle n'a pas besoin qu'on lui creuse une place, et la pastille est
+ * translucide de toute façon.
+ *
+ * La fonction reste : c'est ici, et à un seul endroit, qu'on rendrait la marge
+ * si l'on changeait d'avis.
  */
 export function readSafeAreaBottom(): number {
-  if (typeof document === 'undefined') return 0;
-  const probe = document.createElement('div');
-  probe.style.cssText =
-    'position:fixed;left:0;bottom:0;width:0;height:env(safe-area-inset-bottom);pointer-events:none;visibility:hidden';
-  document.body.appendChild(probe);
-  const height = probe.getBoundingClientRect().height;
-  probe.remove();
-  return Math.round(height);
+  return 0;
 }
 
 /**
@@ -179,8 +181,6 @@ export function MapSheetShell({
     SHEET_RADIUS,
   );
 
-  // Le fond, translucide en bas, devient opaque en haut : la carte transparaît
-  // derrière la barre d'onglets, plus derrière la page dépliée.
   const surfaceAlpha = useTransform(yProgress, [0.7, 1], [0.72, 0.98]);
   const backgroundColor = useMotionTemplate`rgba(${isLight ? '255, 255, 255' : '23, 30, 44'}, ${surfaceAlpha})`;
 

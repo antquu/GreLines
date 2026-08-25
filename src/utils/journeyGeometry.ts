@@ -1,25 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import type { LineGeometry } from '../services/lineShapes';
 import { haversineMeters } from './geo';
 
@@ -31,7 +10,6 @@ export interface JourneyStopRef {
   name?: string;
   id?: string;
 }
-
 
 const SNAP_DISTANCE_M = 90;
 
@@ -70,7 +48,6 @@ export function decodePolyline(encoded: string): Coordinate[] {
 
   return coordinates;
 }
-
 
 function extractVariants(geometry: LineGeometry): Coordinate[][] {
   const variants: Coordinate[][] = [];
@@ -118,15 +95,6 @@ function toStopRef(raw: any): JourneyStopRef | null {
   };
 }
 
-
-
-
-
-
-
-
-
-
 function cutReferenceSegment(
   variants: Coordinate[][],
   boarding: JourneyStopRef,
@@ -148,8 +116,6 @@ function cutReferenceSegment(
     if (segment.length < 2) continue;
     if (from.index > to.index) segment.reverse();
 
-    
-    
     let stopPenalty = 0;
     let rejected = false;
     for (const stop of intermediates) {
@@ -169,7 +135,6 @@ function cutReferenceSegment(
 
   return best?.coords ?? null;
 }
-
 
 function magnetize(coords: Coordinate[], stops: JourneyStopRef[]): Coordinate[] {
   if (coords.length < 2) return coords;
@@ -275,9 +240,6 @@ export function buildJourneyGeometry({
     const otpCoords = typeof points === 'string' && points.length > 0 ? decodePolyline(points) : [];
 
     const isWalk = leg?.mode === 'WALK';
-    // Une trottinette n'est pas un tramway : elle part d'un trottoir, pas d'un
-    // quai. Rabattre ses extrémités sur l'arrêt le plus proche faisait faire au
-    // tracé un aller-retour jusqu'à cet arrêt.
     const freeform =
       isWalk || Boolean(leg?.sharedOperator) || Boolean(leg?.uberProduct) || Boolean(leg?.taxiCompany);
     const boarding = freeform ? toStopRef(leg?.from) : resolve(leg?.from);
@@ -305,8 +267,6 @@ export function buildJourneyGeometry({
 
     if (coordinates.length < 2) return;
 
-    // Aimantation et recalage des extrémités n'ont de sens que sur un tronçon
-    // qui dessert des arrêts : ailleurs, le tracé du routeur est déjà exact.
     if (!freeform) {
       coordinates = magnetize(coordinates, [...intermediates, ...(boarding ? [boarding] : []), ...(alighting ? [alighting] : [])]);
       if (boarding) coordinates[0] = [boarding.lon, boarding.lat];
@@ -342,10 +302,6 @@ export function buildJourneyGeometry({
     },
   }));
 
-  // ── Pastilles ─────────────────────────────────────────────────────────────
-  // Un même lieu peut être à la fois arrêt desservi, correspondance et
-  // terminus : on garde le rôle le plus fort (départ/arrivée > correspondance >
-  // arrêt) pour ne pas empiler trois cercles au même endroit.
   const RANK: Record<string, number> = { stop: 0, transfer: 1, endpoint: 2 };
   const pointsByKey = new Map<string, GeoJSON.Feature>();
 
@@ -365,13 +321,8 @@ export function buildJourneyGeometry({
     });
   };
 
-  // Les pastilles de montée/descente et les badges de ligne ne concernent que
-  // les tronçons en transport en commun.
   const transitLegs = legGeometries.filter(leg => !leg.freeform);
 
-  // Les arrêts simplement desservis ne sont plus affichés : sur un tronçon de
-  // vingt arrêts, le collier de pastilles noyait le tracé plus qu'il ne le
-  // lisait. Seuls les points où l'on agit (monter, descendre, changer) restent.
   for (const leg of transitLegs) {
     addPoint(leg.boarding, 'transfer', leg.color);
     addPoint(leg.alighting, 'transfer', leg.color);

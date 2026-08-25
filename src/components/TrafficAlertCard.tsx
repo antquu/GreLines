@@ -106,8 +106,6 @@ export function TrafficAlertCard({
    * série. Une condition de repli qui se déclenche toujours n'est pas un repli.
    */
   const title = useTranslated(rawTitle, language, onScreen) || (isFr ? 'Perturbation' : 'Disruption');
-  // La description attend d'être à l'écran *et* dépliée : c'est le plus long
-  // des deux textes, et le plus coûteux à traduire.
   const description = useTranslated(rawDescription, language, onScreen && expanded);
   const headingLabel = heading ?? (isFr ? 'Perturbation en cours' : 'Ongoing disruption');
   const sortedLines = lines && lines.length > 0 ? [...lines].sort(sortLinesByPriority) : [];

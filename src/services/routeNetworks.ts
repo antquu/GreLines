@@ -58,8 +58,6 @@ export function loadRouteNetworks(): string[] {
     const known = parsed.filter(
       (code): code is string => typeof code === 'string' && ROUTE_NETWORKS.some(n => n.code === code),
     );
-    // Une sélection vide ne renverrait plus jamais aucun itinéraire : on la
-    // traite comme l'absence de choix plutôt que comme un choix absurde.
     return known.length > 0 ? known : defaultRouteNetworks();
   } catch {
     return defaultRouteNetworks();
@@ -103,8 +101,6 @@ export function itineraryUsesOnly(legs: unknown[], accepted: Set<string>): boole
   return legs.every(leg => {
     const code = legNetworkCode(leg);
     if (!code) return true;
-    // Un préfixe inconnu de notre liste n'est écarté par personne : mieux vaut
-    // un itinéraire de trop qu'un itinéraire manquant sans explication.
     const network = ROUTE_NETWORKS.find(n => networkCodes(n).includes(code));
     if (!network) return true;
     return accepted.has(network.code);

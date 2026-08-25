@@ -42,9 +42,7 @@ export interface PrintedStop {
  * nouveau, et l'on y écrit le nom que le réseau donne à la station ce jour-là.
  */
 export const PRINTED_STOP_IDS: Record<string, PrintedStop> = {
-  // Gare de Grenoble. Le réseau l'appelait « SEM:GARES », puis « SEM:GAR ».
   'SEM:GARES': { name: 'Gares', city: 'Grenoble' },
-  // Chavant. « SEM:CHAVANT », puis « SEM:CHV ».
   'SEM:CHAVANT': { name: 'Chavant', city: 'Grenoble' },
 };
 

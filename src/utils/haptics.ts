@@ -40,13 +40,9 @@ function getIosSwitch(): HTMLLabelElement | null {
 
   const input = document.createElement('input');
   input.type = 'checkbox';
-  // L'attribut est ignoré partout ailleurs : sur les autres navigateurs, la
-  // case reste une case, et la basculer ne fait rien de visible.
   input.setAttribute('switch', '');
   label.appendChild(input);
 
-  // Dans le corps du document, pas dans l'en-tête : un contrôle interactif n'a
-  // rien à faire dans `<head>`, et un navigateur est libre de ne pas l'y rendre.
   document.body.appendChild(label);
   iosSwitch = label;
   return label;
@@ -66,13 +62,10 @@ export function hapticTap(durationMs = 12): void {
       return;
     }
   } catch {
-    // Certains navigateurs déclarent l'API et refusent l'appel hors geste
-    // utilisateur : on passe simplement à la suite.
   }
 
   try {
     getIosSwitch()?.click();
   } catch {
-    // Pas de secousse. Ce n'est pas grave : elle accompagne, elle n'informe pas.
   }
 }

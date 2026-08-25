@@ -1,19 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 const JANK_FRAME_MS = 50;
 
 interface Stats {
@@ -139,9 +126,6 @@ export function DevOverlay() {
     };
   }, [enabled, position, dragPointerId, isDragging]);
 
-  
-  
-  
   const [wasEnabled, setWasEnabled] = useState(enabled);
   if (enabled !== wasEnabled) {
     setWasEnabled(enabled);
@@ -152,8 +136,6 @@ export function DevOverlay() {
     }
   }
 
-  
-  
   useEffect(() => {
     if (!enabled || typeof PerformanceObserver === 'undefined') return;
     
