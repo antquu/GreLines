@@ -3594,8 +3594,8 @@ function App() {
               searchHistoryItems={searchHistory ? searchHistoryItems : []}
               searchPlaceholder={text.searchPlaceholder}
               unknownCityLabel={text.unknownCity}
-              onStopClick={stop => { setSelectedAddress(null); setSelectedLine(null); handleStopClick(stop); mapRef.current?.centerOnStop(stop); }}
-              onLineClick={line => handleLineSearchSelect(line)}
+              onStopClick={stop => { setSnapHomeToMiniSignal(s => s + 1); setSelectedAddress(null); setSelectedLine(null); handleStopClick(stop); mapRef.current?.centerOnStop(stop); }}
+              onLineClick={line => { setSnapHomeToMiniSignal(s => s + 1); handleLineSearchSelect(line); }}
               isFocused={isSearchFocused}
               onFocus={setIsSearchFocused}
               addressResults={addressResults}
