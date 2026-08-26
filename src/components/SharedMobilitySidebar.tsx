@@ -23,7 +23,8 @@ interface SharedMobilitySidebarProps {
   points: SharedVehiclePoint[];
   isMobile: boolean;
   language: 'fr' | 'en';
-  
+  isLight?: boolean;
+
   onRouteTo?: (destination: { lat: number; lon: number; label: string }) => void;
   
   onVehicleFocus?: (vehicleId: string | null) => void;
@@ -524,6 +525,7 @@ export function SharedMobilitySidebar({
   points,
   isMobile,
   language,
+  isLight = false,
   onRouteTo,
   onVehicleFocus,
 }: SharedMobilitySidebarProps) {
@@ -665,7 +667,9 @@ export function SharedMobilitySidebar({
         animate={{ x: isOpen ? 0 : -420, opacity: isOpen ? 1 : 0 }}
         exit={{ x: -420, opacity: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="fixed left-0 top-0 z-60 flex h-screen w-96 flex-col border-r border-slate-800 bg-slate-900 shadow-2xl"
+        className={`fixed left-0 top-0 z-60 flex h-screen w-96 flex-col shadow-2xl ${
+          isLight ? 'border-r border-slate-200 bg-white' : 'border-r border-slate-800 bg-slate-900'
+        }`}
       >
         {/* Le contenu défile, les actions restent : on ne cherche pas un bouton
             en bas d'une liste. */}
@@ -676,7 +680,7 @@ export function SharedMobilitySidebar({
   }
 
   return (
-    <MapSheet initialSnap={2} isOpen={isOpen} onClose={onClose} isLight={false} zIndex={100}>
+    <MapSheet initialSnap={2} isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={100}>
           <div className="flex-1 overflow-y-auto px-5 pb-6 pt-2">{body}</div>
           {/* Sur mobile, le pied prend la marge du bas : sur un écran sans
               bouton physique, un bouton collé au bord est intouchable. */}

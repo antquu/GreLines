@@ -74,10 +74,9 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
 
       {notification && (
         <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-6">
-          <h2 className="text-center text-[34px] font-bold leading-tight">{notification.title}</h2>
-                    <h2 className={`text-center text-[34px] font-bold leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                      {notification.title}
-                    </h2>
+          <h2 className={`text-center text-[34px] font-bold leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+            {notification.title}
+          </h2>
           <p className="mt-2 text-center text-base text-slate-500">
             {formatNotificationDay(notification.createdAt, language)}
           </p>

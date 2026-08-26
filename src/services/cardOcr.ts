@@ -195,6 +195,8 @@ export interface SteadyFrameOptions {
    * attendre indéfiniment devant un écran qui ne fait rien.
    */
   requireMotionFirst?: boolean;
+  /** Rend vrai quand le voyageur a appuyé sur le déclencheur : on capture aussitôt, sans attendre l'immobilité. */
+  manualCapture?: () => boolean;
 }
 
 /**
@@ -205,7 +207,7 @@ export async function waitForSteadyFrame(
   video: HTMLVideoElement,
   options: SteadyFrameOptions = {},
 ): Promise<boolean> {
-  const { cancelled = () => false, timeoutMs = 15000, requireMotionFirst = false } = options;
+  const { cancelled = () => false, timeoutMs = 15000, requireMotionFirst = false, manualCapture = () => false } = options;
 
   const canvas = document.createElement('canvas');
   canvas.width = SAMPLE_WIDTH;
@@ -219,6 +221,7 @@ export async function waitForSteadyFrame(
   while (!cancelled() && Date.now() - startedAt < timeoutMs) {
     await new Promise(resolve => window.setTimeout(resolve, SAMPLE_INTERVAL_MS));
     if (cancelled()) return false;
+    if (manualCapture()) return true;
 
     const sample = grayscaleSample(video, canvas);
     if (!sample) continue;

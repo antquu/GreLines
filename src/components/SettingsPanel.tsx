@@ -1255,10 +1255,10 @@ export function SettingsPanel({
               onClick={() => setOpenSection('help')}
               className="block w-full text-left"
             >
-              <p className="px-5 pr-14 pt-5 text-[1.35rem] font-bold leading-snug text-white">
+              <p className="px-5 pr-14 pt-5 text-[1.35rem] font-bold leading-snug" style={{ color: '#ffffff' }}>
                 {isFrench ? 'Aide et contact' : 'Help and contact'}
               </p>
-              <p className="mt-2 px-5 pb-4 pr-10 text-[15px] leading-relaxed text-white/80">
+              <p className="mt-2 px-5 pb-4 pr-10 text-[15px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.8)' }}>
                 {isFrench
                   ? 'Un incident, un comportement, un objet oublié : à qui s’adresser, et le numéro à composer.'
                   : 'An incident, a behaviour, something left behind: who to talk to, and the number to call.'}

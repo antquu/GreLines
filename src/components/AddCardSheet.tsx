@@ -273,6 +273,8 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const selfieVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  /** Levé quand le voyageur appuie sur le déclencheur, pour capturer sans attendre l'immobilité. */
+  const manualCaptureRef = useRef(false);
 
   const surface = isLight ? 'border-slate-200 bg-white' : 'border-slate-800 bg-slate-900';
   const strong = isLight ? 'text-slate-900' : 'text-white';
@@ -461,7 +463,9 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         const steady = await waitForSteadyFrame(video, {
           cancelled: stale,
           requireMotionFirst: attempt > 1,
+          manualCapture: () => manualCaptureRef.current,
         });
+        manualCaptureRef.current = false;
         if (stale()) return;
         if (!steady) break;
 
@@ -912,10 +916,10 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                 </div>
 
                 {/* 2 — la carte : la caméra qui lit toute seule, ou la saisie */}
-                <div className="h-full w-1/4 overflow-y-auto px-5 pb-8">
+                <div className={`h-full w-1/4 ${step === 'scan' ? 'overflow-hidden' : 'overflow-y-auto px-5 pb-8'}`}>
                   {step === 'scan' ? (
                     <>
-                      <div className="relative overflow-hidden rounded-3xl bg-black" style={{ aspectRatio: '1024 / 630' }}>
+                      <div className="relative h-full w-full overflow-hidden rounded-3xl bg-black">
                         <video ref={videoRef} playsInline muted className="h-full w-full object-cover" />
 
                         {/* La photo prise reste sous les yeux pendant qu'on la
@@ -924,10 +928,13 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                           <img src={frozenCard} alt="" className="absolute inset-0 h-full w-full object-cover" />
                         )}
 
-                        {/* Le guide cadre la carte. Il ne change pas de couleur :
-                            c'est le voile posé sur la photo qui dit que ça
-                            travaille. */}
-                        <div className="pointer-events-none absolute inset-3 rounded-2xl border-2 border-white/70" />
+                        {/* Le guide cadre la carte, au centre de toute la zone
+                            caméra. Il ne change pas de couleur : c'est le voile
+                            posé sur la photo qui dit que ça travaille. */}
+                        <div
+                          className="pointer-events-none absolute left-1/2 top-1/2 w-[85%] -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-white/70"
+                          style={{ aspectRatio: '1024 / 630' }}
+                        />
 
                         {scanPhase === 'reading' && (
                           <>
@@ -958,10 +965,13 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                         )}
 
                         {scanPhase === 'aiming' && (
-                          <div className="pointer-events-none absolute inset-0 flex items-end justify-center px-6 pb-4">
-                            <span className="text-center text-xs font-semibold text-white drop-shadow">
-                              {text.aiming}
-                            </span>
+                          <div className="pointer-events-none absolute inset-x-0 bottom-6 flex items-center justify-center">
+                            <button
+                              type="button"
+                              onClick={() => { manualCaptureRef.current = true; }}
+                              className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-lg ring-4 ring-white/30 transition active:scale-90"
+                              aria-label={text.reading}
+                            />
                           </div>
                         )}
                       </div>

@@ -211,7 +211,7 @@ export function OnboardingFlow({
                 <Icon className="h-8 w-8" />
               </div>
             ) : null}
-            <h1 className="mt-8 max-w-sm text-[30px] font-extrabold leading-tight">{title}</h1>
+            <h1 className="mt-8 max-w-sm text-[30px] font-extrabold leading-tight" style={{ color: '#ffffff' }}>{title}</h1>
             <div className="mt-3 max-w-sm">
               <p className="text-[16px] leading-relaxed text-white/65">{body}</p>
             </div>

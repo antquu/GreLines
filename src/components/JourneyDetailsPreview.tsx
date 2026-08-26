@@ -370,7 +370,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
         </p>
         {/* Deux noms d'arrêts longs ne tiennent pas sur une ligne de téléphone :
             ils passent à la ligne plutôt que de déborder de l'écran. */}
-        <h2 className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-lg font-semibold text-white">
+        <h2 className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-lg font-semibold" style={{ color: '#ffffff' }}>
           <span className="break-words">{journey.depName}</span>
           <span aria-hidden>→</span>
           <span className="break-words">{journey.arrName}</span>

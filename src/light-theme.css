@@ -146,6 +146,24 @@
     color: #ffffff;
   }
 
+  /* Les boutons bleus (bg-blue-400 à 900) gardent leur texte blanc en clair
+     comme en sombre : c'est le fond qui ne change pas, pas le sens du texte
+     qu'il faudrait redéduire ici. */
+  html:not(.dark) [class*="bg-blue-4"].text-white,
+  html:not(.dark) [class*="bg-blue-5"].text-white,
+  html:not(.dark) [class*="bg-blue-6"].text-white,
+  html:not(.dark) [class*="bg-blue-7"].text-white,
+  html:not(.dark) [class*="bg-blue-8"].text-white,
+  html:not(.dark) [class*="bg-blue-9"].text-white,
+  html:not(.dark) [class*="bg-blue-4"] .text-white,
+  html:not(.dark) [class*="bg-blue-5"] .text-white,
+  html:not(.dark) [class*="bg-blue-6"] .text-white,
+  html:not(.dark) [class*="bg-blue-7"] .text-white,
+  html:not(.dark) [class*="bg-blue-8"] .text-white,
+  html:not(.dark) [class*="bg-blue-9"] .text-white {
+    color: #ffffff;
+  }
+
   html:not(.dark) .hover\:bg-slate-800:hover,
   html:not(.dark) .hover\:bg-slate-700:hover {
     background-color: var(--gl-surface-hover);

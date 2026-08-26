@@ -198,6 +198,7 @@ export interface MapRef {
     bounds: [[number, number], [number, number]],
     options?: { padding?: number; duration?: number }
   ) => void;
+  clearStopLabel: () => void;
 }
 
 interface ViewportBounds {
@@ -828,6 +829,9 @@ const MapComponentBase = (
           duration: options?.duration ?? 1000,
         });
       }
+    },
+    clearStopLabel: () => {
+      resetStopHover();
     },
   }));
 

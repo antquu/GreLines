@@ -611,9 +611,13 @@ function App() {
    * Sombre au premier rendu quand on est en automatique : l'effet qui interroge
    * l'appareil s'exécute juste après, avant la peinture, et corrige au besoin.
    */
-  const [effectiveTheme, setEffectiveTheme] = useState<'light' | 'dark'>(
-    theme === 'light' ? 'light' : 'dark',
-  );
+  const [effectiveTheme, setEffectiveTheme] = useState<'light' | 'dark'>(() => {
+    if (theme === 'light') return 'light';
+    if (theme === 'dark' || theme === 'blue') return 'dark';
+    /* « auto » : lu tout de suite, sinon le premier rendu suppose le sombre et
+       les titres blancs restent blancs le temps que l'effet ci-dessous corrige. */
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
   const [fontSize, setFontSize] = useState<'small' | 'normal' | 'large'>(() => {
     return (localStorage.getItem('greLines_fontSize') as any) || 'normal';
   });
@@ -1053,6 +1057,7 @@ function App() {
     setSelectedStop(null);
     setSelectedLines(new Set());
     setSnapHomeToMiniSignal(s => s + 1);
+    mapRef.current?.clearStopLabel();
   }, []);
 
   const handleSidebarOpen = useCallback(() => setSidebarState('open'), []);
@@ -4052,6 +4057,7 @@ function App() {
             points={sharedSelection.points}
             isMobile={isMobile}
             language={language}
+            isLight={effectiveTheme === 'light'}
             onRouteTo={destination => {
               const target: RouteLocation = {
                 id: `shared-${destination.lat},${destination.lon}`,

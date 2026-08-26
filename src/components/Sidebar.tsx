@@ -495,7 +495,7 @@ export const Sidebar = ({
                   className="mb-2 w-auto object-contain object-left" style={{ height: 35 }}
                 />
               )}
-              <h2 className="text-3xl font-extrabold text-white leading-tight">
+              <h2 className="text-3xl font-extrabold leading-tight" style={{ color: '#ffffff' }}>
                 {currentStopDetail.name}
                 {/* Le fauteuil finit le titre comme un point finirait la phrase :
                     il appartient au nom de l'arrêt, il n'est pas une étiquette

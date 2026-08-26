@@ -555,7 +555,7 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                     className="mb-2 w-auto object-contain object-left" style={{ height: 30 }}
                   />
                 )}
-                <h2 className="text-2xl font-extrabold text-white leading-tight">
+                <h2 className={`text-2xl font-extrabold leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   {currentStopDetail.name}
                   {/* Comme sur l'ordinateur : le fauteuil termine le nom. */}
                   {stopIsAccessible && (

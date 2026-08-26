@@ -59,7 +59,7 @@ export function MobileNotificationPrompt({
           <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.05]">
             <BellAlertIcon className="h-8 w-8" />
           </div>
-          <h1 className="mt-6 max-w-sm text-3xl font-black leading-tight">
+          <h1 className="mt-6 max-w-sm text-3xl font-black leading-tight" style={{ color: '#ffffff' }}>
             {isFr ? 'Restez informe pendant votre trajet' : 'Stay informed during your trip'}
           </h1>
           <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-white/65">

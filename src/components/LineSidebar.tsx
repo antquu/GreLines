@@ -250,7 +250,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
           {(() => {
             const [left, right] = splitTerminusPair(line.longName);
             return (
-              <h2 className="min-w-0 flex-1 text-[26px] font-extrabold leading-[1.12] tracking-tight text-white">
+              <h2 className={`min-w-0 flex-1 text-[26px] font-extrabold leading-[1.12] tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 <span>{left}</span>
                 {right && (
                   <>
@@ -548,7 +548,9 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
           animate={{ x: 0, opacity: 1, scale: 1 }}
           exit={{ x: -420, opacity: 0, scale: 0.98 }}
           transition={{ duration: 0.28, ease: 'easeOut' }}
-          className="fixed left-0 top-0 h-screen w-full max-w-[28rem] bg-slate-900 border-r border-slate-800 shadow-2xl z-60 overflow-y-auto"
+          className={`fixed left-0 top-0 h-screen w-full max-w-[28rem] shadow-2xl z-60 overflow-y-auto ${
+            isDark ? 'bg-slate-900 border-r border-slate-800' : 'bg-white border-r border-slate-200'
+          }`}
           style={{ minWidth: 'unset' }}
         >
           {panelContent}

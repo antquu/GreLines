@@ -253,7 +253,7 @@ export function TripSurvey({
           ) : consent === null ? (
             <div>
               <ShieldCheckIcon className="mb-3 h-10 w-10 text-indigo-400" />
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-xl font-bold" style={{ color: '#ffffff' }}>
                 {isFr ? 'Donnez votre avis sur ce trajet ?' : 'Rate this trip?'}
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
@@ -280,7 +280,7 @@ export function TripSurvey({
             <div>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="truncate text-lg font-bold text-white">
+                  <h2 className="truncate text-lg font-bold" style={{ color: '#ffffff' }}>
                     {isFr ? 'Votre trajet' : 'Your trip'} · {lineId}
                   </h2>
                   {/* La progression remplace le compteur : trois traits, on voit

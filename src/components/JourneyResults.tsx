@@ -106,10 +106,10 @@ export function JourneyResults({
               )}
               {stepFree && (
                 <span
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-600"
                   title={fr ? 'Trajet sans marche' : 'Step-free journey'}
                 >
-                  <FaWheelchair size={16} />
+                  <FaWheelchair size={16} style={{ color: '#ffffff' }} />
                 </span>
               )}
             </div>

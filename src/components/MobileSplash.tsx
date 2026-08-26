@@ -100,7 +100,7 @@ export function MobileSplash({
         className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-5 px-7"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2.5rem)' }}
       >
-        <p className="min-w-0 flex-1 text-[26px] font-extrabold leading-[1.1] tracking-tight text-white">
+        <p className="min-w-0 flex-1 text-[26px] font-extrabold leading-[1.1] tracking-tight" style={{ color: '#ffffff' }}>
           {language === 'fr'
             ? 'Mettre la culture dans les transports'
             : 'Bringing culture into transport'}

@@ -426,8 +426,13 @@ export function LineMapViewer({
           transition={{ duration: 0.18 }}
           className="fixed inset-0 z-[10005] flex flex-col bg-slate-950"
         >
-          {/* Bandeau : identité de la ligne à gauche, commandes à droite. */}
-          <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+          {/* Bandeau : identité de la ligne à gauche, commandes à droite.
+              La marge du haut suit l'encoche : sans elle, le bouton fermer
+              se glisse sous la safe area et devient impossible à toucher. */}
+          <div
+            className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-4 py-3"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
+          >
             <div className="flex min-w-0 items-center gap-3">
               {lineId || routeId || lineLabel ? (
                 <LineBadge
