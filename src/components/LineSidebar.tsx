@@ -266,16 +266,6 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
 
 }
         <div className="flex flex-shrink-0 items-center gap-2">
-          {onOpenTimetable && (
-            <button
-              onClick={() => onOpenTimetable()}
-              aria-label={text.timetable}
-              title={text.timetable}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-800 transition hover:bg-slate-700"
-            >
-              <ClockIcon className="h-4 w-4 text-white" />
-            </button>
-          )}
           {onOpenLineMap && (
             <button
               onClick={onOpenLineMap}

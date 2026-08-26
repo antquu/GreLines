@@ -656,19 +656,12 @@ function App() {
   const isSidebarOpen = sidebarState !== 'closed';
 
   /**
-   * La fiche horaire est ouverte depuis un passage d'un arrêt : elle n'a plus
-   * de sens dès que cet arrêt se ferme, ou qu'on part vers une fiche de ligne.
-   * Ajusté pendant le rendu pour qu'elle disparaisse dans la même image.
+   * La fiche horaire est ouverte depuis un passage d'un arrêt, ou depuis un
+   * arrêt déplié dans la fiche d'une ligne : elle n'a plus de sens une fois
+   * qu'on a quitté les deux. Ajusté pendant le rendu pour qu'elle disparaisse
+   * dans la même image.
    */
-  if (timetableTarget && (!isSidebarOpen || selectedLine !== null)) {
-    setTimetableTarget(null);
-  }
-
-  /**
-   * La fiche horaire est ouverte depuis un passage d'un arrêt : elle n'a plus
-   * de sens dès que cet arrêt se ferme, ou qu'on part vers une fiche de ligne.
-   */
-  if (timetableTarget && (!isSidebarOpen || selectedLine !== null)) {
+  if (timetableTarget && !isSidebarOpen && selectedLine === null) {
     setTimetableTarget(null);
   }
 
@@ -3589,11 +3582,9 @@ function App() {
               matchedStops={matchedStops}
               matchedLines={matchedLines}
               allLines={allLines}
-              matchedStopLines={searchStopLines}
               stops={stops}
               searchHistoryItems={searchHistory ? searchHistoryItems : []}
               searchPlaceholder={text.searchPlaceholder}
-              unknownCityLabel={text.unknownCity}
               onStopClick={stop => { setSnapHomeToMiniSignal(s => s + 1); setSelectedAddress(null); setSelectedLine(null); handleStopClick(stop); mapRef.current?.centerOnStop(stop); }}
               onLineClick={line => { setSnapHomeToMiniSignal(s => s + 1); handleLineSearchSelect(line); }}
               isFocused={isSearchFocused}
@@ -3602,6 +3593,7 @@ function App() {
               onAddressClick={handleAddressSelect}
               language={language}
               theme={effectiveTheme}
+              trafficInfo={trafficInfo}
             />
           }
         />
