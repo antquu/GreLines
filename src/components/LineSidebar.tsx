@@ -818,7 +818,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
           animate={{ x: 0, opacity: 1, scale: 1 }}
           exit={{ x: -420, opacity: 0, scale: 0.98 }}
           transition={{ duration: 0.28, ease: 'easeOut' }}
-          className={`fixed left-0 top-0 h-screen w-full max-w-[28rem] shadow-2xl z-60 overflow-y-auto ${
+          className={`fixed left-0 top-0 h-screen w-96 max-w-full shadow-2xl z-60 overflow-y-auto ${
             isDark ? 'bg-slate-900 border-r border-slate-800' : 'bg-white border-r border-slate-200'
           }`}
           style={{ minWidth: 'unset' }}
