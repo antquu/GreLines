@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useMotionValue, useTransform, MotionConfig } f
 import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
+import { useFavoriteLines } from './hooks/useFavoriteLines';
 import { useFavoriteDetails } from './hooks/useFavoriteDetails';
 import { useFavoriteJourneys } from './hooks/useFavoriteJourneys';
 import { useJourneyHistory } from './hooks/useJourneyHistory';
@@ -1107,6 +1108,7 @@ function App() {
   }, [atmoFollowMap, mapCenterKey]);
   const favoritesList = useFavorites();
   const favoritesDetails = useFavoriteDetails(favoritesList, true);
+  const favoriteLinesList = useFavoriteLines();
   const favoriteJourneys = useFavoriteJourneys();
   const journeyHistory = useJourneyHistory();
 
@@ -3259,6 +3261,51 @@ function App() {
                           })}
                         </div>
                       )}
+
+                      {/* ── Lignes favorites ──────────────────────────────
+                          Même rangée que les arrêts, en plus court : la
+                          pastille de la ligne, son nom, un chevron. Un clic
+                          ouvre sa fiche, comme depuis la recherche. */}
+                      {favoriteLinesList.length > 0 && (
+                        <div className="mt-4">
+                          <h3 className="mb-2 text-sm font-semibold text-slate-300">
+                            {language === 'fr' ? 'Lignes' : 'Lines'}
+                          </h3>
+                          <div className="space-y-2">
+                            {favoriteLinesList.map(fav => (
+                              <button
+                                key={fav.lineId}
+                                type="button"
+                                onClick={() => {
+                                  setIsFavBtnHovered(false);
+                                  setIsFavPanelHovered(false);
+                                  const line = allLines.find(l => l.id === fav.lineId);
+                                  handleLineSearchSelect(
+                                    line || {
+                                      id: fav.lineId,
+                                      shortName: fav.shortName,
+                                      longName: fav.longName,
+                                      color: fav.color,
+                                      textColor: fav.textColor,
+                                      family: 'other',
+                                    }
+                                  );
+                                }}
+                                className="flex w-full items-center gap-3 rounded-[26px] border border-slate-800 bg-slate-900 px-3.5 py-3 text-left transition hover:bg-slate-800/70"
+                              >
+                                <LineBadge
+                                  line={{ id: fav.lineId, shortName: fav.shortName, color: fav.color, textColor: fav.textColor }}
+                                  size="xs"
+                                />
+                                <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-white">
+                                  {fav.longName}
+                                </span>
+                                <ChevronRightIcon className="h-5 w-5 flex-shrink-0 text-slate-400" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3610,10 +3657,25 @@ function App() {
           language={language}
           theme={effectiveTheme}
           stopDetails={favoritesDetails}
+          favoriteLines={favoriteLinesList}
           journeys={favoriteJourneys}
           disruptedLines={disruptedLineCodes}
           lineLookup={allLinesLookup}
           onScrolledChange={setIsNavCompact}
+          onOpenLine={fav => {
+            setIsFavoritesOpen(false);
+            const line = allLines.find(l => l.id === fav.lineId);
+            handleLineSearchSelect(
+              line || {
+                id: fav.lineId,
+                shortName: fav.shortName,
+                longName: fav.longName,
+                color: fav.color,
+                textColor: fav.textColor,
+                family: 'other',
+              }
+            );
+          }}
           onOpenStop={(stopId, lineId) => {
             const favorite = favoritesList.find(entry => entry.stopId === stopId);
             const lineFilter = lineId

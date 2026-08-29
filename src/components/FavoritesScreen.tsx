@@ -31,6 +31,7 @@ import { FavoriteStopScreen } from './FavoriteStopScreen';
 import { FavoriteJourneyScreen, defaultJourneyTitle } from './FavoriteJourneyScreen';
 import { favoriteStopLines } from '../utils/favoriteDepartures';
 import { removeFavoriteAndNotify } from '../services/favorites';
+import type { FavoriteLine } from '../services/favoriteLines';
 import {
   removeFavoriteJourney,
   renameFavoriteJourney,
@@ -55,6 +56,8 @@ interface FavoritesScreenProps {
   theme?: 'light' | 'dark';
   /** Les arrêts favoris et leurs passages, déjà chargés et rafraîchis par l'app. */
   stopDetails: FavoriteDetail[];
+  /** Les lignes mises en favori depuis leur fiche. */
+  favoriteLines: FavoriteLine[];
   journeys: FavoriteJourney[];
   /** Codes des lignes perturbées, en majuscules — pour les pastilles d'alerte. */
   disruptedLines?: Set<string>;
@@ -65,6 +68,8 @@ interface FavoritesScreenProps {
    * une ligne, la fiche s'ouvre filtrée sur elle.
    */
   onOpenStop: (stopId: string, lineId?: string) => void;
+  /** Ouvre la fiche d'une ligne favorite — la page se referme derrière. */
+  onOpenLine: (favoriteLine: FavoriteLine) => void;
   /** Rejoue un trajet dans le planificateur, avec un itinéraire déjà choisi ou non. */
   onOpenJourney: (journey: FavoriteJourney, itinerary?: RouteItinerary) => void;
   /** Ouvre la page de configuration : historique et ajout de trajets. */
@@ -78,6 +83,7 @@ const getText = (language: 'fr' | 'en') => {
   return {
     title: isFr ? 'Favoris' : 'Favorites',
     stops: isFr ? 'Arrêts' : 'Stops',
+    lines: isFr ? 'Lignes' : 'Lines',
     journeys: isFr ? 'Trajets' : 'Journeys',
     noStops: isFr
       ? 'Aucun arrêt en favori. Ouvre un arrêt et touche l’étoile pour le garder ici.'
@@ -99,10 +105,12 @@ export function FavoritesScreen({
   language,
   theme = 'dark',
   stopDetails,
+  favoriteLines,
   journeys,
   disruptedLines,
   lineLookup,
   onOpenStop,
+  onOpenLine,
   onOpenJourney,
   onConfigureJourneys,
   onScrolledChange,
@@ -232,6 +240,32 @@ export function FavoritesScreen({
               </div>
             )}
           </section>
+
+          {/* ── Lignes ─────────────────────────────────────────────────── */}
+          {favoriteLines.length > 0 && (
+            <section className="mb-9">
+              <h3 className={`mb-3 px-1 text-sm font-semibold leading-none ${mutedClass}`}>{text.lines}</h3>
+              <div className="space-y-2">
+                {favoriteLines.map(fav => (
+                  <button
+                    key={fav.lineId}
+                    type="button"
+                    onClick={() => onOpenLine(fav)}
+                    className={rowClass}
+                  >
+                    <LineBadge
+                      line={{ id: fav.lineId, shortName: fav.shortName, color: fav.color, textColor: fav.textColor }}
+                      size="sm"
+                    />
+                    <span className={`min-w-0 flex-1 ${titleClass}`}>
+                      <MarqueeText text={fav.longName} className="text-[16px] font-semibold" gap={40} />
+                    </span>
+                    <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${mutedClass}`} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* ── Trajets ────────────────────────────────────────────────── */}
           <section>

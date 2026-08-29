@@ -528,7 +528,7 @@ const METRES_PER_DEG_LON_AT_45 = 78710;
  * ponctuation, pour que « Berriat-Le Magasin » et « Berriat - Le Magasin »
  * soient reconnus comme le même arrêt.
  */
-function stopNameKey(value: string | undefined | null): string {
+export function stopNameKey(value: string | undefined | null): string {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
