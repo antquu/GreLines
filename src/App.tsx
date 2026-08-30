@@ -3542,9 +3542,10 @@ function App() {
              sort par le bas en emportant la barre d'onglets, puis remonte quand
              on repose la carte. C'est le seul moment où l'écran appartient
              entièrement à autre chose qu'à la carte du réseau. */
-          isOpen={isNearbySheetOpen && !isRouteSidebarOpen && !isCardFocused && !(isMobile && isSidebarOpen)}
-          locked={isAccountOpen || isFavoritesOpen}
-          lockedScreen={isAccountOpen ? 'account' : isFavoritesOpen ? 'favorites' : undefined}
+          isOpen={isNearbySheetOpen && !isCardFocused && !(isMobile && isSidebarOpen)}
+          locked={isAccountOpen || isFavoritesOpen || isRouteSidebarOpen}
+          lockedScreen={isAccountOpen ? 'account' : isFavoritesOpen ? 'favorites' : isRouteSidebarOpen ? 'route' : undefined}
+          layerAbove={isRouteSidebarOpen}
           /* La liste de résultats vit dans l'en-tête, qui est la poignée de la
              feuille : tant qu'elle est ouverte, le glissement vertical lui
              appartient. */
@@ -3584,6 +3585,7 @@ function App() {
             setIsFavoritesOpen(true);
           }}
           onLeaveFavorites={() => setIsFavoritesOpen(false)}
+          onLeaveRoute={resetRoutePlanner}
           navCompact={(isAccountOpen || isFavoritesOpen) && isNavCompact}
           language={language}
           theme={effectiveTheme}

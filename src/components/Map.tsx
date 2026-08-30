@@ -95,6 +95,7 @@ interface MapProps {
 const MAX_LABEL_LINE_BADGES = 3;
 
 const STOPS_LAYER_ID = 'stops-circles';
+const ROAD_LABELS_LAYER_ID = 'Road labels';
 
 /** Durée du contact au-delà de laquelle on désigne un point plutôt qu'on ne fait glisser la carte. */
 const LONG_PRESS_MS = 500;
@@ -1392,6 +1393,7 @@ const MapComponentBase = (
           <Layer
             id={STOPS_LAYER_ID}
             type="circle"
+            beforeId={ROAD_LABELS_LAYER_ID}
             paint={{
               'circle-radius': [
                 'interpolate', ['linear'], ['zoom'],

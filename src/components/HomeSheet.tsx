@@ -205,7 +205,9 @@ interface HomeSheetProps {
    * écran verrouillant allumait « Compte » : ouvrir les favoris allumait donc
    * le profil, ce qui désignait un écran où l'on n'était pas.
    */
-  lockedScreen?: 'account' | 'favorites';
+  lockedScreen?: 'account' | 'favorites' | 'route';
+  /** Place la barre au-dessus d'un écran plein comme le planificateur. */
+  layerAbove?: boolean;
   /**
    * La recherche est ouverte : la liste de résultats a le geste vertical.
    *
@@ -222,6 +224,8 @@ interface HomeSheetProps {
   onLeaveAccount?: () => void;
   /** Quitte l'écran Favoris : tout autre onglet le referme. */
   onLeaveFavorites?: () => void;
+  /** Quitte le planificateur quand un autre onglet est choisi. */
+  onLeaveRoute?: () => void;
   /** Resserre la barre d'onglets : l'écran du dessous est en train de défiler. */
   navCompact?: boolean;
   onOpenItinerary: () => void;
@@ -483,9 +487,11 @@ export const HomeSheet = ({
   onOpenFavorites,
   locked = false,
   lockedScreen,
+  layerAbove = false,
   searchOpen = false,
   onLeaveAccount,
   onLeaveFavorites,
+  onLeaveRoute,
   navCompact = false,
   onOpenItinerary,
   onSnapChange,
@@ -674,6 +680,7 @@ export const HomeSheet = ({
         setActiveTab('home');
         onLeaveAccount?.();
         onLeaveFavorites?.();
+        onLeaveRoute?.();
         if (snapIdx > 1) collapseToMini();
         else sheetRef.current?.snapTo(2);
       },
@@ -695,6 +702,7 @@ export const HomeSheet = ({
       Icon: StarIcon,
       onSelect: () => {
         setActiveTab('favorites');
+        onLeaveRoute?.();
         onOpenFavorites();
       },
     },
@@ -705,10 +713,11 @@ export const HomeSheet = ({
       onSelect: () => {
         setActiveTab('account');
         onLeaveFavorites?.();
+        onLeaveRoute?.();
         onOpenAccount();
       },
     },
-  ], [text, onOpenItinerary, onOpenAccount, onOpenFavorites, onLeaveAccount, onLeaveFavorites, snapIdx]);
+  ], [text, onOpenItinerary, onOpenAccount, onOpenFavorites, onLeaveAccount, onLeaveFavorites, onLeaveRoute, snapIdx]);
 
   /**
    * Marge latérale de la pastille repliée.
@@ -793,7 +802,7 @@ export const HomeSheet = ({
   return (
     <Sheet
       ref={sheetRef}
-      style={{ zIndex: 10 }}
+      style={{ zIndex: layerAbove ? 1001 : 10 }}
       isOpen={isOpen}
       onClose={onClose}
       snapPoints={mapSheetSnapPoints({ bottomInset: safeBottom, noHandle: locked, compact: navCompact })}
