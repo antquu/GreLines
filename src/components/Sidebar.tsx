@@ -18,6 +18,7 @@ import { TransportModeIcon } from './TransportModeIcon';
 import { normalizeMode } from '../utils/transportMode';
 import { LineBadge } from './LineBadge';
 import { DepartureLineBadge } from './DepartureLineBadge';
+import { NextServiceDepartures } from './NextServiceDepartures';
 import { getStopTrafficAlerts, filterAlertsBySelectedLines } from '../utils/stopTrafficMatcher';
 import { getTimetable, isLastDeparture, toTimetableRouteId, type Timetable } from '../services/timetable';
 import { LastRunRibbon, LAST_RUN_TEXT } from './LastRunRibbon';
@@ -930,7 +931,20 @@ export const Sidebar = ({
                     </div>
                   </motion.div>
                 );
-              }) : (
+              }) : currentStopDetail.lastUpdate ? (
+                /* Plus rien aujourd'hui : on montre la reprise du lendemain
+                   plutôt qu'une fiche muette. Le repli attend qu'un
+                   rafraîchissement ait vraiment eu lieu : sans cela il partait
+                   chercher la journée entière pendant le premier chargement,
+                   pour rien. */
+                <NextServiceDepartures
+                  stopId={currentStopDetail.id}
+                  lines={currentStopDetail.lines}
+                  selectedLines={selectedLines}
+                  language={language}
+                  emptyLabel={text.noDeparturesAvailable}
+                />
+              ) : (
                 <p className="text-sm text-slate-500 py-6 text-center">{text.noDeparturesAvailable}</p>
               )}
             </div>

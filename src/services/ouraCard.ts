@@ -11,9 +11,15 @@
  * compte — GreLines n'en a pas — mais à un identifiant d'appareil tiré au sort
  * une fois pour toutes. L'appareil retrouve ainsi ses cartes, sans que
  * personne ait eu à s'inscrire.
+ *
+ * Rien ici ne lit une table directement : les tables `oura_*` sont fermées à
+ * la clé publique, et chaque accès passe par une fonction de la base qui
+ * exige un numéro de carte, ou l'identifiant de l'appareil, et ne rend que ce
+ * qui s'y rattache (`supabase/oura-lockdown.sql`).
  */
 
 import { supabase, isSupabaseConfigured } from './supabase';
+import { linkedCardCode } from './account';
 
 const AIRWEB_ENDPOINT = 'https://api.grenoble.run.airweb.fr/shop/medias';
 /** Préfixe du réseau grenoblois dans les identifiants Airweb. */
@@ -261,30 +267,19 @@ function toCard(row: CardRow): OuraCard {
 export async function listOuraCards(): Promise<OuraCard[]> {
   if (!supabase) return [];
 
-  const { data } = await supabase
-    .from('oura_cards')
-    .select('card_code')
-    .eq('device_id', getDeviceId())
-    .order('created_at', { ascending: true });
+  const { data } = await supabase.rpc('oura_device_cards', { p_device: getDeviceId() });
 
-  const linked = (data ?? []).map(row => String((row as { card_code: string }).card_code));
+  const linked = (Array.isArray(data) ? data : []).map(code => String(code));
   const codes = [...new Set([...linked, ...readLocalCodes()])];
   if (codes.length === 0) return [];
   writeLocalCodes(codes);
 
-  const { data: holders, error } = await supabase
-    .from('oura_holders')
-    .select('*')
-    .in('card_code', codes);
-  if (error || !holders) return [];
+  const { data: holders, error } = await supabase.rpc('oura_holders_get', { p_codes: codes });
+  if (error || !Array.isArray(holders)) return [];
 
   const missing = codes.filter(code => !linked.includes(code));
-  if (missing.length > 0) {
-    void supabase
-      .from('oura_cards')
-      .upsert(missing.map(code => ({ device_id: getDeviceId(), card_code: code })), {
-        onConflict: 'device_id,card_code',
-      });
+  for (const code of missing) {
+    void supabase.rpc('oura_card_link', { p_device: getDeviceId(), p_code: code });
   }
 
   const byCode = new Map((holders as CardRow[]).map(row => [row.card_code, row]));
@@ -312,11 +307,7 @@ export async function listOuraCards(): Promise<OuraCard[]> {
 export async function findKnownCard(rawCode: string): Promise<OuraCard | null> {
   if (!supabase) return null;
   const code = normalizeCardCode(rawCode);
-  const { data, error } = await supabase
-    .from('oura_holders')
-    .select('*')
-    .eq('card_code', code)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('oura_holder_get', { p_code: code }).maybeSingle();
   if (error || !data) return null;
   return toCard(data as CardRow);
 }
@@ -359,15 +350,13 @@ export async function saveTestCard(
   }
 
   const { data, error } = await supabase
-    .from('oura_holders')
-    .update({
-      first_name: input.firstName?.trim() || null,
-      last_name: input.lastName?.trim() || null,
-      ...(photoPath ? { photo_path: photoPath } : {}),
+    .rpc('oura_test_card_save', {
+      p_code: code,
+      p_first_name: input.firstName?.trim() || null,
+      p_last_name: input.lastName?.trim() || null,
+      p_photo_path: photoPath ?? null,
     })
-    .eq('card_code', code)
-    .select()
-    .single();
+    .maybeSingle();
   if (error || !data) return null;
 
   await attachKnownCard(code);
@@ -408,33 +397,27 @@ export async function saveOuraCard(input: SaveCardInput): Promise<OuraCard | nul
   }
 
   const contract = currentContract(lookup.contracts);
-  const holder = {
-    card_code: lookup.code,
-    first_name: input.firstName?.trim() || null,
-    last_name: input.lastName?.trim() || null,
-    birth_date: lookup.birthDate || null,
-    expires_at: lookup.expiresAt || null,
-    contract_label: contract?.label || null,
-    contract_starting_at: contract?.startingAt || null,
-    contract_ending_at: contract?.endingAt || null,
-    network_label: contract?.networkLabel || null,
-    ...(photoPath ? { photo_path: photoPath } : {}),
-    is_expired: lookup.isExpired,
-    is_blacklisted: lookup.isBlackListed,
-    is_locked: lookup.isLocked,
-    is_invalid: lookup.isInvalid,
-  };
-
   const { data, error } = await supabase
-    .from('oura_holders')
-    .upsert(holder, { onConflict: 'card_code' })
-    .select()
-    .single();
+    .rpc('oura_holder_save', {
+      p_code: lookup.code,
+      p_first_name: input.firstName?.trim() || null,
+      p_last_name: input.lastName?.trim() || null,
+      p_birth_date: lookup.birthDate || null,
+      p_expires_at: lookup.expiresAt || null,
+      p_contract_label: contract?.label || null,
+      p_contract_starting_at: contract?.startingAt || null,
+      p_contract_ending_at: contract?.endingAt || null,
+      p_network_label: contract?.networkLabel || null,
+      p_photo_path: photoPath || null,
+      p_is_expired: lookup.isExpired,
+      p_is_blacklisted: lookup.isBlackListed,
+      p_is_locked: lookup.isLocked,
+      p_is_invalid: lookup.isInvalid,
+    })
+    .maybeSingle();
   if (error || !data) return null;
 
-  await supabase
-    .from('oura_cards')
-    .upsert({ device_id: deviceId, card_code: lookup.code }, { onConflict: 'device_id,card_code' });
+  await supabase.rpc('oura_card_link', { p_device: deviceId, p_code: lookup.code });
   rememberLocalCode(lookup.code);
 
   return toCard(data as CardRow);
@@ -449,9 +432,7 @@ export async function saveOuraCard(input: SaveCardInput): Promise<OuraCard | nul
 export async function attachKnownCard(cardCode: string): Promise<boolean> {
   if (!supabase) return false;
   const code = normalizeCardCode(cardCode);
-  await supabase
-    .from('oura_cards')
-    .upsert({ device_id: getDeviceId(), card_code: code }, { onConflict: 'device_id,card_code' });
+  await supabase.rpc('oura_card_link', { p_device: getDeviceId(), p_code: code });
   rememberLocalCode(code);
   void announceWalletAdd(code);
   return true;
@@ -488,10 +469,7 @@ export async function transferCard(
         photoPath: previous?.photoPath,
       });
   if (!saved) return null;
-  await supabase
-    .from('oura_holders')
-    .update({ is_disabled: true })
-    .eq('card_code', normalizeCardCode(fromCode));
+  await supabase.rpc('oura_holder_disable', { p_code: normalizeCardCode(fromCode) });
   return saved;
 }
 
@@ -550,30 +528,67 @@ export async function verifyCards(cards: OuraCard[]): Promise<OuraCard[]> {
  * Suit les changements d'état des cartes de cet appareil.
  *
  * Une carte coupée — ou remise en service — depuis le panneau d'administration
- * doit se voir aussitôt : le porteur n'a pas à recharger la page pour savoir
- * que son titre ne vaut plus, et encore moins pour retrouver un titre qu'on
- * vient de lui rendre.
- */
-/**
- * Un canal par abonné, et non un canal partagé.
+ * doit se voir sans recharger la page : le porteur n'a pas à deviner que son
+ * titre ne vaut plus, et encore moins qu'on vient de le lui rendre.
  *
- * Supabase indexe ses canaux par nom : deux appels avec le même nom retombaient
- * sur le même objet, et le second tentait d'y ajouter ses écouteurs alors qu'il
- * était déjà souscrit — ce que la bibliothèque refuse en levant. Depuis que
- * l'application écoute à deux endroits (l'écran Compte et l'avis de nouvelle
- * notification), il faut un nom distinct par abonnement.
+ * On ne peut plus écouter les tables en temps réel : elles sont fermées à la
+ * clé publique, et Supabase n'envoie que ce que l'abonné a le droit de lire.
+ * On demande donc régulièrement la date du dernier mouvement sur nos cartes,
+ * et on ne prévient que si elle a bougé. Vingt secondes, onglet visible
+ * seulement : assez réactif pour un titre coupé, assez rare pour ne rien
+ * coûter à un téléphone posé sur une table.
  */
-let cardChannelSeq = 0;
+const CHANGE_POLL_MS = 20_000;
+
+/** Les numéros dont l'appareil se soucie : ses cartes, et celle du compte. */
+function watchedCodes(): string[] {
+  const codes = readLocalCodes();
+  const account = linkedCardCode();
+  if (account) codes.push(account);
+  return [...new Set(codes)];
+}
 
 export function subscribeToCards(onChange: () => void): () => void {
   const client = supabase;
   if (!client) return () => {};
-  const channel = client
-    .channel(`oura-holders-${++cardChannelSeq}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'oura_holders' }, onChange)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'oura_notifications' }, onChange)
-    .subscribe();
-  return () => { void client.removeChannel(channel); };
+
+  let lastSeen: string | null | undefined;
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const schedule = () => {
+    if (stopped) return;
+    clearTimeout(timer);
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    timer = setTimeout(() => { void check(); }, CHANGE_POLL_MS);
+  };
+
+  const check = async () => {
+    if (stopped) return;
+    const codes = watchedCodes();
+    if (codes.length > 0) {
+      const { data, error } = await client.rpc('oura_last_change', { p_codes: codes });
+      if (!error && !stopped) {
+        const seen = data ? String(data) : null;
+        if (lastSeen !== undefined && seen !== lastSeen) onChange();
+        lastSeen = seen;
+      }
+    }
+    schedule();
+  };
+
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') void check();
+  };
+
+  void check();
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
+  };
 }
 
 /** Un lien attaché à un message : un intitulé et une adresse. */
@@ -620,13 +635,11 @@ function parseNotificationLinks(raw: unknown): OuraNotificationLink[] {
  */
 export async function listNotifications(cardCode: string): Promise<OuraNotification[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from('oura_notifications')
-    .select('*')
-    .eq('card_code', normalizeCardCode(cardCode))
-    .order('created_at', { ascending: false })
-    .limit(10);
-  if (error || !data) return [];
+  const { data, error } = await supabase.rpc('oura_notifications_list', {
+    p_code: normalizeCardCode(cardCode),
+    p_limit: 10,
+  });
+  if (error || !Array.isArray(data)) return [];
   return (data as Array<Record<string, any>>).map(row => ({
     id: String(row.id),
     title: String(row.title),
@@ -646,23 +659,16 @@ export async function listNotifications(cardCode: string): Promise<OuraNotificat
  */
 async function announceWalletAdd(cardCode: string): Promise<void> {
   if (!supabase) return;
-  await supabase.from('oura_notifications').insert({
-    card_code: cardCode,
-    title: 'Carte ajoutée à un GreLines Wallet',
-    body: "Quelqu'un vient d'ajouter cette carte à son portefeuille GreLines. Si ce n'est pas vous, retirez-la de cet appareil et prévenez le réseau.",
-    kind: 'wallet',
-  });
+  // Le texte du message vit dans la base : un navigateur ne compose pas de
+  // notification à la place du panneau.
+  await supabase.rpc('oura_wallet_announce', { p_code: cardCode });
 }
 
 export async function deleteOuraCard(cardCode: string): Promise<boolean> {
   const code = normalizeCardCode(cardCode);
   forgetLocalCode(code);
   if (!supabase) return true;
-  await supabase
-    .from('oura_cards')
-    .delete()
-    .eq('device_id', getDeviceId())
-    .eq('card_code', code);
+  await supabase.rpc('oura_card_unlink', { p_device: getDeviceId(), p_code: code });
   return true;
 }
 

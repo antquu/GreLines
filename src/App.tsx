@@ -3530,7 +3530,10 @@ function App() {
           via the user's explicit X tap. */}
       {/* Le planificateur ouvert prend l'écran, y compris replié sur la carte
           où il ne laisse qu'un bandeau : la barre de navigation de l'accueil
-          se rangerait juste dessous, deux barres l'une sur l'autre. */}
+          se rangerait juste dessous, deux barres l'une sur l'autre. L'accueil
+          s'efface donc le temps de l'itinéraire, comme il s'efface pour une
+          fiche d'arrêt, et revient dès que le planificateur se referme — le
+          planificateur porte sa propre sortie, en haut et au glissement. */}
       {isMobile && (
         <HomeSheet
           /* La fiche d'arrêt ne se pose pas sur l'accueil : elle prend sa
@@ -3542,7 +3545,7 @@ function App() {
              sort par le bas en emportant la barre d'onglets, puis remonte quand
              on repose la carte. C'est le seul moment où l'écran appartient
              entièrement à autre chose qu'à la carte du réseau. */
-          isOpen={isNearbySheetOpen && !isCardFocused && !(isMobile && isSidebarOpen)}
+          isOpen={isNearbySheetOpen && !isCardFocused && !(isMobile && isSidebarOpen) && !isRouteSidebarOpen}
           locked={isAccountOpen || isFavoritesOpen || isRouteSidebarOpen}
           lockedScreen={isAccountOpen ? 'account' : isFavoritesOpen ? 'favorites' : isRouteSidebarOpen ? 'route' : undefined}
           layerAbove={isRouteSidebarOpen}

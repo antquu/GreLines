@@ -18,6 +18,10 @@
 -- le réseau nous ouvre ses comptes, ce lien accueillera l'identité réelle sans
 -- rien casser.
 
+-- NB : les politiques « anon_all » ci-dessous sont retirées par
+-- `oura-lockdown.sql`, à exécuter après ce fichier. Depuis, aucune table
+-- `oura_*` ne se lit ni ne s'écrit directement avec la clé publique.
+
 -- ---------------------------------------------------------------------------
 -- oura_holders : le porteur d'un numéro de carte.
 -- ---------------------------------------------------------------------------

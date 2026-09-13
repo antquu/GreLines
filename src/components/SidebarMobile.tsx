@@ -26,6 +26,7 @@ import { formatDepartureTime, refreshStopDepartures } from '../services/api';
 import { resolveLineStyle, isGrenobleNetworkLine } from '../utils/lineColors';
 import { LineBadge } from './LineBadge';
 import { DepartureLineBadge } from './DepartureLineBadge';
+import { NextServiceDepartures } from './NextServiceDepartures';
 import { LastRunRibbon, LAST_RUN_TEXT } from './LastRunRibbon';
 import { DepartureQuickActions } from './DepartureQuickActions';
 import { FaWheelchair } from 'react-icons/fa';
@@ -977,7 +978,18 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                       </div>
                     </motion.div>
                   );
-                }) : (
+                }) : currentStopDetail.lastUpdate ? (
+                  /* Plus rien aujourd'hui : on montre la reprise du lendemain
+                     plutôt qu'une fiche muette. Le repli attend qu'un
+                     rafraîchissement ait vraiment eu lieu. */
+                  <NextServiceDepartures
+                    stopId={currentStopDetail.id}
+                    lines={currentStopDetail.lines}
+                    selectedLines={selectedLines}
+                    language={language}
+                    emptyLabel={text.noDeparturesAvailable}
+                  />
+                ) : (
                   <p className="text-center text-slate-500 py-10 text-sm">{text.noDeparturesAvailable}</p>
                 )}
               </div>

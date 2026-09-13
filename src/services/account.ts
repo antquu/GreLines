@@ -10,6 +10,10 @@
  * pour qu'un changement de téléphone ne remette pas les compteurs à zéro. Un seul
  * compte par appareil, et on ne le supprime pas depuis l'application : les points
  * accumulés ne doivent pas s'effacer sur un geste maladroit.
+ *
+ * La table des comptes est fermée à la clé publique : tout passe par des
+ * fonctions de la base qui exigent le numéro de carte et ne rendent que ce
+ * compte-là (`supabase/oura-lockdown.sql`).
  */
 
 import { supabase, isSupabaseConfigured } from './supabase';
@@ -194,18 +198,8 @@ function fromRow(row: any): Account {
 /** Le compte de cet appareil, ou `null` s'il n'en a pas. */
 export async function loadAccount(): Promise<Account | null> {
   const code = linkedCardCode();
-  if (!code || !isSupabaseConfigured || !supabase) return null;
-  try {
-    const { data, error } = await supabase
-      .from('oura_accounts')
-      .select('*')
-      .eq('card_code', code)
-      .maybeSingle();
-    if (error || !data) return null;
-    return fromRow(data);
-  } catch {
-    return null;
-  }
+  if (!code) return null;
+  return loadAccountForCard(code);
 }
 
 /**
@@ -226,9 +220,7 @@ export async function loadAccountForCard(cardCode: string): Promise<Account | nu
   if (!isSupabaseConfigured || !supabase) return null;
   try {
     const { data, error } = await supabase
-      .from('oura_accounts')
-      .select('*')
-      .eq('card_code', cardCode)
+      .rpc('oura_account_get', { p_code: cardCode })
       .maybeSingle();
     if (error || !data) return null;
     return fromRow(data);
@@ -253,40 +245,17 @@ export async function createAccount(input: {
   avatarPath?: string | null;
 }): Promise<Account | null> {
   if (!isSupabaseConfigured || !supabase) return null;
-  const base = {
-    card_code: input.cardCode,
-    first_name: input.firstName ?? null,
-    last_name: input.lastName ?? null,
-    pseudo: input.pseudo,
-    avatar_emoji: input.avatarEmoji,
-    updated_at: new Date().toISOString(),
-  };
-
   try {
-    const write = (row: Record<string, unknown>) =>
-      supabase!
-        .from('oura_accounts')
-        .upsert(row, { onConflict: 'card_code' })
-        .select()
-        .maybeSingle();
-
-    let { data, error } = await write({ ...base, avatar_path: input.avatarPath ?? null });
-
-    /*
-     * La base peut être en retard d'une migration.
-     *
-     * `avatar_path` a été ajouté avec la photographie de profil ; entre le
-     * déploiement du code et l'exécution de `supabase/accounts.sql`, la colonne
-     * n'existe pas encore et l'écriture entière échoue. Plutôt que de rendre la
-     * création de compte impossible pendant ce laps de temps, on réessaie sans
-     * elle : le compte se crée, avec l'émoji ou la photo de la carte, et la
-     * photographie déposée est perdue — ce qui se répare en la redéposant une
-     * fois la colonne en place.
-     */
-    if (error && /avatar_path/.test(error.message)) {
-      ({ data, error } = await write(base));
-    }
-
+    const { data, error } = await supabase
+      .rpc('oura_account_create', {
+        p_code: input.cardCode,
+        p_first_name: input.firstName ?? null,
+        p_last_name: input.lastName ?? null,
+        p_pseudo: input.pseudo,
+        p_avatar_emoji: input.avatarEmoji,
+        p_avatar_path: input.avatarPath ?? null,
+      })
+      .maybeSingle();
     if (error || !data) return null;
     rememberCard(input.cardCode);
     return fromRow(data);
@@ -301,16 +270,17 @@ export async function updateAccount(
 ): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return false;
   try {
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    // Une clé présente avec `null` vaut « effacer », une clé absente « ne pas
+    // toucher » : c'est pour cette nuance que la base reçoit un objet.
+    const patch: Record<string, unknown> = {};
     if (changes.pseudo !== undefined) patch.pseudo = changes.pseudo;
     if (changes.avatarEmoji !== undefined) patch.avatar_emoji = changes.avatarEmoji;
     if (changes.avatarPath !== undefined) patch.avatar_path = changes.avatarPath;
-    let { error } = await supabase.from('oura_accounts').update(patch).eq('card_code', cardCode);
-    if (error && /avatar_path/.test(error.message)) {
-      delete patch.avatar_path;
-      ({ error } = await supabase.from('oura_accounts').update(patch).eq('card_code', cardCode));
-    }
-    return !error;
+    const { data, error } = await supabase.rpc('oura_account_update', {
+      p_code: cardCode,
+      p_changes: patch,
+    });
+    return !error && data === true;
   } catch {
     return false;
   }
@@ -320,13 +290,12 @@ export async function updateAccount(
 export async function isPseudoFree(pseudo: string, exceptCard?: string): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return true;
   try {
-    const { data } = await supabase
-      .from('oura_accounts')
-      .select('card_code')
-      .ilike('pseudo', pseudo)
-      .limit(1);
-    if (!Array.isArray(data) || data.length === 0) return true;
-    return data[0]?.card_code === exceptCard;
+    const { data, error } = await supabase.rpc('oura_pseudo_free', {
+      p_pseudo: pseudo,
+      p_except_code: exceptCard ?? null,
+    });
+    if (error) return true;
+    return data !== false;
   } catch {
     return true;
   }
@@ -421,16 +390,16 @@ export async function recordTrip(
 ): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    await supabase.from('oura_account_trips').insert({
-      card_code: cardCode,
-      origin: trip.origin ?? null,
-      destination: trip.destination ?? null,
-      started_at: trip.startedAt ?? null,
-      ended_at: trip.endedAt ?? null,
-      legs: trip.legs,
-      path: thinPath(trip.path),
-      points: trip.points,
-      travellers_helped: trip.travellersHelped,
+    await supabase.rpc('oura_trip_record', {
+      p_code: cardCode,
+      p_origin: trip.origin ?? null,
+      p_destination: trip.destination ?? null,
+      p_started_at: trip.startedAt ?? null,
+      p_ended_at: trip.endedAt ?? null,
+      p_legs: trip.legs,
+      p_path: thinPath(trip.path),
+      p_points: trip.points,
+      p_helped: trip.travellersHelped,
     });
   } catch {
   }
@@ -439,12 +408,10 @@ export async function recordTrip(
 export async function listTrips(cardCode: string, limit = 60): Promise<AccountTrip[]> {
   if (!isSupabaseConfigured || !supabase) return [];
   try {
-    const { data, error } = await supabase
-      .from('oura_account_trips')
-      .select('*')
-      .eq('card_code', cardCode)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+    const { data, error } = await supabase.rpc('oura_trips_list', {
+      p_code: cardCode,
+      p_limit: limit,
+    });
     if (error || !Array.isArray(data)) return [];
     return data.map((row: any) => ({
       id: String(row.id),

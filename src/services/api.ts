@@ -404,6 +404,9 @@ function getTramOccupancy(lineId: string, destination: string): 'EMPTY' | 'LIGHT
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 2 * 60 * 1000; // 2 min (plus court pour avoir des données plus fraîches)
 const DEPARTURES_CACHE_DURATION = 30 * 1000;
+/* Les horaires théoriques d'un jour donné ne bougent pas : une demi-heure de
+   cache évite de rappeler le réseau à chaque ouverture de fiche la nuit. */
+const NEXT_SERVICE_CACHE_DURATION = 30 * 60 * 1000;
 const ROUTES_CACHE_DURATION = 6 * 60 * 60 * 1000;
 const STOPS_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
 const STOPS_SNAPSHOT_KEY = 'stopsSnapshot_v3';
@@ -1255,6 +1258,127 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
 }
 
 /**
+ * Les premiers passages du prochain jour de service.
+ *
+ * Passé le dernier bus, la fiche d'un arrêt n'avait plus rien à dire : le temps
+ * réel ne renvoie rien la nuit, et « Aucun départ disponible » ne répond pas à
+ * la question qu'on se pose à ce moment-là, qui est « à quelle heure ça
+ * reprend demain matin ». Le réseau publie ses horaires théoriques jour par
+ * jour sur `/index/clusters/:id/stoptimes/:date` — même charge utile que le
+ * temps réel, donc même lecteur.
+ *
+ * La bascule de journée se fait à quatre heures, et non à minuit : à une heure
+ * du matin, le « prochain matin » est encore celui de la date du jour. Le
+ * réseau reprend vers cinq heures, l'heure creuse entre les deux tombe donc du
+ * bon côté quelle que soit la façon dont on compte.
+ */
+
+const SERVICE_DAY_START_HOUR = 4;
+
+/** Le jour de service dont on veut les premiers départs, au format `YYYYMMDD`. */
+function nextServiceDate(from: Date = new Date()): Date {
+  const date = new Date(from);
+  if (date.getHours() >= SERVICE_DAY_START_HOUR) date.setDate(date.getDate() + 1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+
+function toApiDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+}
+
+export interface NextServiceDepartures {
+  /** Minuit du jour de service rendu : la fiche a besoin de le nommer. */
+  date: Date;
+  /** `true` quand ce jour n'est pas la date du jour civil. */
+  tomorrow: boolean;
+  departures: Departure[];
+}
+
+/**
+ * Les premiers départs de chaque ligne et direction, au prochain jour de
+ * service. Rend `null` quand le réseau ne publie rien pour ce jour-là.
+ *
+ * On garde deux passages par direction : le premier, et celui d'après pour qui
+ * ne peut pas être au premier. Au-delà, c'est une fiche horaire, pas une
+ * réponse.
+ */
+export async function getNextServiceDayDepartures(
+  stopId: string,
+  perDirection: number = 2,
+): Promise<NextServiceDepartures | null> {
+  if (!stopId || providerOf(stopId)?.id === 'tcl') return null;
+
+  const date = nextServiceDate();
+  const dateParam = toApiDate(date);
+  const cacheKey = `departures_next_${stopId}_${dateParam}`;
+
+  const cached = getFromCache<NextServiceDepartures>(cacheKey, NEXT_SERVICE_CACHE_DURATION);
+  if (cached) return cached;
+
+  let clusterIds = [stopId];
+  if (stopsWithClusterCache.has(stopId)) {
+    clusterIds = getClusterIdsForStopId(stopId);
+  } else {
+    await getAllStops().catch(() => []);
+    clusterIds = stopsWithClusterCache.has(stopId)
+      ? getClusterIdsForStopId(stopId)
+      : [formatClusterId(stopId)];
+  }
+
+  const collected: Departure[] = [];
+  const seen = new Set<string>();
+
+  const responses = await Promise.all(
+    clusterIds.map(async (clusterId) => {
+      try {
+        const [res] = await Promise.all([
+          axios.get(
+            `${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes/${dateParam}`,
+            { headers: TAG_HEADERS },
+          ),
+          loadClusterRoutes(clusterId).catch(() => []),
+        ]);
+        return res.data;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  for (const data of responses) collectDepartures(data, collected, seen);
+
+  /* Le réseau rend la journée entière : on ne garde que ce qui reste à venir,
+     puis les tout premiers passages de chaque direction. */
+  const perKey = new Map<string, number>();
+  const departures: Departure[] = [];
+  for (const departure of collected) {
+    if (departure.departureTime < 0) continue;
+    const key = `${departure.lineId}::${departure.destination}`;
+    const taken = perKey.get(key) ?? 0;
+    if (taken >= perDirection) continue;
+    perKey.set(key, taken + 1);
+    departures.push(departure);
+  }
+
+  if (departures.length === 0) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const result: NextServiceDepartures = {
+    date,
+    tomorrow: date.getTime() !== today.getTime(),
+    departures,
+  };
+  setCache(cacheKey, result);
+  return result;
+}
+
+/**
  * Les prochains passages à un poteau précis.
  *
  * Le planificateur d'itinéraires ne rend jamais le cluster d'un arrêt : il rend
@@ -1347,6 +1471,7 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
             lineShortName: pattern.shortName ?? lineId,
             destination,
             departureTime: minutes,
+            at: depUnix * 1000,
             realtime: t.realtimeArrival !== undefined || t.realtimeDeparture !== undefined,
             type: patternRouteId && isSncfLine(patternRouteId)
               ? 'RAIL'

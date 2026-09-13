@@ -45,6 +45,13 @@ export interface Departure {
   lineShortName?: string;
   destination: string;
   departureTime: number;
+  /**
+   * L'instant du passage, en millisecondes. `departureTime` est un nombre de
+   * minutes figé à la lecture de l'API : suffisant pour un décompte rafraîchi
+   * toutes les trente secondes, trompeur pour une heure d'horloge affichée des
+   * heures plus tard, comme celle des premiers passages du lendemain.
+   */
+  at?: number;
   realtime: boolean;
   type: 'BUS' | 'TRAM' | 'RAIL' | 'METRO' | 'OTHER';
   occupancy?: 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED';

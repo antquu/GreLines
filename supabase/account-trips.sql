@@ -15,6 +15,10 @@
 -- au dernier.
 -- ---------------------------------------------------------------------------
 
+-- NB : les politiques « anon_all » ci-dessous sont retirées par
+-- `oura-lockdown.sql`, à exécuter après ce fichier. Depuis, aucune table
+-- `oura_*` ne se lit ni ne s'écrit directement avec la clé publique.
+
 create table if not exists public.oura_account_trips (
   id uuid primary key default gen_random_uuid(),
   -- La carte qui porte le compte, comme dans `oura_accounts`.

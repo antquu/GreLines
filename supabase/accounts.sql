@@ -15,6 +15,10 @@
 -- parmi des valeurs tirées au sort — voir plus bas.
 -- ---------------------------------------------------------------------------
 
+-- NB : les politiques « anon_all » ci-dessous sont retirées par
+-- `oura-lockdown.sql`, à exécuter après ce fichier. Depuis, aucune table
+-- `oura_*` ne se lit ni ne s'écrit directement avec la clé publique.
+
 create table if not exists public.oura_accounts (
   -- Le numéro de carte, en clé : un compte par carte, une carte par compte.
   card_code text primary key,
