@@ -513,15 +513,72 @@ export async function verifyCards(cards: OuraCard[]): Promise<OuraCard[]> {
     if (card.isTest || card.isMissing) return card;
     const found = await lookupOuraCard(card.cardCode);
     if (!found) return { ...card, isNetworkMissing: true };
-    return {
+
+    /*
+     * L'abonnement aussi, pas seulement les drapeaux.
+     *
+     * Un titre qui expire en septembre et qu'on renouvelle en octobre reste
+     * « expiré » tant qu'on garde la date de fin enregistrée le jour de
+     * l'ajout : c'est elle que regarde `cardBlockedBy`. On reprend donc le
+     * contrat en cours tel que le réseau le voit, et on le range en base pour
+     * que les autres appareils, et le panneau, le voient aussi.
+     */
+    const contract = currentContract(found.contracts);
+    const refreshed: OuraCard = {
       ...card,
       isNetworkMissing: false,
+      expiresAt: found.expiresAt ?? card.expiresAt,
+      contractLabel: contract?.label ?? card.contractLabel,
+      contractStartingAt: contract?.startingAt ?? card.contractStartingAt,
+      contractEndingAt: contract?.endingAt ?? card.contractEndingAt,
+      networkLabel: contract?.networkLabel ?? card.networkLabel,
       isExpired: found.isExpired,
       isBlacklisted: found.isBlackListed,
       isLocked: found.isLocked,
       isInvalid: found.isInvalid,
     };
+
+    // Les dates se comparent par leur instant : la base et le réseau n'écrivent
+    // pas le même fuseau, et une écriture par carte à chaque ouverture ne se
+    // justifie que si quelque chose a vraiment bougé.
+    const sameInstant = (a?: string, b?: string) =>
+      (a ? new Date(a).getTime() : null) === (b ? new Date(b).getTime() : null);
+    const changed =
+      !sameInstant(refreshed.expiresAt, card.expiresAt)
+      || !sameInstant(refreshed.contractStartingAt, card.contractStartingAt)
+      || !sameInstant(refreshed.contractEndingAt, card.contractEndingAt)
+      || refreshed.contractLabel !== card.contractLabel
+      || refreshed.networkLabel !== card.networkLabel
+      || refreshed.isExpired !== card.isExpired
+      || refreshed.isBlacklisted !== card.isBlacklisted
+      || refreshed.isLocked !== card.isLocked
+      || refreshed.isInvalid !== card.isInvalid;
+    if (changed) void persistVerification(refreshed, found);
+
+    return refreshed;
   }));
+}
+
+/** Range en base ce que le réseau vient de dire d'une carte. */
+async function persistVerification(card: OuraCard, found: OuraCardLookup): Promise<void> {
+  if (!supabase) return;
+  const contract = currentContract(found.contracts);
+  await supabase.rpc('oura_holder_save', {
+    p_code: card.cardCode,
+    p_first_name: card.firstName || null,
+    p_last_name: card.lastName || null,
+    p_birth_date: found.birthDate || card.birthDate || null,
+    p_expires_at: found.expiresAt || null,
+    p_contract_label: contract?.label || null,
+    p_contract_starting_at: contract?.startingAt || null,
+    p_contract_ending_at: contract?.endingAt || null,
+    p_network_label: contract?.networkLabel || null,
+    p_photo_path: null,
+    p_is_expired: found.isExpired,
+    p_is_blacklisted: found.isBlackListed,
+    p_is_locked: found.isLocked,
+    p_is_invalid: found.isInvalid,
+  });
 }
 
 /**
