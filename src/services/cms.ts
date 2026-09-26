@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { isOffline } from './offlineSchedule';
 
 export interface CmsPopup {
   id: string;
@@ -151,15 +152,44 @@ export interface LineOverrideEntry {
   hidden: boolean;
 }
 
+/**
+ * Les corrections d'arrêts, gardées sur l'appareil.
+ *
+ * Le chargement des arrêts les attend avant d'afficher la carte. Sans réseau,
+ * Supabase réessaie pendant sept secondes avant d'abandonner, et l'écran de
+ * lancement restait figé tout ce temps. Hors connexion, on sert la dernière
+ * liste reçue, tout de suite.
+ */
+const STOP_OVERRIDES_KEY = 'greLines_stopOverrides_v1';
+
+function toOverrideMap(entries: StopOverrideEntry[]): Map<string, StopOverrideEntry> {
+  return new Map(entries.map((o) => [o.stop_id, o]));
+}
+
+function storedStopOverrides(): Map<string, StopOverrideEntry> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STOP_OVERRIDES_KEY) || '[]');
+    return Array.isArray(parsed) ? toOverrideMap(parsed as StopOverrideEntry[]) : new Map();
+  } catch {
+    return new Map();
+  }
+}
+
 export async function getStopOverrides(): Promise<Map<string, StopOverrideEntry>> {
   if (!isSupabaseConfigured || !supabase) return new Map();
+  if (isOffline()) return storedStopOverrides();
 
   try {
     const { data, error } = await supabase.from('stop_overrides').select('*');
-    if (error || !data) return new Map();
-    return new Map((data as StopOverrideEntry[]).map((o) => [o.stop_id, o]));
+    if (error || !data) return storedStopOverrides();
+    try {
+      localStorage.setItem(STOP_OVERRIDES_KEY, JSON.stringify(data));
+    } catch {
+      /* Plein ou refusé : on les redemandera. */
+    }
+    return toOverrideMap(data as StopOverrideEntry[]);
   } catch {
-    return new Map();
+    return storedStopOverrides();
   }
 }
 

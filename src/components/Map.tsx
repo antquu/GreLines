@@ -1,3 +1,4 @@
+import { useReconnectCount } from '../hooks/useIsOffline';
 ﻿import { useRef, forwardRef, useImperativeHandle, useCallback, useState, useMemo, useEffect, memo } from 'react';
 import type { ForwardedRef } from 'react';
 import MapLibreMap, { Marker, Source, Layer } from 'react-map-gl/maplibre';
@@ -18,6 +19,7 @@ import { midpointOf, type McoLine } from '../services/mcoLines';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 import { motion } from 'framer-motion';
 import { VehicleGlyph } from './VehicleGlyph';
+import { DARK_MODE_MAP_STYLE_URL, LIGHT_MODE_MAP_STYLE_URL } from '../utils/mapStyles';
 import {
   EMPTY_SHARED_MOBILITY,
   FULL_BATTERY_PERCENT,
@@ -188,9 +190,6 @@ const sharedCirclePaint = (color: string) => ({
  */
 const MAX_DOM_LABELS = 40;
 
-/** Deux fonds de carte MapTiler : un pour chaque thème de l'app. */
-const DARK_MODE_MAP_STYLE_URL = 'https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl';
-const LIGHT_MODE_MAP_STYLE_URL = 'https://api.maptiler.com/maps/019f7c76-a3f8-751b-bedb-d7fe9d83d122/style.json?key=7TQErbyvEqFlis3QMmSl';
 
 export interface MapRef {
   centerOnStop: (stop: Stop) => void;
@@ -1226,6 +1225,37 @@ const MapComponentBase = (
       map.off('style.load', raiseStopsLayer);
     };
   }, [raiseStopsLayer, mapStyleUrl]);
+
+  /*
+   * Le réseau revient : la carte recharge ce qu'elle n'avait pas pu avoir.
+   *
+   * Ouverte sans connexion, elle restait noire même une fois le réseau revenu :
+   * MapLibre ne redemande ni un style ni une tuile qui ont échoué. Sans style,
+   * on le recharge en entier ; avec, on redemande les tuiles de chaque source.
+   */
+  const reconnects = useReconnectCount();
+  useEffect(() => {
+    if (reconnects === 0) return;
+    const map = mapRef.current?.getMap?.();
+    if (!map) return;
+    let style: ReturnType<typeof map.getStyle> | undefined;
+    try {
+      style = map.getStyle();
+    } catch {
+      style = undefined;
+    }
+    if (!style?.layers?.length) {
+      map.setStyle(mapStyleUrl);
+      return;
+    }
+    for (const sourceId of Object.keys(style.sources ?? {})) {
+      try {
+        map.refreshTiles(sourceId);
+      } catch {
+        /* Une source sans tuiles (un tracé, des points) n'a rien à redemander. */
+      }
+    }
+  }, [reconnects, mapStyleUrl]);
 
   const citizCollection = useMemo(
     () => toSharedCollection(visibleShared.citiz),

@@ -3,6 +3,18 @@ import { localCode, networkOf, providerOf, type ProviderId } from './providers';
 import { isSncfLine } from '../utils/lineColors';
 import type { Stop, Line, TrafficDetail, Departure, StopDetail } from '../types';
 import { idbGet, idbSet, mapWithConcurrency } from './persistentCache';
+import { buildLineLookup, getAllSemLines } from './allLines';
+import {
+  dayKindOf,
+  isOffline,
+  midnight,
+  readDaySchedule,
+  saveDaySchedule,
+  scheduleDepartures,
+  toScheduleDate,
+  type DaySchedule,
+  type SchedulePattern,
+} from './offlineSchedule';
 
 const TAG_API_BASE = 'https://data.mobilites-m.fr/api/routers/default';
 
@@ -738,7 +750,8 @@ function getStopLinesCacheEntry(stopId: string): StopLinesCacheEntry | null {
 }
 
 export function getCachedStopLines(stopId: string): Line[] | null {
-  return getStopLinesCacheEntry(stopId)?.data ?? null;
+  const data = getStopLinesCacheEntry(stopId)?.data;
+  return data && data.length > 0 ? data : null;
 }
 
 function setStopLinesCache(stopId: string, data: Line[]): void {
@@ -1229,10 +1242,12 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
       } else {
         clusterIds = [formatClusterId(stopId)];
       }
-    }const departures: Departure[] = [];
+    }
+    const departures: Departure[] = [];
     const seen = new Set<string>();
 
-    const responses = await Promise.all(
+    /* Sans réseau, inutile d'attendre que chaque requête échoue. */
+    const responses = isOffline() ? [] : await Promise.all(
       clusterIds.map(async (clusterId) => {
         try {
           const [res] = await Promise.all([
@@ -1250,11 +1265,208 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
       collectDepartures(data, departures, seen);
     }
 
-    setCache(cacheKey, departures);
-    return departures;
+    /*
+     * Le temps réel n'a pas répondu : on se rabat sur la fiche gardée.
+     * Il a répondu : on y ajoute, depuis la fiche, le prochain passage des
+     * lignes qu'il ne montrait pas, et l'on met la fiche du jour à jour.
+     */
+    const reached = responses.some(({ data }) => data !== null);
+    let result: Departure[];
+    if (!reached) {
+      result = await theoreticalDepartures(clusterIds, 3);
+    } else {
+      result = await withMissingLines(departures, clusterIds);
+      void refreshTodaySchedules(clusterIds);
+    }
+
+    setCache(cacheKey, result);
+    return result;
   } catch {
     return [];
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Horaires théoriques gardés sur l'appareil                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Réduit la journée d'un arrêt à ce qu'il faut pour en tirer des passages.
+ *
+ * Même lecture des patterns que le temps réel, pour que lignes et destinations
+ * portent exactement les mêmes noms des deux côtés : c'est ce qui permet de
+ * savoir qu'une ligne manque au temps réel.
+ */
+function trimDaySchedule(data: any, date: string): DaySchedule {
+  const patterns = new Map<string, SchedulePattern>();
+  if (!Array.isArray(data)) return { date, patterns: [] };
+
+  for (const patternGroup of data) {
+    const meta = readPattern(patternGroup.pattern ?? {});
+    const times = patternGroup.times ?? patternGroup.stoptimes ?? [];
+    if (!Array.isArray(times)) continue;
+
+    const key = `${meta.lineId}::${meta.destination}`;
+    let pattern = patterns.get(key);
+    if (!pattern) {
+      pattern = {
+        lineId: meta.lineId,
+        routeId: meta.routeId,
+        lineName: meta.lineName,
+        lineShortName: meta.lineShortName,
+        destination: meta.destination,
+        type: meta.type,
+        times: [],
+      };
+      patterns.set(key, pattern);
+    }
+    for (const t of times) {
+      const seconds = t?.scheduledDeparture;
+      if (typeof seconds === 'number') pattern.times.push(seconds);
+    }
+  }
+
+  for (const pattern of patterns.values()) {
+    pattern.times = Array.from(new Set(pattern.times)).sort((a, b) => a - b);
+  }
+  return { date, patterns: Array.from(patterns.values()).filter(p => p.times.length > 0) };
+}
+
+/** Charge et garde la journée d'un arrêt, à une date donnée. */
+async function fetchDaySchedule(clusterId: string, day: Date): Promise<DaySchedule | null> {
+  const date = toScheduleDate(day);
+  try {
+    /* Les routes d'abord : c'est d'elles que vient le mode, qu'on garde avec
+       la fiche pour qu'un tram reste un tram hors connexion. */
+    await loadClusterRoutes(clusterId).catch(() => []);
+    const response = await axios.get(
+      `${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes/${date}`,
+      { headers: TAG_HEADERS },
+    );
+    const schedule = trimDaySchedule(response.data, date);
+    if (schedule.patterns.length === 0) return null;
+    await saveDaySchedule(clusterId, schedule);
+    return schedule;
+  } catch {
+    return null;
+  }
+}
+
+/** Une seule tentative par arrêt et par date, le temps de la session. */
+const scheduleAttempts = new Set<string>();
+
+/**
+ * Met à jour la fiche d'une date si celle qu'on garde n'est pas la bonne.
+ *
+ * C'est ainsi que le cache se remplit au fil des arrêts consultés, sans
+ * téléchargement dédié : une requête par arrêt et par jour, au plus.
+ */
+async function ensureDaySchedule(clusterId: string, day: Date): Promise<void> {
+  const date = toScheduleDate(day);
+  const attempt = `${clusterId}_${date}`;
+  if (scheduleAttempts.has(attempt)) return;
+  scheduleAttempts.add(attempt);
+  const stored = await readDaySchedule(clusterId, day);
+  if (stored?.date === date && !stored.partial) return;
+  await fetchDaySchedule(clusterId, day);
+}
+
+async function refreshTodaySchedules(clusterIds: string[]): Promise<void> {
+  const today = midnight();
+  await Promise.all(clusterIds.map(clusterId => ensureDaySchedule(clusterId, today)));
+}
+
+/**
+ * Les passages à venir d'après la fiche gardée, jusqu'à la fin du jour de
+ * service. La veille compte aussi : ses courses d'après minuit sont notées
+ * au-delà de 24 h et tombent aujourd'hui.
+ */
+async function theoreticalDepartures(clusterIds: string[], perPattern: number): Promise<Departure[]> {
+  const yesterday = midnight(new Date(), -1);
+  const today = midnight();
+  const entries: Array<{ schedule: DaySchedule; day: Date }> = [];
+
+  await Promise.all(clusterIds.map(async (clusterId) => {
+    const [before, current] = await Promise.all([
+      readDaySchedule(clusterId, yesterday),
+      readDaySchedule(clusterId, today),
+    ]);
+    if (before) entries.push({ schedule: before, day: yesterday });
+    if (current) entries.push({ schedule: current, day: today });
+  }));
+
+  if (entries.length === 0) return [];
+  return scheduleDepartures(entries, {
+    from: Date.now() - 60 * 1000,
+    until: today.getTime() + (24 + SERVICE_DAY_START_HOUR) * 3600 * 1000,
+    perPattern,
+  });
+}
+
+/**
+ * Ajoute le prochain passage théorique des lignes que le temps réel ne
+ * montrait pas.
+ *
+ * Le temps réel ne rend que les passages des vingt prochaines minutes environ.
+ * Une ligne qui passe toutes les heures disparaissait de l'arrêt entre deux
+ * bus, comme si elle ne le desservait pas.
+ */
+async function withMissingLines(departures: Departure[], clusterIds: string[]): Promise<Departure[]> {
+  const theoretical = await theoreticalDepartures(clusterIds, 1);
+  if (theoretical.length === 0) return departures;
+
+  const present = new Set(departures.map(d => `${d.lineId}::${d.destination}`));
+  const missing = theoretical.filter(d => !present.has(`${d.lineId}::${d.destination}`));
+  if (missing.length === 0) return departures;
+
+  return [...departures, ...missing].sort((a, b) => a.departureTime - b.departureTime);
+}
+
+/**
+ * Télécharge d'avance la fiche des arrêts donnés, pour chaque genre de jour :
+ * aujourd'hui, puis le prochain jour de semaine, samedi et dimanche. C'est ce
+ * qui rend ces arrêts consultables sans aucun réseau.
+ *
+ * Rend le nombre d'arrêts dont une fiche au moins est gardée.
+ */
+export async function prefetchOfflineSchedules(
+  stopIds: string[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<number> {
+  if (isOffline()) return 0;
+  const ids = Array.from(new Set(stopIds.filter(id => id && providerOf(id)?.id !== 'tcl')));
+  if (ids.length === 0) return 0;
+
+  await getAllStops().catch(() => []);
+
+  /* Un jour de chaque sorte dans la semaine qui vient, en commençant par
+     aujourd'hui : c'est lui qui sert le plus vite. */
+  const days: Date[] = [];
+  const kinds = new Set<string>();
+  for (let offset = 0; offset < 7 && kinds.size < 3; offset += 1) {
+    const day = midnight(new Date(), offset);
+    const kind = dayKindOf(day);
+    if (kinds.has(kind)) continue;
+    kinds.add(kind);
+    days.push(day);
+  }
+
+  let done = 0;
+  let stored = 0;
+  await mapWithConcurrency(ids, 3, async (stopId) => {
+    let any = false;
+    for (const clusterId of getClusterIdsForStopId(stopId)) {
+      for (const day of days) {
+        const current = await readDaySchedule(clusterId, day);
+        const fresh = current?.date === toScheduleDate(day) && !current.partial;
+        if (fresh || await fetchDaySchedule(clusterId, day)) any = true;
+      }
+    }
+    if (any) stored += 1;
+    done += 1;
+    onProgress?.(done, ids.length);
+  });
+  return stored;
 }
 
 /**
@@ -1333,7 +1545,7 @@ export async function getNextServiceDayDepartures(
   const collected: Departure[] = [];
   const seen = new Set<string>();
 
-  const responses = await Promise.all(
+  const responses: any[] = isOffline() ? clusterIds.map(() => null) : await Promise.all(
     clusterIds.map(async (clusterId) => {
       try {
         const [res] = await Promise.all([
@@ -1350,7 +1562,26 @@ export async function getNextServiceDayDepartures(
     }),
   );
 
-  for (const data of responses) collectDepartures(data, collected, seen);
+  responses.forEach((data, index) => {
+    collectDepartures(data, collected, seen);
+    /* La journée entière vient d'arriver : autant la garder pour plus tard. */
+    if (Array.isArray(data)) void saveDaySchedule(clusterIds[index], trimDaySchedule(data, dateParam));
+  });
+
+  /* Hors connexion, la fiche gardée pour ce genre de jour prend le relais. */
+  const offline = responses.every(data => data === null);
+  if (offline) {
+    const entries: Array<{ schedule: DaySchedule; day: Date }> = [];
+    for (const clusterId of clusterIds) {
+      const schedule = await readDaySchedule(clusterId, date);
+      if (schedule) entries.push({ schedule, day: date });
+    }
+    collected.push(...scheduleDepartures(entries, {
+      from: Date.now(),
+      until: date.getTime() + 48 * 3600 * 1000,
+      perPattern: perDirection,
+    }));
+  }
 
   /* Le réseau rend la journée entière : on ne garde que ce qui reste à venir,
      puis les tout premiers passages de chaque direction. */
@@ -1374,7 +1605,8 @@ export async function getNextServiceDayDepartures(
     tomorrow: date.getTime() !== today.getTime(),
     departures,
   };
-  setCache(cacheKey, result);
+  /* Un repli hors connexion ne se garde pas : le réseau revenu doit le remplacer. */
+  if (!offline) setCache(cacheKey, result);
   return result;
 }
 
@@ -1424,6 +1656,40 @@ export async function getStopPointDepartures(
  * les deux, sans quoi les deux chemins finiraient par diverger sur des détails
  * — la déduplication, le mode, le rattrapage du nom de ligne.
  */
+function readPattern(pattern: any): {
+  lineId: string;
+  routeId?: string;
+  patternRouteId: string | null | undefined;
+  lineName: string;
+  lineShortName: string;
+  destination: string;
+  type: Departure['type'];
+} {
+  const patternRouteId = routeIdOfPattern(pattern);
+
+  let lineId = '??';
+  if (pattern.routeId) {
+    lineId = normalizeRouteCode(String(pattern.routeId));
+  } else if (typeof pattern.id === 'string') {
+    const parts = pattern.id.split(':');
+    if (parts.length > 1) lineId = parts[1];
+  }
+
+  return {
+    lineId,
+    routeId: pattern.routeId ? String(pattern.routeId) : undefined,
+    patternRouteId,
+    lineName: pattern.longName ?? pattern.name ?? '',
+    lineShortName: pattern.shortName ?? lineId,
+    destination: pattern.headsign || pattern.lastStopName || pattern.name || 'Direction inconnue',
+    type: patternRouteId && isSncfLine(patternRouteId)
+      ? 'RAIL'
+      : modeToDepartureType(
+          (patternRouteId ? routeModes.get(patternRouteId) : undefined) ?? pattern.mode,
+        ),
+  };
+}
+
 function collectDepartures(data: any, departures: Departure[], seen: Set<string>): void {
   {
     {
@@ -1438,17 +1704,8 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
 
         if (!Array.isArray(times)) continue;
 
-        const patternRouteId = routeIdOfPattern(pattern);
-
-        let lineId = '??';
-        if (pattern.routeId) {
-          lineId = normalizeRouteCode(String(pattern.routeId));
-        } else if (typeof pattern.id === 'string') {
-          const parts = pattern.id.split(':');
-          if (parts.length > 1) lineId = parts[1];
-        }
-
-        const destination = pattern.headsign || pattern.lastStopName || pattern.name || 'Direction inconnue';
+        const meta = readPattern(pattern);
+        const { lineId, destination } = meta;
 
         for (const t of times) {
           const serviceDay = t.serviceDay ?? 0;
@@ -1460,24 +1717,24 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
 
           if (depUnix < now - 300) continue;
 
-          const key = `${lineId}|${destination}|${depUnix}|${patternRouteId ?? ''}`;
+          const key = `${lineId}|${destination}|${depUnix}|${meta.patternRouteId ?? ''}`;
           if (seen.has(key)) continue;
           seen.add(key);
 
           departures.push({
             lineId,
-            routeId: pattern.routeId ? String(pattern.routeId) : undefined,
-            lineName: pattern.longName ?? pattern.name ?? '',
-            lineShortName: pattern.shortName ?? lineId,
+            routeId: meta.routeId,
+            lineName: meta.lineName,
+            lineShortName: meta.lineShortName,
             destination,
             departureTime: minutes,
             at: depUnix * 1000,
-            realtime: t.realtimeArrival !== undefined || t.realtimeDeparture !== undefined,
-            type: patternRouteId && isSncfLine(patternRouteId)
-              ? 'RAIL'
-              : modeToDepartureType(
-                  (patternRouteId ? routeModes.get(patternRouteId) : undefined) ?? pattern.mode,
-                ),
+            /* Le réseau dit lui-même si l'heure vient du véhicule ; à défaut,
+               la présence d'une heure temps réel en tient lieu. */
+            realtime: typeof t.realtime === 'boolean'
+              ? t.realtime
+              : t.realtimeArrival !== undefined || t.realtimeDeparture !== undefined,
+            type: meta.type,
             occupancy: getTramOccupancy(lineId, destination),
           });
         }
@@ -1491,6 +1748,39 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
 /**
  * Get all lines serving a specific stop
  */
+/**
+ * Les lignes d'un arrêt, reconstituées depuis ses horaires gardés.
+ *
+ * Hors connexion, la liste des lignes ne vient plus du réseau : la fiche
+ * montrait les prochains passages sans les pastilles de lignes au-dessus. Les
+ * horaires gardés disent pourtant quelles lignes passent ; les couleurs
+ * viennent du catalogue des lignes, gardé lui aussi.
+ */
+async function linesFromSchedule(clusterIds: string[]): Promise<Line[]> {
+  const today = midnight();
+  const patterns = (await Promise.all(clusterIds.map(id => readDaySchedule(id, today))))
+    .flatMap(schedule => schedule?.patterns ?? []);
+  if (patterns.length === 0) return [];
+
+  const lookup = buildLineLookup(await getAllSemLines().catch(() => []));
+  const lines = new Map<string, Line>();
+  for (const pattern of patterns) {
+    if (lines.has(pattern.lineId)) continue;
+    const known = lookup.get((pattern.routeId ?? `SEM:${pattern.lineId}`).toUpperCase())
+      ?? lookup.get(pattern.lineId.toUpperCase());
+    lines.set(pattern.lineId, {
+      id: pattern.lineId,
+      routeId: known?.id ?? pattern.routeId,
+      name: known?.longName || pattern.lineName || pattern.lineShortName,
+      shortName: known?.shortName || pattern.lineShortName,
+      type: pattern.type,
+      color: known?.color,
+      textColor: known?.textColor,
+    });
+  }
+  return Array.from(lines.values());
+}
+
 export async function getStopLines(stopId: string): Promise<Line[]> {
   if (providerOf(stopId)?.id === 'tcl') {
     const { getTclLinesForStop } = await import('./tclNetwork');
@@ -1498,7 +1788,8 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
   }
 
   const cached = getStopLinesCacheEntry(stopId);
-  if (cached) return cached.data;
+  /* Une liste vide gardée vient d'une ancienne coupure : on la redemande. */
+  if (cached && cached.data.length > 0) return cached.data;
   if (stopLinesInflight.has(stopId)) {
     return stopLinesInflight.get(stopId)!;
   }
@@ -1534,6 +1825,9 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
       }
 
       const lines = Array.from(routeMap.values());
+      /* Rien reçu : c'est une coupure, pas un arrêt sans ligne. On ne garde
+         pas cette liste vide, et l'on se rabat sur les horaires gardés. */
+      if (lines.length === 0) return linesFromSchedule(clusterIds);
       setStopLinesCache(stopId, lines);
       return lines;
     } catch (error) {
@@ -1549,6 +1843,7 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
 
 export async function refreshStopLines(stopId: string): Promise<{ lines: Line[]; changed: boolean }> {
   const previous = getStopLinesCacheEntry(stopId)?.data ?? [];
+  if (isOffline()) return { lines: previous, changed: false };
 
   try {
     const clusterIds = getClusterIdsForStopId(stopId);
@@ -1580,6 +1875,7 @@ export async function refreshStopLines(stopId: string): Promise<{ lines: Line[];
     }
 
     const lines = Array.from(routeMap.values());
+    if (lines.length === 0) return { lines: previous, changed: false };
     const changed = !areStopLinesEqual(previous, lines);
     setStopLinesCache(stopId, lines);
     return { lines, changed };

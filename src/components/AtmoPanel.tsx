@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { readableTextColor } from './LineBadge';
 import { searchCommunes, type AtmoReport, type Commune } from '../services/atmo';
+import { IoWifi } from 'react-icons/io5';
+import { useIsOffline } from '../hooks/useIsOffline';
 
 const UNKNOWN_COLOR = '#64748b';
 
@@ -10,6 +12,7 @@ const getText = (language: 'fr' | 'en') => {
     title: fr ? 'Indice Atmo air' : 'Air quality index',
     loading: fr ? 'Chargement…' : 'Loading…',
     unavailable: fr ? 'Indice indisponible' : 'Index unavailable',
+    offline: fr ? 'Connexion indisponible' : 'No connection',
     unknownCommune: fr ? 'Commune inconnue' : 'Unknown city',
     searchLabel: fr ? 'Changer de commune' : 'Change city',
     searchPlaceholder: fr ? 'Chercher une commune…' : 'Search a city…',
@@ -65,6 +68,7 @@ export function AtmoPanel({
   followMap?: boolean;
 }) {
   const text = getText(language);
+  const offline = useIsOffline();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Commune[]>([]);
   const [searching, setSearching] = useState(false);
@@ -96,7 +100,7 @@ export function AtmoPanel({
     setResults([]);
   }, [report?.insee]);
 
-  const color = atmoColor(report);
+  const color = atmoColor(offline ? null : report);
   const picto = atmoPicto(report);
   const foreground = readableTextColor(color);
   const soft = (alpha: number) =>
@@ -117,7 +121,11 @@ export function AtmoPanel({
       {/* Le pictogramme officiel au centre : c'est lui qu'on retrouve sur les
           supports d'Atmo, il vaut mieux qu'une icône maison. */}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 py-2">
-        {picto ? (
+        {offline ? (
+          /* L'indice se calcule chaque jour : sans réseau, rien de ce qu'on a
+             gardé ne vaut pour aujourd'hui. */
+          <IoWifi className="h-28 w-28 flex-shrink-0" style={{ color: soft(0.35) }} aria-hidden="true" />
+        ) : picto ? (
           <img
             src={picto}
             alt={report?.current?.qualificatif || text.title}
@@ -132,9 +140,9 @@ export function AtmoPanel({
           </div>
         )}
         <p className="text-center text-lg font-bold leading-tight">
-          {report?.current?.qualificatif || (loading ? text.loading : text.unavailable)}
+          {offline ? text.offline : report?.current?.qualificatif || (loading ? text.loading : text.unavailable)}
         </p>
-        {report?.current && (
+        {!offline && report?.current && (
           <p className="text-center text-[11px]" style={{ color: soft(0.7) }}>
             {text.forecastFor(shortDate(report.current.date_echeance, language))}
             {report.current.polluants_majoritaires?.length

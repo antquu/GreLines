@@ -1,6 +1,7 @@
 
 import type { Line } from '../types';
 import { idbGet, idbSet } from './persistentCache';
+import { isOffline } from './offlineSchedule';
 
 const GEOMETRY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -343,12 +344,14 @@ export async function getLinesGeometryPrecise(
  */
 async function resolveLineGeometry(id: string): Promise<LineGeometry | null> {
   const cacheKey = `lineGeometry_v2_${normalizeLineKey(id)}`;
-  const cached = await idbGet<LineGeometry>(cacheKey);
-  if (cached) return cached.value;
+  /* Périmé, un tracé reste bon à montrer sans réseau : une ligne ne change
+     pas de rues d'une semaine à l'autre. */
+  const cached = await idbGet<LineGeometry>(cacheKey, { allowStale: true });
+  if (cached && (!cached.stale || isOffline())) return cached.value;
 
   const geometry = await computeLineGeometry(id);
   if (geometry) void idbSet(cacheKey, geometry, GEOMETRY_TTL_MS);
-  return geometry;
+  return geometry ?? cached?.value ?? null;
 }
 
 async function computeLineGeometry(id: string): Promise<LineGeometry | null> {
@@ -458,13 +461,22 @@ export async function getStopsServedByLine(
 
   const promise: Promise<ServedStopPoint[] | null> = (async () => {
     try {
-      const persisted = await idbGet<ServedStopPoint[]>(cacheKey);
-      if (persisted && persisted.value.length > 0) {
-        stopsResultCache.set(routeId, persisted.value);
-        return persisted.value;
+      const persisted = await idbGet<ServedStopPoint[]>(cacheKey, { allowStale: true });
+      const usable = persisted && persisted.value.length > 0 ? persisted.value : null;
+      if (usable && (!persisted!.stale || isOffline())) {
+        stopsResultCache.set(routeId, usable);
+        return usable;
       }
+      if (usable && isOffline()) return usable;
 
-      const resp = await fetch(url, { signal: options?.signal });
+      let resp: Response;
+      try {
+        resp = await fetch(url, { signal: options?.signal });
+      } catch (error) {
+        /* Sans réseau, la liste d'avant vaut mieux que rien. */
+        if (usable) return usable;
+        throw error;
+      }
       if (!resp.ok) {
         stopsResultCache.set(routeId, null);
         return null;
@@ -492,6 +504,18 @@ export async function getStopsServedByLine(
 
   stopsInflightCache.set(routeId, promise);
   return promise;
+}
+
+/**
+ * Garde d'avance le tracé et les arrêts d'une ligne, pour le hors ligne.
+ * Rend vrai quand les deux sont gardés.
+ */
+export async function prefetchLineForOffline(shortName: string): Promise<boolean> {
+  const [geometries, stops] = await Promise.all([
+    getLinesGeometryPrecise([{ id: shortName, shortName }]).catch(() => []),
+    getStopsServedByLine(shortName).catch(() => null),
+  ]);
+  return geometries.length > 0 && !!stops && stops.length > 0;
 }
 
 /**

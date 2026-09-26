@@ -5,6 +5,7 @@ import './index.css'
 
 import './light-theme.css'
 import { PerfSettingsProvider } from './hooks/usePerfSettings.tsx'
+import { installNetworkSimulation } from './services/networkSimulation'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 
@@ -17,6 +18,8 @@ console.log(`_
                    
        made by antqu • github.com/antquu`
 )
+
+installNetworkSimulation()
 
 const root = createRoot(document.getElementById('root')!)
 

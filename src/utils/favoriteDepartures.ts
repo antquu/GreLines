@@ -46,6 +46,8 @@ export interface DepartureGroup {
   textColor?: string | null;
   destination: string;
   times: number[];
+  /** Le premier passage vient de la fiche horaire, pas du temps réel. */
+  theoretical?: boolean;
 }
 
 export function groupFavoriteDepartures(
@@ -72,6 +74,7 @@ export function groupFavoriteDepartures(
         textColor: line?.textColor,
         destination: departure.destination,
         times: [],
+        theoretical: departure.theoretical,
       });
     }
     const group = map.get(key)!;

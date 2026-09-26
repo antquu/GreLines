@@ -1,4 +1,6 @@
-﻿import { XMarkIcon, ExclamationTriangleIcon, FunnelIcon } from '@heroicons/react/24/solid';
+import { OfflinePanel } from './OfflinePanel';
+import { useIsOffline } from '../hooks/useIsOffline';
+import { XMarkIcon, ExclamationTriangleIcon, FunnelIcon } from '@heroicons/react/24/solid';
 import { motion } from 'framer-motion';
 import { useCallback, useState } from 'react';
 import { MapSheet } from './MapSheet';
@@ -32,6 +34,7 @@ const getTrafficPanelText = (language: 'fr' | 'en') => {
 type FilterType = string;
 
 export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, theme = 'dark', lineLookup }: TrafficPanelMobileProps) => {
+  const offline = useIsOffline();
   const text = getTrafficPanelText(language);
   const [filter, setFilter] = useState<FilterType>('all');
   /* La même barre s'ouvre sur ordinateur, où l'on n'a que la molette. */
@@ -75,7 +78,7 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, the
                 <ExclamationTriangleIcon className="w-4 h-4 text-white" />
               </div>
               <h3 className={`text-base font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{text.liveTrafficInfo}</h3>
-              {trafficInfo.size > 0 && (
+              {!offline && trafficInfo.size > 0 && (
                 <span className="text-xs bg-amber-500 text-white font-bold px-2 py-0.5 rounded-full">
                   {filteredEntries.length}
                 </span>
@@ -115,7 +118,9 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, the
 
           {/* Scrollable content */}
           <div className="overflow-y-auto flex-1 px-5 pb-8">
-            {filteredEntries.length === 0 ? (
+            {offline ? (
+              <OfflinePanel language={language} isLight={isLight} />
+            ) : filteredEntries.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border ${
                   isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-800 border-slate-700'

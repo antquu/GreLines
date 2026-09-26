@@ -1,9 +1,12 @@
+import { ScrollingText } from './ScrollingText';
+import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
 ﻿import { motion } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
 import { TrafficAlertCard } from './TrafficAlertCard';
 import { CarpoolStopPanel, isCarpoolStop, isCarpoolLine } from './CarpoolStopPanel';
 import { getMcoLines, type McoLine } from '../services/mcoLines';
 import { RealtimeWifi } from './RealtimeWifi';
+import { TheoreticalPill } from './TheoreticalPill';
 import { sortLinesByPriority } from '../utils/lineOrder';
 import {
   MapSheetShell,
@@ -419,6 +422,9 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentStopDetail?.id]);
 
+  const offline = useIsOffline();
+  const reconnects = useReconnectCount();
+
   const updateDepartures = async () => {
     if (!currentStopDetail || !isOpen || currentStopDetail.lines.length === 0) return;
     try {
@@ -436,7 +442,10 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
     if (!autoSync) return;
     const interval = setInterval(updateDepartures, refreshIntervalMs);
     return () => clearInterval(interval);
-  }, [isOpen, currentStopDetail?.id, currentStopDetail?.lines.length, autoSync, refreshIntervalMs]);
+    /* La connexion qui tombe ou revient relance la lecture : on passe tout de
+       suite aux horaires gardés, puis de nouveau au direct. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentStopDetail?.id, currentStopDetail?.lines.length, autoSync, refreshIntervalMs, offline, reconnects]);
 
   const getDeparturePriority = (dep: Departure): number => {
     const id = dep.lineId.toUpperCase().trim();
@@ -759,7 +768,7 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                   const departureIsSem = isGrenobleNetworkLine(departureRef);
                   const secondIsSem = isGrenobleNetworkLine(secondRef);
                   const departureStyle: any = departureLine ? resolveLineStyle(departureRef, departureLine.color, departureLine.textColor) : resolveLineStyle(departureRef) as any;
-                  const secondStyle: any = secondLine ? resolveLineStyle(secondRef, secondLine.color, secondLine.textColor) : {} as any;
+                  const secondStyle: any = secondLine ? resolveLineStyle(secondRef, secondLine.color, secondLine.textColor) : resolveLineStyle(secondRef) as any;
                   const hasTrafficAlert = !!(departureLine?.hasTraffic && departureLine?.trafficDetails?.length);
                   /* La marque se pose aussi sur la pastille du passage suivant :
                      c'est parfois lui, et non le premier, qui est touche. */
@@ -799,7 +808,10 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                             hasTraffic={hasTrafficAlert}
                           />
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                                {departure.theoretical ? (
+  /* La pastille prend la place de la fin du nom : il glisse jusqu’à la fin, s’y arrête, puis revient, pour se lire en entier. */
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><TheoreticalPill language={language} /></div>
+) : <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>}
                                 {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                                 <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
                                   <TransportModeIcon mode={mode} className="w-3.5 h-3.5" />
@@ -853,7 +865,10 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                                 hasTraffic={secondHasTraffic}
                               />
                               <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold text-white">{second.destination}</p>
+                                {second.theoretical ? (
+  /* La pastille prend la place de la fin du nom : il glisse jusqu’à la fin, s’y arrête, puis revient, pour se lire en entier. */
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={second.destination} className="text-sm font-semibold text-white" /></div><TheoreticalPill language={language} /></div>
+) : <p className="truncate text-sm font-semibold text-white">{second.destination}</p>}
                                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
                                   <TransportModeIcon mode={second.type} className="w-3 h-3" />
                                   {second.realtime && (
@@ -935,7 +950,10 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                             hasTraffic={hasTrafficAlert}
                           />
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                            {departure.theoretical ? (
+  /* La pastille prend la place de la fin du nom : il glisse jusqu’à la fin, s’y arrête, puis revient, pour se lire en entier. */
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><TheoreticalPill language={language} /></div>
+) : <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>}
                             {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                             <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                               <TransportModeIcon mode={departure.type} className="w-3 h-3" />{modeLabel(normalizeMode(departure.type), text)}{departure.realtime && <RealtimeWifi size={13} className="text-green-400" label={text.live} />}
@@ -963,7 +981,10 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                             hasTraffic={hasTrafficAlert}
                           />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                          {departure.theoretical ? (
+  /* La pastille prend la place de la fin du nom : il glisse jusqu’à la fin, s’y arrête, puis revient, pour se lire en entier. */
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><TheoreticalPill language={language} /></div>
+) : <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>}
                           {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                           <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                             <TransportModeIcon mode={departure.type} className="w-3 h-3" />

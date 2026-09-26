@@ -20,6 +20,7 @@ import { HelpContactScreen } from './HelpContactScreen';
 import { createContext, useContext, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type React from 'react';
+import { isSimulatedOffline, setSimulatedOffline } from '../services/networkSimulation';
 import { MobileNotificationPrompt } from './MobileNotificationPrompt';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 import { resetAllCaches } from '../utils/resetCaches';
@@ -382,6 +383,7 @@ export function SettingsPanel({
   const resolvedTheme = uiTheme ?? (theme === 'light' ? 'light' : 'dark');
   const isLight = resolvedTheme === 'light';
   const dev = text.dev;
+  const [simulatedOffline, setSimulatedOfflineState] = useState(isSimulatedOffline);
   const isFrench = language === 'fr';
   const devAvailable = !isMobile;
 
@@ -650,6 +652,8 @@ export function SettingsPanel({
                   setSetting('devMode', next);
                   if (!next) {
                     setSetting('devOverlay', false);
+                    setSimulatedOffline(false);
+                    setSimulatedOfflineState(false);
                     if (activeTab === 'dev') setActiveTab('general');
                   }
                 }}
@@ -760,6 +764,20 @@ export function SettingsPanel({
         </Row>
       </Group>
       <p className="mb-6 px-4 text-xs text-slate-500">{dev.overlayHint}</p>
+
+      <Group>
+        <Row label={dev.cutConnection} last>
+          <Toggle
+            value={simulatedOffline}
+            onChange={() => {
+              const next = !simulatedOffline;
+              setSimulatedOffline(next);
+              setSimulatedOfflineState(next);
+            }}
+          />
+        </Row>
+      </Group>
+      <p className="mb-6 px-4 text-xs text-slate-500">{dev.cutConnectionHint}</p>
 
       <Group title={dev.rendering}>
         <Row label={dev.stopLineBadges}>

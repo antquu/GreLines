@@ -1,3 +1,8 @@
+import { DevConsole } from './components/DevConsole';
+import { OfflineLaunchScreen } from './components/OfflineLaunchScreen';
+import { IoWifi } from 'react-icons/io5';
+import { useIsOffline, useReconnectCount } from './hooks/useIsOffline';
+import { OfflinePanel } from './components/OfflinePanel';
 ﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy } from 'react';
 import { AnimatePresence, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
 import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
@@ -32,6 +37,7 @@ import { awardTrip, type TripAward } from './services/greLinesPoints';
 import { loadAccount, creditAccount, recordTrip, type Account } from './services/account';
 import { resolveRouteLine } from './utils/routeLineResolver';
 import { rememberStop } from './utils/recentStops';
+import { scheduleOfflinePrefetch } from './services/offlinePrefetch';
 import { AccountSetupScreen } from './components/AccountSetupScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { TripCompleteScreen } from './components/TripCompleteScreen';
@@ -135,6 +141,10 @@ import { setSavedPlace, type SavedPlaceKind } from './services/savedPlaces';
 export type MapPickTarget = 'from' | 'to' | SavedPlaceKind;
 
 function App() {
+  const isOffline = useIsOffline();
+  /* Chaque retour du réseau recharge ce qui vit en direct : Voi, Citiz,
+     infotrafic, qualité de l'air. */
+  const reconnects = useReconnectCount();
   const [stops, setStops] = useState<Stop[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -1086,7 +1096,7 @@ function App() {
       });
 
     return () => { active = false; };
-  }, [atmoPostalCode, atmoCommune]);
+  }, [atmoPostalCode, atmoCommune, reconnects]);
 
   /**
    * La commune sous le centre de la carte, tant que le suivi est actif.
@@ -1467,6 +1477,9 @@ function App() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [stops]);
 
+  /* Les horaires des favoris et des arrêts récents, gardés pour le hors ligne. */
+  useEffect(() => { scheduleOfflinePrefetch(); }, []);
+
   useEffect(() => {
     fetch('/grelines.json')
       .then(r => r.json())
@@ -1630,7 +1643,7 @@ function App() {
       } catch (err) {}
     };
     fetchTraffic();
-  }, []);
+  }, [reconnects]);
 
   const handleStopClick = useCallback(async (stop: Stop) => {
     try {
@@ -1802,7 +1815,7 @@ function App() {
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [perfSettings.citiz, perfSettings.voi]);
+  }, [perfSettings.citiz, perfSettings.voi, reconnects]);
 
   const renderTerminusPair = (longName: string) => {
     const parts = longName.split('/').map(p => p.trim()).filter(Boolean);
@@ -2081,6 +2094,8 @@ function App() {
         devModeHint: 'Affiche une section Développeur avec les options d’optimisation. Disponible sur ordinateur uniquement.',
         overlay: 'Overlay développeur',
         overlayHint: 'Compteur de FPS et indicateurs de performance en haut à droite.',
+        cutConnection: 'Couper la connexion',
+        cutConnectionHint: 'Fait comme si le réseau était perdu : l’app ne reçoit plus rien et passe aux horaires gardés sur l’appareil.',
         hideFooterTicker: 'Masquer l’infotrafic du footer',
         rendering: 'Rendu',
         stopLineBadges: 'Lignes à côté des arrêts',
@@ -2139,6 +2154,8 @@ function App() {
         devModeHint: 'Adds a Developer section with optimisation options. Desktop only.',
         overlay: 'Developer overlay',
         overlayHint: 'FPS counter and performance indicators, top right.',
+        cutConnection: 'Cut the connection',
+        cutConnectionHint: 'Acts as if the network were lost: the app receives nothing and falls back to the schedules saved on the device.',
         hideFooterTicker: 'Hide footer traffic ticker',
         rendering: 'Rendering',
         stopLineBadges: 'Line badges next to stops',
@@ -2541,6 +2558,12 @@ function App() {
       {isMobile && !error && (
         <MobileSplash done={!isLoadingOverlayVisible} language={language} />
       )}
+
+      {/* Ouverture sans réseau : on le dit d'entrée, par-dessus le reste. */}
+      <OfflineLaunchScreen language={language} />
+
+      {/* Console développeur : « ² » six fois, en mode développeur. */}
+      <DevConsole />
 
       {isLoadingOverlayVisible && !error && !isMobile && (
         /*
@@ -3340,7 +3363,7 @@ function App() {
                     isAtmoPanelOpen ? 'w-96 h-96 rounded-2xl' : 'w-10 h-10 rounded-full shadow-lg'
                   }`}
                   style={{
-                    backgroundColor: atmoColor(atmoReport),
+                    backgroundColor: atmoColor(isOffline ? null : atmoReport),
                     borderColor: isAtmoPanelOpen ? 'transparent' : 'rgba(15,23,42,0.35)',
                   }}
                   title={
@@ -3350,7 +3373,11 @@ function App() {
                   }
                 >
                   {!isAtmoPanelOpen && (
-                    atmoPicto(atmoReport) ? (
+                    /* Sans réseau, l'indice du jour est inconnu : le bouton le
+                       dit avec le même pictogramme que le panneau. */
+                    isOffline ? (
+                      <IoWifi className="w-5 h-5 text-white" aria-hidden="true" />
+                    ) : atmoPicto(atmoReport) ? (
                       <img
                         src={atmoPicto(atmoReport) as string}
                         alt={atmoReport?.current?.qualificatif || ''}
@@ -3398,7 +3425,7 @@ function App() {
                             <ExclamationTriangleIcon className="w-4 h-4 text-white" />
                           </div>
                           <h3 className="text-sm font-bold text-white">{text.misc.liveTrafficInfo}</h3>
-                          {trafficInfo.size > 0 && (() => {
+                          {!isOffline && trafficInfo.size > 0 && (() => {
                             const visibleCount = Array.from(trafficInfo.entries())
                               .filter(([line]) =>
                                 desktopTrafficFilter === 'all' ||
@@ -3440,7 +3467,7 @@ function App() {
 
                       {/* Scrollable content */}
                       <div className="overflow-y-auto flex-1 px-4 pb-4">
-                        {(() => {
+                        {isOffline ? <OfflinePanel language={language} /> : (() => {
                           const filteredEntries = Array.from(trafficInfo.entries())
                             .filter(([line]) =>
                               desktopTrafficFilter === 'all' ||

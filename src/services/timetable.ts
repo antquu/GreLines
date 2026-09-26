@@ -1,5 +1,6 @@
 
 import { idbGet, idbSet } from './persistentCache';
+import { dayKindOf, isOffline } from './offlineSchedule';
 
 const ENDPOINT = 'https://data.mobilites-m.fr/api/ficheHoraires/json';
 
@@ -104,6 +105,7 @@ export async function getTimetable(
 
   const cached = await idbGet<Timetable>(cacheKey);
   if (cached) return cached.value;
+  if (isOffline()) return readOfflineTimetable(routeId);
 
   const params = new URLSearchParams({
     route: routeId,
@@ -113,7 +115,8 @@ export async function getTimetable(
 
   try {
     const response = await fetch(`${ENDPOINT}?${params.toString()}`, { signal: options?.signal });
-    if (!response.ok || response.status === 204) return null;
+    if (!response.ok) return readOfflineTimetable(routeId);
+    if (response.status === 204) return null;
 
     const payload = (await response.json()) as Record<string, RawDirection>;
     const timetable = parseTimetable(routeId, payload);
@@ -122,8 +125,39 @@ export async function getTimetable(
     void idbSet(cacheKey, timetable, TIMETABLE_TTL_MS);
     return timetable;
   } catch {
-    return null;
+    return readOfflineTimetable(routeId);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* La fiche du jour entier, gardée pour le hors ligne                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Le téléchargement du réseau reçoit la fiche de chaque ligne pour toute une
+ * journée, et chaque sorte de jour. On la garde telle quelle : sans réseau, la
+ * fiche horaire d'une ligne s'ouvre sur cette journée, à la course qui vient,
+ * et l'on feuillette le reste comme d'habitude.
+ */
+const OFFLINE_TTL_MS = 45 * 24 * 60 * 60 * 1000;
+
+function offlineKey(routeId: string, day: Date): string {
+  return `timetable_offline_v1_${routeId}_${dayKindOf(day)}`;
+}
+
+export async function saveOfflineTimetable(
+  routeId: string,
+  day: Date,
+  payload: Record<string, RawDirection>,
+): Promise<void> {
+  const timetable = parseTimetable(routeId, payload);
+  if (timetable.directions.length === 0) return;
+  await idbSet(offlineKey(routeId, day), timetable, OFFLINE_TTL_MS);
+}
+
+async function readOfflineTimetable(routeId: string): Promise<Timetable | null> {
+  const stored = await idbGet<Timetable>(offlineKey(routeId, new Date()), { allowStale: true });
+  return stored?.value ?? null;
 }
 
 /** Ajoute le préfixe réseau attendu par l'API (« C1 » → « SEM:C1 »). */

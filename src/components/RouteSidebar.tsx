@@ -1,3 +1,6 @@
+import { OfflinePanel } from './OfflinePanel';
+import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
+import { isOffline } from '../services/offlineSchedule';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
@@ -262,6 +265,8 @@ function SectionRule({ label, isLight }: { label: string; isLight: boolean }) {
 export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, onItinerariesUpdated, onStartNavigation, onOpenLine, lineLookup, trafficInfo, pickMode, onRequestPickLocation, onCancelPickLocation, recentPlaces = [], sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute, theme, currentLocation, variant = 'planner', onPickJourney }: RouteSidebarProps) => {
   const text = getText(language);
   const isLight = theme === 'light';
+  const offline = useIsOffline();
+  const reconnects = useReconnectCount();
   const isPicker = variant === 'favoritePicker';
   const initialDate = useMemo(() => new Date(), []);
   /**
@@ -1056,6 +1061,9 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   const canSearch = !!fromSelection && !!toSelection;
 
   const handleSearch = useCallback(async (options: { silent?: boolean } = {}) => {
+    /* Le calcul se fait sur le serveur du réseau : sans connexion, rien à
+       tenter. Le panneau le dit, et la recherche repart au retour du réseau. */
+    if (isOffline()) return;
     if (!canSearch || !fromSelection || !toSelection) {
       setRouteError(text.routeError);
       return;
@@ -1532,6 +1540,13 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     walkSpeed,
     wheelchairRouting,
   ]);
+
+  /* Le réseau revient : on relance la recherche restée en attente. */
+  useEffect(() => {
+    if (reconnects === 0 || !isOpen || !fromSelection || !toSelection) return;
+    handleSearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reconnects]);
 
   useEffect(() => {
     if (!isOpen || !fromSelection || !toSelection || routeResults.length === 0) return;
@@ -2437,7 +2452,17 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         {/* « Aucun itinéraire » ne se dit pas quand la liste propose une
             trottinette, une voiture partagée ou un VTC : il y a bien un moyen
             d'y aller. */}
-        {routeError && !(routeError === text.noRoutes && operatorResults.length > 0) && (
+        {offline && (
+          <OfflinePanel
+            language={language}
+            isLight={isLight}
+            detail={language === 'fr'
+              ? 'Le calcul d’un itinéraire a besoin du réseau. Il sera de nouveau possible dès le retour de la connexion.'
+              : 'Planning a route needs the network. It will be available again as soon as you are back online.'}
+          />
+        )}
+
+        {!offline && routeError && !(routeError === text.noRoutes && operatorResults.length > 0) && (
           <div className={`rounded-2xl border px-4 py-3 text-sm ${
             isLight ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-rose-950 border-rose-700 text-rose-200'
           }`}>
@@ -2449,7 +2474,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             n'apparaissent qu'avec les résultats. L'écran d'accueil n'a qu'une
             question à poser — où va-t-on ? — et ces réglages ne se touchent
             qu'une fois qu'on regarde des horaires. */}
-        <div className={`flex-col gap-2 ${isMobile && currentResults.length === 0 ? 'hidden' : 'flex'}`}>
+        <div className={`flex-col gap-2 ${offline || (isMobile && currentResults.length === 0) ? 'hidden' : 'flex'}`}>
           <div className={`relative flex ${isMobile ? 'scrollbar-hide -mx-4 gap-2 overflow-x-auto px-4' : 'items-center gap-2'}`}>
             <button
               type="button"
@@ -2589,7 +2614,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             part, par où il passe, combien il dure. La frise qui les posait sur
             un axe de temps commun a été retirée — elle était juste, et l'on y
             comparait des largeurs quand on cherchait une réponse. */}
-        {isMobile && currentResults.length > 0 && (
+        {!offline && isMobile && currentResults.length > 0 && (
           <div className="gl-stagger" style={{ animationDelay: '60ms' }}>
             <JourneyResults
               journeys={currentResults}
@@ -2603,7 +2628,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           </div>
         )}
 
-        {!isMobile && currentResults.length > 0 && (
+        {!offline && !isMobile && currentResults.length > 0 && (
           <div className="pt-2">
             <JourneyResults
               journeys={currentResults}
@@ -2617,7 +2642,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           </div>
         )}
 
-        {!routeLoading && !routeError && currentResults.length === 0 && fromSelection && toSelection && (
+        {!offline && !routeLoading && !routeError && currentResults.length === 0 && fromSelection && toSelection && (
           <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4 text-sm text-slate-400">
             {text.noRoutes}
           </div>

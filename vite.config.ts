@@ -49,9 +49,11 @@ function serverlessFunctions(): Plugin {
 export default defineConfig({
   plugins: [react(), serverlessFunctions()],
   build: {
-    
-    
-    
+    /* La liste des fichiers produits, que le service worker lit pour garder
+       toute l'application sur l'appareil et l'ouvrir sans réseau. */
+    /* À la racine plutôt que dans « .vite/ » : un dossier caché n'est pas
+       servi partout. */
+    manifest: 'asset-manifest.json',
     rollupOptions: {
       output: {
         manualChunks(id: string) {

@@ -53,6 +53,12 @@ export interface Departure {
    */
   at?: number;
   realtime: boolean;
+  /**
+   * Tiré de la fiche horaire gardée sur l'appareil, et non du réseau à
+   * l'instant : hors connexion, ou pour une ligne que le temps réel ne
+   * montrait pas. L'heure est une estimation.
+   */
+  theoretical?: boolean;
   type: 'BUS' | 'TRAM' | 'RAIL' | 'METRO' | 'OTHER';
   occupancy?: 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED';
 }

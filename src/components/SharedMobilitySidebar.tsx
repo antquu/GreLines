@@ -1,3 +1,5 @@
+import { OfflinePanel } from './OfflinePanel';
+import { useIsOffline } from '../hooks/useIsOffline';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { MapSheet } from './MapSheet';
@@ -530,6 +532,7 @@ export function SharedMobilitySidebar({
   onVehicleFocus,
 }: SharedMobilitySidebarProps) {
   const text = getText(language);
+  const offline = useIsOffline();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const vehicles = points.flatMap(point => point.vehicles);
 
@@ -608,7 +611,31 @@ export function SharedMobilitySidebar({
     </div>
   );
 
-  const body = single ? (
+  /* Sans réseau, les véhicules affichés sont ceux d'avant la coupure : ils ont
+     pu partir depuis. On ne garde que le logo, pour dire de quoi on parle. */
+  const offlineBody = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <OperatorLogo operator={operator} />
+        <button
+          onClick={onClose}
+          aria-label={text.close}
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-800 transition hover:bg-slate-700"
+        >
+          <XMarkIcon className="h-4 w-4 text-white" />
+        </button>
+      </div>
+      <OfflinePanel
+        language={language}
+        isLight={isLight}
+        detail={language === 'fr'
+          ? 'Les véhicules disponibles se voient en direct. Ils reviendront avec le réseau.'
+          : 'Available vehicles are shown live. They will be back with the network.'}
+      />
+    </>
+  );
+
+  const body = offline ? offlineBody : single ? (
     <>
       {header}
       <SingleVehicleView vehicle={single} text={text} language={language} />
@@ -648,7 +675,7 @@ export function SharedMobilitySidebar({
     </>
   );
 
-  const footer = single ? (
+  const footer = single && !offline ? (
     <VehicleActions
       vehicle={single}
       text={text}

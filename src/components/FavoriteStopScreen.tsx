@@ -17,6 +17,7 @@ import { ArrowRightIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
 import { MinimalScreen, type MinimalScreenAction } from './MinimalScreen';
 import { formatWait, groupFavoriteDepartures } from '../utils/favoriteDepartures';
+import { TheoreticalPill } from './TheoreticalPill';
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import type { AllLinesLine } from '../services/allLines';
 
@@ -106,6 +107,7 @@ export function FavoriteStopScreen({
               {/* Pas de troncature : la destination passe à la ligne. Deux
                   directions d'une même ligne se ressemblent par le début. */}
               <h3 className="text-[22px] font-bold leading-tight">{group.destination}</h3>
+              {group.theoretical && <div className="mt-1.5"><TheoreticalPill language={language} /></div>}
 
               <p className={`mt-4 text-[11px] font-bold uppercase tracking-[0.14em] ${mutedClass}`}>
                 {isFr ? 'Prochain' : 'Next'}
