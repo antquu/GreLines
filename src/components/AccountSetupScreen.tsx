@@ -1,3 +1,5 @@
+import { OfflinePanel } from './OfflinePanel';
+import { useIsOffline } from '../hooks/useIsOffline';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowPathIcon, CameraIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
@@ -68,6 +70,7 @@ export function AccountSetupScreen({
   onDone: (account: Account) => void;
 }) {
   const isFr = language === 'fr';
+  const offline = useIsOffline();
   const [step, setStep] = useState<Step>('card');
   /** 1 : on avance, -1 : on recule. Décide du côté par lequel l'écran entre. */
   const [direction, setDirection] = useState(1);
@@ -457,7 +460,7 @@ export function AccountSetupScreen({
   return (
     <MinimalScreen
       isOpen={isOpen}
-      title={title}
+      title={offline ? '' : title}
       isLight={isLight}
       /* Cette page pose son propre bouton en bas d'écran : la réserve que la
          coquille garde pour son menu l'empêcherait de descendre jusqu'au bord. */
@@ -470,6 +473,18 @@ export function AccountSetupScreen({
         else onBack();
       }}
     >
+      {/* Créer un compte passe par le serveur : sans réseau, on le dit
+          plutôt que de laisser une étape tourner dans le vide. */}
+      {offline ? (
+        <OfflinePanel
+          language={language}
+          isLight={isLight}
+          detail={language === 'fr'
+            ? 'La connexion d’un compte a besoin du réseau. Vous pourrez la faire dès son retour.'
+            : 'Connecting an account needs the network. You can do it as soon as you are back online.'}
+        />
+      ) : (
+      <>
       {/*
         Chaque étape entre par le côté d'où elle vient : par la droite quand on
         avance, par la gauche quand on recule.
@@ -491,6 +506,8 @@ export function AccountSetupScreen({
       >
         {step === 'card' ? cardStep : step === 'photo' ? photoStep : pseudoStep}
       </div>
+      </>
+      )}
     </MinimalScreen>
   );
 }

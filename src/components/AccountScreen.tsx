@@ -12,6 +12,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { PlusIcon } from '@heroicons/react/24/solid';
 import { OuraWallet } from './OuraWallet';
+import { OuraCardFace } from './OuraCardFace';
+import { IoWifi } from 'react-icons/io5';
+import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
 import { AddCardSheet } from './AddCardSheet';
 import {
   listOuraCards,
@@ -56,9 +59,21 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
     });
   }, [isOpen]);
 
+  /*
+   * Les cartes viennent du serveur : sans réseau, il n'y a rien à montrer, et
+   * la carte le dit. Au retour de la connexion, on les recharge.
+   */
+  const offline = useIsOffline();
+  const reconnects = useReconnectCount();
+  const [loadedAt, setLoadedAt] = useState(0);
+  if (loaded && reconnects !== loadedAt) {
+    setLoadedAt(reconnects);
+    setLoaded(false);
+  }
+
   /** Les cartes ne se chargent qu'à la première venue sur l'écran. */
   useEffect(() => {
-    if (!isOpen || loaded) return;
+    if (!isOpen || loaded || offline) return;
     let active = true;
     void listOuraCards().then(async list => {
       if (!active) return;
@@ -68,7 +83,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
       if (active) setCards(checked);
     });
     return () => { active = false; };
-  }, [isOpen, loaded]);
+  }, [isOpen, loaded, offline]);
 
   return (
     <>
@@ -125,7 +140,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
                 <h2 className={`text-[28px] font-extrabold leading-none ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   {isFr ? 'Compte' : 'Account'}
                 </h2>
-                {isSupabaseConfigured && (
+                {isSupabaseConfigured && !offline && (
                   <button
                     type="button"
                     onClick={() => setIsAddCardOpen(true)}
@@ -141,6 +156,22 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
             </div>
           </div>
 
+          {offline ? (
+            /* La carte grisée, et le pictogramme de la connexion par-dessus :
+               même gabarit que la carte vide, pour que l'écran ne saute pas. */
+            <div className="relative">
+              <OuraCardFace forceFront className="opacity-40" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <IoWifi className="h-12 w-12 text-white drop-shadow" aria-hidden="true" />
+                <span className="text-center text-sm font-semibold text-white drop-shadow">
+                  {isFr ? 'Pas de connexion' : 'No connection'}
+                </span>
+                <span className="px-6 text-center text-xs text-white/80 drop-shadow">
+                  {isFr ? 'Vos cartes s’afficheront au retour du réseau.' : 'Your cards will show once you are back online.'}
+                </span>
+              </div>
+            </div>
+          ) : (
           <OuraWallet
             cards={cards}
             language={language}
@@ -156,6 +187,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
               onCardFocusChange?.(focused);
             }}
           />
+          )}
 
           {/* Les réglages s'en vont vers le bas de l'écran quand une carte passe
               devant — ils descendent d'un demi-écran en s'effaçant — et

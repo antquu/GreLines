@@ -1,3 +1,5 @@
+import { OfflinePanel } from './OfflinePanel';
+import { useIsOffline } from '../hooks/useIsOffline';
 import { useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { MinimalScreen } from './MinimalScreen';
@@ -53,6 +55,7 @@ export function ProfileScreen({
   onBack: () => void;
 }) {
   const isFr = language === 'fr';
+  const offline = useIsOffline();
   const ink = isLight ? 'text-slate-900' : 'text-white';
   const muted = isLight ? 'text-slate-500' : 'text-slate-400';
   const tile = isLight ? 'bg-slate-200/70' : 'bg-slate-800';
@@ -115,6 +118,18 @@ export function ProfileScreen({
   return (
     <>
       <MinimalScreen isOpen={isOpen} title="" isLight={isLight} onBack={onBack}>
+        {/* Les chiffres du compte viennent du serveur : sans réseau, le
+            pictogramme de la connexion plutôt que des zéros trompeurs. */}
+        {offline ? (
+          <OfflinePanel
+            language={language}
+            isLight={isLight}
+            detail={isFr
+              ? 'Votre compte s’affichera au retour du réseau.'
+              : 'Your account will show once you are back online.'}
+          />
+        ) : (
+        <>
         <div className="flex flex-col items-center px-4 pt-2">
           {/* L'avatar en grand : c'est le seul élément qu'on a choisi soi-même, il
               mérite la place. */}
@@ -242,6 +257,8 @@ export function ProfileScreen({
           </div>
         )}
 
+        </>
+        )}
       </MinimalScreen>
 
     </>
