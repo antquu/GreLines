@@ -156,7 +156,7 @@ export function FavoritesScreen({
       >
         <div
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-40"
-          style={{ paddingTop: 'max(env(safe-area-inset-top), 1.25rem)' }}
+          style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 1.25rem)' }}
           onScroll={event => {
             const top = event.currentTarget.scrollTop;
             const previous = lastScrollRef.current;

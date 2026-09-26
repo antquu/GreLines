@@ -294,7 +294,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       ? 'border-b border-slate-200 bg-white'
       : 'border-b border-slate-800 bg-slate-950';
   /** Retrait sûr sous la barre système / le geste d'accueil. */
-  const safeTop = 'max(env(safe-area-inset-top), 0.5rem)';
+  const safeTop = 'max(calc(env(safe-area-inset-top) + 4px), 0.5rem)';
   const safeBottom = 'max(env(safe-area-inset-bottom), 0.75rem)';
   const [fromQuery, setFromQuery] = useState('');
   const [toQuery, setToQuery] = useState('');

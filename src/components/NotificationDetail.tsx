@@ -59,7 +59,7 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
       style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
       aria-hidden={!isOpen}
     >
-      <div className="px-3" style={{ paddingTop: isDialog ? '0.75rem' : 'max(env(safe-area-inset-top), 0.75rem)' }}>
+      <div className="px-3" style={{ paddingTop: isDialog ? '0.75rem' : 'max(calc(env(safe-area-inset-top) + 4px), 0.75rem)' }}>
         <button
           type="button"
           onClick={onClose}

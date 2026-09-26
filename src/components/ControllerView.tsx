@@ -55,7 +55,7 @@ export function ControllerView({ card, language, theme = 'dark', onClose }: Cont
       } ${isLight ? 'bg-white text-slate-900' : 'bg-slate-950 text-white'}`}
       aria-hidden={!isOpen}
     >
-      <div className="flex items-center gap-2 px-3" style={{ paddingTop: 'max(env(safe-area-inset-top), 0.75rem)' }}>
+      <div className="flex items-center gap-2 px-3" style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 0.75rem)' }}>
         <button
           type="button"
           onClick={onClose}

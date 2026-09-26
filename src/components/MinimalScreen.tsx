@@ -69,7 +69,7 @@ export function MinimalScreen({
           sur l'autre, pour que cette phrase tienne sur une ligne. */}
       <header
         className="flex flex-shrink-0 items-center gap-1 px-4 pb-5"
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}
+        style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 1rem)' }}
       >
         <button
           type="button"

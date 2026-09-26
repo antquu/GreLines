@@ -108,7 +108,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
           className={`min-h-0 flex-1 overscroll-contain px-5 ${
             isCardFocused ? 'overflow-hidden pb-10' : 'overflow-y-auto pb-40'
           }`}
-          style={{ paddingTop: 'max(env(safe-area-inset-top), 1.25rem)' }}
+          style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 1.25rem)' }}
           onScroll={event => {
             /*
              * Barre resserrée en descendant, redéployée dès qu'on remonte —

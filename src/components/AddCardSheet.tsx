@@ -771,7 +771,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
       {toast && (
         <div
           className="gl-drop pointer-events-none fixed inset-x-0 top-0 z-[10010] flex justify-center px-4"
-          style={{ paddingTop: 'max(env(safe-area-inset-top), 0.75rem)' }}
+          style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 0.75rem)' }}
         >
           <div className="flex items-center gap-2 rounded-full border border-emerald-500/40 bg-slate-900/95 px-4 py-2 shadow-2xl backdrop-blur">
             <CheckCircleIcon className="h-5 w-5 flex-shrink-0 text-emerald-400" />

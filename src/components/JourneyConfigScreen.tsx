@@ -94,7 +94,7 @@ export function JourneyConfigScreen({
     >
       <header
         className="flex flex-shrink-0 items-center gap-1 px-2 pb-2"
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 0.5rem)' }}
+        style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 0.5rem)' }}
       >
         <button
           type="button"

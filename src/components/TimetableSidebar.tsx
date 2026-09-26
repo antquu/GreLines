@@ -561,7 +561,7 @@ export function TimetableSidebar({
           <div
             className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 pb-12"
             style={{
-              paddingTop: 'max(1rem, env(safe-area-inset-top))',
+              paddingTop: 'max(1rem, calc(env(safe-area-inset-top) + 4px))',
             }}
           >
             {body}
