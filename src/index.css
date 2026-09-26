@@ -205,6 +205,22 @@ body {
   margin: 0;
 }
 
+/*
+ * L'application ne défile jamais d'un bloc : seuls ses panneaux défilent.
+ *
+ * Sur iPhone, iOS 26 floute et assombrit la bande sous l'heure et la batterie
+ * dès qu'une page défilable passe dessous. La carte n'a rien à faire défiler :
+ * on fige donc la page elle-même, pour ne plus lui donner de bord de
+ * défilement où poser cet effet. Réservé à l'application (la classe est posée
+ * par elle) : les pages de la vitrine, elles, défilent normalement.
+ */
+html.gl-app-locked,
+html.gl-app-locked body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 .signal-label {
   font-size: 10px;
   font-weight: 700;

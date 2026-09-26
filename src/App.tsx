@@ -1477,6 +1477,14 @@ function App() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [stops]);
 
+  /* La page de l'app ne défile pas d'un bloc : voir `gl-app-locked` dans
+     index.css. Retiré en partant, pour ne pas figer une autre page. */
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add('gl-app-locked');
+    return () => root.classList.remove('gl-app-locked');
+  }, []);
+
   /* Les horaires des favoris et des arrêts récents, gardés pour le hors ligne. */
   useEffect(() => { scheduleOfflinePrefetch(); }, []);
 
@@ -2558,6 +2566,15 @@ function App() {
       {isMobile && !error && (
         <MobileSplash done={!isLoadingOverlayVisible} language={language} />
       )}
+
+      {/* Une bande transparente sous l'heure et la batterie. Elle ne montre
+          rien : elle donne à iOS un élément fixe, sans couleur, contre le haut
+          de l'écran, là où il poserait sinon son flou. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 top-0 z-[1]"
+        style={{ height: 'env(safe-area-inset-top, 0px)', backgroundColor: 'transparent' }}
+      />
 
       {/* Ouverture sans réseau : on le dit d'entrée, par-dessus le reste. */}
       <OfflineLaunchScreen language={language} />
