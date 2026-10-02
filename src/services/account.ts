@@ -19,7 +19,7 @@ export async function uploadAccountAvatar(
   try {
     const { error } = await supabase.storage
       .from(PHOTO_BUCKET)
-      .upload(path, photo, { contentType: photo.type || 'image/jpeg', upsert: true });
+      .upload(path, photo, { contentType: photo.type || 'image/jpeg', upsert: false });
     return error ? null : path;
   } catch {
     return null;

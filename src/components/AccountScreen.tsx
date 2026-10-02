@@ -12,6 +12,7 @@ import {
   isSupabaseConfigured,
   type OuraCard,
 } from '../services/ouraCard';
+import { IS_NANCY } from '../site';
 
 interface AccountScreenProps {
   isOpen: boolean;
@@ -33,7 +34,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
   const lastScrollRef = useRef(0);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || IS_NANCY) return;
     return subscribeToCards(() => {
       void listOuraCards().then(setCards);
     });
@@ -48,7 +49,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
   }
 
   useEffect(() => {
-    if (!isOpen || loaded || offline) return;
+    if (!isOpen || loaded || offline || IS_NANCY) return;
     let active = true;
     void listOuraCards().then(async list => {
       if (!active) return;
@@ -94,7 +95,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
                 <h2 className={`text-[1.75rem] font-extrabold leading-none ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   {isFr ? 'Compte' : 'Account'}
                 </h2>
-                {isSupabaseConfigured && !offline && (
+                {!IS_NANCY && isSupabaseConfigured && !offline && (
                   <button
                     type="button"
                     onClick={() => setIsAddCardOpen(true)}
@@ -110,7 +111,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
             </div>
           </div>
 
-          {offline ? (
+          {IS_NANCY ? null : offline ? (
             <div className="relative">
               <OuraCardFace forceFront className="opacity-40" />
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
@@ -142,7 +143,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
           )}
 
           <div
-            className={`mt-10 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+            className={`${IS_NANCY ? 'mt-2' : 'mt-10'} transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
               isCardFocused ? 'pointer-events-none opacity-0' : 'opacity-100'
             }`}
             style={{ transform: isCardFocused ? 'translateY(50vh)' : 'translateY(0)' }}
@@ -154,7 +155,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
       </div>
 
       <AddCardSheet
-        isOpen={isAddCardOpen}
+        isOpen={isAddCardOpen && !IS_NANCY}
         language={language}
         theme={theme}
         onClose={() => setIsAddCardOpen(false)}

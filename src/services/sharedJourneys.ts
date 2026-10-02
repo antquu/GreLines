@@ -9,13 +9,13 @@ import {
 import { getSharedPricing } from './sharedPricing';
 import { haversineMeters } from '../utils/geo';
 
-const MAX_ACCESS_METERS: Record<SharedOperator, number> = { voi: 700, citiz: 1_100 };
+const MAX_ACCESS_METERS: Record<SharedOperator, number> = { voi: 700, velostan: 700, citiz: 1_100 };
 
 const MIN_TRIP_METERS = 900;
 
-const PICKUP_OVERHEAD_MIN: Record<SharedOperator, number> = { voi: 1, citiz: 4 };
+const PICKUP_OVERHEAD_MIN: Record<SharedOperator, number> = { voi: 1, velostan: 1, citiz: 4 };
 
-const RIDE_MODE: Record<SharedOperator, 'BICYCLE' | 'CAR'> = { voi: 'BICYCLE', citiz: 'CAR' };
+const RIDE_MODE: Record<SharedOperator, 'BICYCLE' | 'CAR'> = { voi: 'BICYCLE', velostan: 'BICYCLE', citiz: 'CAR' };
 
 const formatClock = (value: number): string =>
   new Date(value).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -194,9 +194,10 @@ export async function planSharedJourneys(options: {
   const departAt = (options.departAt ?? new Date()).getTime();
 
   try {
-    const fleet = await fetchSharedMobility({ citiz: true, voi: true, signal: options.signal });
+    const fleet = await fetchSharedMobility({ signal: options.signal });
     const built = await Promise.all([
       buildOption('voi', fleet.voi, { ...options, departAt }),
+      buildOption('velostan', fleet.velostan, { ...options, departAt }),
       buildOption('citiz', fleet.citiz, { ...options, departAt }),
     ]);
     return built.filter((option): option is RouteItinerary => option !== null);

@@ -262,8 +262,9 @@ export async function saveTestCard(
     const path = `${getDeviceId()}/${code}-${Date.now()}.jpg`;
     const { error } = await supabase.storage
       .from(PHOTO_BUCKET)
-      .upload(path, input.photo, { contentType: input.photo.type || 'image/jpeg', upsert: true });
-    if (!error) photoPath = path;
+      .upload(path, input.photo, { contentType: input.photo.type || 'image/jpeg', upsert: false });
+    if (error) return null;
+    photoPath = path;
   }
 
   const { data, error } = await supabase
@@ -298,8 +299,9 @@ export async function saveOuraCard(input: SaveCardInput): Promise<OuraCard | nul
     const path = `${deviceId}/${lookup.code}-${Date.now()}.jpg`;
     const { error } = await supabase.storage
       .from(PHOTO_BUCKET)
-      .upload(path, input.photo, { contentType: input.photo.type || 'image/jpeg', upsert: true });
-    if (!error) photoPath = path;
+      .upload(path, input.photo, { contentType: input.photo.type || 'image/jpeg', upsert: false });
+    if (error) return null;
+    photoPath = path;
   }
 
   const contract = currentContract(lookup.contracts);

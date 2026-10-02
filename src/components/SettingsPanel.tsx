@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { IS_NANCY } from '../site';
 import { MapSheet } from './MapSheet';
 import { LegalSheet } from './LegalSheet';
 import {
@@ -37,7 +38,6 @@ import {
   LYON_TILE,
   networkAssetUrl,
   SECONDARY_NETWORKS,
-  SHARED_TILES,
   toggleNetworkCodes,
 } from './networkTiles';
 import {
@@ -270,7 +270,7 @@ function NetworkTiles({
   );
 }
 
-const DATA_SOURCES: Array<{ what: { fr: string; en: string }; who: string }> = [
+const GRENOBLE_DATA_SOURCES: Array<{ what: { fr: string; en: string }; who: string }> = [
   { what: { fr: 'Grenoble et l’Isère', en: 'Grenoble and Isère' }, who: 'Mobilités M (API MTAG)' },
   { what: { fr: 'Lyon', en: 'Lyon' }, who: 'TCL · SYTRAL Mobilités, data.grandlyon.com' },
   {
@@ -284,6 +284,18 @@ const DATA_SOURCES: Array<{ what: { fr: string; en: string }; who: string }> = [
   { what: { fr: 'Qualité de l’air', en: 'Air quality' }, who: 'Atmo Auvergne-Rhône-Alpes' },
   { what: { fr: 'Carte', en: 'Map' }, who: 'MapTiler, OpenStreetMap' },
 ];
+
+const NANCY_DATA_SOURCES: Array<{ what: { fr: string; en: string }; who: string }> = [
+  { what: { fr: 'Horaires Stan', en: 'Stan timetables' }, who: 'transport.data.gouv.fr (GTFS, GTFS-RT)' },
+  { what: { fr: 'Perturbations Stan', en: 'Stan disruptions' }, who: 'reseau-stan.com' },
+  { what: { fr: 'Vélos en libre-service', en: 'Bike sharing' }, who: 'vélOstan’lib (JCDecaux)' },
+  { what: { fr: 'Autopartage', en: 'Car sharing' }, who: 'Citiz Grand Est' },
+  { what: { fr: 'Itinéraires', en: 'Routes' }, who: 'Transitous (MOTIS)' },
+  { what: { fr: 'Adresses', en: 'Addresses' }, who: 'Base Adresse Nationale (api-adresse.data.gouv.fr)' },
+  { what: { fr: 'Carte', en: 'Map' }, who: 'MapTiler, OpenStreetMap' },
+];
+
+const DATA_SOURCES = IS_NANCY ? NANCY_DATA_SOURCES : GRENOBLE_DATA_SOURCES;
 
 export function SettingsPanel({
   variant = 'panel',
@@ -505,9 +517,11 @@ export function SettingsPanel({
         <Row label={text.labels.autoLocation}>
           <Toggle value={autoLocation} onChange={() => setAutoLocation(!autoLocation)} />
         </Row>
-        <Row label={text.labels.atmoFollowMap}>
-          <Toggle value={atmoFollowMap} onChange={() => setAtmoFollowMap(!atmoFollowMap)} />
-        </Row>
+        {!IS_NANCY && (
+          <Row label={text.labels.atmoFollowMap}>
+            <Toggle value={atmoFollowMap} onChange={() => setAtmoFollowMap(!atmoFollowMap)} />
+          </Row>
+        )}
         <Row label={text.labels.searchHistory} last>
           <Toggle value={searchHistory} onChange={() => setSearchHistory(!searchHistory)} />
         </Row>
@@ -729,6 +743,8 @@ export function SettingsPanel({
         </Row>
       </Group>
 
+      {!IS_NANCY && (
+        <>
       <Group title={language === 'fr' ? 'Métropole grenobloise' : 'Grenoble area'}>
         <NetworkTiles
           tiles={[...NETWORK_TILES, ...OPERATOR_TILES].map(tile => ({ ...tile, key: tile.codes.join('+') }))}
@@ -748,10 +764,12 @@ export function SettingsPanel({
           </Row>
         ))}
       </Group>
+        </>
+      )}
 
-      <Group title={language === 'fr' ? 'Autres réseaux' : 'Other networks'}>
+      <Group title={IS_NANCY ? (language === 'fr' ? 'Réseau' : 'Network') : language === 'fr' ? 'Autres réseaux' : 'Other networks'}>
         <NetworkTiles
-          tiles={[LYON_TILE, ...CITY_TILES].map(tile => ({ ...tile, key: tile.codes.join('+') }))}
+          tiles={(IS_NANCY ? CITY_TILES : [LYON_TILE, ...CITY_TILES]).map(tile => ({ ...tile, key: tile.codes.join('+') }))}
           isActive={key => key.split('+').every(code => perf.networks.includes(code))}
           onToggle={key => toggleNetwork(key.split('+'))}
         />
@@ -767,14 +785,6 @@ export function SettingsPanel({
             />
           </Row>
         ))}
-      </Group>
-
-      <Group title={text.networks.shared}>
-        <NetworkTiles
-          tiles={SHARED_TILES.map(tile => ({ ...tile, key: tile.setting }))}
-          isActive={key => Boolean(perf[key as 'citiz' | 'voi'])}
-          onToggle={key => setSetting(key as 'citiz' | 'voi', !perf[key as 'citiz' | 'voi'])}
-        />
       </Group>
 
       <p className="mb-6 px-4 text-xs leading-relaxed text-slate-500">{text.networks.hint}</p>

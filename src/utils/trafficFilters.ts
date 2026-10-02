@@ -1,8 +1,9 @@
 import type { AllLinesLine } from '../services/allLines';
-import gtfsNetworks from '../data/gtfsNetworks.json';
+import gtfsNetworks from '../data/siteNetworks';
 import { gtfsCodeOf } from '../services/gtfsNetworkIds';
 import { gtfsLineMode, gtfsShortName } from '../services/gtfsNetwork';
 import { tclCode, tclLogoEntry } from './tclLogos';
+import { IS_NANCY } from '../site';
 
 export type MetroFamily = 'tram' | 'chrono' | 'proximo' | 'flexo';
 
@@ -18,6 +19,25 @@ export const NETWORK_FILTERS: Array<{ code: string; label: string }> = [
   { code: 'TCL', label: 'Lyon' },
   ...(gtfsNetworks as Array<{ code: string; city: string }>).map(network => ({ code: network.code, label: network.city })),
 ];
+
+const STAN_FAMILIES: Array<{ key: string; fr: string; en: string }> = [
+  { key: 'stan-tempo', fr: 'Tempo', en: 'Tempo' },
+  { key: 'stan-corol', fr: 'Corol', en: 'Corol' },
+  { key: 'stan-urbain', fr: 'Urbaines', en: 'Urban' },
+  { key: 'stan-suburbain', fr: 'Suburbaines', en: 'Suburban' },
+  { key: 'stan-autres', fr: 'Autres', en: 'Other' },
+];
+
+function stanFamily(line: string): string | null {
+  if (gtfsCodeOf(line) !== 'STAN' || gtfsLineMode(line) === null) return null;
+  const short = gtfsShortName(line).trim().toUpperCase();
+  if (/^T\d+$/.test(short)) return 'stan-tempo';
+  if (short === 'COROL') return 'stan-corol';
+  const num = parseInt(short, 10);
+  if (/^\d+/.test(short) && num < 30) return 'stan-urbain';
+  if (/^\d+/.test(short)) return 'stan-suburbain';
+  return 'stan-autres';
+}
 
 export function getMetroFamily(line: string): MetroFamily | null {
   const n = line.trim().toUpperCase();
@@ -47,7 +67,7 @@ export function trafficCategory(
   const known = cache.get(line);
   if (known !== undefined) return known;
   const category = computeTrafficCategory(line, lineLookup);
-  cache.set(line, category);
+  if (!IS_NANCY || gtfsCodeOf(line) !== 'STAN' || category !== 'STAN') cache.set(line, category);
   return category;
 }
 
@@ -56,6 +76,10 @@ function computeTrafficCategory(
   lineLookup?: Map<string, AllLinesLine> | null,
 ): string {
   if (line.startsWith('TCL:')) return 'TCL';
+  if (IS_NANCY) {
+    const family = stanFamily(line);
+    if (family) return family;
+  }
   const gtfsCode = gtfsCodeOf(line);
   if (gtfsCode) return gtfsCode;
   const family = getMetroFamily(line);
@@ -66,7 +90,10 @@ function computeTrafficCategory(
 }
 
 export function categoryRank(category: string): number {
-  const rank: Record<string, number> = { tram: 0, chrono: 1, proximo: 2, flexo: 3 };
+  const rank: Record<string, number> = {
+    tram: 0, chrono: 1, proximo: 2, flexo: 3,
+    'stan-tempo': 0, 'stan-corol': 1, 'stan-urbain': 2, 'stan-suburbain': 3, 'stan-autres': 4,
+  };
   return rank[category] ?? 90;
 }
 
@@ -75,6 +102,15 @@ export function trafficFilters(
   language: 'fr' | 'en',
 ): Array<{ key: string; label: string }> {
   const isFr = language === 'fr';
+  if (IS_NANCY) {
+    return [
+      { key: 'all', label: isFr ? 'Tout' : 'All' },
+      ...STAN_FAMILIES.filter(family => present.has(family.key)).map(family => ({
+        key: family.key,
+        label: isFr ? family.fr : family.en,
+      })),
+    ];
+  }
   return [
     { key: 'all', label: isFr ? 'Tout' : 'All' },
     { key: 'tram', label: isFr ? 'Trams' : 'Trams' },

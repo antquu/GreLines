@@ -1,4 +1,5 @@
 import { ScrollingText } from './ScrollingText';
+import { IS_NANCY } from '../site';
 import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
 ﻿import { motion } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
@@ -460,16 +461,18 @@ export const SidebarMobile = ({ stop, isOpen, onClose, initialSelectedLines, sel
                 {currentStopDetail.city && <p className="text-sm text-slate-400 mt-0.5">{currentStopDetail.city}</p>}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-                <button
-                  type="button"
-                  onClick={() => onPlanRouteFromStop?.(currentStopDetail)}
-                  className="flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-500 active:scale-95"
-                  style={{ color: '#ffffff' }}
-                  aria-label={text.planRouteFromStop}
-                  title={text.planRouteFromStop}
-                >
-                  GO
-                </button>
+                {!IS_NANCY && (
+                  <button
+                    type="button"
+                    onClick={() => onPlanRouteFromStop?.(currentStopDetail)}
+                    className="flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-500 active:scale-95"
+                    style={{ color: '#ffffff' }}
+                    aria-label={text.planRouteFromStop}
+                    title={text.planRouteFromStop}
+                  >
+                    GO
+                  </button>
+                )}
                 <button
                   onClick={() => {
                   if (isFav) {

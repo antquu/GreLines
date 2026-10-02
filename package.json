@@ -1,10 +1,11 @@
 {
   "name": "grelines",
   "private": true,
-  "version": "3.17.0",
+  "version": "3.17.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:nancy": "vite --mode nancy --port 5190 --strictPort",
     "prebuild": "node scripts/tcl-timetables.mjs && node scripts/gtfs-networks.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

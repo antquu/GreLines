@@ -5,6 +5,7 @@ import './index.css'
 
 import './light-theme.css'
 import { PerfSettingsProvider } from './hooks/usePerfSettings.tsx'
+import { IS_NANCY } from './site'
 import { installNetworkSimulation } from './services/networkSimulation'
 import { preloadBadgeImages } from './utils/badgeImages'
 import { Analytics } from '@vercel/analytics/react'
@@ -37,21 +38,21 @@ function deviceLang(): 'fr' | 'en' {
   return 'fr';
 }
 
-const landingLang = /^\/(fr|en)\/?$/.exec(window.location.pathname)?.[1] as
+const landingLang = (IS_NANCY ? undefined : /^\/(fr|en)\/?$/.exec(window.location.pathname)?.[1]) as
   | 'fr'
   | 'en'
   | undefined;
 
 const legalRoute = /^\/(fr|en)\/legals\/([a-z-]+)\/?$/.exec(window.location.pathname);
 
-const blogRoute = /^\/(fr|en)\/(?:newsroom|blog)\/?$/.exec(window.location.pathname);
-const docsRoute = /^\/(fr|en)\/docs(?:\/([a-z0-9-]+))?(?:\/([a-z0-9-]+))?\/?$/.exec(
+const blogRoute = IS_NANCY ? null : /^\/(fr|en)\/(?:newsroom|blog)\/?$/.exec(window.location.pathname);
+const docsRoute = IS_NANCY ? null : /^\/(fr|en)\/docs(?:\/([a-z0-9-]+))?(?:\/([a-z0-9-]+))?\/?$/.exec(
   window.location.pathname,
 );
-const solutionRoute = /^\/(fr|en)\/solutions(?:\/([a-z0-9-]+))?\/?$/.exec(
+const solutionRoute = IS_NANCY ? null : /^\/(fr|en)\/solutions(?:\/([a-z0-9-]+))?\/?$/.exec(
   window.location.pathname,
 );
-const postRoute = /^\/(fr|en)\/(?:newsroom|blog)\/([A-Za-z0-9-]+)\/?$/.exec(window.location.pathname);
+const postRoute = IS_NANCY ? null : /^\/(fr|en)\/(?:newsroom|blog)\/([A-Za-z0-9-]+)\/?$/.exec(window.location.pathname);
 
 const LANDING_LANG_KEY = 'greLines_landingLang';
 
@@ -131,7 +132,7 @@ if (solutionRoute) {
       </StrictMode>,
     )
   })
-} else if (/^\/(?:trafic|traffic)\/?$/.test(window.location.pathname)) {
+} else if (!IS_NANCY && /^\/(?:trafic|traffic)\/?$/.test(window.location.pathname)) {
   void import('./traffic/TrafficPage').then(({ TrafficPage }) => {
     root.render(
       <StrictMode>

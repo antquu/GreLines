@@ -1,4 +1,6 @@
-import gtfsNetworks from '../data/gtfsNetworks.json';
+import gtfsNetworks from '../data/siteNetworks';
+import { IS_NANCY } from '../site';
+import type { SharedOperator } from './sharedMobility';
 import axios from 'axios';
 import { stripHtml } from '../utils/stripHtml';
 import { localCode, networkOf, providerOf, type ProviderId } from './providers';
@@ -36,7 +38,7 @@ export interface RouteLocation {
 }
 
 export interface SharedJourneyInfo {
-  operator: 'citiz' | 'voi';
+  operator: SharedOperator;
   formFactor: string;
   accessMeters: number;
   rideMinutes: number;
@@ -399,7 +401,7 @@ export interface NetworkDefinition {
   usesGenClusterPrefix?: boolean;
 }
 
-export const NETWORKS: NetworkDefinition[] = [
+const GRENOBLE_NETWORKS: NetworkDefinition[] = [
   { code: 'SEM', provider: 'mtag', label: 'M réso — Tag', defaultEnabled: true, usesGenClusterPrefix: true },
   { code: 'SE2', provider: 'mtag', label: 'M réso — Tag (suite)', defaultEnabled: true },
   { code: 'GSV', provider: 'mtag', label: 'M réso — Grésivaudan', defaultEnabled: true },
@@ -420,6 +422,15 @@ export const NETWORKS: NetworkDefinition[] = [
     addedInRevision: 5,
   })),
 ];
+
+const NANCY_NETWORKS: NetworkDefinition[] = (gtfsNetworks as Array<{ code: string; label: string }>).map(network => ({
+  code: network.code,
+  provider: 'gtfs' as const,
+  label: network.label,
+  defaultEnabled: true,
+}));
+
+export const NETWORKS: NetworkDefinition[] = IS_NANCY ? NANCY_NETWORKS : GRENOBLE_NETWORKS;
 
 export function networksOfProvider(provider: ProviderId): NetworkDefinition[] {
   return NETWORKS.filter(network => network.provider === provider);

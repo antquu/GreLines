@@ -1,4 +1,4 @@
-import gtfsNetworks from '../data/gtfsNetworks.json';
+import gtfsNetworks from '../data/siteNetworks';
 
 export type ProviderId = 'mtag' | 'tcl' | 'gtfs';
 

@@ -1,4 +1,5 @@
 import { sortStopPreviewLines } from '../utils/lineOrder';
+import { IS_NANCY } from '../site';
 import { appLanguage } from '../utils/appLanguage';
 import { useReconnectCount } from '../hooks/useIsOffline';
 ﻿import { useRef, forwardRef, useImperativeHandle, useCallback, useState, useMemo, useEffect, memo } from 'react';
@@ -79,7 +80,6 @@ interface MapProps {
   onSharedSelect?: (selection: { operator: SharedOperator; points: SharedVehiclePoint[] }) => void;
 
   focusedShared?: { operator: SharedOperator; points: SharedVehiclePoint[] } | null;
-  onSharedInViewChange?: (inView: boolean) => void;
 
   highlightedVehicleId?: string | null;
 }
@@ -116,8 +116,20 @@ const LONG_PRESS_MS = 500;
 
 const CITIZ_LAYER_ID = 'citiz-circles';
 const VOI_LAYER_ID = 'voi-circles';
+const VELOSTAN_LAYER_ID = 'velostan-circles';
 const CITIZ_COLOR = '#2563eb';
 const VOI_COLOR = '#ec4899';
+const VELOSTAN_COLOR = '#ee3424';
+const SHARED_LAYER_IDS: Record<SharedOperator, string> = {
+  citiz: CITIZ_LAYER_ID,
+  voi: VOI_LAYER_ID,
+  velostan: VELOSTAN_LAYER_ID,
+};
+const SHARED_COLORS: Record<SharedOperator, string> = {
+  citiz: CITIZ_COLOR,
+  voi: VOI_COLOR,
+  velostan: VELOSTAN_COLOR,
+};
 
 const SHARED_LABEL_MIN_ZOOM = 16.5;
 
@@ -213,7 +225,7 @@ interface MapState {
   zoom: number;
 }
 
-const GRENOBLE_CENTER: [number, number] = [45.18501, 5.74892];
+const GRENOBLE_CENTER: [number, number] = IS_NANCY ? [48.6921, 6.1844] : [45.18501, 5.74892];
 
 const throttle = <T extends (...args: any[]) => void>(fn: T, delay: number): T => {
   let lastCall = 0;
@@ -392,7 +404,7 @@ const animateFeatureCollectionProgress = (
 };
 
 const MapComponentBase = (
-  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null, onSharedInViewChange }: MapProps,
+  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
   ref: ForwardedRef<MapRef>
 ) => {
   const { settings: perf } = usePerfSettings();
@@ -437,15 +449,6 @@ const MapComponentBase = (
   }, [stops, visibleStopPoints, lineGeometries, selectedStop, perf.markerCap]);
 
   const mapStopsVisible = useMemo(() => (focusedShared ? [] : mapStops), [focusedShared, mapStops]);
-
-  const sharedInView = useMemo(() => {
-    const bounds = mapState.bounds;
-    if (!bounds) return true;
-    const inside = (point: { lat: number; lon: number }) =>
-      point.lat <= bounds.north && point.lat >= bounds.south && point.lon <= bounds.east && point.lon >= bounds.west;
-    return sharedMobility.citiz.some(inside) || sharedMobility.voi.some(inside);
-  }, [mapState.bounds, sharedMobility]);
-  useEffect(() => { onSharedInViewChange?.(sharedInView); }, [sharedInView, onSharedInViewChange]);
 
   const [voiZones, setVoiZones] = useState<GeoJSON.FeatureCollection | null>(null);
   const showVoiZones = focusedShared?.operator === 'voi';
@@ -834,6 +837,7 @@ const MapComponentBase = (
     return {
       citiz: focusedShared.operator === 'citiz' ? points : [],
       voi: focusedShared.operator === 'voi' ? points : [],
+      velostan: focusedShared.operator === 'velostan' ? points : [],
     };
   }, [sharedMobility, focusedShared]);
 
@@ -850,6 +854,7 @@ const MapComponentBase = (
     const index: Record<string, SharedVehiclePoint> = {};
     for (const point of visibleShared.citiz) index[`citiz:${point.id}`] = point;
     for (const point of visibleShared.voi) index[`voi:${point.id}`] = point;
+    for (const point of visibleShared.velostan) index[`velostan:${point.id}`] = point;
     return index;
   }, [visibleShared]);
 
@@ -873,7 +878,7 @@ const MapComponentBase = (
     const map = mapRef.current?.getMap?.();
     if (!map) return [];
     const origin = map.project(center);
-    const points = operator === 'citiz' ? visibleShared.citiz : visibleShared.voi;
+    const points = visibleShared[operator];
 
     return points.filter(point => {
       const projected = map.project([point.lon, point.lat]);
@@ -940,6 +945,7 @@ const MapComponentBase = (
 
     inspect('citiz', visibleShared.citiz);
     inspect('voi', visibleShared.voi);
+    inspect('velostan', visibleShared.velostan);
     return best as Candidate | null;
   }, [visibleShared]);
 
@@ -987,13 +993,14 @@ const MapComponentBase = (
       return;
     }
     const features: any[] = event.features ?? [];
-    const feature = features.find(f => /^(citiz|voi)/.test(f?.layer?.id ?? ''))
+    const feature = features.find(f => /^(citiz|voi|velostan)-/.test(f?.layer?.id ?? ''))
       ?? nearestStopFeature(features, event.point, mapRef.current?.getMap?.())
       ?? features[0];
     const layerId = feature?.layer?.id as string | undefined;
 
-    if (layerId && (layerId.startsWith('citiz') || layerId.startsWith('voi'))) {
-      const operator: SharedOperator = layerId.startsWith('citiz') ? 'citiz' : 'voi';
+    const sharedOperator = layerId?.match(/^(citiz|voi|velostan)-/)?.[1] as SharedOperator | undefined;
+    if (layerId && sharedOperator) {
+      const operator = sharedOperator;
       void collectSharedSelection(operator, feature).then(points => {
         openSharedSelection(operator, points);
       });
@@ -1194,6 +1201,10 @@ const MapComponentBase = (
     () => toSharedCollection(visibleShared.voi),
     [visibleShared.voi, toSharedCollection],
   );
+  const velostanCollection = useMemo(
+    () => toSharedCollection(visibleShared.velostan),
+    [visibleShared.velostan, toSharedCollection],
+  );
 
   const [sharedLabels, setSharedLabels] = useState<SharedPinData[]>([]);
 
@@ -1206,13 +1217,13 @@ const MapComponentBase = (
 
     const pins: SharedPinData[] = [];
     const cap = focusedShared ? MAX_FOCUS_LABELS : MAX_SHARED_LABELS;
-    for (const operator of ['citiz', 'voi'] as SharedOperator[]) {
+    for (const operator of ['citiz', 'voi', 'velostan'] as SharedOperator[]) {
       let taken = 0;
       if (!map.getSource(operator)) continue;
       const seen = new Set<string>();
       let features: Array<{ properties?: Record<string, unknown>; geometry?: { coordinates?: number[] } }> = [];
       try {
-        const layerId = operator === 'citiz' ? CITIZ_LAYER_ID : VOI_LAYER_ID;
+        const layerId = SHARED_LAYER_IDS[operator];
         if (!map.getLayer(layerId)) continue;
         features = map.queryRenderedFeatures({ layers: [layerId] }) as unknown as typeof features;
       } catch {
@@ -1632,6 +1643,24 @@ const MapComponentBase = (
           </Source>
         )}
 
+        {stopsLayerReady && sharedMobility.velostan.length > 0 && (
+          <Source
+            id="velostan"
+            type="geojson"
+            data={velostanCollection}
+            cluster={!focusedShared}
+            clusterRadius={SHARED_CLUSTER_RADIUS}
+            clusterMaxZoom={SHARED_CLUSTER_MAX_ZOOM}
+          >
+            <Layer
+              id={VELOSTAN_LAYER_ID}
+              type="circle"
+              beforeId={STOPS_LAYER_ID}
+              paint={{ ...sharedCirclePaint(VELOSTAN_COLOR) }}
+            />
+          </Source>
+        )}
+
         {sharedLabels.map(pin => (
           <Marker
             key={pin.key}
@@ -1758,10 +1787,10 @@ const MapComponentBase = (
 };
 
 const SharedPin = memo(function SharedPin({ pin, highlighted = false }: { pin: SharedPinData; highlighted?: boolean }) {
-  const color = pin.operator === 'citiz' ? CITIZ_COLOR : VOI_COLOR;
+  const color = SHARED_COLORS[pin.operator];
   const formFactor = pin.point
     ? dominantFormFactor(pin.point)
-    : (pin.operator === 'citiz' ? 'car' : 'scooter');
+    : (pin.operator === 'citiz' ? 'car' : pin.operator === 'velostan' ? 'bicycle' : 'scooter');
   const full = pin.point ? hasFullBattery(pin.point) : false;
 
   return (

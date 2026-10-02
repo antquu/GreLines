@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { isImageLoadingForced, subscribeImageLoadingForced } from '../utils/forcedImageLoading';
 import { createPortal } from 'react-dom';
 import { ChevronUpIcon, MapPinIcon, XMarkIcon } from '@heroicons/react/24/solid';
-import { grenoblePlaces, type Place } from '../services/places';
+import { cityPlaces, PLACE_LINES, type Place } from '../services/places';
 import { LineBadge } from './LineBadge';
 import {
   initialPlaceSrc,
@@ -21,7 +21,7 @@ export function PlacesCarousel({
   isLight: boolean;
   onNavigate?: (place: Place) => void;
 }) {
-  const places = useMemo(() => grenoblePlaces(language), [language]);
+  const places = useMemo(() => cityPlaces(language), [language]);
   const [openId, setOpenId] = useState<string | null>(null);
   const opened = places.find(place => place.id === openId) ?? null;
 
@@ -345,7 +345,15 @@ function renderWithLineBadges(text: string): React.ReactNode[] {
       chunk
     ) : (
       <span key={index} className="mx-0.5 inline-flex align-middle" style={{ transform: 'translateY(-0.1em)' }}>
-        <LineBadge line={{ id: `SEM:${chunk}`, shortName: chunk }} size="xs" />
+        <LineBadge
+          line={{
+            id: PLACE_LINES[chunk]?.id ?? `SEM:${chunk}`,
+            shortName: chunk,
+            color: PLACE_LINES[chunk]?.color,
+            textColor: PLACE_LINES[chunk]?.textColor,
+          }}
+          size="xs"
+        />
       </span>
     ),
   );

@@ -1,4 +1,5 @@
 import { OfflinePanel } from './OfflinePanel';
+import { IS_NANCY } from '../site';
 import { useIsOffline } from '../hooks/useIsOffline';
 import { useEffect, useRef, useState } from 'react';
 import { motion, useMotionValue, useMotionValueEvent } from 'framer-motion';
@@ -6,6 +7,7 @@ import { MapSheet, useMapSheetCompactProgress } from './MapSheet';
 import { MorphAnchor, MorphSlot, MorphStage } from './MorphLayout';
 import { getSharedPricing, formatEuro, type SharedPricing } from '../services/sharedPricing';
 import { XMarkIcon, MapPinIcon } from '@heroicons/react/24/solid';
+import { MdLocalParking, MdPedalBike } from 'react-icons/md';
 import { VehicleGlyph } from './VehicleGlyph';
 import { MarqueeText } from './MarqueeText';
 import { reverseGeocode } from '../services/geocoding';
@@ -34,19 +36,24 @@ interface SharedMobilitySidebarProps {
 }
 
 const OPERATOR_SITES: Record<SharedOperator, string> = {
-  citiz: 'https://alpes-loire.citiz.coop/',
+  citiz: IS_NANCY ? 'https://grand-est.citiz.coop/' : 'https://alpes-loire.citiz.coop/',
   voi: 'https://www.voi.com/fr/',
+  velostan: 'https://www.velostanlib.fr/',
 };
+
+const VELO_GREEN = '#73b74a';
 
 const OPERATOR_BRAND: Record<SharedOperator, string> = {
   citiz: '#4ac2b6',
   voi: '#f46c63',
+  velostan: VELO_GREEN,
 };
 
 const OPERATORS: Record<SharedOperator, { label: string; color: string; logo: string; logoDark?: string }> = {
 
   citiz: { label: 'Citiz', color: '#2563eb', logo: '/assets/citiz.png', logoDark: '/assets/citiz_white.png' },
   voi: { label: 'Voi', color: '#ec4899', logo: '/assets/voi.png' },
+  velostan: { label: 'vélOstan’lib', color: VELO_GREEN, logo: '/assets/velostanlib-logo.svg' },
 };
 
 const getText = (language: 'fr' | 'en') => {
@@ -56,6 +63,21 @@ const getText = (language: 'fr' | 'en') => {
     availableCount: (n: number) => (fr
       ? `véhicule${n > 1 ? 's' : ''} disponible${n > 1 ? 's' : ''}`
       : `vehicle${n > 1 ? 's' : ''} available`),
+    bikesAvailable: (n: number) => (fr
+      ? `vélo${n > 1 ? 's' : ''} disponible${n > 1 ? 's' : ''}`
+      : `bike${n > 1 ? 's' : ''} available`),
+    docksFree: (n: number) => (fr
+      ? `place${n > 1 ? 's' : ''} libre${n > 1 ? 's' : ''}`
+      : `free dock${n > 1 ? 's' : ''}`),
+    stationHint: fr
+      ? 'Prenez un vélo ici et rendez-le à n’importe quelle station vélOstan’lib.'
+      : 'Take a bike here and return it to any vélOstan’lib station.',
+    stationLabel: fr ? 'Station vélOstan’lib' : 'vélOstan’lib station',
+    slots: (n: number) => (fr ? `${n} emplacements` : `${n} docks`),
+    fewBikes: fr ? 'Il reste peu de vélos' : 'Few bikes left',
+    fewDocks: fr ? 'Station presque pleine' : 'Station almost full',
+    routeToStation: fr ? 'Itinéraire jusqu’à la station' : 'Directions to the station',
+    operatorSite: fr ? 'Site vélOstan’lib' : 'vélOstan’lib website',
     battery: fr ? 'Batterie' : 'Battery',
     estimated: fr ? 'estimée' : 'estimated',
     range: fr ? 'Autonomie' : 'Range',
@@ -601,7 +623,11 @@ export function SharedMobilitySidebar({
   const title = stationNames.length === 1 ? stationNames[0] : (points.length === 1 ? street : null);
   const stationSubtitle = points.length === 1 && points[0].address ? points[0].name : null;
 
-  const single = vehicles.length === 1 ? vehicles[0] : null;
+  const isBikeStation = operator === 'velostan';
+  const single = !isBikeStation && vehicles.length === 1 ? vehicles[0] : null;
+  const countLabel = (n: number) => (isBikeStation ? text.bikesAvailable(n) : text.availableCount(n));
+  const docksFree = [...new Map(points.map(point => [point.name || point.id, point.docksAvailable ?? 0])).values()]
+    .reduce((sum, docks) => sum + docks, 0);
 
   const header = (
     <div className="flex items-start justify-between gap-3">
@@ -619,17 +645,19 @@ export function SharedMobilitySidebar({
             {stationSubtitle && (
               <p className="mt-1 text-sm text-slate-400">{stationSubtitle}</p>
             )}
-            <p className="mt-2.5 flex items-baseline gap-2">
-              <span className="tabular text-[0.9375rem] font-bold text-white">{vehicles.length}</span>
-              <span className="text-sm text-slate-400">{text.availableCount(vehicles.length)}</span>
-            </p>
+            {!isBikeStation && (
+              <p className="mt-2.5 flex items-baseline gap-2">
+                <span className="tabular text-[0.9375rem] font-bold text-white">{vehicles.length}</span>
+                <span className="text-sm text-slate-400">{countLabel(vehicles.length)}</span>
+              </p>
+            )}
           </>
         ) : (
           <p className="flex items-baseline gap-2">
             <span className="tabular text-[1.625rem] font-extrabold leading-none tracking-tight text-white">
               {vehicles.length}
             </span>
-            <span className="text-sm text-slate-400">{text.availableCount(vehicles.length)}</span>
+            <span className="text-sm text-slate-400">{countLabel(vehicles.length)}</span>
           </p>
         )}
         {stationNames.length > 1 && (
@@ -672,7 +700,100 @@ export function SharedMobilitySidebar({
     </>
   );
 
-  const body = offline ? offlineBody : single ? (
+  const bikeTotal = vehicles.length + docksFree;
+  const bikeShare = bikeTotal > 0 ? vehicles.length / bikeTotal : 0;
+  const bikeWarning = vehicles.length <= 2
+    ? text.fewBikes
+    : docksFree <= 2
+      ? text.fewDocks
+      : null;
+
+  const bikeStationBody = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <MorphSlot id="logo" className="inline-block">
+          <img src="/assets/velostanlib-logo.svg" alt="vélOstan’lib" className="block h-12 w-auto rounded-md" />
+        </MorphSlot>
+        {!isMobile && (
+          <button
+            onClick={onClose}
+            aria-label={text.close}
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-800 transition hover:bg-slate-700"
+          >
+            <XMarkIcon className="h-4 w-4 text-white" />
+          </button>
+        )}
+      </div>
+
+      <h2 className="mt-5 text-[1.625rem] font-extrabold leading-[1.1] tracking-tight text-white">
+        {points[0]?.name ?? OPERATORS[operator].label}
+      </h2>
+      <p className="mt-1.5 text-sm text-slate-400">
+        {text.stationLabel}
+        {bikeTotal > 0 && ` · ${text.slots(bikeTotal)}`}
+      </p>
+
+      <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <MdPedalBike className="h-5 w-5" style={{ color: VELO_GREEN }} aria-hidden="true" />
+              <span className="tabular text-[2.25rem] font-extrabold leading-none text-white">{vehicles.length}</span>
+            </div>
+            <p className="mt-1.5 text-sm text-slate-400">{text.bikesAvailable(vehicles.length)}</p>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <MdLocalParking className="h-5 w-5 text-slate-400" aria-hidden="true" />
+              <span className="tabular text-[2.25rem] font-extrabold leading-none text-white">{docksFree}</span>
+            </div>
+            <p className="mt-1.5 text-sm text-slate-400">{text.docksFree(docksFree)}</p>
+          </div>
+        </div>
+
+        <div
+          className="mt-5 h-2.5 overflow-hidden rounded-full bg-white/10"
+          role="img"
+          aria-label={`${vehicles.length} / ${bikeTotal}`}
+        >
+          <div
+            className="h-full rounded-full transition-[width] duration-500"
+            style={{ width: `${Math.round(bikeShare * 100)}%`, backgroundColor: VELO_GREEN }}
+          />
+        </div>
+
+        {bikeWarning && (
+          <p className="mt-4 flex items-center gap-2 text-sm font-medium text-amber-400">
+            <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
+            {bikeWarning}
+          </p>
+        )}
+      </div>
+
+      <p className="mt-4 px-1 text-sm leading-snug text-slate-400">{text.stationHint}</p>
+
+      {onRouteTo && points[0] && (
+        <button
+          type="button"
+          onClick={() => onRouteTo({ lat: points[0].lat, lon: points[0].lon, label: points[0].name || OPERATORS[operator].label })}
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-3.5 text-[0.9375rem] font-semibold text-black transition active:scale-[0.98]"
+        >
+          <MapPinIcon className="h-4 w-4" aria-hidden="true" />
+          {text.routeToStation}
+        </button>
+      )}
+      <a
+        href={OPERATOR_SITES[operator]}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 block w-full rounded-2xl border border-white/10 py-3 text-center text-[0.9375rem] font-semibold text-white transition active:scale-[0.98]"
+      >
+        {text.operatorSite}
+      </a>
+    </>
+  );
+
+  const body = offline ? offlineBody : isBikeStation ? bikeStationBody : single ? (
     <>
       {header}
       <SingleVehicleView vehicle={single} text={text} language={language} />

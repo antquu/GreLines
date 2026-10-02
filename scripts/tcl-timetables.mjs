@@ -3,6 +3,11 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFiches, downloadGtfs, eachRow, parisToday, readAgencyContacts, writeFiches } from './lib/gtfs.mjs';
 
+if (process.env.VITE_SITE === 'nancy') {
+  console.log('tcl-timetables : site de Nancy, rien à générer.');
+  process.exit(0);
+}
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = join(ROOT, 'public/data/tcl-fiches');
 const ACCESSIBILITY = join(ROOT, 'public/data/tcl-accessibility.json');

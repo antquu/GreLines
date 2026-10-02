@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { IS_NANCY } from '../site';
 import MapLibreMap, { Source, Layer, Marker } from 'react-map-gl/maplibre';
 import { MinimalScreen } from './MinimalScreen';
 import { isRoundLine } from './LineBadge';
@@ -45,7 +46,7 @@ export function TripHistoryScreen({
   const path = trip?.path ?? [];
 
   const view = useMemo(() => {
-    if (path.length === 0) return { longitude: 5.7245, latitude: 45.1885, zoom: 12 };
+    if (path.length === 0) return IS_NANCY ? { longitude: 6.1844, latitude: 48.6921, zoom: 12 } : { longitude: 5.7245, latitude: 45.1885, zoom: 12 };
     let minLon = path[0][0];
     let maxLon = path[0][0];
     let minLat = path[0][1];

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { IS_NANCY } from '../site';
 
 const FADE_MS = 450;
 
@@ -53,6 +54,15 @@ export function LaunchScreen({
         style={{ transform: 'translateY(-2.5%)' }}
         draggable={false}
       />
+      {IS_NANCY && (
+        <img
+          src={light ? '/assets/stan-logo.svg' : '/assets/stan-logo-white.svg'}
+          alt="Stan"
+          className="absolute left-1/2 w-28 -translate-x-1/2"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4rem)' }}
+          draggable={false}
+        />
+      )}
     </div>
   );
 }

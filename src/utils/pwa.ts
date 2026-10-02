@@ -48,11 +48,6 @@ function seenInstallGuideVersion(): number {
 export const hasSeenInstallGuide = (): boolean =>
   seenInstallGuideVersion() >= INSTALL_GUIDE_VERSION;
 
-export const isInstallGuideUpdate = (): boolean => {
-  const seen = seenInstallGuideVersion();
-  return seen > 0 && seen < INSTALL_GUIDE_VERSION;
-};
-
 export const markInstallGuideSeen = (): void => {
   try {
     localStorage.setItem(INSTALL_GUIDE_SEEN_KEY, String(INSTALL_GUIDE_VERSION));

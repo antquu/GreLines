@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
 
 
 
@@ -9,6 +10,22 @@ import react from '@vitejs/plugin-react'
 
 
 
+
+function siteHtml(): Plugin {
+  let site = 'grenoble';
+  return {
+    name: 'grelines-site-html',
+    configResolved(config) {
+      site = config.env.VITE_SITE === 'nancy' ? 'nancy' : 'grenoble';
+    },
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html) {
+        return site === 'nancy' ? readFileSync('site/nancy/index.html', 'utf8') : html;
+      },
+    },
+  };
+}
 
 function serverlessFunctions(): Plugin {
   return {
@@ -47,7 +64,7 @@ function serverlessFunctions(): Plugin {
 
 
 export default defineConfig({
-  plugins: [react(), serverlessFunctions()],
+  plugins: [react(), serverlessFunctions(), siteHtml()],
   build: {
     manifest: 'asset-manifest.json',
     rollupOptions: {

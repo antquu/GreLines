@@ -1,4 +1,5 @@
 import { XMarkIcon } from '@heroicons/react/24/solid';
+import { IS_NANCY } from '../site';
 import { MapSheet } from './MapSheet';
 import { LineBadge } from './LineBadge';
 import type { AllLinesLine } from '../services/allLines';
@@ -12,13 +13,17 @@ interface LinesExplorerSheetProps {
   theme?: 'light' | 'dark';
 }
 
-const NETWORK_GROUPS: { key: string; label: string; networks: string[] }[] = [
+const GRENOBLE_GROUPS: { key: string; label: string; networks: string[] }[] = [
   { key: 'mtag',   label: 'M Tag',        networks: ['SEM', 'SE2'] },
   { key: 'tougo',  label: 'Tougo',        networks: ['TPV'] },
   { key: 'reso',   label: 'Réso',         networks: ['GSV'] },
   { key: 'cars',   label: 'Cars Région',  networks: ['C38'] },
   { key: 'ter',    label: 'TER',          networks: ['SNC'] },
 ];
+
+const NETWORK_GROUPS: { key: string; label: string; networks: string[] }[] = IS_NANCY
+  ? [{ key: 'stan', label: 'Stan', networks: ['STAN'] }]
+  : GRENOBLE_GROUPS;
 
 const OTHERS_GROUP = { key: 'other', label: { fr: 'Autres', en: 'Others' } };
 
@@ -29,6 +34,13 @@ function networkOf(id: string): string {
 function sortLines(lines: AllLinesLine[]): AllLinesLine[] {
   const priority = (l: AllLinesLine) => {
     const n = (l.shortName || l.id).toUpperCase();
+    if (IS_NANCY) {
+      if (/^T\d$/.test(n)) return 0;
+      if (n === 'COROL') return 1;
+      if (/^CIT\d$/.test(n)) return 2;
+      if (/^\d+E?$/.test(n)) return 3;
+      return 4;
+    }
     if (['A', 'B', 'C', 'D', 'E'].includes(n)) return 0;
     if (/^C\d+$/.test(n)) return 1;
     return 2;

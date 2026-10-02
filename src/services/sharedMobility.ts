@@ -1,10 +1,13 @@
 import { idbGet, idbSet } from './persistentCache';
+import { IS_NANCY } from '../site';
 
 const GBFS_BASE = 'https://data.mobilites-m.fr/api/gbfs';
+const CITIZ_GRAND_EST_BASE = 'https://backend.citiz.fr/public/provider/1/gbfs/v3.0';
+const VELOSTANLIB_BASE = 'https://api.cyclocity.fr/contracts/nancy/gbfs/v2';
 
 export const SHARED_MOBILITY_TTL_MS = 5 * 60 * 1000;
 
-export type SharedOperator = 'citiz' | 'voi';
+export type SharedOperator = 'citiz' | 'voi' | 'velostan';
 
 export interface SharedVehicle {
   id: string;
@@ -35,26 +38,37 @@ export interface SharedVehiclePoint {
 
   address?: string;
   vehicles: SharedVehicle[];
+
+  docksAvailable?: number;
 }
 
 export interface SharedMobilityData {
   citiz: SharedVehiclePoint[];
   voi: SharedVehiclePoint[];
+  velostan: SharedVehiclePoint[];
 }
 
-export const EMPTY_SHARED_MOBILITY: SharedMobilityData = { citiz: [], voi: [] };
+export const EMPTY_SHARED_MOBILITY: SharedMobilityData = { citiz: [], voi: [], velostan: [] };
+
+export const SHARED_OPERATORS: SharedOperator[] = IS_NANCY ? ['citiz', 'velostan'] : ['citiz', 'voi', 'velostan'];
 
 export const SHARED_OPERATOR_COLORS: Record<SharedOperator, string> = {
   citiz: '#2563eb',
   voi: '#ec4899',
+  velostan: '#ee3424',
 };
 
 export const SHARED_OPERATOR_LABELS: Record<SharedOperator, string> = {
   citiz: 'Citiz',
   voi: 'Voi',
+  velostan: 'vélOstan’lib',
 };
 
-const AREA = { minLat: 44.9, maxLat: 45.5, minLon: 5.2, maxLon: 6.3 };
+const AREA = IS_NANCY
+  ? { minLat: 48.55, maxLat: 48.8, minLon: 6.0, maxLon: 6.35 }
+  : { minLat: 44.9, maxLat: 45.5, minLon: 5.2, maxLon: 6.3 };
+
+const NANCY_AREA = { minLat: 48.55, maxLat: 48.8, minLon: 6.0, maxLon: 6.35 };
 
 export const FULL_BATTERY_PERCENT = 90;
 
@@ -94,11 +108,11 @@ export function dominantFormFactor(point: SharedVehiclePoint): string {
   return best;
 }
 
-function isInArea(lat: unknown, lon: unknown): boolean {
+function isInArea(lat: unknown, lon: unknown, area = AREA): boolean {
   return (
     typeof lat === 'number' && typeof lon === 'number' &&
-    lat >= AREA.minLat && lat <= AREA.maxLat &&
-    lon >= AREA.minLon && lon <= AREA.maxLon
+    lat >= area.minLat && lat <= area.maxLat &&
+    lon >= area.minLon && lon <= area.maxLon
   );
 }
 
@@ -164,13 +178,10 @@ function readText(value: GbfsText | undefined): string | undefined {
 }
 
 async function fetchVehicleTypes(
-  producer: string,
+  url: string,
   signal?: AbortSignal,
 ): Promise<Map<string, GbfsVehicleType>> {
-  const payload = await fetchJson<GbfsResponse<{ vehicle_types?: GbfsVehicleType[] }>>(
-    `${GBFS_BASE}/${producer}/vehicle_types`,
-    signal,
-  );
+  const payload = await fetchJson<GbfsResponse<{ vehicle_types?: GbfsVehicleType[] }>>(url, signal);
   const map = new Map<string, GbfsVehicleType>();
   for (const type of payload?.data?.vehicle_types ?? []) {
     if (type?.vehicle_type_id) map.set(type.vehicle_type_id, type);
@@ -227,9 +238,18 @@ function isAvailable(vehicle: GbfsVehicle): boolean {
 
 async function fetchCitiz(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
   const [info, fleet, types] = await Promise.all([
-    fetchJson<GbfsResponse<{ stations?: GbfsStation[] }>>(`${GBFS_BASE}/citiz_grenoble/station_information`, signal),
-    fetchJson<GbfsResponse<{ vehicles?: GbfsVehicle[] }>>(`${GBFS_BASE}/citiz_grenoble/vehicle_status`, signal),
-    fetchVehicleTypes('citiz_grenoble', signal),
+    fetchJson<GbfsResponse<{ stations?: GbfsStation[] }>>(
+      IS_NANCY ? `${CITIZ_GRAND_EST_BASE}/station_information.json` : `${GBFS_BASE}/citiz_grenoble/station_information`,
+      signal,
+    ),
+    fetchJson<GbfsResponse<{ vehicles?: GbfsVehicle[] }>>(
+      IS_NANCY ? `${CITIZ_GRAND_EST_BASE}/vehicle_status.json` : `${GBFS_BASE}/citiz_grenoble/vehicle_status`,
+      signal,
+    ),
+    fetchVehicleTypes(
+      IS_NANCY ? `${CITIZ_GRAND_EST_BASE}/vehicle_types.json` : `${GBFS_BASE}/citiz_grenoble/vehicle_types`,
+      signal,
+    ),
   ]);
 
   const stations = info?.data?.stations;
@@ -266,11 +286,68 @@ async function fetchCitiz(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
   return points;
 }
 
+function stationName(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  return raw
+    .replace(/\s*\(CB\)\s*$/i, '')
+    .toLowerCase()
+    .replace(/(^|[\s'’(-])(\p{L})/gu, (_, before: string, letter: string) => before + letter.toUpperCase())
+    .replace(/\s+-\s+/g, ' · ')
+    .trim();
+}
+
+interface GbfsStationStatus {
+  station_id?: string;
+  num_bikes_available?: number;
+  num_docks_available?: number;
+  is_renting?: boolean;
+}
+
+async function fetchBikeStations(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
+  const [info, status] = await Promise.all([
+    fetchJson<GbfsResponse<{ stations?: GbfsStation[] }>>(`${VELOSTANLIB_BASE}/station_information.json`, signal),
+    fetchJson<GbfsResponse<{ stations?: GbfsStationStatus[] }>>(`${VELOSTANLIB_BASE}/station_status.json`, signal),
+  ]);
+  const stations = info?.data?.stations;
+  if (!Array.isArray(stations)) return [];
+  const statusById = new Map<string, GbfsStationStatus>();
+  for (const entry of status?.data?.stations ?? []) {
+    if (entry?.station_id) statusById.set(String(entry.station_id), entry);
+  }
+
+  const points: SharedVehiclePoint[] = [];
+  for (const station of stations) {
+    if (!isInArea(station?.lat, station?.lon, NANCY_AREA)) continue;
+    const id = String(station.station_id ?? '');
+    const state = statusById.get(id);
+    if (!id || !state || state.is_renting === false) continue;
+    const count = Math.max(0, state.num_bikes_available ?? 0);
+    if (count === 0) continue;
+    points.push({
+      id,
+      operator: 'velostan',
+      lat: station.lat as number,
+      lon: station.lon as number,
+      name: stationName(readText(station.name)),
+      docksAvailable: Math.max(0, state.num_docks_available ?? 0),
+      vehicles: Array.from({ length: count }, (_, index) => ({
+        id: `${id}-${index + 1}`,
+        operator: 'velostan' as const,
+        formFactor: 'bicycle',
+        model: 'vélOstan’lib',
+        propulsion: 'human',
+      })),
+    });
+  }
+  return points;
+}
+
 async function fetchVoi(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
+  if (IS_NANCY) return [];
   type VoiPayload = GbfsResponse<{ vehicles?: GbfsVehicle[]; bikes?: GbfsVehicle[] }>;
   const [modern, types] = await Promise.all([
     fetchJson<VoiPayload>(`${GBFS_BASE}/voi_grenoble/vehicle_status`, signal),
-    fetchVehicleTypes('voi_grenoble', signal),
+    fetchVehicleTypes(`${GBFS_BASE}/voi_grenoble/vehicle_types`, signal),
   ]);
   const legacy = modern?.data?.vehicles
     ? null
@@ -297,30 +374,41 @@ async function fetchVoi(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
 }
 
 export async function fetchSharedMobility(
-  options: { citiz: boolean; voi: boolean; signal?: AbortSignal },
+  options: { signal?: AbortSignal } = {},
 ): Promise<SharedMobilityData> {
-  const [citiz, voi] = await Promise.all([
-    options.citiz ? loadOperator('citiz', options.signal) : Promise.resolve([]),
-    options.voi ? loadOperator('voi', options.signal) : Promise.resolve([]),
+  const [citiz, voi, velostan] = await Promise.all([
+    loadOperator('citiz', options.signal),
+    IS_NANCY ? Promise.resolve([]) : loadOperator('voi', options.signal),
+    loadOperator('velostan', options.signal),
   ]);
-  return { citiz, voi };
+  return { citiz, voi, velostan };
 }
 
 async function loadOperator(
   operator: SharedOperator,
   signal?: AbortSignal,
 ): Promise<SharedVehiclePoint[]> {
-  const cacheKey = `sharedMobility_v1_${operator}`;
+  const cacheKey = operator === 'velostan'
+    ? 'sharedMobility_velostan_v1'
+    : IS_NANCY ? `sharedMobility_nancy_v3_${operator}` : `sharedMobility_v1_${operator}`;
 
   const cached = await idbGet<SharedVehiclePoint[]>(cacheKey);
   if (cached && cached.value.length > 0) return cached.value;
 
-  const points = operator === 'citiz' ? await fetchCitiz(signal) : await fetchVoi(signal);
+  const points = operator === 'citiz'
+    ? await fetchCitiz(signal)
+    : operator === 'velostan' ? await fetchBikeStations(signal) : await fetchVoi(signal);
   if (points.length > 0) void idbSet(cacheKey, points, SHARED_MOBILITY_TTL_MS);
   return points;
 }
 
-const RANGE_LANDMARKS: Array<{ meters: number; fr: string; en: string }> = [
+const RANGE_LANDMARKS: Array<{ meters: number; fr: string; en: string }> = IS_NANCY ? [
+  { meters: 1_500,   fr: 'la place Stanislas à la gare', en: 'Place Stanislas to the station' },
+  { meters: 6_000,   fr: 'la traversée de Nancy', en: 'a crossing of Nancy' },
+  { meters: 15_000,  fr: 'le tour de la métropole', en: 'a loop of the metropolis' },
+  { meters: 57_000,  fr: 'un Nancy–Metz', en: 'a Nancy–Metz run' },
+  { meters: 140_000, fr: 'un Nancy–Strasbourg', en: 'a Nancy–Strasbourg run' },
+] : [
   { meters: 1_800,   fr: 'la montée à la Bastille', en: 'the climb to the Bastille' },
   { meters: 5_400,   fr: 'la traversée de Grenoble', en: 'a crossing of Grenoble' },
   { meters: 12_000,  fr: 'le tour de la rocade', en: 'a loop of the ring road' },
@@ -402,6 +490,7 @@ function zoneKind(rules: GbfsZoneRule[]): VoiZoneKind | null {
 }
 
 export function getVoiZones(): Promise<GeoJSON.FeatureCollection | null> {
+  if (IS_NANCY) return Promise.resolve(null);
   if (voiZones && Date.now() - voiZones.at < VOI_ZONES_TTL_MS) return voiZones.value;
   const value = fetchJson<{ data?: { geofencing_zones?: GeoJSON.FeatureCollection } }>(`${GBFS_BASE}/voi_grenoble/geofencing_zones`)
     .then(payload => {

@@ -1,5 +1,5 @@
-import { NETWORKS } from '../services/api';
-import gtfsNetworks from '../data/gtfsNetworks.json';
+import { DEFAULT_NETWORK_CODES, NETWORKS } from '../services/api';
+import gtfsNetworks from '../data/siteNetworks';
 
 export const NETWORK_ASSETS = '/assets/network';
 
@@ -57,16 +57,6 @@ export const CITY_TILES: NetworkTile[] = (gtfsNetworks as Array<{ code: string; 
     label: network.city,
   }));
 
-export const SHARED_TILES: Array<{
-  asset: string;
-  selectedAsset: string;
-  setting: 'citiz' | 'voi';
-  label: string;
-}> = [
-  { asset: 'citiz', selectedAsset: 'Citiz-selectionned', setting: 'citiz', label: 'Citiz' },
-  { asset: 'voi', selectedAsset: 'voi-selectionned', setting: 'voi', label: 'Voi' },
-];
-
 export const TILE_CODES = new Set([...NETWORK_TILES, ...OPERATOR_TILES, LYON_TILE, ...CITY_TILES].flatMap(tile => tile.codes));
 export const SECONDARY_NETWORKS = NETWORKS.filter(network => !TILE_CODES.has(network.code) && network.provider !== 'gtfs');
 
@@ -77,5 +67,5 @@ export function toggleNetworkCodes(current: string[], codes: string[]): string[]
   const next = active
     ? current.filter(code => !codes.includes(code))
     : [...new Set([...current, ...codes])];
-  return next.length > 0 ? next : ['SEM', 'SE2'];
+  return next.length > 0 ? next : DEFAULT_NETWORK_CODES;
 }

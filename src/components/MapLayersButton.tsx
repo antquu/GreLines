@@ -1,7 +1,7 @@
 import { motion, type MotionValue } from 'framer-motion';
 import { useEffect, useRef } from 'react';
 import { Square3Stack3DIcon } from '@heroicons/react/24/solid';
-import type { SharedOperator } from '../services/sharedMobility';
+import { SHARED_OPERATORS, SHARED_OPERATOR_LABELS, type SharedOperator } from '../services/sharedMobility';
 
 interface MapLayersButtonProps {
   language: 'fr' | 'en';
@@ -10,23 +10,21 @@ interface MapLayersButtonProps {
   onClose: () => void;
   hidden: Set<SharedOperator>;
   onToggleLayer: (operator: SharedOperator) => void;
-  counts: Record<SharedOperator, number>;
+  operators: SharedOperator[];
   bottom: MotionValue<string>;
   opacity: MotionValue<number>;
   scale: MotionValue<number>;
-  inView?: boolean;
 }
 
 const LOGOS: Record<SharedOperator, { file: string; x0: number; x1: number; y0: number; y1: number }> = {
   citiz: { file: 'citiz', x0: 0.113, x1: 0.883, y0: 0.3, y1: 0.694 },
   voi: { file: 'voi', x0: 0.141, x1: 0.855, y0: 0.253, y1: 0.741 },
+  velostan: { file: 'velostanlib', x0: 0.303, x1: 0.697, y0: 0.147, y1: 0.853 },
 };
 
 const WIDTH = 48;
 const LOGO_WIDTH = 32;
 const SLOT_HEIGHT = 42;
-
-const OPERATORS: SharedOperator[] = ['citiz', 'voi'];
 
 function OperatorLogo({ operator }: { operator: SharedOperator }) {
   const box = LOGOS[operator];
@@ -60,11 +58,10 @@ export function MapLayersButton({
   onClose,
   hidden,
   onToggleLayer,
-  counts,
+  operators,
   bottom,
   opacity,
   scale,
-  inView = true,
 }: MapLayersButtonProps) {
   const isFr = language === 'fr';
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -78,13 +75,12 @@ export function MapLayersButton({
     return () => window.removeEventListener('pointerdown', onPointerDown);
   }, [isOpen, onClose]);
 
+  const available = SHARED_OPERATORS.filter(operator => operators.includes(operator));
+  const inView = available.length > 0;
+
   useEffect(() => {
     if (!inView && isOpen) onClose();
   }, [inView, isOpen, onClose]);
-
-  const hasAnything = OPERATORS.some(operator => counts[operator] > 0) || hidden.size > 0;
-  if (!hasAnything) return null;
-  const available = OPERATORS;
 
   return (
     <motion.div
@@ -118,7 +114,7 @@ export function MapLayersButton({
               type="button"
               onClick={() => onToggleLayer(operator)}
               aria-pressed={isVisible}
-              aria-label={`${operator === 'citiz' ? 'Citiz' : 'Voi'} — ${
+              aria-label={`${SHARED_OPERATOR_LABELS[operator]} · ${
                 isVisible ? (isFr ? 'affiché' : 'shown') : isFr ? 'masqué' : 'hidden'
               }`}
               tabIndex={isOpen ? 0 : -1}

@@ -1,5 +1,5 @@
 import type { Departure, Line, Stop, StopDetail } from '../types';
-import networkConfigs from '../data/gtfsNetworks.json';
+import networkConfigs from '../data/siteNetworks';
 import { decodeTripUpdates, type RealtimeTrip } from './gtfsRealtime';
 import { getLineFiche } from './foreignTimetable';
 
@@ -239,10 +239,11 @@ export async function getGtfsStopDetail(stopId: string): Promise<StopDetail | nu
   for (const trip of trips) {
     if (trip.canceled) continue;
     const at = trip.stops.findIndex(item => members.has(item.stopId));
-    if (at === -1 || at === trip.stops.length - 1) continue;
+    if (at === -1) continue;
+    const schedule = scheduleOfTrip.get(trip.tripId);
+    if (!schedule && at === trip.stops.length - 1) continue;
     const passage = trip.stops[at];
     if (passage.skipped) continue;
-    const schedule = scheduleOfTrip.get(trip.tripId);
     const time = passage.time ?? (schedule && passage.delay !== null ? schedule.time + passage.delay * 1000 : null);
     if (!time || time < now - 30_000) continue;
     const lineKey = trip.routeId || schedule?.lineId || '';

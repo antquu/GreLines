@@ -42,11 +42,11 @@ export function journeyOperatorBrand(
       logo:
         operator === 'citiz'
           ? isDark ? '/assets/citiz_white.png' : '/assets/citiz.png'
-          : '/assets/voi.png',
+          : operator === 'velostan' ? '/assets/velostanlib-logo.svg' : '/assets/voi.png',
       color: SHARED_OPERATOR_COLORS[operator],
       chipColor: SHARED_OPERATOR_COLORS[operator],
       chipLogo:
-        operator === 'citiz' ? '/assets/citiz_white.png' : '/assets/voi_white.png',
+        operator === 'citiz' ? '/assets/citiz_white.png' : operator === 'velostan' ? '/assets/velostanlib-logo.svg' : '/assets/voi_white.png',
     };
   }
 

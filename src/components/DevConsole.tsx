@@ -8,7 +8,7 @@ import { restartNetworkScheduleDownload } from '../services/networkSchedules';
 import { precacheOfflineMap } from '../services/offlineMap';
 import { idbCountPrefix } from '../services/persistentCache';
 import { resetAllCaches } from '../utils/resetCaches';
-import { NETWORKS } from '../services/api';
+import { DEFAULT_NETWORK_CODES, NETWORKS } from '../services/api';
 import { clearRequestLog, getRequestLog, installRequestLog } from '../services/requestLog';
 import { isImageLoadingForced, setImageLoadingForced } from '../utils/forcedImageLoading';
 import { armLocationPick, resetFakeLocation } from '../utils/devLocation';
@@ -239,8 +239,6 @@ const COMMANDS: ConsoleCommand[] = [
   settingToggle('fx.shadows', 'shadows', 'Shadows'),
   settingToggle('ui.footerTicker', 'hideFooterTicker', 'Traffic ticker in the footer', true),
   settingToggle('a11y', 'accessibility', 'Accessibility mode'),
-  settingToggle('mobility.citiz', 'citiz', 'Citiz cars on the map'),
-  settingToggle('mobility.voi', 'voi', 'Voi vehicles on the map'),
   {
     name: 'networks.list',
     description: 'List every available network, with its code and state',
@@ -271,7 +269,7 @@ const COMMANDS: ConsoleCommand[] = [
       if (args.length === 0) return 'Missing network code. Example: networks.deselect STAS';
       const { known, unknown } = parseNetworkCodes(args);
       const next = settings.networks.filter(code => !known.includes(code));
-      if (known.length > 0) setSetting('networks', next.length > 0 ? next : ['SEM', 'SE2']);
+      if (known.length > 0) setSetting('networks', next.length > 0 ? next : DEFAULT_NETWORK_CODES);
       return [
         ...(known.length ? [`Off: ${known.join(', ')}`] : []),
         ...(next.length === 0 ? ['No network left: Tag (SEM, SE2) kept on.'] : []),

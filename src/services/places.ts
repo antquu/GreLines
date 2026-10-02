@@ -1,3 +1,5 @@
+import { IS_NANCY } from '../site';
+
 export interface PlaceSection {
   heading?: string;
   body: string[];
@@ -23,7 +25,7 @@ export interface Place {
   credit: PlaceCredit;
 }
 
-export function grenoblePlaces(language: 'fr' | 'en'): Place[] {
+function grenoblePlaces(language: 'fr' | 'en'): Place[] {
   const fr = language === 'fr';
   return [
     {
@@ -157,4 +159,154 @@ export function grenoblePlaces(language: 'fr' | 'en'): Place[] {
       },
     },
   ];
+}
+
+const NANCY_PLACE_LINES: Record<string, { id: string; color: string; textColor: string }> = {
+  T1: { id: 'STAN:1', color: '#E30613', textColor: '#FFFFFF' },
+  T3: { id: 'STAN:3', color: '#009639', textColor: '#FFFFFF' },
+  T4: { id: 'STAN:4', color: '#FFDD04', textColor: '#000000' },
+  T5: { id: 'STAN:5', color: '#4B2884', textColor: '#FFFFFF' },
+  Cit1: { id: 'STAN:41', color: '#4AB79B', textColor: '#FFFFFF' },
+  11: { id: 'STAN:11', color: '#FF7900', textColor: '#FFFFFF' },
+  16: { id: 'STAN:16', color: '#1F94CB', textColor: '#FFFFFF' },
+};
+
+function nancyPlaces(language: 'fr' | 'en'): Place[] {
+  const fr = language === 'fr';
+  return [
+    {
+      id: 'stanislas',
+      image: '/assets/places/stanislas.jpg',
+      card: fr ? 'Place Stanislas' : 'Place Stanislas',
+      title: fr ? 'Place Stanislas' : 'Place Stanislas',
+      kicker: fr ? 'Ouverte jour et nuit' : 'Open day and night',
+      headline: fr ? 'La place Stanislas' : 'Place Stanislas',
+      tagline: fr
+        ? 'L’une des plus belles places d’Europe, classée à l’UNESCO'
+        : 'One of Europe’s finest squares, a UNESCO World Heritage site',
+      lat: 48.69357,
+      lon: 6.18323,
+      sections: [
+        {
+          heading: fr ? 'Le cœur de Nancy' : 'The heart of Nancy',
+          body: fr
+            ? [
+                'Aménagée entre 1752 et 1755 pour le roi Stanislas, la place relie la vieille ville et la ville neuve. Ses grilles dorées de Jean Lamour, ses fontaines et ses pavillons forment un ensemble classé au patrimoine mondial de l’UNESCO depuis 1983, avec les places de la Carrière et d’Alliance.',
+                'L’hôtel de ville occupe tout le côté sud. Le soir, la place s’illumine, et l’été un spectacle de lumière y est projeté sur les façades.',
+              ]
+            : [
+                'Laid out between 1752 and 1755 for King Stanislas, the square links the old town and the new town. Jean Lamour’s gilded gates, the fountains and the pavilions form an ensemble listed as a UNESCO World Heritage site since 1983, together with Place de la Carrière and Place d’Alliance.',
+                'The town hall fills the whole south side. In the evening the square is lit up, and in summer a light show is projected onto the façades.',
+              ],
+        },
+        {
+          heading: fr ? 'Y aller' : 'Getting there',
+          body: fr
+            ? [
+                'La navette [[Cit1]] s’arrête Place Stanislas, à deux pas. La ligne [[T1]] dessert l’arrêt Place Stanislas - Cathédrale, à quatre minutes à pied.',
+                'Les lignes [[T5]], 12 et 13 s’arrêtent à Amerval, juste derrière l’hôtel de ville.',
+              ]
+            : [
+                'The [[Cit1]] shuttle stops at Place Stanislas, a stone’s throw away. Line [[T1]] serves Place Stanislas - Cathédrale, a four-minute walk.',
+                'Lines [[T5]], 12 and 13 stop at Amerval, just behind the town hall.',
+              ],
+        },
+      ],
+      credit: {
+        author: 'Berthold Werner',
+        license: 'CC BY-SA 3.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by-sa/3.0',
+      },
+    },
+    {
+      id: 'pepiniere',
+      image: '/assets/places/pepiniere.jpg',
+      card: fr ? 'Parc de la Pépinière' : 'Parc de la Pépinière',
+      title: fr ? 'Parc de la Pépinière' : 'Parc de la Pépinière',
+      kicker: fr ? 'Ouvert tous les jours' : 'Open every day',
+      headline: fr ? 'Le parc de la Pépinière' : 'Parc de la Pépinière',
+      tagline: fr
+        ? 'Vingt et un hectares de verdure en plein centre-ville'
+        : 'Twenty-one hectares of green in the city centre',
+      lat: 48.69725,
+      lon: 6.18505,
+      sections: [
+        {
+          heading: fr ? 'Le jardin des Nancéiens' : 'Nancy’s garden',
+          body: fr
+            ? [
+                'Créé au XVIIIe siècle sur les anciens bastions, le parc de la Pépinière s’étend juste au nord de la place Stanislas. On y trouve une roseraie, un petit zoo, un kiosque à musique, des jeux pour enfants et de longues allées ombragées.',
+                'La statue de Claude Gellée, dit le Lorrain, œuvre de Rodin, se dresse à l’entrée côté place de la Carrière.',
+              ]
+            : [
+                'Created in the 18th century on the old ramparts, Parc de la Pépinière lies just north of Place Stanislas. It has a rose garden, a small zoo, a bandstand, playgrounds and long shaded avenues.',
+                'Rodin’s statue of Claude Gellée, known as Le Lorrain, stands at the entrance near Place de la Carrière.',
+              ],
+        },
+        {
+          heading: fr ? 'Y aller' : 'Getting there',
+          body: fr
+            ? [
+                'La ligne [[16]] s’arrête Parc de la Pépinière. Depuis la place Stanislas, l’entrée est à cinq minutes à pied par la place de la Carrière, où passe la navette [[Cit1]].',
+              ]
+            : [
+                'Line [[16]] stops at Parc de la Pépinière. From Place Stanislas, the entrance is a five-minute walk through Place de la Carrière, served by the [[Cit1]] shuttle.',
+              ],
+        },
+      ],
+      credit: {
+        author: 'Berthold Werner',
+        license: 'CC BY-SA 3.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by-sa/3.0',
+      },
+    },
+    {
+      id: 'majorelle',
+      image: '/assets/places/majorelle.jpg',
+      card: fr ? 'Villa Majorelle' : 'Villa Majorelle',
+      title: fr ? 'Villa Majorelle' : 'Villa Majorelle',
+      kicker: fr ? 'Visites selon les horaires du musée' : 'Visits during museum hours',
+      headline: fr ? 'La villa Majorelle' : 'Villa Majorelle',
+      tagline: fr
+        ? 'Le chef-d’œuvre de l’Art nouveau nancéien'
+        : 'The masterpiece of Nancy’s Art Nouveau',
+      lat: 48.68551,
+      lon: 6.16389,
+      sections: [
+        {
+          heading: fr ? 'L’École de Nancy' : 'The École de Nancy',
+          body: fr
+            ? [
+                'Construite en 1901 et 1902 pour l’ébéniste Louis Majorelle, la villa est l’une des premières maisons Art nouveau de Nancy. Ferronneries, vitraux, boiseries et céramiques y ont été pensés ensemble, par les artistes de l’École de Nancy.',
+                'À quelques rues, le musée de l’École de Nancy présente meubles, verreries et objets du mouvement, dans un jardin planté de fleurs et d’un aquarium Art nouveau.',
+              ]
+            : [
+                'Built in 1901 and 1902 for the cabinetmaker Louis Majorelle, the villa is one of Nancy’s first Art Nouveau houses. Ironwork, stained glass, woodwork and ceramics were designed together by the artists of the École de Nancy.',
+                'A few streets away, the Musée de l’École de Nancy shows furniture, glass and objects from the movement, in a garden with an Art Nouveau aquarium.',
+              ],
+        },
+        {
+          heading: fr ? 'Y aller' : 'Getting there',
+          body: fr
+            ? [
+                'La ligne [[T3]] s’arrête à Sacré Coeur, à deux minutes à pied. Les lignes [[T4]], [[11]] et [[16]] desservent Commanderie, à quatre minutes.',
+              ]
+            : [
+                'Line [[T3]] stops at Sacré Coeur, a two-minute walk. Lines [[T4]], [[11]] and [[16]] serve Commanderie, four minutes away.',
+              ],
+        },
+      ],
+      credit: {
+        author: 'Chabe01',
+        license: 'CC BY-SA 4.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0',
+      },
+    },
+  ];
+}
+
+export const PLACE_LINES: Record<string, { id: string; color: string; textColor: string }> = IS_NANCY ? NANCY_PLACE_LINES : {};
+
+export function cityPlaces(language: 'fr' | 'en'): Place[] {
+  return IS_NANCY ? nancyPlaces(language) : grenoblePlaces(language);
 }

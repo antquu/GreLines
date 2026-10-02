@@ -1,4 +1,5 @@
 import { cityNear, cityOfNetwork } from './utils/cities';
+import { IS_NANCY } from './site';
 import { locateByIp } from './services/ipLocation';
 import { getLocatedCity, setIpArea, setMapArea, setUserArea, subscribeCurrentCity } from './utils/currentArea';
 import { getFakeLocation, subscribeFakeLocation } from './utils/devLocation';
@@ -71,7 +72,6 @@ import { usePerfSettings } from './hooks/usePerfSettings';
 import {
   canShowInstallGuide,
   hasSeenInstallGuide,
-  isInstallGuideUpdate,
   markInstallGuideSeen,
   shouldAutoOpenInstallGuide,
 } from './utils/pwa';
@@ -152,6 +152,7 @@ import { setSavedPlace, type SavedPlaceKind } from './services/savedPlaces';
 export type MapPickTarget = 'from' | 'to' | SavedPlaceKind;
 
 const SNCF_DUPLICATE_RADIUS_METERS = 3000;
+const SHARED_CITY_RADIUS_METERS = 12_000;
 
 function withoutSncfDuplicates(stops: Stop[]): Stop[] {
   const tagByName = new Map<string, Stop[]>();
@@ -241,7 +242,6 @@ function App() {
     localStorage.setItem('greLines_atmoFollowMap', String(atmoFollowMap));
   }, [atmoFollowMap]);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number } | null>(null);
-  const [sharedInView, setSharedInView] = useState(true);
   const handleMapCenterChange = useCallback((lat: number, lon: number) => {
     setMapArea(lat, lon);
     setMapCenter(current => {
@@ -372,9 +372,19 @@ function App() {
   });
   const [isMapLayersOpen, setIsMapLayersOpen] = useState(false);
 
+  const sharedOperatorsNearby = useMemo(() => {
+    if (!mapCenter) return [] as SharedOperator[];
+    return (Object.keys(sharedMobility) as SharedOperator[]).filter(operator =>
+      sharedMobility[operator].some(point =>
+        haversineMeters(mapCenter.lat, mapCenter.lon, point.lat, point.lon) <= SHARED_CITY_RADIUS_METERS,
+      ),
+    );
+  }, [mapCenter, sharedMobility]);
+
   const visibleSharedMobility = useMemo<SharedMobilityData>(() => ({
     citiz: hiddenSharedLayers.has('citiz') ? [] : sharedMobility.citiz,
     voi: hiddenSharedLayers.has('voi') ? [] : sharedMobility.voi,
+    velostan: hiddenSharedLayers.has('velostan') ? [] : sharedMobility.velostan,
   }), [sharedMobility, hiddenSharedLayers]);
 
   const toggleSharedLayer = useCallback((operator: SharedOperator) => {
@@ -431,6 +441,14 @@ function App() {
     return () => { alive = false; };
   }, []);
   const locatedPopups = useMemo(() => activePopups.filter(popup => {
+    if (IS_NANCY) {
+      if (!popup.target_network) {
+        return (popup.target_lines ?? []).every(line => line.id.toUpperCase().startsWith('STAN:'));
+      }
+      if (popup.target_network !== 'STAN') return false;
+      if (!locatedArea.city) return true;
+      return cityOfNetwork(popup.target_network)?.id === locatedArea.city.id;
+    }
     if (!popup.target_network) return true;
     if (!locatedArea.city) return false;
     return cityOfNetwork(popup.target_network)?.id === locatedArea.city.id;
@@ -444,11 +462,13 @@ function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   useEffect(() => {
+    if (IS_NANCY) return;
     void loadAccount().then(setAccount);
   }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
+    if (IS_NANCY) return;
     void listOuraCards().then(setWalletCards);
   }, []);
   const [surveyContext, setSurveyContext] = useState<
@@ -755,7 +775,12 @@ function App() {
   }, [debouncedSearchQuery, isSearchFocused, isSearchHovered, matchedStops, searchHistoryItems, searchStopLines]);
 
   useEffect(() => {
-    Promise.all([getAllSemLines(), getLineOverrides()]).then(([lines, overrides]) => {
+    Promise.all([
+      IS_NANCY
+        ? getGtfsLines('STAN').then(list => list.map(line => foreignAsCatalogLine(line))).catch(() => [] as AllLinesLine[])
+        : getAllSemLines(),
+      getLineOverrides(),
+    ]).then(([lines, overrides]) => {
       setLineColorOverrides(
         Array.from(overrides.values()).map(o => ({
           lineId: o.line_id,
@@ -980,6 +1005,7 @@ function App() {
   const isAtmoPanelOpen = isAtmoBtnHovered || isAtmoPanelHovered;
 
   useEffect(() => {
+    if (IS_NANCY) return;
     if (atmoCommune) localStorage.setItem('greLines_atmoCommune', JSON.stringify(atmoCommune));
     else localStorage.setItem('greLines_atmoPostalCode', atmoPostalCode);
 
@@ -1016,7 +1042,7 @@ function App() {
 
   const [walletLoaded, setWalletLoaded] = useState(false);
   useEffect(() => {
-    if (isMobile || walletLoaded || !isSupabaseConfigured) return;
+    if (IS_NANCY || isMobile || walletLoaded || !isSupabaseConfigured) return;
     let active = true;
     void listOuraCards().then(async list => {
       if (!active) return;
@@ -1034,7 +1060,7 @@ function App() {
       void listOuraCards().then(setWalletCards);
     });
   }, [isMobile, walletLoaded]);
-  const { notice: cardNotice, dismiss: dismissCardNotice } = useCardNotices(isMobile);
+  const { notice: cardNotice, dismiss: dismissCardNotice } = useCardNotices(isMobile && !IS_NANCY);
   const disruptedLineCodes = useMemo(() => new Set(trafficInfo.keys()), [trafficInfo]);
   const firstFavoriteLoading = favoritesList.length > 0 && (favoritesDetails[0]?.loading ?? true);
 
@@ -1317,7 +1343,7 @@ function App() {
   useEffect(() => {
     const loadCmsContent = () => {
       getActivePopups().then(setActivePopups);
-      getFooterConfig().then(setFooterConfig);
+      getFooterConfig().then(config => setFooterConfig(IS_NANCY ? { ...config, message: null } : config));
     };
 
     loadCmsContent();
@@ -1339,7 +1365,7 @@ function App() {
         if (wantsTcl) void getTclLines({ includeSchool: true });
 
         const [data, overrides, tclStops, gtfsStopLists] = await Promise.all([
-          getStopsByPrefixes(appliedNetworks),
+          IS_NANCY ? Promise.resolve([] as Stop[]) : getStopsByPrefixes(appliedNetworks),
           getStopOverrides(),
           wantsTcl ? getTclStops() : Promise.resolve([] as Stop[]),
           Promise.all(gtfsCodes.map(code => getGtfsStops(code).catch(() => [] as Stop[]))),
@@ -1392,9 +1418,8 @@ function App() {
   useEffect(() => {
     if (!autoOpenInstallGuide) return;
     if (hasSeenInstallGuide()) return;
-    const isAnnouncement = isInstallGuideUpdate();
     const timer = window.setTimeout(() => {
-      if (isAnnouncement) markInstallGuideSeen();
+      markInstallGuideSeen();
       setIsInstallSheetOpen(true);
     }, 1200);
     return () => window.clearTimeout(timer);
@@ -1446,7 +1471,7 @@ function App() {
       appliedNetworks.includes(TCL_NETWORK) ? getTclLines().catch(() => []) : Promise.resolve([]),
       ...codes.map(code => getGtfsLines(code).catch(() => [])),
     ]).then(lists => {
-      if (active) setForeignCatalog(lists.flat().map(line => foreignAsCatalogLine(line)));
+      if (active) setForeignCatalog(IS_NANCY ? [] : lists.flat().map(line => foreignAsCatalogLine(line)));
     });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1457,7 +1482,7 @@ function App() {
     const fetchTraffic = async () => {
       try {
         const [data, foreign] = await Promise.all([
-          getTrafficLines(),
+          IS_NANCY ? Promise.resolve(new Map<string, TrafficDetail[]>()) : getTrafficLines(),
           getForeignTraffic(appliedNetworks).catch(() => new Map<string, TrafficDetail[]>()),
         ]);
         setTrafficInfo(foreign.size > 0 ? new Map([...data, ...foreign]) : data);
@@ -1588,20 +1613,11 @@ function App() {
   }, [isMobile]);
 
   useEffect(() => {
-    if (!perfSettings.citiz && !perfSettings.voi) {
-      setSharedMobility(EMPTY_SHARED_MOBILITY);
-      return;
-    }
-
     let active = true;
     const controller = new AbortController();
 
     const load = async () => {
-      const data = await fetchSharedMobility({
-        citiz: perfSettings.citiz,
-        voi: perfSettings.voi,
-        signal: controller.signal,
-      });
+      const data = await fetchSharedMobility({ signal: controller.signal });
       if (active) setSharedMobility(data);
     };
 
@@ -1612,7 +1628,7 @@ function App() {
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [perfSettings.citiz, perfSettings.voi, reconnects]);
+  }, [reconnects]);
 
   const renderTerminusPair = (longName: string) => {
     const parts = longName.split('/').map(p => p.trim()).filter(Boolean);
@@ -1905,9 +1921,6 @@ function App() {
       networks: {
         title: 'Réseaux affichés',
         others: 'Autres opérateurs',
-        shared: 'Mobilités partagées',
-        citiz: 'Voitures Citiz',
-        voi: 'Trottinettes et vélos Voi',
         hint: 'Les changements s’appliquent à la fermeture des réglages, sans recharger l’application. Chaque réseau ajouté est téléchargé une fois, puis conservé hors ligne. Les lignes scolaires sont toujours écartées : elles ne circulent que deux fois par jour et représentent plus de la moitié du réseau.',
       },
       dev: {
@@ -1965,9 +1978,6 @@ function App() {
       networks: {
         title: 'Networks shown',
         others: 'Other operators',
-        shared: 'Shared mobility',
-        citiz: 'Citiz cars',
-        voi: 'Voi scooters and bikes',
         hint: 'Changes apply once you close settings, without reloading the app. Each network is downloaded once, then kept offline. School services are always excluded: they run twice a day and account for more than half the network.',
       },
       dev: {
@@ -2224,7 +2234,6 @@ function App() {
       lineGeometries={lineGeometries}
       carpoolLines={carpoolMapLines}
       onCenterChange={handleMapCenterChange}
-      onSharedInViewChange={setSharedInView}
       pickMode={mapPickTarget}
       onLongPress={handleMapLongPress}
       onMapClick={async (lat: number, lon: number) => {
@@ -2527,7 +2536,7 @@ function App() {
         uiTheme={effectiveTheme}
         accountPseudo={account?.pseudo ?? null}
         accountAvatar={account?.avatarEmoji ?? null}
-        onOpenAccount={() =>
+        onOpenAccount={IS_NANCY ? undefined : () =>
         account ? setIsProfileOpen(true) : setIsAccountSetupOpen(true)
         }
       />
@@ -2669,11 +2678,10 @@ function App() {
               onClose={() => setIsMapLayersOpen(false)}
               hidden={hiddenSharedLayers}
               onToggleLayer={toggleSharedLayer}
-              counts={{ citiz: sharedMobility.citiz.length, voi: sharedMobility.voi.length }}
+              operators={sharedOperatorsNearby}
               bottom={layersButtonBottom}
               opacity={geolocButtonOpacity}
               scale={geolocButtonScale}
-              inView={sharedInView}
             />
             </>
           )}
@@ -3009,6 +3017,7 @@ function App() {
               </div>
 
 
+              {!IS_NANCY && (
               <div
                 onMouseEnter={() => setIsAtmoBtnHovered(true)}
                 onMouseLeave={() => setIsAtmoBtnHovered(false)}
@@ -3059,6 +3068,7 @@ function App() {
                   </div>
                 </div>
               </div>
+              )}
 
               <div onMouseEnter={() => setIsTrafficButtonHovered(true)} onMouseLeave={() => { setIsTrafficButtonHovered(false); setIsTrafficPanelPinned(false); }} className="relative z-50">
                 <div className={`flex items-center justify-center cursor-pointer border transition-all duration-300 ${isTrafficPanelOpen ? 'w-96 h-96 rounded-2xl bg-slate-900/95 border-slate-700' : 'w-10 h-10 rounded-full bg-amber-500 border-amber-600 shadow-lg'}`}>
@@ -3468,7 +3478,7 @@ function App() {
               uiTheme={effectiveTheme}
               accountPseudo={account?.pseudo ?? null}
               accountAvatar={account?.avatarEmoji ?? null}
-              onOpenAccount={() =>
+              onOpenAccount={IS_NANCY ? undefined : () =>
               account ? setIsProfileOpen(true) : setIsAccountSetupOpen(true)
               }
               contentRef={settingsContentRef}
@@ -3507,7 +3517,7 @@ function App() {
         <InstallAppSheet
           isOpen={isInstallSheetOpen}
           onDismiss={dismissInstallGuide}
-          onClose={() => setIsInstallSheetOpen(false)}
+          onClose={dismissInstallGuide}
           language={language}
           theme={effectiveTheme}
         />

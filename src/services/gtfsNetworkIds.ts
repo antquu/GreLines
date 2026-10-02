@@ -1,4 +1,4 @@
-import networkConfigs from '../data/gtfsNetworks.json';
+import networkConfigs from '../data/siteNetworks';
 
 const CODES = new Set((networkConfigs as Array<{ code: string }>).map(network => network.code));
 

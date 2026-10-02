@@ -5,7 +5,10 @@ import { buildFiches, downloadGtfs, eachRow, parisToday, writeFiches, readAgency
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = join(ROOT, 'public/data/networks');
-const NETWORKS = JSON.parse(readFileSync(join(ROOT, 'src/data/gtfsNetworks.json'), 'utf8'));
+const ALL_NETWORKS = JSON.parse(readFileSync(join(ROOT, 'src/data/gtfsNetworks.json'), 'utf8'));
+const NETWORKS = process.env.VITE_SITE === 'nancy'
+  ? ALL_NETWORKS.filter(network => network.code === 'STAN')
+  : ALL_NETWORKS;
 
 const MERGE_RADIUS_M = 250;
 

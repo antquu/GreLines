@@ -1,3 +1,5 @@
+import { IS_NANCY } from '../site';
+
 export interface AddressResult {
 
   label: string;
@@ -18,8 +20,8 @@ export interface AddressResult {
 const BAN_ENDPOINT = 'https://api-adresse.data.gouv.fr/search/';
 const BAN_REVERSE_ENDPOINT = 'https://api-adresse.data.gouv.fr/reverse/';
 
-const GRENOBLE_LAT = 45.1885;
-const GRENOBLE_LON = 5.7245;
+const GRENOBLE_LAT = IS_NANCY ? 48.6921 : 45.1885;
+const GRENOBLE_LON = IS_NANCY ? 6.1844 : 5.7245;
 
 interface BanFeature {
   type: 'Feature';

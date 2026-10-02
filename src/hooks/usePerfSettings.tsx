@@ -30,10 +30,6 @@ export interface PerfSettings {
 
   networks: string[];
 
-  citiz: boolean;
-
-  voi: boolean;
-
   networksRevision: number;
 }
 
@@ -54,8 +50,6 @@ export const DEFAULT_PERF_SETTINGS: PerfSettings = {
   accessibility: false,
   pmrRouting: false,
   networks: DEFAULT_NETWORK_CODES,
-  citiz: true,
-  voi: true,
   networksRevision: NETWORKS_REVISION,
 };
 
@@ -70,7 +64,9 @@ function readStoredSettings(): PerfSettings {
 
     const merged = { ...DEFAULT_PERF_SETTINGS, ...parsed };
 
-    if (!Array.isArray(merged.networks) || merged.networks.length === 0) {
+    const knownCodes = new Set(NETWORKS.map(network => network.code));
+    merged.networks = Array.isArray(merged.networks) ? merged.networks.filter(code => knownCodes.has(code)) : [];
+    if (merged.networks.length === 0) {
       merged.networks = DEFAULT_NETWORK_CODES;
     }
 

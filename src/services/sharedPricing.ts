@@ -1,12 +1,20 @@
 import { idbGet, idbSet } from './persistentCache';
 import type { SharedOperator } from './sharedMobility';
+import { IS_NANCY } from '../site';
 
 const GBFS_BASE = 'https://data.mobilites-m.fr/api/gbfs';
 
-const PRODUCERS: Record<SharedOperator, string> = {
-  citiz: 'citiz_grenoble',
-  voi: 'voi_grenoble',
-};
+const PRICING_URLS: Record<SharedOperator, string | null> = IS_NANCY
+  ? {
+      citiz: 'https://backend.citiz.fr/public/provider/1/gbfs/v3.0/system_pricing_plans.json',
+      voi: null,
+      velostan: null,
+    }
+  : {
+      citiz: `${GBFS_BASE}/citiz_grenoble/system_pricing_plans`,
+      voi: `${GBFS_BASE}/voi_grenoble/system_pricing_plans`,
+      velostan: null,
+    };
 
 const PRICING_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -67,7 +75,9 @@ export async function getSharedPricing(
     plans = cached.value;
   } else {
     try {
-      const response = await fetch(`${GBFS_BASE}/${PRODUCERS[operator]}/system_pricing_plans`);
+      const url = PRICING_URLS[operator];
+      if (!url) return null;
+      const response = await fetch(url);
       if (!response.ok) return null;
       const payload = await response.json();
       plans = payload?.data?.plans ?? null;

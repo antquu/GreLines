@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { IS_NANCY } from '../site';
 import { resolveLineStyle } from '../utils/lineColors';
 import { motion, useMotionTemplate, AnimatePresence } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
@@ -260,6 +261,11 @@ function codeOf(line: MarqueeLine): string {
 }
 
 function isMarqueeLine(line: MarqueeLine): boolean {
+  if (IS_NANCY) {
+    if (networkOf(line.id) !== 'STAN') return false;
+    const stanCode = codeOf(line);
+    return /^T[1-5]$/.test(stanCode) || stanCode === 'COROL' || /^CIT\d$/.test(stanCode) || /^1\d$|^2[0-2]$/.test(stanCode);
+  }
   if (!URBAN_NETWORKS.includes(networkOf(line.id))) return false;
   const code = codeOf(line);
   if (['A', 'B', 'C', 'D', 'E'].includes(code)) return true;
@@ -803,6 +809,7 @@ export const HomeSheet = ({
 	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.favoritesTitle}</span>
 	                  </button>
 
+	                  {!IS_NANCY && (
 	                  <button
 	                    onClick={onOpenAccount}
 	                    className={`rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
@@ -827,6 +834,7 @@ export const HomeSheet = ({
 	                    </span>
 	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.walletLabel}</span>
 	                  </button>
+	                  )}
 	                  {onOpenLines && marqueeLines.length > 0 && (
 	                    <button
 	                      onClick={onOpenLines}
@@ -842,6 +850,7 @@ export const HomeSheet = ({
 	                      <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.linesLabel}</span>
 	                    </button>
 	                  )}
+{!IS_NANCY && (
 	                  <div className="col-span-2 aspect-square overflow-hidden rounded-[24px]">
 	                    <AtmoPanel
 	                      report={atmoReport}
@@ -851,6 +860,7 @@ export const HomeSheet = ({
 	                      followMap={atmoFollowMap}
 	                    />
 	                  </div>
+	                  )}
 	                </div>
 	              </section>
             </div>
