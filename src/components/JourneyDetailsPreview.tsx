@@ -1,3 +1,4 @@
+import { energyLevelLabel } from '../services/sharedMobility';
 import { stripHtml } from '../utils/stripHtml';
 import { formatDurationLabel } from '../utils/formatDuration';
 import { useState, type ReactNode } from 'react';
@@ -373,7 +374,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
           )}
           {typeof journey.shared.batteryPercent === 'number' && (
             <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-300">
-              {journey.shared.batteryPercent} %
+              {energyLevelLabel(journey.shared)}
             </span>
           )}
           <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-300">

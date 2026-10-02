@@ -131,7 +131,7 @@ import { compareTrafficLines, matchesTrafficFilter, trafficCategory, trafficFilt
 import { TrafficFilterBar } from './components/TrafficFilterBar';
 import { getCachedStopLines, getStopDetail, getStopLines, getStopsByPrefixes, getTrafficLines, getDepartures, refreshStopLines, setActiveNetworks, type RouteLocation, type RouteItinerary } from './services/api';
 import { getTclLines, getTclLinesForStop, getTclStopDetail, getTclStops, isTclId, TCL_NETWORK } from './services/tclNetwork';
-import { getGtfsLines, getGtfsLinesForStop, getGtfsStopDetail, getGtfsStops, GTFS_NETWORKS, isGtfsNetworkId } from './services/gtfsNetwork';
+import { getGtfsLines, getGtfsLinesForStop, getGtfsStopDetail, getGtfsStops, gtfsStopMembers, GTFS_NETWORKS, isGtfsNetworkId } from './services/gtfsNetwork';
 import { foreignAsCatalogLine, foreignSolidStyle, isForeignLineId } from './utils/foreignNetworks';
 import { searchAddresses, reverseGeocode, type AddressResult } from './services/geocoding';
 import { getLinesGeometryPrecise, getStopsServedByLines, stopNameKey, type LineGeometry, type ServedStopPoint } from './services/lineShapes';
@@ -1373,11 +1373,12 @@ function App() {
         ]);
         if (!active) return;
 
-        const merged = overrides.size === 0
-          ? data
-          : data
+        const applyOverrides = (list: Stop[], withMembers = false): Stop[] => overrides.size === 0
+          ? list
+          : list
               .map(stop => {
-                const override = overrides.get(stop.id);
+                const override = overrides.get(stop.id)
+                  ?? (withMembers ? gtfsStopMembers(stop.id).map(member => overrides.get(member)).find(Boolean) : undefined);
                 if (!override) return stop;
                 return {
                   ...stop,
@@ -1389,9 +1390,11 @@ function App() {
               })
               .filter(stop => !(stop as Stop & { hidden?: boolean }).hidden);
 
-        const gtfsStops = gtfsStopLists.flat();
+        const merged = applyOverrides(data);
+        const editedTclStops = applyOverrides(tclStops);
+        const gtfsStops = applyOverrides(gtfsStopLists.flat(), true);
         const deduplicated = withoutSncfDuplicates(merged);
-        setStops(tclStops.length > 0 || gtfsStops.length > 0 ? [...deduplicated, ...tclStops, ...gtfsStops] : deduplicated);
+        setStops(editedTclStops.length > 0 || gtfsStops.length > 0 ? [...deduplicated, ...editedTclStops, ...gtfsStops] : deduplicated);
         setError(null);
       } catch (err) {
         if (!active) return;

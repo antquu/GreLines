@@ -149,6 +149,7 @@ async function buildOption(
     rideMeters: Math.round(ride.distanceMeters),
     pickupName: nearest.point.name,
     batteryPercent: vehicle?.batteryPercent,
+    propulsion: vehicle?.propulsion,
     batteryEstimated: vehicle?.batteryEstimated,
     model: vehicle?.model,
     rentalUrl: vehicle?.rentalUrl,

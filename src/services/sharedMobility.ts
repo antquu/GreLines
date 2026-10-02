@@ -72,6 +72,78 @@ const NANCY_AREA = { minLat: 48.55, maxLat: 48.8, minLon: 6.0, maxLon: 6.35 };
 
 export const FULL_BATTERY_PERCENT = 90;
 
+const TANK_LITERS: Array<[string, number]> = [
+  ['308 hybride rechargeable', 40],
+  ['clio hybride', 39],
+  ['yaris cross', 36],
+  ['grand scenic', 53],
+  ['grand c4', 57],
+  ['308 break', 52],
+  ['megane break', 50],
+  ['berlingo', 50],
+  ['jumpy', 69],
+  ['jogger', 50],
+  ['lodgy', 50],
+  ['logan', 50],
+  ['sandero', 50],
+  ['talento', 80],
+  ['500c', 35],
+  ['tourneo', 70],
+  ['focus', 52],
+  ['i20', 40],
+  ['mazda2', 44],
+  ['mini one', 40],
+  ['micra', 41],
+  ['combo', 50],
+  ['corsa', 44],
+  ['vivaro', 70],
+  ['108', 35],
+  ['208', 44],
+  ['3008', 53],
+  ['308', 52],
+  ['expert', 69],
+  ['partner', 50],
+  ['clio iv', 45],
+  ['clio', 42],
+  ['kangoo', 54],
+  ['express', 50],
+  ['megane', 50],
+  ['trafic', 80],
+  ['twingo', 35],
+  ['symbioz', 39],
+  ['fabia', 40],
+  ['octavia', 45],
+  ['forfour', 35],
+  ['s-cross', 47],
+  ['swace', 43],
+  ['swift', 37],
+  ['proace', 70],
+  ['aygo', 35],
+  ['corolla', 43],
+  ['yaris', 36],
+  ['caddy', 50],
+  ['c3', 45],
+];
+
+const FUEL_PROPULSIONS = new Set(['combustion', 'combustion_diesel', 'hybrid', 'plug_in_hybrid']);
+
+export function usesFuel(vehicle: Pick<SharedVehicle, 'propulsion'>): boolean {
+  return FUEL_PROPULSIONS.has(String(vehicle.propulsion || ''));
+}
+
+export function fuelLiters(vehicle: Pick<SharedVehicle, 'propulsion' | 'model' | 'batteryPercent'>): number | null {
+  if (!usesFuel(vehicle) || typeof vehicle.batteryPercent !== 'number' || !vehicle.model) return null;
+  const model = vehicle.model.toLowerCase();
+  const tank = TANK_LITERS.find(([key]) => model.includes(key))?.[1];
+  return tank ? Math.round((tank * vehicle.batteryPercent) / 100) : null;
+}
+
+export function energyLevelLabel(vehicle: Pick<SharedVehicle, 'propulsion' | 'model' | 'batteryPercent'>): string | null {
+  if (typeof vehicle.batteryPercent !== 'number') return null;
+  const liters = fuelLiters(vehicle);
+  return liters !== null ? `${liters} L` : `${vehicle.batteryPercent} %`;
+}
+
 export function hasFullBattery(point: SharedVehiclePoint): boolean {
   return point.vehicles.some(
     vehicle => typeof vehicle.batteryPercent === 'number' && vehicle.batteryPercent >= FULL_BATTERY_PERCENT,

@@ -14,6 +14,8 @@ import { reverseGeocode } from '../services/geocoding';
 import {
   formFactorLabel,
   propulsionLabel,
+  energyLevelLabel,
+  usesFuel,
   rangeComparison,
   type SharedOperator,
   type SharedVehicle,
@@ -79,6 +81,7 @@ const getText = (language: 'fr' | 'en') => {
     routeToStation: fr ? 'Itinéraire jusqu’à la station' : 'Directions to the station',
     operatorSite: fr ? 'Site vélOstan’lib' : 'vélOstan’lib website',
     battery: fr ? 'Batterie' : 'Battery',
+    fuel: fr ? 'Carburant' : 'Fuel',
     estimated: fr ? 'estimée' : 'estimated',
     range: fr ? 'Autonomie' : 'Range',
     book: fr ? 'Réserver' : 'Book',
@@ -239,7 +242,7 @@ function VehicleRow({
 
         {typeof percent === 'number' ? (
           <span className="flex flex-shrink-0 flex-col items-end gap-1.5">
-            <span className="tabular text-[1.0625rem] font-bold leading-none text-white">{percent} %</span>
+            <span className="tabular text-[1.0625rem] font-bold leading-none text-white">{energyLevelLabel(vehicle)}</span>
             <span className="block h-1.5 w-14 overflow-hidden rounded-full bg-slate-700">
               <span className="block h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: batteryColor(percent) }} />
             </span>
@@ -380,8 +383,8 @@ function SingleVehicleView({
       {typeof vehicle.batteryPercent === 'number' && (
         <div className="mt-6 border-t border-slate-800 pt-4">
           <div className="flex items-baseline justify-between">
-            <span className="text-[0.8125rem] font-bold text-slate-300">{text.battery}</span>
-            <MorphSlot id="percent" className="tabular whitespace-nowrap text-[1.375rem] font-bold text-white">{vehicle.batteryPercent} %</MorphSlot>
+            <span className="text-[0.8125rem] font-bold text-slate-300">{usesFuel(vehicle) ? text.fuel : text.battery}</span>
+            <MorphSlot id="percent" className="tabular whitespace-nowrap text-[1.375rem] font-bold text-white">{energyLevelLabel(vehicle)}</MorphSlot>
           </div>
           <div className="mt-2">
           <MorphSlot id="battery" mode="stretch" className="h-2">
@@ -397,7 +400,7 @@ function SingleVehicleView({
           </MorphSlot>
           </div>
           {vehicle.batteryEstimated && (
-            <p className="mt-1.5 text-[0.6875rem] text-slate-500">{text.battery} {text.estimated}</p>
+            <p className="mt-1.5 text-[0.6875rem] text-slate-500">{usesFuel(vehicle) ? text.fuel : text.battery} {text.estimated}</p>
           )}
         </div>
       )}
@@ -461,7 +464,7 @@ function CompactBand({
                 <VehicleGlyph formFactor={entry.formFactor} size={18} color="currentColor" />
                 {typeof entry.batteryPercent === 'number' && (
                   <span className="tabular text-[0.75rem] font-bold" style={{ color: batteryColor(entry.batteryPercent) }}>
-                    {entry.batteryPercent} %
+                    {energyLevelLabel(entry)}
                   </span>
                 )}
               </span>
@@ -499,7 +502,7 @@ function CompactBand({
                 </span>
               </MorphAnchor>
               <MorphAnchor id="percent">
-                <span className="tabular whitespace-nowrap text-[1rem] font-bold leading-tight text-white">{percent} %</span>
+                <span className="tabular whitespace-nowrap text-[1rem] font-bold leading-tight text-white">{vehicle ? energyLevelLabel(vehicle) : `${percent} %`}</span>
               </MorphAnchor>
             </div>
           )}

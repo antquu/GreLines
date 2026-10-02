@@ -144,6 +144,12 @@ export async function getGtfsStops(code: string): Promise<Stop[]> {
   return network.stops.map(stop => ({ id: prefixed(code, stop.id), name: stop.name, lat: stop.lat, lon: stop.lon, city }));
 }
 
+export function gtfsStopMembers(stopId: string): string[] {
+  const config = gtfsNetworkOf(stopId);
+  const stop = stopById.get(String(stopId));
+  return config && stop ? stop.members.map(member => prefixed(config.code, member)) : [];
+}
+
 export async function getGtfsLinesForStop(stopId: string): Promise<Line[]> {
   const config = gtfsNetworkOf(stopId);
   if (!config) return [];

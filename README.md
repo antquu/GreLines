@@ -257,7 +257,7 @@ conservées localement.
 * Arrêts, lignes, prochains passages et perturbations des 27 réseaux
 * Réponses en JSON, en anglais, avec des codes d’erreur stables
 * Clés créées et révoquées par un super administrateur dans GreLines Management
-* Modifications d’arrêts et de lignes reprises en moins d’une minute
+* Modifications d’arrêts et de lignes de tous les réseaux reprises en quelques secondes
 * Documentation sur `/fr/docs/api` et `/en/docs/api`
 
 ### Design responsive

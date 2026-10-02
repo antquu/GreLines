@@ -47,6 +47,7 @@ export interface SharedJourneyInfo {
   batteryPercent?: number;
   batteryEstimated?: boolean;
   model?: string;
+  propulsion?: string;
   rentalUrl?: string;
   price: {
     total: number;
