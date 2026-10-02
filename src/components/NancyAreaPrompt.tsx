@@ -9,7 +9,6 @@ import { onDevCommand } from '../utils/devCommands';
 const NANCY_CENTER = { lat: 48.6921, lon: 6.1844 };
 const AREA_RADIUS_METERS = 35_000;
 const STAY_KEY = 'greLines_nancyStayOutside';
-const SHOW_DELAY_MS = 1500;
 const GRELINES_URL = 'https://grelines.fr/app';
 
 function hasChosenToStay(): boolean {
@@ -37,14 +36,12 @@ export function NancyAreaPrompt({
 }) {
   const [stayed, setStayed] = useState(hasChosenToStay);
   const [ipArea, setIpArea] = useState<{ lat: number; lon: number } | null>(null);
-  const [ready, setReady] = useState(false);
   const [forced, setForced] = useState(false);
 
   useEffect(() => {
     if (!IS_NANCY) return;
     return onDevCommand('show.outside', () => {
       setStayed(false);
-      setReady(true);
       setForced(true);
     });
   }, []);
@@ -53,14 +50,13 @@ export function NancyAreaPrompt({
     if (!IS_NANCY || stayed) return;
     let alive = true;
     void locateByIp().then(area => { if (alive) setIpArea(area); });
-    const timer = window.setTimeout(() => setReady(true), SHOW_DELAY_MS);
-    return () => { alive = false; window.clearTimeout(timer); };
+    return () => { alive = false; };
   }, [stayed]);
 
   if (!IS_NANCY || stayed) return null;
 
   const known = position ?? ipArea;
-  const open = forced || (ready && known !== null && !isInsideArea(known));
+  const open = forced || (known !== null && !isInsideArea(known));
 
   const isFr = language === 'fr';
   const isLight = theme === 'light';
@@ -82,7 +78,7 @@ export function NancyAreaPrompt({
     <div className={`px-6 ${isMobile ? 'pt-7' : 'pt-7 pb-8'}`}>
       <MapPinIcon className="h-12 w-12" style={{ color: ink }} aria-hidden="true" />
       <p role="heading" aria-level={2} className="pt-6 text-[1.625rem] font-medium leading-[1.15]" style={{ color: ink }}>
-        {isFr ? 'Vous n’êtes pas à Nancy ?' : 'Not in Nancy?'}
+        {isFr ? 'Vous n’êtes pas à Nancy ?' : 'Not in Nancy?'}
       </p>
       <p className="pt-3 text-[1.0625rem] leading-snug" style={{ color: soft }}>
         {isFr
@@ -118,7 +114,7 @@ export function NancyAreaPrompt({
         {open && (
           <motion.div
             key="nancy-area"
-            className="fixed inset-0 z-[10001] flex flex-col justify-end bg-black/50"
+            className="fixed inset-0 z-[10050] flex flex-col justify-end bg-black/50"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.3 } }}
@@ -150,7 +146,7 @@ export function NancyAreaPrompt({
       {open && (
         <motion.div
           key="nancy-area"
-          className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.4, ease: 'easeOut' } }}

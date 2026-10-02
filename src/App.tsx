@@ -2364,7 +2364,7 @@ function App() {
         />
       )}
 
-      {IS_NANCY && !isLoadingOverlayVisible && (
+      {IS_NANCY && (
         <NancyAreaPrompt
           position={currentLocation}
           isMobile={isMobile}
