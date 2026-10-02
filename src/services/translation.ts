@@ -140,7 +140,7 @@ async function writeCache(
         translated_text: translated,
         last_seen_at: new Date().toISOString(),
       },
-      { onConflict: 'key' },
+      { onConflict: 'key', ignoreDuplicates: true },
     );
   } catch {
   }
@@ -149,10 +149,7 @@ async function writeCache(
 async function touch(keys: string[]): Promise<void> {
   if (!supabase || keys.length === 0) return;
   try {
-    await supabase
-      .from('translations')
-      .update({ last_seen_at: new Date().toISOString() })
-      .in('key', keys);
+    await supabase.rpc('translations_touch', { p_keys: keys });
   } catch {
   }
 }

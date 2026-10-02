@@ -28,12 +28,7 @@ export async function getLineReputation(lineId: string): Promise<LineReputation 
 
   try {
     const since = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString();
-    const { data, error } = await supabase
-      .from('trip_surveys')
-      .select('cleanliness, comfort, crowding, punctuality, on_time')
-      .eq('line_id', key)
-      .gte('created_at', since)
-      .limit(500);
+    const { data, error } = await supabase.rpc('trip_survey_scores', { p_line_id: key, p_since: since });
 
     if (error || !Array.isArray(data) || data.length < MIN_SAMPLE) {
       cache.set(key, { value: null, at: Date.now() });
