@@ -1,16 +1,7 @@
-/**
- * Prix résumé d'un itinéraire, pour la pastille des cartes de résultats.
- */
-
 import type { RouteItinerary } from '../services/api';
 import { formatEuro } from '../services/sharedPricing';
 import { estimateTransitFare } from '../services/tagFares';
 
-/**
- * Renvoie `null` quand il n'y a rien à annoncer : trajet entièrement à pied, ou
- * opérateur qui ne publie pas sa grille tarifaire. Mieux vaut pas de prix
- * qu'un prix inventé.
- */
 export function journeyFareChip(journey: RouteItinerary, language: 'fr' | 'en'): string | null {
   if (journey.taxi) {
     const { lowEstimate, highEstimate } = journey.taxi;

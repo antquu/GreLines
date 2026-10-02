@@ -1,18 +1,3 @@
-/**
- * La barre du haut, partagée par la page d'accueil et les pages légales.
- *
- * Elle vivait dans `LandingApp`, et les pages légales en avaient reçu une
- * version amputée : la marque, un lien de retour, le bouton d'ouverture. C'était
- * une erreur. Une page légale n'est pas une impasse — on y arrive souvent depuis
- * un pied de page, on la lit, et l'on veut ensuite voir ce que fait le produit.
- * Lui retirer la navigation, c'est obliger à revenir en arrière pour reprendre
- * sa visite.
- *
- * Les liens de section pointent vers la page d'accueil et non vers une ancre
- * locale : `#features` ne désigne rien dans un document juridique. Ils portent
- * donc leur chemin complet, `/fr#features`, ce qui marche depuis n'importe où.
- */
-
 import { useEffect, useState } from 'react';
 import type { Lang } from './content';
 import { COPY } from './content';
@@ -21,17 +6,6 @@ type Theme = 'light' | 'dark';
 
 const ASSETS = '/assets/homepage';
 
-/**
- * La pastille seule, à gauche de la barre.
- *
- * Le nom ne l'accompagne plus. Sur un site qui n'appartient qu'à GreLines,
- * l'écrire à côté de sa propre marque ne distingue rien, et prend la place que
- * la navigation réclame. Le mot revient dans le pied de page et dans le titre
- * de l'onglet, où il sert vraiment.
- *
- * Si le fichier manque, le nom réapparaît : un en-tête sans rien à gauche
- * n'aurait plus de lien de retour visible.
- */
 function Mark({ theme }: { theme: Theme }) {
   const [failed, setFailed] = useState(false);
 
@@ -77,11 +51,6 @@ export function LandingHeader({
   lang,
   theme,
   stuck = true,
-  /**
-   * Sur la page d'accueil, les liens de section sont des ancres locales : le
-   * défilement reste doux et l'adresse ne change pas de page. Ailleurs, ils
-   * doivent d'abord ramener à l'accueil.
-   */
   local = false,
 }: {
   lang: Lang;
@@ -90,15 +59,9 @@ export function LandingHeader({
   local?: boolean;
 }) {
   const copy = COPY[lang];
-  /** Le panneau ouvert, s'il y en a un : « solutions », « resources », ou rien. */
   const [openMenu, setOpenMenu] = useState<'solutions' | 'resources' | null>(null);
   const isFr = lang === 'fr';
 
-  /**
-   * Les ressources : ce qu'on lit à propos du produit, par opposition aux
-   * solutions, qui sont ce qu'on achète. Deux entrées seulement — mieux vaut un
-   * menu court et vrai qu'un menu fourni de liens qui ne mènent nulle part.
-   */
   const resources = [
     {
       name: isFr ? 'Documentation' : 'Documentation',
@@ -116,17 +79,9 @@ export function LandingHeader({
     },
   ];
   const anchor = (id: string) => (local ? `#${id}` : `/${lang}#${id}`);
-  /*
-   * Les liens du panneau des solutions viennent du contenu, et plusieurs sont
-   * de simples ancres. Hors de la page d'accueil, une ancre ne désigne rien :
-   * on lui rend son chemin. Les adresses complètes et les chemins absolus
-   * passent sans être touchés.
-   */
   const solutionHref = (href: string) =>
     !local && href.startsWith('#') ? `/${lang}${href}` : href;
 
-  /* Le menu se referme comme on s'y attend : par la touche d'échappement, et
-     en touchant ailleurs. */
   useEffect(() => {
     if (!openMenu) return;
     const onKey = (event: KeyboardEvent) => {
@@ -147,15 +102,6 @@ export function LandingHeader({
   return (
     <header
       className={`landing-header ${stuck ? 'is-stuck' : ''}`}
-      /*
-       * Le survol ouvre, mais ne referme pas.
-       *
-       * Le bouton n'occupe que la hauteur de son texte, et le panneau commence
-       * au bas de l'en-tête : en descendant vers un lien, le pointeur traversait
-       * une bande qui n'appartenait ni à l'un ni à l'autre, le menu se refermait,
-       * et l'on n'atteignait jamais ce qu'on visait. La fermeture est donc
-       * confiée à l'en-tête entier, qu'on ne quitte qu'en s'en allant pour de bon.
-       */
       onMouseLeave={() => setOpenMenu(null)}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
@@ -197,8 +143,6 @@ export function LandingHeader({
         </div>
       </div>
 
-      {/* Le panneau des solutions. Il appartient à l'en-tête et non à la barre :
-          il court sur toute la largeur, comme un rayon qui descend. */}
       <div
         data-menu
         className={`landing-menu ${openMenu === 'solutions' ? 'is-open' : ''}`}

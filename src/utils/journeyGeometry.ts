@@ -1,4 +1,3 @@
-
 import type { LineGeometry } from '../services/lineShapes';
 import { haversineMeters } from './geo';
 
@@ -152,15 +151,11 @@ function magnetize(coords: Coordinate[], stops: JourneyStopRef[]): Coordinate[] 
 export interface JourneyLegGeometry {
   index: number;
   isWalk: boolean;
-  /**
-   * Tronçon qui ne suit ni ligne ni arrêt (marche, véhicule partagé, VTC) :
-   * son tracé est celui du routeur et ne doit être recalé sur rien.
-   */
   freeform: boolean;
   lineKey: string;
   color: string;
   coordinates: Coordinate[];
-  
+
   precise: boolean;
   boarding: JourneyStopRef | null;
   alighting: JourneyStopRef | null;
@@ -182,26 +177,18 @@ export interface JourneyGeometry {
   points: GeoJSON.FeatureCollection;
 
   badges: JourneyBadge[];
-  /**
-   * Le tracé tronçon par tronçon, tel qu'il a été corrigé.
-   *
-   * La carte n'en a pas besoin — elle dessine la collection `lines` — mais le
-   * guidage, si : il suit un tronçon à la fois pour dire où tourner. Sans cela
-   * il redécodait la polyligne brute du routeur de son côté, et suivait donc un
-   * chemin différent de celui qu'on lui montrait à l'écran.
-   */
   legGeometries: JourneyLegGeometry[];
 }
 
 export interface BuildJourneyGeometryOptions {
   legs: any[];
-  
+
   getLineColor: (leg: any) => string;
-  
+
   getLineKey: (leg: any) => string;
-  
+
   referenceGeometries?: Map<string, LineGeometry>;
-  
+
   resolveCluster?: (stop: JourneyStopRef) => JourneyStopRef | null;
 }
 
@@ -214,10 +201,6 @@ function pointKey(point: JourneyStopRef): string {
   return `${point.lon.toFixed(5)},${point.lat.toFixed(5)}`;
 }
 
-/**
- * Construit le tracé complet d'un itinéraire ainsi que les pastilles à poser
- * dessus. Renvoie `null` si aucun tronçon n'est exploitable.
- */
 export function buildJourneyGeometry({
   legs,
   getLineColor,

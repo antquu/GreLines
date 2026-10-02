@@ -1,4 +1,3 @@
-
 import { idbGet, idbSet } from './persistentCache';
 import type { SharedOperator } from './sharedMobility';
 
@@ -13,14 +12,14 @@ const PRICING_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface SharedPricing {
   operator: SharedOperator;
-  
+
   unlockPrice: number | null;
-  
+
   usageRate: number | null;
   usageIntervalMinutes: number;
-  
+
   perKmRate: number | null;
-  
+
   planName: string | null;
 }
 
@@ -32,7 +31,7 @@ interface RawTier {
 
 interface RawPlan {
   plan_id?: string;
-  
+
   name?: string | Array<{ text?: string }>;
   price?: number;
   per_min_pricing?: RawTier[];
@@ -44,7 +43,7 @@ function planName(plan: RawPlan): string | null {
     ? plan.name
     : Array.isArray(plan.name) ? plan.name[0]?.text ?? null : null;
   if (!raw) return null;
-  
+
   if (!raw.includes(' ')) return null;
   return raw;
 }
@@ -96,7 +95,6 @@ export async function getSharedPricing(
   };
 }
 
-/** Formate un montant en euros, à la française (« 0,49 € »). */
 export function formatEuro(amount: number, language: 'fr' | 'en'): string {
   return new Intl.NumberFormat(language === 'fr' ? 'fr-FR' : 'en-GB', {
     style: 'currency',

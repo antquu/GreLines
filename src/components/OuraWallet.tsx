@@ -1,17 +1,3 @@
-/**
- * Le portefeuille de cartes.
- *
- * Les cartes s'empilent comme dans une poche : on ne voit que la dernière en
- * entier, les autres dépassent d'un centimètre. En toucher une la fait monter
- * seule et grandir d'un rien, pendant que tout le reste de l'écran s'efface —
- * les réglages descendent, la barre d'onglets quitte le bas. Il ne reste que la
- * carte, ce qu'elle porte écrit dessous, et de quoi la retirer ou la présenter
- * à un contrôleur.
- *
- * Sans carte, l'empilement laisse place au carton générique barré d'une croix :
- * il montre ce qu'on n'a pas encore, et invite à l'ajouter.
- */
-
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowsRightLeftIcon, CameraIcon, ChevronRightIcon, EllipsisVerticalIcon, PencilSquareIcon, IdentificationIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/solid';
@@ -39,58 +25,21 @@ interface OuraWalletProps {
   theme?: 'light' | 'dark';
   onAddCard: () => void;
   onCardsChange: (cards: OuraCard[]) => void;
-  /** Prévient l'écran qu'une carte occupe le devant : tout le reste s'efface. */
   onFocusChange?: (focused: boolean) => void;
-  /** Vrai quand la base n'est pas configurée : rien ne peut être enregistré. */
   disabled?: boolean;
-  /**
-   * Où la carte dépliée a le droit de s'étendre.
-   *
-   * `screen` : elle prend l'écran, comme sur téléphone où le portefeuille *est*
-   * l'écran. `panel` : elle reste dans le cadre qui la contient — le carré du
-   * bureau — et s'y déplie à la même échelle relative.
-   *
-   * Tout le dessin est le même ; seules changent les unités dans lesquelles il
-   * se mesure. À l'écran on compte en `vw`/`vh` ; dans un panneau, en `cqw`/`cqh`,
-   * qui rapportent au conteneur au lieu de la fenêtre.
-   */
   variant?: 'screen' | 'panel';
 }
 
-/** Décalage vertical entre deux cartes de la pile, en pixels. */
 const STACK_OFFSET = 34;
 
-/**
- * Ce qu'on laisse voir d'une carte rangée en bas de l'écran.
- *
- * Assez pour reconnaître son porteur — le nom sort de la tranche — et pour la
- * viser du pouce sans hésiter, pas assez pour disputer la vedette à celle qu'on
- * regarde.
- */
 const PEEK_HEIGHT = 54;
 
-/**
- * Ce que chaque carte supplémentaire ajoute à la pile du bas.
- *
- * Bien moins que la première : la deuxième carte rangée n'a pas besoin de se
- * montrer autant que celle du dessus, il suffit qu'on devine sa tranche. Sans
- * cela, trois cartes ou plus feraient monter la pile jusqu'au milieu de
- * l'écran et mangeraient l'identité.
- */
 const STACK_STEP = 16;
 
-/** Hauteur occupée en bas par `count` cartes rangées. */
 function stackHeight(count: number): number {
   return count > 0 ? PEEK_HEIGHT + (count - 1) * STACK_STEP : 0;
 }
 
-/**
- * Hauteur à laquelle se pose la carte mise en avant.
- *
- * Au ras de la zone sûre : ce qui compte est sous elle — l'identité, puis les
- * messages —, et chaque pixel gagné en haut est un message de plus qu'on lit
- * sans faire défiler.
- */
 const FRONT_TOP = 0;
 
 function formatDate(value?: string): string {
@@ -100,7 +49,6 @@ function formatDate(value?: string): string {
   return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-/** Une carte vaut tant qu'elle n'est ni périmée ni sur liste noire. */
 function isCardValid(card: OuraCard): boolean {
   if (card.isDisabled) return false;
   if (card.isBlacklisted) return false;
@@ -121,35 +69,16 @@ export function OuraWallet({
   variant = 'screen',
 }: OuraWalletProps) {
   const isPanel = variant === 'panel';
-  /** L'unité dans laquelle la couche dépliée se mesure. */
   const VH = isPanel ? '100cqh' : '100vh';
-  /** Dans un panneau il n'y a pas d'encoche : la marge haute vaut zéro. */
-  const SAFE_TOP = isPanel ? '0px' : 'env(safe-area-inset-top, 0px)';
-  /*
-   * Le carré du bureau fait 384 px de haut ; un téléphone en fait le double.
-   * La carte y occupe donc la moitié de la place au lieu du quart, et ce qui se
-   * lit dessous — l'identité, l'état, les messages — n'a plus la hauteur d'un
-   * titre de 32 px. On resserre la carte sur ses côtés et l'on descend d'un cran
-   * chaque taille de texte : c'est le même dessin, à une autre échelle.
-   */
+  const SAFE_TOP = isPanel ? '0px' : 'var(--gl-safe-top)';
   const CARD_INSET = isPanel ? 'inset-x-6' : 'inset-x-4';
-  const titleSize = isPanel ? 'text-[24px]' : 'text-[32px]';
-  const nameSize = isPanel ? 'text-[18px]' : 'text-[24px]';
-  const bodySize = isPanel ? 'text-[14px]' : 'text-base';
-  const metaSize = isPanel ? 'text-[13px]' : 'text-sm';
-  const noticeSize = isPanel ? 'text-[17px]' : 'text-[22px]';
+  const titleSize = isPanel ? 'text-[1.5rem]' : 'text-[2rem]';
+  const nameSize = isPanel ? 'text-[1.125rem]' : 'text-[1.5rem]';
+  const bodySize = isPanel ? 'text-[0.875rem]' : 'text-base';
+  const metaSize = isPanel ? 'text-[0.8125rem]' : 'text-sm';
+  const noticeSize = isPanel ? 'text-[1.0625rem]' : 'text-[1.375rem]';
   const isFr = language === 'fr';
   const isLight = theme === 'light';
-  /*
-   * L'ombre des cartes suit le thème.
-   *
-   * `shadow-2xl` est calculée pour un fond sombre : posée sur du blanc, elle
-   * dessine un liseré gris autour de la carte, qu'on prend pour une bordure. En
-   * clair on veut une ombre portée douce, qui décolle la carte sans la cerner.
-   *
-   * Elle est remise à `OuraCardFace`, qui la pose sur les bords du carton :
-   * étalée sur le gabarit, elle cernait la marge transparente qui l'entoure.
-   */
   const cardShadow = isLight
     ? 'shadow-[0_10px_28px_rgba(15,23,42,0.10)]'
     : 'shadow-2xl';
@@ -157,32 +86,13 @@ export function OuraWallet({
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [controllerCard, setControllerCard] = useState<OuraCard | null>(null);
-  /** Les messages de la carte regardée, chargés à sa mise en avant. */
   const [notifications, setNotifications] = useState<OuraNotification[]>([]);
   const [openNotification, setOpenNotification] = useState<OuraNotification | null>(null);
-  /**
-   * La descente des cartes rangées.
-   *
-   * Même remarque que pour le grossissement, mais pour les autres cartes : si
-   * la couche les pose d'emblée en bas de l'écran, on ne les voit jamais y
-   * aller. Elles naissent donc là où la pile fermée les montrait — sous la
-   * carte de devant, décalées d'un cran — puis glissent vers le bas.
-   *
-   * Distinct de `lifted`, qui se rejoue à chaque échange de carte : la descente
-   * n'appartient qu'à l'ouverture. Échanger deux cartes doit rester ce qu'il
-   * est — l'une monte, l'autre descend —, pas un dépilement recommencé.
-   */
   const [entered, setEntered] = useState(false);
-  /**
-   * Transfert vers un nouveau support. Une carte se périme ou se perd ; le
-   * porteur, lui, ne change pas — il n'y a donc rien à ressaisir, juste un
-   * numéro à donner.
-   */
   const [transferFrom, setTransferFrom] = useState<OuraCard | null>(null);
   const [transferCode, setTransferCode] = useState('');
   const [transferBusy, setTransferBusy] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
-  /** Comment on donne le nouveau numéro : en le photographiant, ou en le tapant. */
   const [transferStep, setTransferStep] = useState<'choice' | 'scan' | 'manual'>('choice');
   const transferVideoRef = useRef<HTMLVideoElement | null>(null);
   const transferStreamRef = useRef<MediaStream | null>(null);
@@ -252,15 +162,8 @@ export function OuraWallet({
     notifications: isFr ? 'Dernières notifications' : 'Latest notifications',
   };
 
-  /**
-   * Une carte retirée ne doit pas laisser la pile ouverte sur un vide : on
-   * corrige à la lecture plutôt que dans un effet, qui demanderait un second
-   * rendu pour dire ce que celui-ci sait déjà.
-   */
   const safeIndex = openIndex !== null && openIndex < cards.length ? openIndex : null;
   const focusedCode = safeIndex !== null ? cards[safeIndex].cardCode : null;
-  /* Les messages chargés valent pour la carte demandée, et pour elle seule :
-     tant que la réponse n'est pas là, la liste précédente ne s'affiche pas. */
   const shownNotifications = focusedCode ? notifications : [];
 
   useEffect(() => {
@@ -278,23 +181,7 @@ export function OuraWallet({
     return () => { active = false; };
   }, [focusedCode]);
 
-  /**
-   * La colonne repart du haut a chaque carte.
-   *
-   * Elle etait remontee a neuf pour cela, ce qui coutait l'animation d'echange :
-   * une colonne qui se demonte emporte la carte qui s'en va, et l'on ne voit
-   * plus que la nouvelle apparaitre. On la garde donc en place et l'on remet
-   * simplement son defilement a zero. Sans quoi, passer d'une carte lue jusqu'en
-   * bas a une autre laisserait l'ecran au milieu de messages qui ne sont plus
-   * les memes.
-   */
   const columnRef = useRef<HTMLDivElement | null>(null);
-  /**
-   * La colonne repart du haut à chaque carte.
-   *
-   * Sans cela, passer d'une carte lue jusqu'en bas à une autre laisserait
-   * l'écran au milieu de messages qui ne sont plus les mêmes.
-   */
   useEffect(() => {
     columnRef.current?.scrollTo({ top: 0 });
   }, [focusedCode]);
@@ -332,36 +219,16 @@ export function OuraWallet({
 
   const opened = safeIndex !== null ? cards[safeIndex] : null;
   const others = safeIndex === null ? [] : cards.filter((_, index) => index !== safeIndex);
-  /** Ce qui est arrivé à la carte, s'il lui est arrivé quelque chose. */
   const statusSentence = opened ? cardStatusSentence(opened, language) : null;
 
-  /*
-   * Ce qui se lit sous la carte : l'identite du porteur ou l'etat de la
-   * carte, puis les messages recus. Le meme contenu sert aux deux mises en
-   * page — celle de l'ecran, ou il se pose sous une carte fixe, et celle du
-   * panneau, ou il defile avec elle.
-   *
-   * Une variable et non un composant : declaree dans le corps, une fonction
-   * changerait d'identite a chaque rendu et React remonterait tout le bloc.
-   */
   const detailContent = opened ? (
     <>
-          {/* Sous la carte, l'identité — ou, si la carte est coupée, le
-              fait qu'elle l'est. Le carton, lui, garde son porteur : c'est
-              la pièce, elle ne change pas parce qu'on l'a suspendue. */}
           {statusSentence ? (
-            /* Une phrase d'état peut être longue — celle du réseau l'est
-               souvent. Dans le panneau elle défile plutôt que de passer
-               sous la pile. */
             <div className="contents">
-              {/* « Carte désactivée » prend la place du prénom : c'est ce
-                  qu'on vient lire, et rien ne doit passer avant. */}
               <div className={`${titleSize} font-semibold leading-none ${isLight ? 'text-slate-900' : 'text-white'}`}>
                 {text.disabled}
               </div>
               <div className={`mt-3 ${bodySize} leading-snug text-slate-500`}>{statusSentence}</div>
-              {/* Le code de l'incident, à recopier au guichet : discret,
-                  mais toujours là quand on en a besoin. */}
               {cardStatusCode(opened) && (
                 <div className={`mt-2 ${metaSize} tabular text-slate-500`}>{cardStatusCode(opened)}</div>
               )}
@@ -385,18 +252,11 @@ export function OuraWallet({
               )}
             </>
           )}
-  
-          {/* Le remerciement, au-dessus des messages : c'est la seule ligne du
-              portefeuille qui ne demande rien. Il se ferme une fois pour
-              toutes. */}
+
           <div className={isPanel ? 'mt-5' : 'mt-8'}>
             <GreenerBanner language={language} />
           </div>
 
-          {/* Ce qu'on a reçu à propos de cette carte.
-  
-              Sans message, rien ne s'affiche — ni titre, ni encart vide :
-              une carte qui n'a rien reçu n'a rien à dire. */}
           {shownNotifications.length > 0 && !statusSentence && (
           <>
           <h3
@@ -406,13 +266,8 @@ export function OuraWallet({
           >
             {text.notifications}
           </h3>
-  
+
           <div
-            /* La liste se laisse porter par la colonne, qui défile déjà. Elle
-               a eu sa propre zone de défilement sur téléphone, du temps où la
-               carte restait fixe au-dessus : deux zones emboîtées se
-               disputaient le geste, et l'on ne savait jamais laquelle on
-               poussait. */
             className="pointer-events-auto mt-3 pb-2"
           >
             <div
@@ -455,8 +310,6 @@ export function OuraWallet({
   return (
     <div>
       {safeIndex === null ? (
-        /* La pile. Chaque carte est décalée de la précédente ; la hauteur du
-           bloc suit le nombre de cartes pour que rien ne déborde. */
         <div className="relative" style={{ paddingBottom: (cards.length - 1) * STACK_OFFSET }}>
           {cards.map((card, index) => (
             <button
@@ -484,58 +337,10 @@ export function OuraWallet({
           </div>
         </div>
       ) : (
-        /*
-         * Toutes les cartes vivent dans une même couche pendant qu'on en
-         * regarde une : celle du devant en haut, les autres empilées en bas.
-         * Elles partagent donc un seul repère, et changer de carte ne fait que
-         * déplacer deux positions — le navigateur anime le reste. On voit la
-         * carte du haut descendre et celle du bas monter, au lieu de les voir
-         * se substituer d'un coup.
-         *
-         * La couche est fixée à l'écran, ce que la page permet : elle ne défile
-         * plus tant qu'une carte est en avant.
-         */
         <div
-          /* Dans un panneau la couche s'arrête au cadre : `fixed` la ferait
-             s'échapper sur toute la page, et une carte de transport en plein
-             écran par-dessus la carte routière n'est pas ce qu'on a demandé en
-             cliquant une vignette de trois centimètres. Le `containerType`
-             donne leur référence aux unités `cqw`/`cqh`. */
           className={`${isPanel ? 'absolute' : 'fixed'} inset-0 z-[6]`}
           style={{ pointerEvents: 'none', containerType: isPanel ? 'size' : undefined }}
         >
-          {/*
-            Toutes les cartes dans la même liste, celle de devant comprise.
-
-            C'est ce qui fait l'échange : quand on touche une carte de la pile,
-            deux positions changent dans une liste qui, elle, ne bouge pas —
-            celle du haut prend la place d'en bas, celle d'en bas monte au
-            sommet — et le navigateur interpole le trajet. Sorties de cette
-            liste, les cartes ne s'échangeaient plus : l'une disparaissait,
-            l'autre apparaissait.
-
-            La carte de devant porte en plus une enveloppe qui recopie le
-            défilement de la colonne : elle s'en va vers le haut avec le texte
-            qu'elle surplombe. Les cartes rangées, elles, ne défilent pas — la
-            pile du bas est le point fixe par lequel on change de carte.
-          */}
-          {/*
-            La pile du bas, et elle seule.
-
-            La carte de devant est revenue dans la colonne qui défile, en flux
-            normal. Elle vivait ici, dans la couche fixe, et recopiait le
-            défilement par une variable CSS mise à jour à chaque événement de
-            scroll : sur téléphone, ces événements arrivent en retard pendant
-            l'inertie, si bien que la carte traînait derrière le texte au lieu
-            de faire bloc avec lui. Et posée par-dessus la colonne, elle
-            interceptait le geste : une fois le texte défilé, on tirait sur une
-            carte au lieu de la liste, et l'on ne remontait plus.
-
-            C'est le prix de l'échange à deux cartes : il demandait que la
-            carte de devant soit hors de la zone qui défile. Le défilement d'un
-            bloc et cet échange ne peuvent pas coexister — voir la réponse qui
-            accompagne cette modification.
-          */}
           {others.map((card, rank) => {
             const y = entered
               ? `calc(${VH} - ${stackHeight(others.length - rank)}px)`
@@ -569,24 +374,9 @@ export function OuraWallet({
             );
           })}
 
-          {/*
-            Tout ce qu'on lit : la carte, l'identité, les messages, dans une
-            seule zone qui défile.
-
-            C'est le navigateur qui la fait défiler, et rien d'autre — pas de
-            position recopiée d'un élément à l'autre, donc pas de décalage
-            pendant l'inertie et pas de carte posée par-dessus qui intercepte le
-            geste.
-
-            La pile du bas ne défile pas : c'est par elle qu'on change de carte,
-            elle doit rester sous la main.
-          */}
           {opened && (
             <div
               ref={columnRef}
-              /* Sous les cartes rangées, jamais dessus : la colonne défile
-                  derrière elles, et le dernier message glisse sous la pile au
-                  lieu de la recouvrir. */
               className="scrollbar-hide absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain"
               style={{ pointerEvents: 'auto', zIndex: 0 }}
             >
@@ -597,14 +387,6 @@ export function OuraWallet({
                   paddingBottom: stackHeight(Math.max(0, cards.length - 1)) + 16,
                 }}
               >
-                {/*
-                  La carte, en flux normal : c'est le navigateur qui la fait
-                  défiler avec le reste, sans un pas de retard.
-
-                  Elle arrive d'en bas, d'où vient la pile, et grandit un peu en
-                  chemin. La clé la remonte à chaque changement, sans quoi
-                  l'animation ne se rejouerait pas.
-                */}
                 <div className={isPanel ? 'px-3' : 'px-1.5'}>
                   <motion.button
                     key={opened.id}
@@ -631,9 +413,6 @@ export function OuraWallet({
                 </div>
 
                 <div className={isPanel ? 'mt-4 px-8' : 'mt-4 px-5'}>
-                {/* Carte supprimée du côté du réseau : il n'y a plus rien
-                    derrière, et la seule chose à en faire est de la retirer de
-                    l'appareil. */}
                 {opened.isMissing && (
                   <div className="mb-4 flex justify-center">
                     <button
@@ -659,7 +438,6 @@ export function OuraWallet({
         </div>
       )}
 
-      {/* Les actions se posent au-dessus de cette pile, jamais dessus. */}
       {safeIndex !== null && (
         <>
           {isMenuOpen && (
@@ -681,9 +459,6 @@ export function OuraWallet({
                   isLight ? 'border-slate-200 bg-white' : 'border-slate-800 bg-slate-900'
                 }`}
               >
-                {/* Rien à montrer à un contrôleur, rien à reporter sur un
-                    nouveau support : une carte supprimée n'a plus que sa
-                    suppression à offrir. */}
                 {!opened.isMissing && (
                 <button
                   type="button"
@@ -736,7 +511,6 @@ export function OuraWallet({
             )}
 
             <div className="flex items-center gap-2">
-            {/* Sortir de la mise en avant sans avoir à viser la carte. */}
             <button
               type="button"
               onClick={() => focus(null)}
@@ -749,9 +523,6 @@ export function OuraWallet({
             >
               <XMarkIcon className="h-6 w-6" />
             </button>
-            {/* Le bouton tourne d'un quart de tour à l'ouverture : le geste se
-                voit, et l'icône verticale devient horizontale — elle dit alors
-                que le menu est déplié. */}
             <button
               type="button"
               onClick={() => setIsMenuOpen(open => !open)}
@@ -772,8 +543,6 @@ export function OuraWallet({
         </>
       )}
 
-      {/* Transfert : la même feuille pleine hauteur que l'ajout d'une carte —
-          c'est la même démarche, elle mérite le même écran. */}
       <div
         className={`fixed inset-0 z-[10005] bg-black/50 transition-opacity duration-300 ${
           transferFrom ? 'opacity-100' : 'pointer-events-none opacity-0'
@@ -803,9 +572,6 @@ export function OuraWallet({
         </p>
         <p className="mb-4 text-sm leading-snug text-slate-500">{text.transferExplain}</p>
 
-        {/* Le numéro se donne comme à l'ajout d'une carte : en la
-            photographiant, ou en le tapant. Seul le numéro change — le nom et
-            le visage suivent tout seuls. */}
         {transferStep === 'choice' && (
           <div className="space-y-2">
             <button

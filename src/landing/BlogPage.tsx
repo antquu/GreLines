@@ -1,20 +1,3 @@
-/**
- * Le blog : la liste des communiqués, et un communiqué.
- *
- * La forme est celle d'un communiqué de presse, pas d'un billet de journal
- * intime : les deux étiquettes d'abord — de quoi ça parle, quelle sorte de
- * texte c'est —, le titre en grand, la date, l'image de tête, puis une colonne
- * de lecture étroite. On sait avant de commencer si le texte nous concerne.
- *
- * Tout est en Inter, y compris le corps. Un empattement dans le texte long
- * aurait sa logique, mais l'application entière est en Inter et un blog qui
- * change de police se lit comme s'il appartenait à quelqu'un d'autre.
- *
- * Le corps arrive en blocs, jamais en HTML : le site n'injecte pas du balisage
- * qu'il n'a pas écrit, et la mise en forme reste la sienne quel que soit ce que
- * l'auteur avait dans son presse-papier.
- */
-
 import { useEffect, useState } from 'react';
 import './landing.css';
 import { LandingHeader } from './LandingHeader';
@@ -40,14 +23,12 @@ function systemTheme(): Theme {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-/** Les deux étiquettes du haut, séparées par un point médian. */
 function Subjects({ theme, kind }: { theme: string; kind: string }) {
   const parts = [theme, kind].filter(Boolean);
   if (parts.length === 0) return null;
   return <p className="text-sm font-semibold">{parts.join(' · ')}</p>;
 }
 
-/** Un segment de texte, lié ou non. */
 function Runs({ block }: { block: BlogBlock }) {
   if (!block.runs || block.runs.length === 0) return <>{block.text ?? ''}</>;
   return (
@@ -80,7 +61,6 @@ function Runs({ block }: { block: BlogBlock }) {
   );
 }
 
-/** Un bloc du corps. Un type inconnu est ignoré plutôt que de casser la page. */
 function Block({ block }: { block: BlogBlock }) {
   switch (block.type) {
     case 'heading':
@@ -129,23 +109,18 @@ function Block({ block }: { block: BlogBlock }) {
   }
 }
 
-/** Le cadre commun : en-tête, contenu, pied. */
 function Shell({ lang, children }: { lang: Lang; children: React.ReactNode }) {
-  /*
-   * Le thème, tenu comme sur la page d'accueil : « auto » suit le système, les
-   * deux autres l'emportent et sont retenus.
-   */
   const [choice, setChoice] = useState<'auto' | Theme>(() => {
     try {
       const stored = localStorage.getItem(THEME_KEY);
       if (stored === 'light' || stored === 'dark' || stored === 'auto') return stored;
-    } catch { /* navigation privée */ }
+    } catch { }
     return 'auto';
   });
   const theme: Theme = choice === 'auto' ? systemTheme() : choice;
   const chooseTheme = (next: 'auto' | Theme) => {
     setChoice(next);
-    try { localStorage.setItem(THEME_KEY, next); } catch { /* ignoré */ }
+    try { localStorage.setItem(THEME_KEY, next); } catch { }
   };
 
   return (
@@ -159,28 +134,12 @@ function Shell({ lang, children }: { lang: Lang; children: React.ReactNode }) {
   );
 }
 
-/* ------------------------------------------------------------------ liste */
 
-/**
- * La salle de presse.
- *
- * Trois étages, dans cet ordre : le titre avec les contacts en regard, la une
- * avec les communiqués récents à côté, puis la liste complète en tableau.
- *
- * L'agencement vient de ce qu'on y cherche. Un journaliste qui arrive veut une
- * adresse à qui écrire, tout de suite et sans la chercher : elle est donc en
- * haut, avant tout contenu. Quelqu'un qui suit le produit veut la dernière
- * nouvelle : elle est en grand, avec son image, et les quatre suivantes se
- * lisent à côté sans faire défiler. Quelqu'un qui cherche une annonce précise
- * veut balayer des dates : le tableau la lui donne, une ligne par communiqué.
- */
 
 export function BlogIndex({ lang }: { lang: Lang }) {
   const [posts, setPosts] = useState<BlogPost[] | null>(null);
   const [query, setQuery] = useState('');
-  /** La ligne survolée, dont la vignette carrée paraît sur le côté. */
   const [hovered, setHovered] = useState<BlogPost | null>(null);
-  /* La composition de la une, choisie en gestion. Automatique par défaut. */
   const [layout, setLayout] = useState<FeaturedLayout>({
     mode: 'auto',
     slots: Array.from({ length: FEATURED_SLOTS }, () => null),
@@ -202,13 +161,6 @@ export function BlogIndex({ lang }: { lang: Lang }) {
     };
   }, [lang]);
 
-  /*
-   * La une, puis quatre en colonne, puis le reste en tableau.
-   *
-   * La une doit porter une image : c'est elle qui tient la moitié gauche, et
-   * sans image il n'y a rien à tenir. Les quatre suivantes s'en passent — elles
-   * se lisent au titre et à la phrase de résumé.
-   */
   const all = posts ?? [];
   const featured = resolveFeatured(all, layout);
   const lead = featured[0];
@@ -228,13 +180,10 @@ export function BlogIndex({ lang }: { lang: Lang }) {
   return (
     <Shell lang={lang}>
       <main className="pb-32">
-        {/* ─── En-tête : le titre, et à qui écrire ─────────────────────── */}
         <div className="mx-auto max-w-6xl px-6 pb-24 pt-20">
           <div className="grid gap-12 lg:grid-cols-[1fr_22rem]">
             <h1 className="landing-title">Newsroom</h1>
 
-            {/* Les contacts en regard du titre, avant tout contenu : un
-                journaliste qui arrive cherche une adresse, pas un article. */}
             <ul className="flex flex-col gap-7 lg:pt-3">
               <li>
                 <p className="landing-body text-sm">
@@ -262,7 +211,6 @@ export function BlogIndex({ lang }: { lang: Lang }) {
           </div>
         ) : posts.length === 0 ? (
           <div className="mx-auto max-w-6xl border-t border-[var(--line)] px-6 pt-20">
-            {/* Une salle de presse vide ne s'excuse pas : elle dit ce qui viendra. */}
             <p className="landing-body max-w-xl">
               {isFr
                 ? 'Rien de publié pour l’instant. Les prochains communiqués paraîtront ici.'
@@ -271,7 +219,6 @@ export function BlogIndex({ lang }: { lang: Lang }) {
           </div>
         ) : (
           <>
-            {/* ─── La une, et les récents à côté ─────────────────────────── */}
             <div className="border-t border-[var(--line)]">
               <div className="mx-auto grid max-w-6xl gap-x-14 gap-y-16 px-6 py-20 lg:grid-cols-[1fr_26rem]">
                 {lead && (
@@ -281,9 +228,6 @@ export function BlogIndex({ lang }: { lang: Lang }) {
                       alt={lead.heroAlt ?? ''}
                       className="aspect-video w-full rounded-xl border border-[var(--line)] object-cover"
                     />
-                    {/* Le titre à gauche, la fiche à droite : c'est la
-                        disposition de la page de référence, et elle laisse au
-                        titre la place d'être grand. */}
                     <div className="mt-10 grid gap-6 sm:grid-cols-2">
                       <h2 className="landing-subtitle group-hover:underline">{lead.title}</h2>
                       <div>
@@ -326,7 +270,6 @@ export function BlogIndex({ lang }: { lang: Lang }) {
               </div>
             </div>
 
-            {/* ─── La liste complète ─────────────────────────────────────── */}
             <div className="border-t border-[var(--line)]">
               <div className="mx-auto max-w-6xl px-6 py-20">
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -341,9 +284,6 @@ export function BlogIndex({ lang }: { lang: Lang }) {
 
                 <div className="mt-12 grid gap-12 lg:grid-cols-[1fr_16rem]">
                   <div>
-                    {/* L'en-tête du tableau : trois colonnes qui disent ce qu'on
-                        balaie. Sur téléphone il disparaît, la place n'y étant
-                        que pour le titre. */}
                     <div className="hidden grid-cols-[8rem_10rem_1fr] gap-4 border-b border-[var(--line)] pb-4 text-xs uppercase tracking-[0.04em] text-[var(--fg-muted)] sm:grid">
                       <span>{isFr ? 'Date' : 'Date'}</span>
                       <span>{isFr ? 'Thème' : 'Category'}</span>
@@ -380,15 +320,6 @@ export function BlogIndex({ lang }: { lang: Lang }) {
                     )}
                   </div>
 
-                  {/*
-                    La vignette du communiqué survolé.
-
-                    Elle ne paraît que si l'article en a une : une image de tête
-                    en 16:9 ramenée au carré perd son sujet, et mieux vaut ne
-                    rien montrer qu'un morceau de ciel. La colonne garde sa place
-                    quoi qu'il arrive, sinon la liste sauterait de côté au
-                    passage de la souris.
-                  */}
                   <div className="hidden lg:block">
                     <div className="sticky top-28 aspect-square w-full overflow-hidden rounded-xl">
                       {hovered?.squareUrl && (
@@ -410,7 +341,6 @@ export function BlogIndex({ lang }: { lang: Lang }) {
   );
 }
 
-/* ---------------------------------------------------------------- article */
 
 export function BlogArticle({ lang, slug }: { lang: Lang; slug: string }) {
   const [post, setPost] = useState<BlogPost | null | 'missing'>(null);
@@ -460,7 +390,6 @@ export function BlogArticle({ lang, slug }: { lang: Lang; slug: string }) {
   return (
     <Shell lang={lang}>
       <main className="pb-24 pt-16">
-        {/* La tête : étiquettes, titre, date. Centrée, comme un communiqué. */}
         <div className="mx-auto max-w-3xl px-6 text-center">
           <Subjects theme={post.theme} kind={post.kind} />
           <h1 className="landing-title mt-5">{post.title}</h1>
@@ -477,9 +406,6 @@ export function BlogArticle({ lang, slug }: { lang: Lang; slug: string }) {
           </div>
         )}
 
-        {/* La colonne de lecture. Étroite à dessein : au-delà d'une
-            soixantaine de signes par ligne, l'œil perd le début de la
-            suivante. */}
         <article className="mx-auto mt-16 max-w-[42rem] px-6">
           {post.body.map((block, index) => (
             <Block key={index} block={block} />
@@ -496,4 +422,3 @@ export function BlogArticle({ lang, slug }: { lang: Lang; slug: string }) {
   );
 }
 
-/* ------------------------------------------------------------------- docs */

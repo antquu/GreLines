@@ -1,55 +1,19 @@
-/**
- * Ce que raconte la documentation, en français et en anglais.
- *
- * Séparé de la mise en page, pour la même raison que `content.ts` : un texte de
- * documentation se corrige souvent, et l'on ne devrait pas avoir à traverser du
- * JSX pour préciser une phrase.
- *
- * Deux règles tenues d'un bout à l'autre.
- *
- * La première : rien n'y est promis qui n'existe pas. Chaque commande, chaque
- * variable, chaque nom de table correspond à quelque chose qui est dans le
- * dépôt. Une documentation qui décrit un produit rêvé se retourne contre lui au
- * premier essai, et plus durement qu'une page de présentation, parce qu'on la
- * lit en travaillant.
- *
- * La seconde : l'architecture se raconte, les secrets non. Les pages qui
- * suivent disent quelles briques existent, ce qu'elles font et comment on les
- * remonte chez soi. Elles ne contiennent aucune clé, aucune adresse de projet,
- * aucun identifiant. Un lecteur peut reconstruire GreLines à partir d'ici ; il
- * ne peut pas entrer dans celui qui tourne.
- */
-
 import type { Lang } from './content';
 import type { IconName } from './docsIcons';
 
-/** Les langages que le bloc de code sait colorer. */
 export type CodeLang = 'ts' | 'bash' | 'env' | 'sql' | 'json' | 'txt';
 
-/** Un morceau de section. Un type inconnu n'est pas rendu plutôt que de casser. */
 export type DocBlock =
   | { kind: 'p'; text: string }
-  /** Une marche à suivre, numérotée. */
   | { kind: 'steps'; items: string[] }
-  /** Une liste de notions : un nom, une glose. */
   | { kind: 'list'; items: { name: string; note: string }[] }
-  /** Du code. Avec un nom de fichier, il reçoit une barre de titre. */
   | { kind: 'code'; text: string; lang?: CodeLang; file?: string }
-  /** L'encadré : ce qu'il faut savoir avant d'aller plus loin. */
   | { kind: 'note'; text: string };
 
-/**
- * Une entrée de documentation.
- *
- * `id` sert trois fois : l'ancre dans l'adresse, le lien du sommaire, et le
- * lien de la carte en haut de page. Les trois désignent donc toujours la même
- * chose, ce qui évite qu'un sommaire finisse par mentir sur son contenu.
- */
 export interface DocEntry {
   id: string;
   icon: IconName;
   title: string;
-  /** La phrase qui accompagne le titre dans le sommaire et sur la carte. */
   note: string;
   body: DocBlock[];
 }
@@ -57,7 +21,6 @@ export interface DocEntry {
 export interface DocGroup {
   id: string;
   title: string;
-  /** Ce que contient la catégorie, en une phrase, sur sa carte et sur sa page. */
   note: string;
   entries: DocEntry[];
 }
@@ -72,13 +35,9 @@ export interface DocsCopy {
   searchEmpty: string;
   tocTitle: string;
   tocToggle: string;
-  /** Le mot qui compte les sections sur la carte d'une catégorie. */
   sections: string;
-  /** Ce qu'annonce le bas d'une carte de catégorie. */
   browse: string;
-  /** Le retour au sommaire, au pied d'une page de catégorie. */
   allCategories: string;
-  /** Les deux sections voisines, au pied d'un article. */
   previous: string;
   next: string;
   copy: string;
@@ -89,12 +48,8 @@ export interface DocsCopy {
   groups: DocGroup[];
 }
 
-/** L'adresse à qui écrire. Une seule ligne à changer le jour où elle change. */
 export const DOCS_EMAIL = 'ant.adam468@gmail.com';
 
-/* -------------------------------------------------------------------------
- * Français.
- * ---------------------------------------------------------------------- */
 
 const FR: DocsCopy = {
   eyebrow: 'Documentation',
@@ -119,7 +74,6 @@ const FR: DocsCopy = {
   helpCta: 'Poser une question',
 
   groups: [
-    /* ------------------------------------------------------------ commencer */
     {
       id: 'start',
       title: 'Commencer',
@@ -190,7 +144,6 @@ const FR: DocsCopy = {
       ],
     },
 
-    /* ------------------------------------------------ utiliser l'application */
     {
       id: 'usage',
       title: "Utiliser l'application",
@@ -289,7 +242,6 @@ const FR: DocsCopy = {
       ],
     },
 
-    /* ------------------------------------------------------ déployer chez soi */
     {
       id: 'deploy',
       title: 'Déployer GreLines',
@@ -500,7 +452,6 @@ http://localhost:5173/fr/newsroom la salle de presse`,
       ],
     },
 
-    /* -------------------------------------------------------- infrastructure */
     {
       id: 'infra',
       title: "L'infrastructure",
@@ -668,7 +619,6 @@ translations`,
       ],
     },
 
-    /* ----------------------------------------------------- écrans et affiches */
     {
       id: 'ecrans',
       title: 'Écrans et affiches',
@@ -736,7 +686,6 @@ translations`,
       ],
     },
 
-    /* ------------------------------------------------------ raccorder un réseau */
     {
       id: 'reseaux',
       title: 'Raccorder un réseau',
@@ -808,7 +757,6 @@ translations`,
       ],
     },
 
-    /* ------------------------------------------------------ données et confiance */
     {
       id: 'donnees',
       title: 'Données et confiance',
@@ -878,7 +826,6 @@ translations`,
       ],
     },
 
-    /* ----------------------------------------------------- retours et référence */
     {
       id: 'reference',
       title: 'Retours et référence',
@@ -961,9 +908,6 @@ translations`,
   ],
 };
 
-/* -------------------------------------------------------------------------
- * English.
- * ---------------------------------------------------------------------- */
 
 const EN: DocsCopy = {
   eyebrow: 'Documentation',

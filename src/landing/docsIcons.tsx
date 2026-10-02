@@ -1,16 +1,3 @@
-/**
- * Les pictogrammes du sommaire.
- *
- * Un seul jeu, dessiné au trait, sans remplissage, sur une grille de 24 : à la
- * taille où ils sont affichés, seize pixels, un trait vaut mieux qu'une forme
- * pleine, qui deviendrait une tache. Ils prennent la couleur du texte, donc ils
- * suivent le thème sans qu'on ait à y penser.
- *
- * Ils ne décorent pas, ils repèrent. Dans une colonne de trente entrées, on ne
- * lit pas les titres un par un : on cherche la forme qu'on a déjà vue. C'est
- * pour ça qu'un même pictogramme ne sert jamais deux fois.
- */
-
 export type IconName =
   | 'book'
   | 'play'
@@ -39,7 +26,6 @@ export type IconName =
   | 'mail'
   | 'network';
 
-/** Le tracé de chaque pictogramme, sans le `svg` qui l'entoure. */
 const PATHS: Record<IconName, React.ReactNode> = {
   book: (
     <>

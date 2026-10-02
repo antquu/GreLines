@@ -1,28 +1,10 @@
 import { DARK_MODE_MAP_STYLE_URL, LIGHT_MODE_MAP_STYLE_URL } from '../utils/mapStyles';
 import { isOffline } from './offlineSchedule';
 
-/**
- * Le fond de carte de l'agglomération, gardé d'avance.
- *
- * Le service worker garde chaque tuile vue, et seulement celles-là : sans
- * réseau, la carte n'affichait que les coins où l'on était déjà passé, et
- * rien du tout sur un téléphone qui venait d'installer l'app. On demande donc
- * une fois, en tâche de fond, les styles des deux thèmes, leurs pictogrammes,
- * et les tuiles de la cuvette grenobloise, du zoom 8 au zoom 14, puis le
- * centre-ville au zoom 15, le plus fin que publie MapTiler.
- *
- * Environ quatre cents tuiles, une fois par mois : quelques mégaoctets pour
- * l'appareil, quelques centaines de requêtes sur le compte MapTiler.
- *
- * Les requêtes passent par le service worker, qui range chaque réponse : il
- * doit donc être actif, sans quoi tout serait téléchargé pour rien.
- */
 
 const LAST_RUN_KEY = 'greLines_offlineMapMonth';
 
-/** L'agglomération, du Voironnais au Grésivaudan : ouest, sud, est, nord. */
 const AREA: [number, number, number, number] = [5.55, 45.08, 5.95, 45.3];
-/** Le centre, seul gardé au zoom le plus fin. */
 const CENTER: [number, number, number, number] = [5.68, 45.15, 5.78, 45.21];
 
 const PAUSE_MS = 150;
@@ -69,7 +51,6 @@ async function getJson<T>(url: string): Promise<T | null> {
 async function warm(url: string): Promise<boolean> {
   try {
     const response = await fetch(url);
-    /* Lire le corps : c'est ce qui laisse au service worker le temps de le ranger. */
     await response.arrayBuffer();
     return response.ok;
   } catch {
@@ -132,7 +113,6 @@ async function precache(force: boolean): Promise<void> {
     try {
       localStorage.setItem(LAST_RUN_KEY, thisMonth());
     } catch {
-      /* On recommencera, sans dommage. */
     }
   }
 }

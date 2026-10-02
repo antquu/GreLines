@@ -21,33 +21,20 @@ const getText = (language: 'fr' | 'en') => {
   };
 };
 
-/** « 2026-08-11 » → « 11/08 ». */
 function shortDate(iso: string, language: 'fr' | 'en'): string {
   const parts = iso.split('-');
   if (parts.length !== 3) return iso;
   return language === 'fr' ? `${parts[2]}/${parts[1]}` : `${parts[1]}/${parts[2]}`;
 }
 
-/**
- * Couleur du niveau courant. C'est elle qui habille la carte entière — et le
- * bouton replié : l'indice se lit d'un coup d'œil, avant même d'ouvrir.
- */
 export function atmoColor(report: AtmoReport | null): string {
   return report?.current?.couleur_html || report?.definition?.couleur || UNKNOWN_COLOR;
 }
 
-/** Pictogramme officiel du niveau courant, s'il est connu. */
 export function atmoPicto(report: AtmoReport | null): string | null {
   return report?.definition?.picto_url ?? null;
 }
 
-/**
- * Carte « qualité de l'air ».
- *
- * Elle reprend la mécanique des cartes du bandeau (survol pour déplier), mais
- * son fond porte la couleur du niveau ATMO du jour : la couleur *est*
- * l'information, le texte ne fait que la nommer.
- */
 export function AtmoPanel({
   report,
   loading,
@@ -59,12 +46,6 @@ export function AtmoPanel({
   loading: boolean;
   onCommuneChange: (commune: Commune) => void;
   language: 'fr' | 'en';
-  /**
-   * L'indice suit la commune au centre de la carte : la recherche disparaît.
-   *
-   * Elle n'aurait aucun effet — le prochain déplacement de carte écraserait le
-   * choix. Un champ qu'on remplit pour rien est pire que pas de champ.
-   */
   followMap?: boolean;
 }) {
   const text = getText(language);
@@ -114,16 +95,12 @@ export function AtmoPanel({
       <p className="signal-label flex-shrink-0" style={{ color: soft(0.65) }}>
         {text.title}
       </p>
-      <p className="mt-1 flex-shrink-0 truncate text-[22px] font-extrabold leading-tight tracking-tight">
+      <p className="mt-1 flex-shrink-0 truncate text-[1.375rem] font-extrabold leading-tight tracking-tight">
         {report?.communeName || (loading ? text.loading : text.unknownCommune)}
       </p>
 
-      {/* Le pictogramme officiel au centre : c'est lui qu'on retrouve sur les
-          supports d'Atmo, il vaut mieux qu'une icône maison. */}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 py-2">
         {offline ? (
-          /* L'indice se calcule chaque jour : sans réseau, rien de ce qu'on a
-             gardé ne vaut pour aujourd'hui. */
           <IoWifi className="h-28 w-28 flex-shrink-0" style={{ color: soft(0.35) }} aria-hidden="true" />
         ) : picto ? (
           <img
@@ -143,7 +120,7 @@ export function AtmoPanel({
           {offline ? text.offline : report?.current?.qualificatif || (loading ? text.loading : text.unavailable)}
         </p>
         {!offline && report?.current && (
-          <p className="text-center text-[11px]" style={{ color: soft(0.7) }}>
+          <p className="text-center text-[0.6875rem]" style={{ color: soft(0.7) }}>
             {text.forecastFor(shortDate(report.current.date_echeance, language))}
             {report.current.polluants_majoritaires?.length
               ? ` · ${report.current.polluants_majoritaires.join(', ')}`
@@ -152,8 +129,6 @@ export function AtmoPanel({
         )}
       </div>
 
-      {/* Recherche par nom de commune, avec la même mécanique de suggestions
-          que la barre de recherche : on tape « Sassenage », pas « 38474 ». */}
       {!followMap && (
       <div className="relative flex-shrink-0">
         <input
@@ -187,7 +162,7 @@ export function AtmoPanel({
                     className="flex w-full items-baseline justify-between gap-2 px-3 py-2.5 text-left transition hover:bg-slate-800"
                   >
                     <span className="min-w-0 truncate text-sm font-semibold text-white">{commune.nom}</span>
-                    <span className="tabular flex-shrink-0 text-[11px] text-slate-400">
+                    <span className="tabular flex-shrink-0 text-[0.6875rem] text-slate-400">
                       {commune.postalCode ?? commune.code}
                     </span>
                   </button>

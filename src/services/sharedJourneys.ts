@@ -1,13 +1,3 @@
-/**
- * Options d'itinéraire en véhicule partagé (Voi, Citiz).
- *
- * Le routeur de Mobilités M ne connaît pas les flottes en libre-service : il
- * sait tracer un trajet à vélo ou en voiture, pas dire où se trouve la
- * trottinette la plus proche. On assemble donc l'option ici — véhicule
- * disponible le plus proche du départ, marche jusqu'à lui, puis course jusqu'à
- * l'arrivée — pour la proposer à côté des itinéraires en transport en commun.
- */
-
 import { planDirectItinerary, type RouteItinerary, type SharedJourneyInfo } from './api';
 import {
   fetchSharedMobility,
@@ -19,22 +9,10 @@ import {
 import { getSharedPricing } from './sharedPricing';
 import { haversineMeters } from '../utils/geo';
 
-/**
- * Distance de marche acceptable jusqu'au véhicule.
- *
- * Une trottinette se prend au coin de la rue : au-delà, autant marcher tout
- * court. Une voiture Citiz se mérite un peu plus — les stations sont plus
- * rares, et le gain sur un long trajet compense l'approche.
- */
 const MAX_ACCESS_METERS: Record<SharedOperator, number> = { voi: 700, citiz: 1_100 };
 
-/**
- * En deçà, le véhicule partagé n'a pas de sens : le temps de le rejoindre et de
- * le déverrouiller, on serait arrivé à pied.
- */
 const MIN_TRIP_METERS = 900;
 
-/** Temps de prise en charge : déverrouillage, réglages, sortie de station. */
 const PICKUP_OVERHEAD_MIN: Record<SharedOperator, number> = { voi: 1, citiz: 4 };
 
 const RIDE_MODE: Record<SharedOperator, 'BICYCLE' | 'CAR'> = { voi: 'BICYCLE', citiz: 'CAR' };
@@ -57,10 +35,6 @@ function nearestPoint(
   return best;
 }
 
-/**
- * Coût d'une course : déverrouillage, puis temps et distance selon ce que
- * l'opérateur facture. Les minutes entamées se paient entières.
- */
 async function estimatePrice(
   operator: SharedOperator,
   formFactor: string,
@@ -198,14 +172,6 @@ async function buildOption(
   };
 }
 
-/**
- * Construit les options en véhicule partagé pour un trajet donné.
- *
- * Renvoie une liste vide — sans jamais échouer — quand aucun véhicule n'est
- * assez proche ou que les flux opérateurs sont indisponibles : ces options
- * complètent les itinéraires en transport en commun, elles ne les conditionnent
- * pas.
- */
 export async function planSharedJourneys(options: {
   fromLatitude: number;
   fromLongitude: number;

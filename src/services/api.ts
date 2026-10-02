@@ -1,4 +1,6 @@
+import gtfsNetworks from '../data/gtfsNetworks.json';
 import axios from 'axios';
+import { stripHtml } from '../utils/stripHtml';
 import { localCode, networkOf, providerOf, type ProviderId } from './providers';
 import { isSncfLine } from '../utils/lineColors';
 import type { Stop, Line, TrafficDetail, Departure, StopDetail } from '../types';
@@ -16,10 +18,12 @@ import {
   type SchedulePattern,
 } from './offlineSchedule';
 
+import { isInGrenobleArea, planTransitousOtp } from './transitous';
+
 const TAG_API_BASE = 'https://data.mobilites-m.fr/api/routers/default';
 
 const TAG_HEADERS = {
-  
+
 };
 
 export interface RouteLocation {
@@ -31,27 +35,17 @@ export interface RouteLocation {
   raw?: any;
 }
 
-/**
- * Trajet en véhicule partagé attaché à un itinéraire (Voi, Citiz).
- *
- * Renseigné uniquement pour les options construites par `sharedJourneys` : un
- * itinéraire en transport en commun laisse ce champ vide.
- */
 export interface SharedJourneyInfo {
   operator: 'citiz' | 'voi';
   formFactor: string;
-  /** Distance à pied jusqu'au véhicule. */
   accessMeters: number;
-  /** Durée et distance à bord. */
   rideMinutes: number;
   rideMeters: number;
-  /** Nom du point de prise en charge (station Citiz), sinon l'adresse. */
   pickupName?: string;
   batteryPercent?: number;
   batteryEstimated?: boolean;
   model?: string;
   rentalUrl?: string;
-  /** Coût estimé de la course, `null` quand l'opérateur ne publie pas sa grille. */
   price: {
     total: number;
     unlock: number | null;
@@ -61,36 +55,24 @@ export interface SharedJourneyInfo {
   } | null;
 }
 
-/**
- * Course VTC attachée à un itinéraire. Renseigné uniquement pour l'option Uber.
- */
 export interface UberJourneyInfo {
-  /** Nom du produit retenu (« UberX »). */
   productName: string | null;
-  /** Fourchette déjà mise en forme par Uber, dans la devise locale. */
   priceLabel: string | null;
   lowEstimate: number | null;
   highEstimate: number | null;
   currency: string | null;
   rideMinutes: number;
   rideMeters: number;
-  /** Lien universel qui ouvre l'application avec le trajet pré-rempli. */
   deeplink: string;
 }
 
-/**
- * Course en taxi attachée à un itinéraire. Le prix est une estimation, pas un
- * tarif : c'est le compteur qui fait foi.
- */
 export interface TaxiJourneyInfo {
   company: string;
   lowEstimate: number;
   highEstimate: number;
-  /** Tarif de nuit, dimanche ou jour férié. */
   nightRate: boolean;
   rideMinutes: number;
   rideMeters: number;
-  /** Délai d'approche compté avant le départ. */
   pickupDelayMinutes: number;
   phone: string;
   bookingUrl: string;
@@ -117,18 +99,9 @@ export interface RouteItinerary {
   routePath: Array<[number, number]>;
   rawDep?: string;
   rawArr?: string;
-  /** Présent seulement sur les options en véhicule partagé. */
   shared?: SharedJourneyInfo;
-  /** Présent seulement sur l'option VTC. */
   uber?: UberJourneyInfo;
-  /** Présent seulement sur l'option taxi. */
   taxi?: TaxiJourneyInfo;
-  /**
-   * Vrai quand le trajet mêle le vélo et le transport en commun.
-   *
-   * Posé à la lecture plutôt que déduit à l'affichage : c'est ce drapeau qui
-   * range l'itinéraire dans « GreLines Trip » au lieu de la liste ordinaire.
-   */
   bikeTransit?: boolean;
 }
 
@@ -177,17 +150,7 @@ async function buildOtpParams(
     time?: string;
     walkReluctance?: number;
     walkSpeed?: number;
-    /** Modes autorisés, tels qu'OTP les attend. Marche et transport par défaut. */
     mode?: string;
-    /**
-     * N'accepter que ce qui se franchit en fauteuil.
-     *
-     * OTP écarte alors les correspondances par escalier, les arrêts dont le
-     * GTFS dit qu'on n'y monte pas, et les courses non équipées. Le calcul
-     * rend parfois moins d'itinéraires, parfois aucun : c'est le
-     * renseignement du réseau qui parle, et il vaut mieux qu'une réponse
-     * qu'on ne pourrait pas suivre.
-     */
     wheelchair?: boolean;
   },
 ): Promise<URLSearchParams> {
@@ -215,12 +178,6 @@ async function buildOtpParams(
   return params;
 }
 
-/**
- * Les modes qu'on emprunte par soi-même, sans horaire ni ligne.
- *
- * OTP les renvoie comme des étapes ordinaires ; ce sont les seules qui n'ont
- * jamais de ligne, et qu'il faut donc écarter avant de fabriquer des pastilles.
- */
 const SELF_POWERED_MODES = new Set([
   'BICYCLE',
   'BICYCLE_RENT',
@@ -237,15 +194,6 @@ function parseOtpItinerary(it: any, depName: string, arrName: string): RouteItin
   const arrTime = new Date(it.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const duration = Math.round((it.duration ?? 0) / 60);
   const transitLegs = Array.isArray(it.legs) ? it.legs.filter((leg: any) => leg.mode !== 'WALK') : [];
-  /*
-   * Les pastilles de ligne ne concernent que les lignes.
-   *
-   * Une étape à vélo ou en voiture n'a pas de nom de ligne : elle en produisait
-   * une pastille « ? », qui apparaissait au milieu des lignes du trajet et ne
-   * désignait rien. Un trajet combiné vélo + tram affichait ainsi « ? N62 ? ».
-   * Ces modes-là se lisent à leur pictogramme dans le détail des étapes, pas à
-   * une plaque de ligne.
-   */
   const lineKeys = transitLegs
     .filter((leg: any) => !SELF_POWERED_MODES.has(String(leg.mode ?? '').toUpperCase()))
     .map((leg: any) => {
@@ -290,18 +238,27 @@ export async function planItineraries(options: {
   time?: string;
   walkReluctance?: number;
   walkSpeed?: number;
-  /**
-   * Modes autorisés.
-   *
-   * `WALK,TRANSIT` par défaut. `BICYCLE,TRANSIT` demande au planificateur de
-   * rabattre à vélo vers l'arrêt, ce qui donne des trajets sensiblement plus
-   * courts dès que le premier kilomètre est le plus lent — c'est ce que le
-   * « GreLines Trip » propose.
-   */
   mode?: string;
-  /** N'accepter que des itinéraires praticables en fauteuil. */
   wheelchair?: boolean;
 }): Promise<RouteItinerary[]> {
+  if (
+    !isInGrenobleArea(options.fromLatitude, options.fromLongitude) ||
+    !isInGrenobleArea(options.toLatitude, options.toLongitude)
+  ) {
+    try {
+      const itineraries = await planTransitousOtp(options);
+      return itineraries.map(it => {
+        const parsed = parseOtpItinerary(it, options.fromName, options.toName);
+        parsed.bikeTransit =
+          it.legs.some(leg => leg.mode === 'BICYCLE') &&
+          it.legs.some(leg => leg.mode !== 'BICYCLE' && leg.mode !== 'WALK');
+        return parsed;
+      });
+    } catch {
+      return [];
+    }
+  }
+
   const params = await buildOtpParams(
     options.fromLatitude,
     options.fromLongitude,
@@ -335,14 +292,6 @@ export async function planItineraries(options: {
   }
 }
 
-/**
- * Trajet direct dans un seul mode (marche, vélo/trottinette, voiture).
- *
- * Sert à composer les options en véhicule partagé : le routeur sait tracer un
- * itinéraire cyclable ou routier, il suffit de lui demander le bon mode. On ne
- * garde que la première proposition — sans transport en commun, les suivantes
- * ne sont que des variantes du même chemin.
- */
 export async function planDirectItinerary(options: {
   fromLatitude: number;
   fromLongitude: number;
@@ -353,7 +302,6 @@ export async function planDirectItinerary(options: {
 }): Promise<{
   durationSeconds: number;
   distanceMeters: number;
-  /** Tracé encodé, prêt à être posé dans `legGeometry.points`. */
   points: string;
   coordinates: Array<[number, number]>;
 } | null> {
@@ -414,10 +362,8 @@ function getTramOccupancy(lineId: string, destination: string): 'EMPTY' | 'LIGHT
 }
 
 const cache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_DURATION = 2 * 60 * 1000; // 2 min (plus court pour avoir des données plus fraîches)
+const CACHE_DURATION = 2 * 60 * 1000;
 const DEPARTURES_CACHE_DURATION = 30 * 1000;
-/* Les horaires théoriques d'un jour donné ne bougent pas : une demi-heure de
-   cache évite de rappeler le réseau à chaque ouverture de fiche la nuit. */
 const NEXT_SERVICE_CACHE_DURATION = 30 * 60 * 1000;
 const ROUTES_CACHE_DURATION = 6 * 60 * 60 * 1000;
 const STOPS_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -444,39 +390,12 @@ const STOP_LINES_CACHE_STORAGE_KEY = 'greLines_stopLinesCache_v2';
 const STOP_LINES_CACHE_MAX_ENTRIES = 500;
 let stopLinesCacheHydrated = false;
 
-/**
- * Réseaux exposés par l'API MTAG.
- *
- * `defaultEnabled` reflète le rapport intérêt / coût de chargement, mesuré sur
- * l'API (lignes non scolaires → arrêts) :
- *
- *   SEM 54 → 767   C38 24 → 518   TPV 17 → 244   SE2 11 → 238
- *   GSV 20 → 223   SNC 20 → 131   MCO  4 →  46   TRA 14 →  38
- *   BUL  1 →   2   FUN  1 →   2
- *
- * Chaque ligne coûte une requête `/clusters` au tout premier chargement, ensuite
- * tout vient d'IndexedDB.
- */
 export interface NetworkDefinition {
   code: string;
   label: string;
-  /**
-   * Fournisseur qui sert ce réseau. C'est lui qui décide de la forme des
-   * identifiants et des endpoints ; le code appelant n'a plus à le deviner.
-   */
   provider: ProviderId;
   defaultEnabled: boolean;
-  /**
-   * Révision du catalogue à laquelle ce réseau est apparu. Sert à n'ajouter
-   * qu'un réseau réellement nouveau dans une sélection déjà enregistrée, sans
-   * réactiver ceux que l'utilisateur a décochés.
-   */
   addedInRevision?: number;
-  /**
-   * Le seul réseau dont l'endpoint horaires attend un identifiant préfixé
-   * « GEN » est SEM ; partout ailleurs l'identifiant de cluster s'utilise tel
-   * quel (vérifié sur les dix réseaux).
-   */
   usesGenClusterPrefix?: boolean;
 }
 
@@ -492,21 +411,20 @@ export const NETWORKS: NetworkDefinition[] = [
   { code: 'SNC', provider: 'mtag', label: 'TER — SNCF', defaultEnabled: true, addedInRevision: 2 },
   { code: 'C38', provider: 'mtag', label: 'Cars Région (C38)', defaultEnabled: false },
 
-  { code: 'TCL', provider: 'tcl', label: 'TCL — Lyon', defaultEnabled: false, addedInRevision: 3 },
+  { code: 'TCL', provider: 'tcl', label: 'TCL — Lyon', defaultEnabled: true, addedInRevision: 6 },
+  ...(gtfsNetworks as Array<{ code: string; label: string }>).map(network => ({
+    code: network.code,
+    provider: 'gtfs' as const,
+    label: network.label,
+    defaultEnabled: true,
+    addedInRevision: 5,
+  })),
 ];
 
-/** Réseaux servis par un fournisseur donné. */
 export function networksOfProvider(provider: ProviderId): NetworkDefinition[] {
   return NETWORKS.filter(network => network.provider === provider);
 }
 
-/**
- * Réseaux actifs relevant de MTAG.
- *
- * Toutes les fonctions de ce fichier interrogent l'API MTAG : leur passer un
- * code qu'elle ne connaît pas produirait des requêtes vouées à l'échec. Ce
- * filtre est le point où les deux mondes se séparent proprement.
- */
 function activeMtagNetworks(): string[] {
   const mtag = new Set(networksOfProvider('mtag').map(network => network.code));
   return activeNetworkCodes.filter(code => mtag.has(code));
@@ -514,15 +432,6 @@ function activeMtagNetworks(): string[] {
 
 export const DEFAULT_NETWORK_CODES = NETWORKS.filter(n => n.defaultEnabled).map(n => n.code);
 
-/**
- * Réseaux réellement chargés, définis par les réglages au démarrage.
- *
- * Cette valeur sert de défaut à toutes les fonctions qui résolvent un arrêt
- * (`getStopDetail`, `getAllStops`…). Sans elle, ouvrir un favori appartenant à
- * un réseau que l'utilisateur vient d'activer renvoyait `null` — donc aucun
- * prochain passage — parce que la recherche se faisait dans la sélection par
- * défaut et non dans la sienne.
- */
 let activeNetworkCodes: string[] = [...DEFAULT_NETWORK_CODES];
 
 export function setActiveNetworks(codes: string[]): void {
@@ -534,29 +443,8 @@ export function getActiveNetworks(): string[] {
   return activeNetworkCodes;
 }
 
-/**
- * Traduit le mode GTFS en type d'affichage.
- *
- * `RAIL` couvre les TER et les TGV ; le funiculaire et la télécabine sont
- * rangés avec le tramway, dont ils partagent le principe — une voie dédiée,
- * des horaires cadencés.
- */
-/**
- * Le mode de chaque ligne, retenu au passage.
- *
- * Les prochains passages arrivent par « pattern », et le pattern n'annonce plus
- * son mode : il ne porte qu'un identifiant, « SEM:A:0:1907073374 », un libellé
- * de direction et son dernier arrêt. Faute de mode, tout retombait sur le cas
- * par défaut, et les cinq tramways de l'agglomération s'affichaient en bus.
- *
- * Le mode existe pourtant, sur la ligne elle-même, dans la ressource des routes
- * qu'on charge déjà pour dresser la liste des lignes d'un arrêt. On le retient
- * ici au passage, indexé sur l'identifiant complet de la ligne, et les passages
- * le retrouvent en découpant leur identifiant de pattern.
- */
 const routeModes = new Map<string, string>();
 
-/** Retient le mode des lignes d'une réponse `routes`. */
 function rememberRouteModes(routes: any[]): void {
   for (const route of routes) {
     const id = String(route?.id ?? '');
@@ -565,13 +453,6 @@ function rememberRouteModes(routes: any[]): void {
   }
 }
 
-/**
- * L'identifiant de ligne que porte un pattern.
- *
- * « SEM:A:0:1907073374 » désigne la ligne « SEM:A » : les deux premiers
- * segments, et rien de plus — le troisième est le sens, le quatrième la
- * variante de parcours.
- */
 function routeIdOfPattern(pattern: any): string | null {
   if (pattern?.routeId) return String(pattern.routeId);
   const id = typeof pattern?.id === 'string' ? pattern.id : '';
@@ -597,7 +478,6 @@ function modeToDepartureType(mode: string | undefined): 'BUS' | 'TRAM' | 'RAIL' 
 
 const HIDDEN_TRAFFIC_LINES = new Set(['C38']);
 
-/** Réseaux dont les identifiants d'arrêt prennent le préfixe « GEN ». */
 const GEN_PREFIX_NETWORKS = new Set(
   NETWORKS.filter(n => n.usesGenClusterPrefix).map(n => n.code),
 );
@@ -622,12 +502,6 @@ function formatClusterId(stopId: string): string {
   return raw.startsWith(`${network}:GEN`) ? raw : `${network}:GEN${raw.substring(4)}`;
 }
 
-/**
- * Les lignes scolaires (type `SCOL`) ne circulent que deux fois par jour en
- * période scolaire. Elles représentent 271 des 437 lignes du réseau et environ
- * 1 500 arrêts : les écarter divise par deux le chargement initial sans rien
- * retirer d'utile à une appli de temps réel.
- */
 function isSchoolRoute(type: unknown): boolean {
   return String(type || '').toUpperCase().includes('SCOL');
 }
@@ -778,13 +652,6 @@ function areStopLinesEqual(a: Line[], b: Line[]): boolean {
   return sigA.every((sig, idx) => sig === sigB[idx]);
 }
 
-/**
- * Clé de comparaison des noms d'arrêts : sans accents, sans casse et sans
- * ponctuation. « Berriat-Le Magasin », « Berriat - Le Magasin » et « BERRIAT LE
- * MAGASIN » donnent la même clé, ce qui compte maintenant que les réseaux
- * n'écrivent pas leurs arrêts de la même façon (le Pays Voironnais est tout en
- * capitales, la SNCF préfixe ses gares).
- */
 function normalizeStopName(value: string | undefined | null): string {
   return String(value || '')
     .normalize('NFD')
@@ -793,7 +660,6 @@ function normalizeStopName(value: string | undefined | null): string {
     .replace(/[^a-z0-9]/g, '');
 }
 
-/** Rayon de fusion de deux arrêts homonymes, en mètres. */
 const STOP_MERGE_RADIUS_METERS = 300;
 const METRES_PER_DEG_LAT = 111320;
 const METRES_PER_DEG_LON_AT_45 = 78710;
@@ -804,23 +670,6 @@ function stopDistanceMeters(a: Stop, b: Stop): number {
   return Math.sqrt(dLat * dLat + dLon * dLon);
 }
 
-/**
- * Regroupe les arrêts qui portent le même nom **et** se trouvent à moins de
- * 300 m l'un de l'autre.
- *
- * L'ancienne règle comparait nom + ville, ce qui échouait dès qu'on a ouvert
- * les autres réseaux : la même gare renvoyée par Tag et par la SNCF ne porte
- * pas la même ville, et deux arrêts homonymes distants de vingt kilomètres
- * (« Mairie », « Église ») pouvaient fusionner s'ils partageaient la ville.
- * La distance tranche les deux cas d'un coup.
- */
-/**
- * Regroupe les arrêts de même nom situés à moins de 300 m.
- *
- * Exporté parce que la règle vaut pour tout réseau, quel qu'en soit le
- * fournisseur : un quai n'est pas un arrêt, et « Bellecour A. Poncet » n'a pas
- * à apparaître cinq fois sur la carte parce que cinq lignes s'y arrêtent.
- */
 export function groupNearbyStopsByName(stops: Stop[]): Stop[][] {
   const byName = new Map<string, Stop[]>();
   for (const stop of stops) {
@@ -848,9 +697,6 @@ export function groupNearbyStopsByName(stops: Stop[]): Stop[][] {
   return groups;
 }
 
-/**
- * Récupère les lignes sous impact trafic à partir de l'API de trafic
- */
 export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
   hydrateTrafficLinesCache();
   if (trafficLinesCache) return new Map(trafficLinesCache);
@@ -868,8 +714,8 @@ export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
       if (!line) return;
       if (HIDDEN_TRAFFIC_LINES.has(line)) return;
       const details: TrafficDetail = {
-        titre: String(info.titre || ''),
-        description: String(info.description || ''),
+        titre: stripHtml(String(info.titre || '')),
+        description: stripHtml(String(info.description || '')),
         dateFin: String(info.dateFin || ''),
         listeLigne: String(info.listeLigne || ''),
       };
@@ -916,9 +762,6 @@ export async function getTrafficLines(): Promise<Map<string, TrafficDetail[]>> {
   return trafficLinesInflight;
 }
 
-/**
- * Charge toutes les lignes
- */
 async function loadRoutes(): Promise<Line[]> {
   const cacheKey = 'routes';
   const cached = getFromCache<Line[]>(cacheKey, ROUTES_CACHE_DURATION);
@@ -1066,9 +909,6 @@ async function buildStopsFromLines(lines: Line[]): Promise<Stop[]> {
     const canonicalStop = stopsMap.get(group.stopIds[0])!;
     const mergedClusterIds = Array.from(group.clusterIds).filter(Boolean);
 
-    if (group.stopIds.length > 1) {
-    }
-
     if (mergedClusterIds.length > 0) {
       canonicalStop.clusterGtfsId = mergedClusterIds[0];
     }
@@ -1092,14 +932,6 @@ async function buildStopsFromLines(lines: Line[]): Promise<Stop[]> {
 type StopWithCluster = { stop: Stop; clusterIds: string[] };
 let stopsWithClusterCache = new Map<string, StopWithCluster>();
 
-/**
- * Forme sérialisable de l'état "arrêts + clusters".
- *
- * `stopsWithClusterCache` fait pointer plusieurs stopId vers une même entrée
- * canonique (les arrêts homonymes sont fusionnés). On sépare donc la liste des
- * arrêts canoniques, leurs clusterIds, et la table d'alias — sinon chaque arrêt
- * fusionné serait dupliqué dans le JSON.
- */
 type StopsSnapshot = {
   stops: Stop[];
   clusterIdsByStop: Record<string, string[]>;
@@ -1145,18 +977,6 @@ async function fetchStopsByPrefixes(prefixes: string[]): Promise<Stop[]> {
   return await buildStopsFromLines(filtered);
 }
 
-/**
- * Point d'entrée unique pour le catalogue d'arrêts.
- *
- * Trois niveaux, du plus rapide au plus lent :
- *   1. mémoire (instantané, durée de session)
- *   2. IndexedDB (quelques ms, survit au rechargement) — servi même périmé,
- *      avec revalidation en tâche de fond
- *   3. réseau (~100 requêtes MTAG, plusieurs secondes)
- *
- * Les appels concurrents partagent la même promesse : ouvrir la carte et la
- * recherche en même temps ne déclenche plus deux fois le même travail.
- */
 export async function getStopsByPrefixes(prefixes: string[]): Promise<Stop[]> {
   const sorted = [...prefixes].sort();
   const memoryKey = `all_stops_${sorted.join(',')}`;
@@ -1205,10 +1025,6 @@ async function revalidateStops(memoryKey: string, persistKey: string, prefixes: 
   }
 }
 
-/**
- * Charge tous les arrêts + leur clusterId réel
- * → c'est ici qu'on corrige le principal problème
- */
 export async function getAllStops(prefixes: string[] = activeMtagNetworks()): Promise<Stop[]> {
   try {
     return await getStopsByPrefixes(prefixes);
@@ -1217,18 +1033,15 @@ export async function getAllStops(prefixes: string[] = activeMtagNetworks()): Pr
   }
 }
 
-/**
- * Récupère les prochains passages pour un arrêt
- * @param skipCache - Si true, ignore le cache et force une mise à jour
- */
 export async function getDepartures(stopId: string, skipCache: boolean = false): Promise<Departure[]> {
   const cacheKey = `departures_${stopId}`;
-  
+
   if (!skipCache) {
     const cached = getFromCache<Departure[]>(cacheKey, DEPARTURES_CACHE_DURATION);
-    if (cached) {      return cached;
+    if (cached) {
+      return cached;
     }
-  } else {  }
+  }
 
   try {
     let clusterIds = [stopId];
@@ -1246,7 +1059,6 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
     const departures: Departure[] = [];
     const seen = new Set<string>();
 
-    /* Sans réseau, inutile d'attendre que chaque requête échoue. */
     const responses = isOffline() ? [] : await Promise.all(
       clusterIds.map(async (clusterId) => {
         try {
@@ -1265,11 +1077,6 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
       collectDepartures(data, departures, seen);
     }
 
-    /*
-     * Le temps réel n'a pas répondu : on se rabat sur la fiche gardée.
-     * Il a répondu : on y ajoute, depuis la fiche, le prochain passage des
-     * lignes qu'il ne montrait pas, et l'on met la fiche du jour à jour.
-     */
     const reached = responses.some(({ data }) => data !== null);
     let result: Departure[];
     if (!reached) {
@@ -1286,17 +1093,7 @@ export async function getDepartures(stopId: string, skipCache: boolean = false):
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Horaires théoriques gardés sur l'appareil                            */
-/* ------------------------------------------------------------------ */
 
-/**
- * Réduit la journée d'un arrêt à ce qu'il faut pour en tirer des passages.
- *
- * Même lecture des patterns que le temps réel, pour que lignes et destinations
- * portent exactement les mêmes noms des deux côtés : c'est ce qui permet de
- * savoir qu'une ligne manque au temps réel.
- */
 function trimDaySchedule(data: any, date: string): DaySchedule {
   const patterns = new Map<string, SchedulePattern>();
   if (!Array.isArray(data)) return { date, patterns: [] };
@@ -1332,12 +1129,9 @@ function trimDaySchedule(data: any, date: string): DaySchedule {
   return { date, patterns: Array.from(patterns.values()).filter(p => p.times.length > 0) };
 }
 
-/** Charge et garde la journée d'un arrêt, à une date donnée. */
 async function fetchDaySchedule(clusterId: string, day: Date): Promise<DaySchedule | null> {
   const date = toScheduleDate(day);
   try {
-    /* Les routes d'abord : c'est d'elles que vient le mode, qu'on garde avec
-       la fiche pour qu'un tram reste un tram hors connexion. */
     await loadClusterRoutes(clusterId).catch(() => []);
     const response = await axios.get(
       `${TAG_API_BASE}/index/clusters/${clusterId}/stoptimes/${date}`,
@@ -1352,15 +1146,8 @@ async function fetchDaySchedule(clusterId: string, day: Date): Promise<DaySchedu
   }
 }
 
-/** Une seule tentative par arrêt et par date, le temps de la session. */
 const scheduleAttempts = new Set<string>();
 
-/**
- * Met à jour la fiche d'une date si celle qu'on garde n'est pas la bonne.
- *
- * C'est ainsi que le cache se remplit au fil des arrêts consultés, sans
- * téléchargement dédié : une requête par arrêt et par jour, au plus.
- */
 async function ensureDaySchedule(clusterId: string, day: Date): Promise<void> {
   const date = toScheduleDate(day);
   const attempt = `${clusterId}_${date}`;
@@ -1376,11 +1163,6 @@ async function refreshTodaySchedules(clusterIds: string[]): Promise<void> {
   await Promise.all(clusterIds.map(clusterId => ensureDaySchedule(clusterId, today)));
 }
 
-/**
- * Les passages à venir d'après la fiche gardée, jusqu'à la fin du jour de
- * service. La veille compte aussi : ses courses d'après minuit sont notées
- * au-delà de 24 h et tombent aujourd'hui.
- */
 async function theoreticalDepartures(clusterIds: string[], perPattern: number): Promise<Departure[]> {
   const yesterday = midnight(new Date(), -1);
   const today = midnight();
@@ -1403,14 +1185,6 @@ async function theoreticalDepartures(clusterIds: string[], perPattern: number): 
   });
 }
 
-/**
- * Ajoute le prochain passage théorique des lignes que le temps réel ne
- * montrait pas.
- *
- * Le temps réel ne rend que les passages des vingt prochaines minutes environ.
- * Une ligne qui passe toutes les heures disparaissait de l'arrêt entre deux
- * bus, comme si elle ne le desservait pas.
- */
 async function withMissingLines(departures: Departure[], clusterIds: string[]): Promise<Departure[]> {
   const theoretical = await theoreticalDepartures(clusterIds, 1);
   if (theoretical.length === 0) return departures;
@@ -1422,13 +1196,6 @@ async function withMissingLines(departures: Departure[], clusterIds: string[]): 
   return [...departures, ...missing].sort((a, b) => a.departureTime - b.departureTime);
 }
 
-/**
- * Télécharge d'avance la fiche des arrêts donnés, pour chaque genre de jour :
- * aujourd'hui, puis le prochain jour de semaine, samedi et dimanche. C'est ce
- * qui rend ces arrêts consultables sans aucun réseau.
- *
- * Rend le nombre d'arrêts dont une fiche au moins est gardée.
- */
 export async function prefetchOfflineSchedules(
   stopIds: string[],
   onProgress?: (done: number, total: number) => void,
@@ -1439,8 +1206,6 @@ export async function prefetchOfflineSchedules(
 
   await getAllStops().catch(() => []);
 
-  /* Un jour de chaque sorte dans la semaine qui vient, en commençant par
-     aujourd'hui : c'est lui qui sert le plus vite. */
   const days: Date[] = [];
   const kinds = new Set<string>();
   for (let offset = 0; offset < 7 && kinds.size < 3; offset += 1) {
@@ -1469,25 +1234,9 @@ export async function prefetchOfflineSchedules(
   return stored;
 }
 
-/**
- * Les premiers passages du prochain jour de service.
- *
- * Passé le dernier bus, la fiche d'un arrêt n'avait plus rien à dire : le temps
- * réel ne renvoie rien la nuit, et « Aucun départ disponible » ne répond pas à
- * la question qu'on se pose à ce moment-là, qui est « à quelle heure ça
- * reprend demain matin ». Le réseau publie ses horaires théoriques jour par
- * jour sur `/index/clusters/:id/stoptimes/:date` — même charge utile que le
- * temps réel, donc même lecteur.
- *
- * La bascule de journée se fait à quatre heures, et non à minuit : à une heure
- * du matin, le « prochain matin » est encore celui de la date du jour. Le
- * réseau reprend vers cinq heures, l'heure creuse entre les deux tombe donc du
- * bon côté quelle que soit la façon dont on compte.
- */
 
 const SERVICE_DAY_START_HOUR = 4;
 
-/** Le jour de service dont on veut les premiers départs, au format `YYYYMMDD`. */
 function nextServiceDate(from: Date = new Date()): Date {
   const date = new Date(from);
   if (date.getHours() >= SERVICE_DAY_START_HOUR) date.setDate(date.getDate() + 1);
@@ -1504,26 +1253,31 @@ function toApiDate(date: Date): string {
 }
 
 export interface NextServiceDepartures {
-  /** Minuit du jour de service rendu : la fiche a besoin de le nommer. */
   date: Date;
-  /** `true` quand ce jour n'est pas la date du jour civil. */
   tomorrow: boolean;
+  later?: boolean;
   departures: Departure[];
 }
 
-/**
- * Les premiers départs de chaque ligne et direction, au prochain jour de
- * service. Rend `null` quand le réseau ne publie rien pour ce jour-là.
- *
- * On garde deux passages par direction : le premier, et celui d'après pour qui
- * ne peut pas être au premier. Au-delà, c'est une fiche horaire, pas une
- * réponse.
- */
 export async function getNextServiceDayDepartures(
   stopId: string,
   perDirection: number = 2,
 ): Promise<NextServiceDepartures | null> {
-  if (!stopId || providerOf(stopId)?.id === 'tcl') return null;
+  if (!stopId) return null;
+
+  const provider = providerOf(stopId)?.id;
+  if (provider === 'tcl' || provider === 'gtfs') {
+    const { nextDeparturesFromFiches } = await import('./foreignTimetable');
+    if (provider === 'tcl') {
+      const tcl = await import('./tclNetwork');
+      const [lines, stops] = await Promise.all([tcl.getTclLinesForStop(stopId), tcl.getTclStops()]);
+      const name = stops.find(stop => stop.id === stopId)?.name;
+      return name ? nextDeparturesFromFiches(lines, new Set([name]), perDirection) : null;
+    }
+    const gtfs = await import('./gtfsNetwork');
+    const [lines, names] = await Promise.all([gtfs.getGtfsLinesForStop(stopId), gtfs.gtfsStationNames(stopId)]);
+    return nextDeparturesFromFiches(lines, names, perDirection);
+  }
 
   const date = nextServiceDate();
   const dateParam = toApiDate(date);
@@ -1564,11 +1318,9 @@ export async function getNextServiceDayDepartures(
 
   responses.forEach((data, index) => {
     collectDepartures(data, collected, seen);
-    /* La journée entière vient d'arriver : autant la garder pour plus tard. */
     if (Array.isArray(data)) void saveDaySchedule(clusterIds[index], trimDaySchedule(data, dateParam));
   });
 
-  /* Hors connexion, la fiche gardée pour ce genre de jour prend le relais. */
   const offline = responses.every(data => data === null);
   if (offline) {
     const entries: Array<{ schedule: DaySchedule; day: Date }> = [];
@@ -1583,8 +1335,6 @@ export async function getNextServiceDayDepartures(
     }));
   }
 
-  /* Le réseau rend la journée entière : on ne garde que ce qui reste à venir,
-     puis les tout premiers passages de chaque direction. */
   const perKey = new Map<string, number>();
   const departures: Departure[] = [];
   for (const departure of collected) {
@@ -1605,26 +1355,10 @@ export async function getNextServiceDayDepartures(
     tomorrow: date.getTime() !== today.getTime(),
     departures,
   };
-  /* Un repli hors connexion ne se garde pas : le réseau revenu doit le remplacer. */
   if (!offline) setCache(cacheKey, result);
   return result;
 }
 
-/**
- * Les prochains passages à un poteau précis.
- *
- * Le planificateur d'itinéraires ne rend jamais le cluster d'un arrêt : il rend
- * le poteau — « SEM:2109 » pour le quai de La Poya. Le cluster porte un
- * mnémonique (« SEM:GENLAPOYA »), le poteau un numéro, et l'un ne se déduit pas
- * de l'autre. On a longtemps cherché à faire le pont par le nom de l'arrêt, ce
- * qui marchait mal.
- *
- * Il se trouve que le réseau expose la même ressource à l'échelle du poteau. On
- * interroge donc directement avec ce que le calculateur a donné, sans pont ni
- * devinette. `/index/stops/:id` renvoie 404 sur ce serveur, mais son
- * sous-chemin `/stoptimes` répond — et rend les deux directions, comme le
- * cluster.
- */
 export async function getStopPointDepartures(
   stopPointId: string,
   skipCache: boolean = false
@@ -1649,13 +1383,6 @@ export async function getStopPointDepartures(
   }
 }
 
-/**
- * Transforme la réponse `stoptimes` du réseau en départs exploitables.
- *
- * La même charge utile arrive du cluster et du poteau : un seul lecteur pour
- * les deux, sans quoi les deux chemins finiraient par diverger sur des détails
- * — la déduplication, le mode, le rattrapage du nom de ligne.
- */
 function readPattern(pattern: any): {
   lineId: string;
   routeId?: string;
@@ -1729,8 +1456,6 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
             destination,
             departureTime: minutes,
             at: depUnix * 1000,
-            /* Le réseau dit lui-même si l'heure vient du véhicule ; à défaut,
-               la présence d'une heure temps réel en tient lieu. */
             realtime: typeof t.realtime === 'boolean'
               ? t.realtime
               : t.realtimeArrival !== undefined || t.realtimeDeparture !== undefined,
@@ -1745,17 +1470,6 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
   departures.sort((a, b) => a.departureTime - b.departureTime);
 }
 
-/**
- * Get all lines serving a specific stop
- */
-/**
- * Les lignes d'un arrêt, reconstituées depuis ses horaires gardés.
- *
- * Hors connexion, la liste des lignes ne vient plus du réseau : la fiche
- * montrait les prochains passages sans les pastilles de lignes au-dessus. Les
- * horaires gardés disent pourtant quelles lignes passent ; les couleurs
- * viennent du catalogue des lignes, gardé lui aussi.
- */
 async function linesFromSchedule(clusterIds: string[]): Promise<Line[]> {
   const today = midnight();
   const patterns = (await Promise.all(clusterIds.map(id => readDaySchedule(id, today))))
@@ -1786,9 +1500,12 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
     const { getTclLinesForStop } = await import('./tclNetwork');
     return getTclLinesForStop(stopId);
   }
+  if (providerOf(stopId)?.id === 'gtfs') {
+    const { getGtfsLinesForStop } = await import('./gtfsNetwork');
+    return getGtfsLinesForStop(stopId);
+  }
 
   const cached = getStopLinesCacheEntry(stopId);
-  /* Une liste vide gardée vient d'une ancienne coupure : on la redemande. */
   if (cached && cached.data.length > 0) return cached.data;
   if (stopLinesInflight.has(stopId)) {
     return stopLinesInflight.get(stopId)!;
@@ -1825,8 +1542,6 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
       }
 
       const lines = Array.from(routeMap.values());
-      /* Rien reçu : c'est une coupure, pas un arrêt sans ligne. On ne garde
-         pas cette liste vide, et l'on se rabat sur les horaires gardés. */
       if (lines.length === 0) return linesFromSchedule(clusterIds);
       setStopLinesCache(stopId, lines);
       return lines;
@@ -1916,17 +1631,17 @@ export async function getStopDetail(stopId: string, prefixes: string[] = activeM
   }
 }
 
-/**
- * Rafraîchit UNIQUEMENT les départs pour un arrêt connu
- * (sans recharger les routes) - utilisé pour la mise à jour périodique
- */
 export async function refreshStopDepartures(stopDetail: StopDetail): Promise<StopDetail> {
   if (providerOf(stopDetail.id)?.id === 'tcl') {
     const { getTclStopDetail } = await import('./tclNetwork');
     return (await getTclStopDetail(stopDetail.id)) ?? stopDetail;
   }
+  if (providerOf(stopDetail.id)?.id === 'gtfs') {
+    const { getGtfsStopDetail } = await import('./gtfsNetwork');
+    return (await getGtfsStopDetail(stopDetail.id)) ?? stopDetail;
+  }
 
-  try {    // Bypass le cache pour avoir les données fraiches
+  try {
     const departures = await getDepartures(stopDetail.id, true);
 
     return {
@@ -1938,9 +1653,6 @@ export async function refreshStopDepartures(stopDetail: StopDetail): Promise<Sto
   }
 }
 
-/**
- * Search stops by name
- */
 export async function searchStops(query: string): Promise<Stop[]> {
   if (!query.trim()) {
     return [];
@@ -1959,9 +1671,6 @@ export async function searchStops(query: string): Promise<Stop[]> {
   }
 }
 
-/**
- * Format departure time for display
- */
 export function formatDepartureTime(departure: Departure, locale: 'fr' | 'en' = 'en'): string {
   const minutes = departure.departureTime;
 

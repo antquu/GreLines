@@ -1,14 +1,5 @@
-/**
- * Ce qu'on dit d'une carte qui ne vaut plus.
- *
- * Le porteur a besoin de savoir qui l'a coupée : chez nous, elle se rouvre d'un
- * clic ; chez le réseau, il faut aller le voir. Une carte périmée, elle, n'a été
- * coupée par personne — elle a simplement fait son temps.
- */
-
 import { cardBlockedBy, type OuraCard } from '../services/ouraCard';
 
-/** La mention portée par la carte elle-même : courte, elle tient dans un coin. */
 export function cardStatusLabel(card: OuraCard, language: 'fr' | 'en'): string | null {
   const isFr = language === 'fr';
   switch (cardBlockedBy(card)) {
@@ -22,17 +13,6 @@ export function cardStatusLabel(card: OuraCard, language: 'fr' | 'en'): string |
   }
 }
 
-/**
- * La phrase qu'on lit quand on ouvre la carte : qui l'a coupée, et ce qu'on ne
- * peut plus faire avec. Coupée par le réseau, elle ne fait plus voyager ;
- * coupée par nous, elle ne peut plus entrer dans un portefeuille.
- */
-/**
- * Le code de l'incident, à donner tel quel au guichet ou au support.
- *
- * Il dit deux choses : qui a agi — nous ou le réseau — et s'il s'agit d'une
- * suppression ou d'une simple désactivation. Quatre cas, quatre codes.
- */
 export function cardStatusCode(card: OuraCard): string | null {
   if (card.isMissing) return 'DEL_GRELINES';
   if (card.isDisabled) return 'DES_GRELINES';

@@ -1,17 +1,16 @@
-
 const STORAGE_KEY = 'greLines_favorites';
 export const FAVORITES_MAX = 4;
 
 export interface Favorite {
-  
+
   stopId: string;
-  
+
   stopName: string;
-  
+
   city?: string;
-  
+
   lines: 'all' | string[];
-  
+
   addedAt: number;
 }
 

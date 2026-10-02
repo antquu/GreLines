@@ -1,22 +1,22 @@
-
 export interface AddressResult {
-  
+
   label: string;
-  
+
   name: string;
-  
+
   context: string;
-  
+
   lat: number;
-  
+
   lon: number;
-  
+
   score: number;
-  
+
   id: string;
 }
 
 const BAN_ENDPOINT = 'https://api-adresse.data.gouv.fr/search/';
+const BAN_REVERSE_ENDPOINT = 'https://api-adresse.data.gouv.fr/reverse/';
 
 const GRENOBLE_LAT = 45.1885;
 const GRENOBLE_LON = 5.7245;
@@ -46,7 +46,7 @@ export const searchAddresses = async (
   options?: { limit?: number; signal?: AbortSignal }
 ): Promise<AddressResult[]> => {
   const trimmed = query.trim();
-  
+
   if (trimmed.length < 3) return [];
 
   const limit = options?.limit ?? 5;
@@ -83,10 +83,6 @@ export const searchAddresses = async (
   }
 };
 
-/**
- * Reverse geocode a lat/lon to the nearest BAN address.
- * Returns null on error or if no result is found.
- */
 export const reverseGeocode = async (
   lat: number,
   lon: number
@@ -97,7 +93,7 @@ export const reverseGeocode = async (
     limit: '1',
   });
   try {
-    const resp = await fetch(`${BAN_ENDPOINT}?${params.toString()}`);
+    const resp = await fetch(`${BAN_REVERSE_ENDPOINT}?${params.toString()}`);
     if (!resp.ok) return null;
     const data: BanResponse = await resp.json();
     const feat = data?.features?.[0];

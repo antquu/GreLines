@@ -1,14 +1,3 @@
-/**
- * Ouverture d'un site tiers.
- *
- * Installée sur l'écran d'accueil, l'application tourne sans barre d'adresse :
- * une page ouverte au même endroit y reste prisonnière — pas de bouton retour,
- * pas d'URL visible, et la session de paiement du fournisseur se perd au
- * moindre changement d'onglet. On demande donc explicitement une navigation
- * sortante, ce que les navigateurs interprètent comme « ouvre ça dehors ».
- */
-
-/** L'application tourne-t-elle en mode installé (PWA) ? */
 export function isStandaloneApp(): boolean {
   if (typeof window === 'undefined') return false;
   const iosStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone;

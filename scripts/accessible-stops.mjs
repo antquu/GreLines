@@ -1,54 +1,13 @@
-/**
- * Les arrêts accessibles en fauteuil, extraits du GTFS.
- *
- * L'API JSON du réseau ne dit rien de l'accessibilité : ni `/index/routes/*
- * /clusters`, ni `/linesNear`, ni `stoptimes` ne portent le renseignement. Le
- * GTFS, lui, le porte — c'est la colonne `wheelchair_boarding` de `stops.txt`,
- * renseignée pour près de la moitié des poteaux du réseau urbain.
- *
- * On ne peut pas la lire depuis le navigateur : l'archive fait six mégaoctets,
- * pour trois kilo-octets d'information utile. Ce script la lit ici, une fois,
- * et dépose dans `public/` la seule liste des arrêts accessibles. L'application
- * la charge comme un fichier statique, sans dépendre du réseau.
- *
- *   node scripts/accessible-stops.mjs
- *
- * À relancer quand le réseau change — une station rendue accessible, un quai
- * repris. Le fichier porte sa date de fabrication pour qu'on sache quand il a
- * été relevé.
- */
-
 import { inflateRawSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-/**
- * Les jeux GTFS du territoire, par préfixe d'identifiant.
- *
- * Le préfixe est celui que l'application met devant les identifiants d'arrêt —
- * `SEM:2109` pour un poteau du réseau urbain. Il ne se déduit pas du GTFS, qui
- * ne connaît que `2109` : c'est le nom du jeu qui le donne.
- *
- * Les jeux muets — le Grésivaudan ne renseigne aucun de ses arrêts — se
- * traversent sans rien produire. On les garde dans la liste tout de même : le
- * jour où ils renseigneront leurs quais, il n'y aura rien à changer ici.
- */
 const FEEDS = ['SEM', 'C38', 'MCO'];
 
 const ENDPOINT = feed => `https://data.mobilites-m.fr/api/gtfs/${feed}`;
 
-/* -------------------------------------------------------------------------- */
-/*  Lire une archive zip sans dépendance                                      */
-/* -------------------------------------------------------------------------- */
 
-/**
- * Extrait un fichier d'une archive zip tenue en mémoire.
- *
- * On passe par le répertoire central plutôt que par les en-têtes locaux : lui
- * seul donne les tailles de façon fiable, les en-têtes locaux pouvant les
- * renvoyer à un descripteur placé après les données.
- */
 function readFromZip(buffer, wanted) {
   let end = -1;
   for (let i = buffer.length - 22; i >= 0; i--) {
@@ -86,11 +45,7 @@ function readFromZip(buffer, wanted) {
   throw new Error(`${wanted} absent de l'archive`);
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Lire stops.txt                                                            */
-/* -------------------------------------------------------------------------- */
 
-/** Découpe une ligne de CSV en tenant compte des guillemets. */
 function splitCsvLine(line) {
   const cells = [];
   let cell = '';
@@ -127,7 +82,6 @@ function parseCsv(text) {
   });
 }
 
-/* -------------------------------------------------------------------------- */
 
 async function collect(feed) {
   const response = await fetch(ENDPOINT(feed), { headers: { Origin: 'https://grelines.fr' } });
@@ -138,26 +92,12 @@ async function collect(feed) {
   const buffer = Buffer.from(await response.arrayBuffer());
   const rows = parseCsv(readFromZip(buffer, 'stops.txt').toString('utf8'));
 
-  /*
-   * Deux niveaux dans le même fichier : les stations (`location_type = 1`) et
-   * les poteaux qui leur appartiennent. Seuls les poteaux sont renseignés ; la
-   * station porte toujours zéro, c'est-à-dire « on ne sait pas ».
-   */
   const poles = rows.filter(row => row.location_type !== '1');
-  /*
-   * Le mnémonique de chaque station, à côté de son identifiant.
-   *
-   * L'application désigne un arrêt tantôt par l'un — `SEM:LP` —, tantôt par
-   * l'autre — `SEM:GENLP`, celui que rend `/clusters`. Les deux sont écrits
-   * dans la liste, faute de quoi la moitié des arrêts ne se reconnaîtraient
-   * pas selon l'endroit d'où on les regarde.
-   */
   const stationCodes = new Map(
     rows.filter(row => row.location_type === '1').map(row => [row.stop_id, row.stop_code]),
   );
 
   const accessible = new Set();
-  /** Par station : ce que disent ses poteaux. */
   const byStation = new Map();
 
   for (const pole of poles) {
@@ -170,16 +110,6 @@ async function collect(feed) {
     byStation.set(pole.parent_station, seen);
   }
 
-  /*
-   * Une station vaut pour accessible si l'un de ses quais l'est et qu'aucun ne
-   * porte le contraire.
-   *
-   * Le « et » compte. Un arrêt de bus a souvent un quai repris et l'autre non :
-   * afficher le fauteuil sur le nom de l'arrêt reviendrait alors à promettre
-   * qu'on peut monter, quel que soit le sens — ce qui est faux la moitié du
-   * temps, et cette moitié-là est celle où quelqu'un se retrouve devant une
-   * bordure infranchissable. On préfère ne rien dire.
-   */
   let stations = 0;
   for (const [station, seen] of byStation) {
     if (seen.yes && !seen.no) {

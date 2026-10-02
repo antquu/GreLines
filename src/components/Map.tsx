@@ -1,3 +1,5 @@
+import { sortStopPreviewLines } from '../utils/lineOrder';
+import { appLanguage } from '../utils/appLanguage';
 import { useReconnectCount } from '../hooks/useIsOffline';
 ﻿import { useRef, forwardRef, useImperativeHandle, useCallback, useState, useMemo, useEffect, memo } from 'react';
 import type { ForwardedRef } from 'react';
@@ -12,6 +14,8 @@ import type { AddressResult } from '../services/geocoding';
 import type { LineGeometry, ServedStopPoint } from '../services/lineShapes';
 import { stopIsNearAny, snapStopToLines } from '../services/lineShapes';
 import { getCachedStopLines, getStopLines } from '../services/api';
+import { getGtfsLinesForStopSync } from '../services/gtfsNetwork';
+import { consumeLocationPick } from '../utils/devLocation';
 import { resolveLineBackgroundColor } from '../utils/lineColors';
 import type { JourneyBadge } from '../utils/journeyGeometry';
 import { LineBadge } from './LineBadge';
@@ -24,6 +28,7 @@ import {
   EMPTY_SHARED_MOBILITY,
   FULL_BATTERY_PERCENT,
   dominantFormFactor,
+  getVoiZones,
   hasFullBattery,
   type SharedMobilityData,
   type SharedOperator,
@@ -43,63 +48,70 @@ interface MapProps {
   selectedStop: Stop | null;
   currentLocation: { lat: number; lon: number } | null;
   onStopClick: (stop: Stop) => void;
-  
+
   selectedAddress?: AddressResult | null;
-  
+
   routeStart?: RouteMapPoint | null;
-  
+
   routeEnd?: RouteMapPoint | null;
-  
+
   alwaysLabelledStopIds?: string[] | null;
-  
+
   routeLine?: GeoJSON.FeatureCollection | null;
-  
+
   routeStops?: GeoJSON.FeatureCollection | null;
-  
+
   routeLineBadges?: JourneyBadge[] | null;
-  /**
-   * Les liaisons de covoiturage à tracer.
-   *
-   * Elles n'apparaissent que pour un point M'Covoit ouvert : ce sont de longs
-   * axes qui traversent toute la cuvette, et les laisser en permanence
-   * barrerait la carte sans rien apprendre à qui cherche un tram.
-   */
   carpoolLines?: McoLine[];
-  
+
   lineGeometries?: LineGeometry[];
-  
+
   visibleStopPoints?: ServedStopPoint[] | null;
-  
-  /** Un point est en attente d'être désigné : extrémité du trajet, domicile ou travail. */
-  /**
-   * Le centre de la carte, à chaque déplacement (limité à trois fois par
-   * seconde comme le reste du suivi de viewport).
-   */
+
   onCenterChange?: (lat: number, lon: number) => void;
   pickMode?: 'from' | 'to' | 'home' | 'work' | null;
   onMapClick?: (lat: number, lon: number) => void;
-  /**
-   * Appui long sur un point de la carte. MapLibre le rapporte comme un
-   * `contextmenu` : clic droit sur ordinateur, doigt maintenu sur mobile.
-   */
   onLongPress?: (lat: number, lon: number) => void;
   isDarkMode?: boolean;
-  
+
   sharedMobility?: SharedMobilityData;
-  
+
   onSharedSelect?: (selection: { operator: SharedOperator; points: SharedVehiclePoint[] }) => void;
-  
+
   focusedShared?: { operator: SharedOperator; points: SharedVehiclePoint[] } | null;
-  
+  onSharedInViewChange?: (inView: boolean) => void;
+
   highlightedVehicleId?: string | null;
 }
 
 const MAX_LABEL_LINE_BADGES = 3;
 
 const STOPS_LAYER_ID = 'stops-circles';
+const SHARED_KEEP_ZOOM_FROM = 15;
+const MAX_BADGE_STOPS = 60;
+const BADGE_CONCURRENCY = 4;
+const SELECTED_STATE = ['boolean', ['feature-state', 'selected'], false];
+const ENDPOINT_STATE = ['boolean', ['feature-state', 'endpoint'], false];
+const STOPS_HIT_LAYER_ID = 'stops-hit-area';
+const IS_COARSE_POINTER = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+const STOP_HIT_RADIUS_PX = IS_COARSE_POINTER ? 22 : 12;
+
+function nearestStopFeature(features: any[], point: { x: number; y: number } | undefined, map: any): any {
+  const stops = features.filter(f => f?.properties?.stopId);
+  if (stops.length <= 1 || !point || !map) return stops[0];
+  let best = stops[0];
+  let bestDistance = Infinity;
+  for (const feature of stops) {
+    const coordinates = feature.geometry?.coordinates;
+    if (!coordinates) continue;
+    const projected = map.project(coordinates);
+    const distance = Math.hypot(projected.x - point.x, projected.y - point.y);
+    if (distance < bestDistance) { bestDistance = distance; best = feature; }
+  }
+  return best;
+}
 const ROAD_LABELS_LAYER_ID = 'Road labels';
 
-/** Durée du contact au-delà de laquelle on désigne un point plutôt qu'on ne fait glisser la carte. */
 const LONG_PRESS_MS = 500;
 
 const CITIZ_LAYER_ID = 'citiz-circles';
@@ -123,9 +135,9 @@ interface SharedPinData {
   lon: number;
   lat: number;
   count: number;
-  
+
   clusterId: string | null;
-  
+
   point: SharedVehiclePoint | null;
 }
 
@@ -163,17 +175,10 @@ function explodeIntoVehiclePoints(points: SharedVehiclePoint[]): SharedVehiclePo
   return exploded;
 }
 
-/** Rayon de tolérance, en pixels, pour attraper un véhicule au clic. */
 const SHARED_TAP_RADIUS_PX = 18;
 
-/** Nombre maximal de véhicules rapportés par un amas cliqué. */
 const MAX_CLUSTER_LEAVES = 200;
 
-/**
- * Peinture commune aux deux opérateurs : pastille plus petite que celle d'un
- * arrêt, qui grossit un peu quand elle représente un amas — la taille dit
- * « il y en a plusieurs » sans avoir besoin d'un chiffre lisible au 1:20 000.
- */
 const sharedCirclePaint = (color: string) => ({
   'circle-radius': 2.5,
   'circle-color': color,
@@ -183,11 +188,6 @@ const sharedCirclePaint = (color: string) => ({
   'circle-stroke-opacity': ['step', ['zoom'], 1, SHARED_LABEL_MIN_ZOOM, 0] as any,
 });
 
-/**
- * Plafond d'étiquettes DOM. Au zoom où elles apparaissent il y en a rarement
- * plus d'une trentaine ; cette limite protège les cas extrêmes (grand écran,
- * secteur très dense) où elles se chevaucheraient de toute façon.
- */
 const MAX_DOM_LABELS = 40;
 
 
@@ -255,29 +255,10 @@ const getPaddedViewportBounds = (bounds: ViewportBounds, zoom: number): Viewport
   };
 };
 
-/**
- * Pastille transparente d'un pixel, servie à la place d'une image manquante.
- *
- * Un `ImageData` plutôt qu'un `<canvas>` : MapLibre lisait sur le canvas une
- * taille nulle et rejetait l'image, ce qui produisait un « mismatched image
- * size » à chaque appel sans jamais combler le manque. `ImageData` porte ses
- * dimensions et ses octets dans le format que MapLibre attend.
- */
 const createPlaceholderSprite = (): ImageData => new ImageData(1, 1);
 
-/** Identifiants déjà tentés, pour ne pas réessayer à chaque tuile. */
 const attemptedMissingImages = new Set<string>();
 
-/**
- * Comble les images que le style réclame et que le sprite ne contient pas.
- *
- * Le style MapTiler référence des écussons routiers (`IT-highway_6`,
- * `road_…`) absents de son propre sprite. Chaque tuile qui en contient un
- * relance la demande, et MapLibre journalise une erreur à chaque fois : la
- * console en recevait des centaines par seconde, et les écrire coûte du temps
- * de rendu. On répond par une image vide, quel que soit l'identifiant — un
- * écusson manquant ne se dessine pas, mais il ne bloque plus rien.
- */
 const handleStyleImageMissing = (map: any, event: any) => {
   const id = String(event.id ?? '');
   if (!id || map.hasImage(id)) return;
@@ -289,15 +270,6 @@ const handleStyleImageMissing = (map: any, event: any) => {
   }
 };
 
-/**
- * Merge all line geometries into one FeatureCollection. We pre-compute the
- * `color` property on each feature so the GL layer can just read
- * `['get','color']` and tint each polyline with its real MTAG colour.
- *
- * We use the raw GTFS coordinates as-is — no spline smoothing — since the
- * smoothing produced visible artefacts on tight corners and around loops.
- * MapLibre's `line-join: round` already softens the corners enough.
- */
 
 const buildLinesFeatureCollection = (
   geometries: LineGeometry[]
@@ -420,23 +392,16 @@ const animateFeatureCollectionProgress = (
 };
 
 const MapComponentBase = (
-  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
+  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null, onSharedInViewChange }: MapProps,
   ref: ForwardedRef<MapRef>
 ) => {
   const { settings: perf } = usePerfSettings();
   const mapRef = useRef<MapLibreRef>(null);
   const [mapState, setMapState] = useState<MapState>({ bounds: null, zoom: 12.1 });
   const wrapperRef = useRef<HTMLDivElement>(null);
-  /** Garde-fou : l'écouteur d'images manquantes ne se pose qu'une fois. */
   const styleImageHookRef = useRef(false);
   const [routeDrawProgress, setRouteDrawProgress] = useState(1);
   const [hoveredStopId, setHoveredStopId] = useState<string | null>(null);
-  /**
-   * La couche des arrêts sert de repère à toutes les autres via `beforeId`.
-   * MapLibre refuse une référence vers une couche absente et fait échouer le
-   * montage : les couches montées tôt — véhicules partagés servis depuis le
-   * cache — attendent donc de savoir qu'elle existe.
-   */
   const [stopsLayerReady, setStopsLayerReady] = useState(false);
   const [hoverLabelVisible, setHoverLabelVisible] = useState(false);
   const hoverTimerRef = useRef<number | null>(null);
@@ -445,16 +410,6 @@ const MapComponentBase = (
 
   const mapStyleUrl = isDarkMode ? DARK_MODE_MAP_STYLE_URL : LIGHT_MODE_MAP_STYLE_URL;
 
-  /**
-   * Arrêts confiés à la couche GPU : filtre de ligne et aimantage appliqués,
-   * mais **sans découpage au viewport**.
-   *
-   * Le découpage n'avait de sens qu'avec des marqueurs DOM, où chaque arrêt
-   * hors écran coûtait un nœud. Une couche GPU, elle, écarte déjà l'invisible
-   * à l'échelle de la tuile. Garder le filtre viewport ici obligeait à
-   * reconstruire et à refaire analyser tout le GeoJSON à chaque déplacement de
-   * carte — du travail à répétition sur le fil principal pendant les gestes.
-   */
   const mapStops = useMemo(() => {
     let filtered = visibleStopPoints
       ? stops.filter(stop => stopIsNearAny(stop, visibleStopPoints))
@@ -481,27 +436,32 @@ const MapComponentBase = (
     return filtered;
   }, [stops, visibleStopPoints, lineGeometries, selectedStop, perf.markerCap]);
 
-  /**
-   * Arrêts réellement dessinés. Pendant la consultation d'une station de
-   * mobilité partagée, la carte se vide : on est venu voir ces véhicules, tout
-   * le reste est du bruit.
-   */
   const mapStopsVisible = useMemo(() => (focusedShared ? [] : mapStops), [focusedShared, mapStops]);
 
-  /**
-   * Sous-ensemble réellement à l'écran. Ne sert plus qu'à ce qui coûte cher par
-   * arrêt : les étiquettes DOM et le préchargement des lignes desservies.
-   */
+  const sharedInView = useMemo(() => {
+    const bounds = mapState.bounds;
+    if (!bounds) return true;
+    const inside = (point: { lat: number; lon: number }) =>
+      point.lat <= bounds.north && point.lat >= bounds.south && point.lon <= bounds.east && point.lon >= bounds.west;
+    return sharedMobility.citiz.some(inside) || sharedMobility.voi.some(inside);
+  }, [mapState.bounds, sharedMobility]);
+  useEffect(() => { onSharedInViewChange?.(sharedInView); }, [sharedInView, onSharedInViewChange]);
+
+  const [voiZones, setVoiZones] = useState<GeoJSON.FeatureCollection | null>(null);
+  const showVoiZones = focusedShared?.operator === 'voi';
+  useEffect(() => {
+    if (!showVoiZones || voiZones) return;
+    let active = true;
+    void getVoiZones().then(zones => { if (active && zones) setVoiZones(zones); });
+    return () => { active = false; };
+  }, [showVoiZones, voiZones]);
+
   const visibleStops = useMemo(() => {
     if (!mapState.bounds) return mapStops;
     const paddedBounds = getPaddedViewportBounds(mapState.bounds, mapState.zoom);
     return mapStops.filter(stop => isStopInViewport(stop, paddedBounds));
   }, [mapStops, mapState]);
 
-  /**
-   * Combined GeoJSON for all currently-displayed line shapes. Memoized so
-   * MapLibre only re-uploads the source when the set of lines actually changes.
-   */
   const linesFeatureCollection = useMemo(
     () => buildLinesFeatureCollection(lineGeometries),
     [lineGeometries]
@@ -570,15 +530,11 @@ const MapComponentBase = (
 
   const hasLines = perf.lineShapes && !focusedShared && linesFeatureCollection.features.length > 0;
 
-  /** Show stop name labels when zoomed in enough to read them comfortably, or
-   * after a short hover delay when the user is still zoomed out. */
   const showStopLabels = perf.stopLabels && mapState.zoom >= 15;
-  /* Les arrêts accessibles en fauteuil : le pictogramme ne paraît qu'avec
-     l'étiquette, donc au zoom rapproché, là où l'on choisit son quai. */
   const accessibleStops = useAccessibleStops();
-  /* Le mode accessibilité change la forme du renseignement, pas son contenu :
-     une pastille au-dessus du point plutôt qu'un pictogramme collé au nom. */
   const accessibilityMode = perf.accessibility;
+  const stopScale = accessibilityMode ? 1.5 : 1;
+  const darkInk = typeof document !== 'undefined' && document.documentElement.classList.contains('theme-blue') ? '#0f172a' : '#0a0a0a';
 
   const clearStopHoverTimer = useCallback(() => {
     if (hoverTimerRef.current !== null) {
@@ -602,79 +558,92 @@ const MapComponentBase = (
     setHoverLabelVisible(false);
   }, [clearStopHoverTimer]);
 
+  const stopLinesRef = useRef(stopLinesById);
+  stopLinesRef.current = stopLinesById;
+  const badgeQueueRef = useRef<string[]>([]);
+  const badgeWorkersRef = useRef(0);
+  const badgePendingRef = useRef<Record<string, Line[]>>({});
+  const badgeFlushRef = useRef<number | null>(null);
+
+  const badgeCandidateIds = useMemo(() => {
+    if (!perf.stopLineBadges || visibleStops.length === 0) return '';
+    const bounds = mapState.bounds;
+    const centerLat = bounds ? (bounds.north + bounds.south) / 2 : 0;
+    const centerLon = bounds ? (bounds.east + bounds.west) / 2 : 0;
+    const ranked = bounds
+      ? [...visibleStops].sort((a, b) =>
+        (a.lat - centerLat) ** 2 + (a.lon - centerLon) ** 2 - ((b.lat - centerLat) ** 2 + (b.lon - centerLon) ** 2))
+      : visibleStops;
+    const ids = ranked.slice(0, MAX_BADGE_STOPS).map(stop => stop.id);
+    if (hoveredStopId && !ids.includes(hoveredStopId)) ids.unshift(hoveredStopId);
+    return ids.join('|');
+  }, [visibleStops, mapState.bounds, perf.stopLineBadges, hoveredStopId]);
+
+  useEffect(() => () => {
+    if (badgeFlushRef.current !== null) window.clearTimeout(badgeFlushRef.current);
+    badgeQueueRef.current = [];
+  }, []);
+
   useEffect(() => {
-    if (!perf.stopLineBadges) return;
+    if (!badgeCandidateIds) return;
+    const ids = badgeCandidateIds.split('|');
+    const known = stopLinesRef.current;
 
-    const idsToInspect = visibleStops.slice(0, 35).map(stop => stop.id);
-    if (idsToInspect.length === 0) return;
-
-    let hasCacheUpdates = false;
-    const cacheUpdates: Record<string, Line[]> = {};
-    for (const stopId of idsToInspect) {
-      if (stopLinesById[stopId]) continue;
-      const cached = getCachedStopLines(stopId);
-      if (!cached) continue;
-      cacheUpdates[stopId] = cached;
-      hasCacheUpdates = true;
+    const instant: Record<string, Line[]> = {};
+    const missing: string[] = [];
+    for (const stopId of ids) {
+      if (known[stopId]) continue;
+      const cached = getCachedStopLines(stopId) ?? getGtfsLinesForStopSync(stopId);
+      if (cached) instant[stopId] = cached;
+      else if (!stopLinesQueueRef.current.has(stopId)) missing.push(stopId);
     }
-    if (hasCacheUpdates) {
-      setStopLinesById(prev => ({ ...prev, ...cacheUpdates }));
-    }
+    if (Object.keys(instant).length > 0) setStopLinesById(prev => ({ ...prev, ...instant }));
 
-    const idsToLoad = idsToInspect.filter(stopId => {
-      if (stopLinesById[stopId]) return false;
-      if (cacheUpdates[stopId]) return false;
-      if (stopLinesQueueRef.current.has(stopId)) return false;
-      return true;
-    });
+    badgeQueueRef.current = missing;
+    if (missing.length === 0) return;
 
-    if (idsToLoad.length === 0) return;
-
-    let cancelled = false;
-    const runQueue = async () => {
-      const queue = [...idsToLoad];
-      const concurrency = 4;
-      const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
-        while (queue.length > 0 && !cancelled) {
-          const stopId = queue.shift();
-          if (!stopId) return;
+    const flush = () => {
+      badgeFlushRef.current = null;
+      const batch = badgePendingRef.current;
+      badgePendingRef.current = {};
+      if (Object.keys(batch).length > 0) setStopLinesById(prev => ({ ...prev, ...batch }));
+    };
+    const worker = async () => {
+      badgeWorkersRef.current += 1;
+      try {
+        for (let stopId = badgeQueueRef.current.shift(); stopId; stopId = badgeQueueRef.current.shift()) {
+          if (stopLinesRef.current[stopId] || stopLinesQueueRef.current.has(stopId)) continue;
           stopLinesQueueRef.current.add(stopId);
           try {
-            const lines = await getStopLines(stopId);
-            if (cancelled) return;
-            setStopLinesById(prev => (prev[stopId] ? prev : { ...prev, [stopId]: lines }));
+            badgePendingRef.current[stopId] = await getStopLines(stopId);
+            badgeFlushRef.current ??= window.setTimeout(flush, 120);
+          } catch {
           } finally {
             stopLinesQueueRef.current.delete(stopId);
           }
         }
-      });
-      await Promise.all(workers);
+      } finally {
+        badgeWorkersRef.current -= 1;
+      }
     };
-
-    const timer = window.setTimeout(() => {
-      void runQueue().catch(() => {});
-    }, 150);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [visibleStops, stopLinesById, perf.stopLineBadges]);
+    const toStart = Math.min(BADGE_CONCURRENCY - badgeWorkersRef.current, missing.length);
+    for (let i = 0; i < toStart; i += 1) void worker();
+  }, [badgeCandidateIds]);
 
   const renderStopLineBadges = useCallback((stopId: string) => {
     if (!perf.stopLineBadges) return null;
-    const lines = stopLinesById[stopId] || [];
+    const lines = sortStopPreviewLines(stopLinesById[stopId] || []);
     if (lines.length === 0) return null;
     const visible = lines.slice(0, MAX_LABEL_LINE_BADGES);
     const hiddenCount = lines.length - visible.length;
     return (
       <span className="inline-flex items-center gap-1">
         {visible.map(line => (
-          <LineBadge key={line.id} line={line} size="xs" />
+          <LineBadge key={line.id} line={line} size={perf.accessibility ? 'sm' : 'xs'} />
         ))}
         {hiddenCount > 0 && (
           <span
-            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900/90 px-1 text-[9px] font-extrabold text-white shadow-sm"
+            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900/90 px-1 text-[0.5625rem] font-extrabold text-white shadow-sm"
             title={`+${hiddenCount}`}
           >
             +{hiddenCount}
@@ -682,7 +651,7 @@ const MapComponentBase = (
         )}
       </span>
     );
-  }, [stopLinesById, perf.stopLineBadges]);
+  }, [stopLinesById, perf.stopLineBadges, perf.accessibility]);
 
   useEffect(() => {
     return () => {
@@ -690,11 +659,6 @@ const MapComponentBase = (
     };
   }, [clearStopHoverTimer]);
 
-  /*
-   * Le rappel du parent vit dans une référence : sans elle, il entrerait dans
-   * les dépendances de `updateViewport`, qui changerait d'identité à chaque
-   * rendu du parent — et avec lui les écouteurs de la carte.
-   */
   const onCenterChangeRef = useRef(onCenterChange);
   useEffect(() => { onCenterChangeRef.current = onCenterChange; }, [onCenterChange]);
 
@@ -717,21 +681,6 @@ const MapComponentBase = (
 
   const handleMapMove = useCallback(throttle(updateViewport, 300), [updateViewport]);
 
-  /**
-   * Vrai pendant qu'on déplace ou qu'on zoome.
-   *
-   * Sert aux pastilles d'accessibilité, qui sont larges : posées en pleine
-   * opacité, elles se recouvrent l'une l'autre dès qu'on fait glisser la carte
-   * et cachent les arrêts qu'on est en train de chercher. Elles s'effacent donc
-   * le temps du geste et reviennent quand il s'arrête.
-   *
-   * Le repos se déduit du silence, et non d'un `moveend` : ces événements
-   * s'apparient mal — une inertie, un `easeTo` déclenché pendant qu'on fait
-   * glisser, et l'on reçoit deux débuts pour une fin. Les pastilles restaient
-   * alors effacées indéfiniment. Ici, chaque frame de mouvement repousse
-   * l'échéance ; quand elle échoit, c'est que plus rien ne bouge, et la
-   * question de savoir quel geste s'est terminé ne se pose plus.
-   */
   const [isMapMoving, setIsMapMoving] = useState(false);
   const movingIdleRef = useRef<number | null>(null);
 
@@ -761,21 +710,6 @@ const MapComponentBase = (
     }
   }, []);
 
-  /**
-   * Recale le canvas sur la taille réelle de son conteneur.
-   *
-   * La carte est montée tout de suite, sous l'écran de chargement, pour que le
-   * style et les tuiles partent au plus tôt. Mais à cet instant son conteneur
-   * n'a pas encore sa taille : MapLibre retombe alors sur son canvas par défaut
-   * de 400 × 300 et n'en bouge plus. Son suivi intégré n'écoute que le
-   * redimensionnement de la *fenêtre* — un conteneur qui grandit tout seul lui
-   * échappe.
-   *
-   * Conséquence : le moteur ne calculait les tuiles que pour une fenêtre de
-   * 400 × 300. Tout le reste restait noir, et il fallait zoomer beaucoup pour
-   * ramener une rue dans cette zone minuscule — d'où l'impression que les rues
-   * s'affichaient en retard.
-   */
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
@@ -846,25 +780,52 @@ const MapComponentBase = (
       id: undefined,
       properties: {
         stopId: stop.id,
-        selected: selectedStop?.id === stop.id,
-        endpoint: selectedRouteStopIds.has(stop.id),
         lineColor: (stop as Stop & { lineColor?: string }).lineColor || '',
       },
       geometry: { type: 'Point' as const, coordinates: [stop.lon, stop.lat] },
     })),
-  }), [mapStopsVisible, selectedStop?.id, selectedRouteStopIds]);
+  }), [mapStopsVisible]);
 
-  /** Retrouve un arrêt visible à partir de l'identifiant porté par la couche. */
+  const stopStatesRef = useRef<{ selected: string | null; endpoints: string[] }>({ selected: null, endpoints: [] });
+  useEffect(() => {
+    const map = mapRef.current?.getMap?.();
+    if (!map) return;
+    const set = (id: string, state: Record<string, boolean>) => {
+      try { map.setFeatureState({ source: 'stops', id }, state); } catch { }
+    };
+    const apply = () => {
+      if (!map.getSource('stops')) return;
+      const previous = stopStatesRef.current;
+      const selectedId = selectedStop?.id ?? null;
+      if (previous.selected && previous.selected !== selectedId) set(previous.selected, { selected: false });
+      for (const id of previous.endpoints) if (!selectedRouteStopIds.has(id)) set(id, { endpoint: false });
+      if (selectedId) set(selectedId, { selected: true });
+      for (const id of selectedRouteStopIds) set(id, { endpoint: true });
+      stopStatesRef.current = { selected: selectedId, endpoints: [...selectedRouteStopIds] };
+    };
+    apply();
+    const whenSourceBack = (event: { sourceId?: string }) => {
+      if (event.sourceId !== 'stops' || !map.getSource('stops')) return;
+      map.off('sourcedata', whenSourceBack);
+      apply();
+    };
+    const reapply = () => {
+      stopStatesRef.current = { selected: null, endpoints: [] };
+      if (map.getSource('stops')) apply();
+      else map.on('sourcedata', whenSourceBack);
+    };
+    map.on('style.load', reapply);
+    return () => {
+      map.off('style.load', reapply);
+      map.off('sourcedata', whenSourceBack);
+    };
+  }, [selectedStop?.id, selectedRouteStopIds, stopsLayerReady]);
+
   const findVisibleStop = useCallback(
     (stopId: string) => mapStops.find(stop => stop.id === stopId) ?? null,
     [mapStops],
   );
 
-  /**
-   * Points effectivement dessinés. En consultation d'une station, tout le reste
-   * disparaît : on est venu voir ces véhicules-là, les autres pastilles ne
-   * feraient que brouiller la lecture.
-   */
   const visibleShared = useMemo<SharedMobilityData>(() => {
     if (!focusedShared) return sharedMobility;
 
@@ -876,7 +837,6 @@ const MapComponentBase = (
     };
   }, [sharedMobility, focusedShared]);
 
-  /** Un point de mobilité partagée → une entité GeoJSON. */
   const toSharedCollection = useCallback((points: SharedVehiclePoint[]): GeoJSON.FeatureCollection => ({
     type: 'FeatureCollection',
     features: points.map(point => ({
@@ -886,12 +846,6 @@ const MapComponentBase = (
     })),
   }), []);
 
-  /**
-   * Index par identifiant, pour retrouver les véhicules au clic.
-   *
-   * Un objet et non une `Map` : dans ce fichier, `Map` est le nom du composant
-   * exporté, qui masque la classe native.
-   */
   const sharedIndex = useMemo(() => {
     const index: Record<string, SharedVehiclePoint> = {};
     for (const point of visibleShared.citiz) index[`citiz:${point.id}`] = point;
@@ -900,7 +854,7 @@ const MapComponentBase = (
   }, [visibleShared]);
 
   const handleMapMouseMove = useCallback((event: any) => {
-    const feature = event.features?.[0];
+    const feature = nearestStopFeature(event.features ?? [], event.point, mapRef.current?.getMap?.());
     const stopId = feature?.properties?.stopId as string | undefined;
 
     if (!stopId) {
@@ -911,12 +865,6 @@ const MapComponentBase = (
     startStopHoverTimer(stopId);
   }, [hoveredStopId, resetStopHover, startStopHoverTimer]);
 
-  /**
-   * Véhicules d'un opérateur situés à portée d'un point, en pixels écran.
-   *
-   * Sert de filet de sécurité partout où l'indexation par amas peut faire
-   * défaut : c'est une lecture directe des données, sans intermédiaire.
-   */
   const gatherAround = useCallback((
     operator: SharedOperator,
     center: [number, number],
@@ -933,13 +881,6 @@ const MapComponentBase = (
     });
   }, [visibleShared]);
 
-  /**
-   * Rassemble les véhicules d'un point cliqué.
-   *
-   * MapLibre regroupe les points proches en amas ; `getClusterLeaves` rend les
-   * points d'origine, qu'on retraduit en véhicules. Un point isolé est traité
-   * comme un amas d'un seul élément, pour n'avoir qu'un chemin d'ouverture.
-   */
   const collectSharedSelection = useCallback(async (
     operator: SharedOperator,
     feature: any,
@@ -979,12 +920,6 @@ const MapComponentBase = (
     return [];
   }, [sharedIndex, gatherAround]);
 
-  /**
-   * Véhicule partagé le plus proche d'un point cliqué, dans un rayon de
-   * `SHARED_TAP_RADIUS_PX` pixels. Le rayon est converti en degrés au zoom
-   * courant : un même écart à l'écran ne représente pas la même distance selon
-   * qu'on est au 1:100 000 ou au 1:2 000.
-   */
   const findNearestSharedPoint = useCallback((lngLat: [number, number]) => {
     const map = mapRef.current?.getMap?.();
     if (!map) return null;
@@ -1008,29 +943,23 @@ const MapComponentBase = (
     return best as Candidate | null;
   }, [visibleShared]);
 
-  const zoomToSharedSelection = useCallback((points: SharedVehiclePoint[]) => {
+  const focusOnSharedPoint = useCallback((lon: number, lat: number, duration: number) => {
     const map = mapRef.current?.getMap?.();
-    if (!map || points.length === 0) return;
-
-    const centerLon = points.reduce((sum, point) => sum + point.lon, 0) / points.length;
-    const centerLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
-    map.flyTo({
-      center: [centerLon, centerLat],
-      zoom: map.getMaxZoom(),
-      duration: 700,
-    });
+    if (!map) return;
+    if (map.getZoom() >= SHARED_KEEP_ZOOM_FROM) {
+      map.easeTo({ center: [lon, lat], duration: Math.min(duration, 500) });
+    } else {
+      map.flyTo({ center: [lon, lat], zoom: map.getMaxZoom(), duration });
+    }
   }, []);
 
-  /**
-   * Ouvre un point de mobilité partagée — ou refuse de l'ouvrir.
-   *
-   * Une station Citiz est un lieu : ses voitures sont réellement au même
-   * endroit, une liste a du sens. Un amas Voi n'est qu'un artefact d'échelle :
-   * les trottinettes sont éparpillées dans la rue, et en lister douze sous un
-   * seul titre laisserait croire qu'on va toutes les trouver au même endroit.
-   * On zoome donc jusqu'à ce que l'amas se défasse, et l'utilisateur choisit
-   * sur la carte celle qui est vraiment devant lui.
-   */
+  const zoomToSharedSelection = useCallback((points: SharedVehiclePoint[]) => {
+    if (points.length === 0) return;
+    const centerLon = points.reduce((sum, point) => sum + point.lon, 0) / points.length;
+    const centerLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
+    focusOnSharedPoint(centerLon, centerLat, 700);
+  }, [focusOnSharedPoint]);
+
   const skipFocusedSharedZoomRef = useRef(false);
 
   const openSharedSelection = useCallback((
@@ -1042,25 +971,25 @@ const MapComponentBase = (
 
     if (focusPoint) {
       skipFocusedSharedZoomRef.current = true;
-
-      const map = mapRef.current?.getMap?.();
-      if (map) {
-        map.flyTo({
-          center: [focusPoint.lon, focusPoint.lat],
-          zoom: map.getMaxZoom(),
-          duration: 700,
-        });
-      }
+      focusOnSharedPoint(focusPoint.lon, focusPoint.lat, 700);
     } else {
       zoomToSharedSelection(points);
     }
 
     onSharedSelect?.({ operator, points });
-  }, [onSharedSelect, zoomToSharedSelection]);
+  }, [onSharedSelect, zoomToSharedSelection, focusOnSharedPoint]);
+
+  const mouseLongPressFiredRef = useRef(false);
 
   const handleMapClick = useCallback((event: any) => {
+    if (mouseLongPressFiredRef.current) {
+      mouseLongPressFiredRef.current = false;
+      return;
+    }
     const features: any[] = event.features ?? [];
-    const feature = features.find(f => /^(citiz|voi)/.test(f?.layer?.id ?? '')) ?? features[0];
+    const feature = features.find(f => /^(citiz|voi)/.test(f?.layer?.id ?? ''))
+      ?? nearestStopFeature(features, event.point, mapRef.current?.getMap?.())
+      ?? features[0];
     const layerId = feature?.layer?.id as string | undefined;
 
     if (layerId && (layerId.startsWith('citiz') || layerId.startsWith('voi'))) {
@@ -1100,13 +1029,6 @@ const MapComponentBase = (
     onMapClick(lngLat[1], lngLat[0]);
   }, [findVisibleStop, handleMarkerClick, onMapClick, collectSharedSelection, openSharedSelection, findNearestSharedPoint, gatherAround]);
 
-  /**
-   * Cadre sur la station consultée : au plus près, toujours.
-   *
-   * Sauf quand le clic a déjà emmené la caméra sur un véhicule précis — dans ce
-   * cas le drapeau est levé et on ne touche à rien, sinon la caméra repartait
-   * du véhicule choisi vers le centre de la station.
-   */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !focusedShared || focusedShared.points.length === 0) return;
@@ -1120,27 +1042,9 @@ const MapComponentBase = (
     const lon = spread.reduce((sum, point) => sum + point.lon, 0) / spread.length;
     const lat = spread.reduce((sum, point) => sum + point.lat, 0) / spread.length;
 
-    map.flyTo({ center: [lon, lat], zoom: map.getMaxZoom(), duration: 900 });
-  }, [focusedShared]);
+    focusOnSharedPoint(lon, lat, 900);
+  }, [focusedShared, focusOnSharedPoint]);
 
-  /**
-   * Remonte la couche des arrêts au-dessus de tout le reste.
-   *
-   * Les tracés de lignes et d'itinéraires sont montés à la demande, donc *après*
-   * la couche des arrêts : MapLibre les empile alors par-dessus, et le liseré
-   * blanc de 12 px du tracé masque les pastilles — d'autant plus que les arrêts
-   * filtrés sont justement aimantés sur la polyligne. Les marqueurs HTML
-   * d'avant étaient au-dessus du canvas par nature ; il faut désormais le
-   * rétablir explicitement à chaque changement de couches.
-   */
-  /*
-   * Le tracé des liaisons de covoiturage, et où poser leur étiquette.
-   *
-   * Une étiquette par liaison, au milieu de son parcours — pas au centre de son
-   * rectangle englobant, qui tombe souvent en pleine montagne pour une liaison
-   * qui contourne un massif. Elle ne demande pas de zoomer : on ouvre un point
-   * de covoiturage précisément pour savoir où mènent ses liaisons.
-   */
   const carpoolFeatureCollection = useMemo<GeoJSON.FeatureCollection>(() => ({
     type: 'FeatureCollection',
     features: carpoolLines
@@ -1172,12 +1076,13 @@ const MapComponentBase = (
     map.moveLayer(STOPS_LAYER_ID);
   }, []);
 
-  /**
-   * Appui long : MapLibre en fait un `contextmenu`, qu'il émet aussi bien sur un
-   * clic droit que sur un doigt maintenu. Le menu natif du navigateur est
-   * écarté, il s'ouvrirait par-dessus la fiche.
-   */
   const handleMapContextMenu = useCallback((event: MapLayerMouseEvent) => {
+    const picked = event.lngLat;
+    if (picked && consumeLocationPick(picked.lat, picked.lng)) {
+      event.preventDefault?.();
+      event.originalEvent?.preventDefault?.();
+      return;
+    }
     if (!onLongPress) return;
     event.preventDefault?.();
     event.originalEvent?.preventDefault?.();
@@ -1185,13 +1090,6 @@ const MapComponentBase = (
     if (Number.isFinite(lat) && Number.isFinite(lng)) onLongPress(lat, lng);
   }, [onLongPress]);
 
-  /**
-   * Doigt maintenu sur la carte.
-   *
-   * `contextmenu` suffirait sur Android, mais Safari ne l'émet pas sur un
-   * canevas : on chronomètre donc le contact nous-mêmes. Tout mouvement annule
-   * — c'est alors un déplacement de carte, pas une désignation de point.
-   */
   const longPressTimerRef = useRef<number | null>(null);
 
   const cancelLongPress = useCallback(() => {
@@ -1214,7 +1112,46 @@ const MapComponentBase = (
     }, LONG_PRESS_MS);
   }, [cancelLongPress, onLongPress]);
 
-  useEffect(() => cancelLongPress, [cancelLongPress]);
+  const MOUSE_TOLERANCE_PX = 6;
+  const stopWatchingMouseRef = useRef<(() => void) | null>(null);
+
+  const handleMouseUp = useCallback(() => {
+    stopWatchingMouseRef.current?.();
+    stopWatchingMouseRef.current = null;
+    cancelLongPress();
+  }, [cancelLongPress]);
+
+  const handleMouseDown = useCallback((event: MapLayerMouseEvent) => {
+    handleMouseUp();
+    mouseLongPressFiredRef.current = false;
+    const original = event.originalEvent;
+    if (!onLongPress || !original || original.button !== 0) return;
+
+    const { lat, lng } = event.lngLat ?? {};
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    const startX = original.clientX;
+    const startY = original.clientY;
+    const onWindowMove = (move: MouseEvent) => {
+      if (Math.hypot(move.clientX - startX, move.clientY - startY) > MOUSE_TOLERANCE_PX) handleMouseUp();
+    };
+    window.addEventListener('mousemove', onWindowMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    stopWatchingMouseRef.current = () => {
+      window.removeEventListener('mousemove', onWindowMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      stopWatchingMouseRef.current?.();
+      stopWatchingMouseRef.current = null;
+      mouseLongPressFiredRef.current = true;
+      onLongPress(lat, lng);
+    }, LONG_PRESS_MS);
+  }, [handleMouseUp, onLongPress]);
+
+  useEffect(() => handleMouseUp, [handleMouseUp]);
 
   useEffect(() => {
     const map = mapRef.current?.getMap?.();
@@ -1226,13 +1163,6 @@ const MapComponentBase = (
     };
   }, [raiseStopsLayer, mapStyleUrl]);
 
-  /*
-   * Le réseau revient : la carte recharge ce qu'elle n'avait pas pu avoir.
-   *
-   * Ouverte sans connexion, elle restait noire même une fois le réseau revenu :
-   * MapLibre ne redemande ni un style ni une tuile qui ont échoué. Sans style,
-   * on le recharge en entier ; avec, on redemande les tuiles de chaque source.
-   */
   const reconnects = useReconnectCount();
   useEffect(() => {
     if (reconnects === 0) return;
@@ -1252,7 +1182,6 @@ const MapComponentBase = (
       try {
         map.refreshTiles(sourceId);
       } catch {
-        /* Une source sans tuiles (un tracé, des points) n'a rien à redemander. */
       }
     }
   }, [reconnects, mapStyleUrl]);
@@ -1266,14 +1195,6 @@ const MapComponentBase = (
     [visibleShared.voi, toSharedCollection],
   );
 
-  /**
-   * Épingles des véhicules partagés.
-   *
-   * Elles reflètent le regroupement réel de MapLibre, et non les points bruts :
-   * `querySourceFeatures` rend les amas tels qu'ils existent au zoom courant,
-   * ce qui évite d'empiler trente épingles au même endroit. La liste est
-   * recalculée à chaque déplacement, en même temps que le viewport.
-   */
   const [sharedLabels, setSharedLabels] = useState<SharedPinData[]>([]);
 
   const refreshSharedLabels = useCallback(() => {
@@ -1333,11 +1254,6 @@ const MapComponentBase = (
     return () => clearTimeout(timer);
   }, [refreshSharedLabels, mapState.bounds, visibleShared]);
 
-  /**
-   * Arrêts qui méritent une étiquette DOM : ceux visibles au zoom rapproché,
-   * plus celui survolé. C'est la seule liste qui produit encore des marqueurs
-   * HTML, et elle reste courte par construction.
-   */
   const labelledStops = useMemo(() => {
     if (focusedShared) return [];
 
@@ -1361,19 +1277,6 @@ const MapComponentBase = (
       <MapLibreMap
         ref={mapRef}
         mapStyle={mapStyleUrl}
-        /*
-         * La finesse du rendu suit la machine.
-         *
-         * MapLibre peint par défaut à la densité de l'écran, ce qui laisse une
-         * carte crénelée sur un écran d'ordinateur ordinaire — un pixel par
-         * point — alors que la machine derrière en peindrait quatre fois plus
-         * sans y penser. On lui donne donc une consigne, calculée une fois au
-         * chargement : voir `utils/deviceTier`.
-         *
-         * Posée ici plutôt que sur le composant : `pixelRatio` n'est pas dans
-         * les propriétés que react-map-gl déclare, et une propriété inconnue
-         * n'arriverait pas jusqu'au constructeur.
-         */
         onLoad={(event: any) => {
           try {
             event.target?.setPixelRatio?.(mapPixelRatio(detectDeviceTier()));
@@ -1403,10 +1306,13 @@ const MapComponentBase = (
         }}
         onMoveEnd={updateViewport}
         onZoomEnd={updateViewport}
-        interactiveLayerIds={[STOPS_LAYER_ID]}
+        interactiveLayerIds={[STOPS_LAYER_ID, STOPS_HIT_LAYER_ID]}
         cursor={hoveredStopId ? 'pointer' : undefined}
         onMouseMove={handleMapMouseMove}
-        onMouseLeave={resetStopHover}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMoveStart={handleMouseUp}
+        onMouseLeave={() => { handleMouseUp(); resetStopHover(); }}
         onClick={handleMapClick}
         onContextMenu={handleMapContextMenu}
         onTouchStart={handleTouchStart}
@@ -1414,12 +1320,17 @@ const MapComponentBase = (
         onTouchEnd={cancelLongPress}
         onTouchCancel={cancelLongPress}
       >
-        {/* ─── Arrêts (couche GPU) ───────────────────────────────────────
-            Déclarée en premier : c'est la seule source jamais démontée, donc
-            la seule sur laquelle les couches suivantes peuvent s'appuyer via
-            `beforeId` pour se placer dessous. Les arrêts restent ainsi
-            toujours au-dessus des tracés, comme du temps des marqueurs HTML. */}
-        <Source id="stops" type="geojson" data={stopsFeatureCollection}>
+        <Source id="stops" type="geojson" data={stopsFeatureCollection} promoteId="stopId">
+          <Layer
+            id={STOPS_HIT_LAYER_ID}
+            type="circle"
+            beforeId={ROAD_LABELS_LAYER_ID}
+            paint={{
+              'circle-radius': STOP_HIT_RADIUS_PX * (accessibilityMode ? 1.3 : 1),
+              'circle-color': '#000000',
+              'circle-opacity': 0,
+            }}
+          />
           <Layer
             id={STOPS_LAYER_ID}
             type="circle"
@@ -1427,32 +1338,26 @@ const MapComponentBase = (
             paint={{
               'circle-radius': [
                 'interpolate', ['linear'], ['zoom'],
-                10, ['case', ['get', 'selected'], 9, 6],
-                13, ['case', ['get', 'selected'], 11, 7],
-                16, ['case', ['get', 'selected'], 12, 8],
+                10, ['case', SELECTED_STATE, 9 * stopScale, 6 * stopScale],
+                13, ['case', SELECTED_STATE, 11 * stopScale, 7 * stopScale],
+                16, ['case', SELECTED_STATE, 12 * stopScale, 8 * stopScale],
               ] as any,
-              /* Un arrêt posé sur un tracé se dessine comme les pastilles d'un
-                 itinéraire : le disque reste clair, c'est l'anneau qui porte la
-                 couleur de la ligne. Un disque plein l'aurait fait disparaître
-                 dans le trait qu'il chevauche ; l'anneau, lui, se détache.
-                 Le jaune commun ne vaut plus que pour les arrêts qui ne sont
-                 sur aucun tracé affiché. */
               'circle-color': [
                 'case',
-                ['get', 'endpoint'], '#ffffff',
-                ['get', 'selected'], '#6B7280',
-                ['!=', ['get', 'lineColor'], ''], isDarkMode ? '#0f172a' : '#ffffff',
+                ENDPOINT_STATE, '#ffffff',
+                SELECTED_STATE, '#6B7280',
+                ['!=', ['get', 'lineColor'], ''], isDarkMode ? darkInk : '#ffffff',
                 '#facc15',
               ] as any,
               'circle-stroke-color': [
                 'case',
-                ['get', 'endpoint'], '#111827',
+                ENDPOINT_STATE, '#111827',
                 ['!=', ['get', 'lineColor'], ''], ['get', 'lineColor'],
                 '#ffffff',
               ] as any,
               'circle-stroke-width': [
                 'case',
-                ['get', 'selected'], 3,
+                SELECTED_STATE, 3,
                 ['!=', ['get', 'lineColor'], ''], 3,
                 2,
               ] as any,
@@ -1460,7 +1365,44 @@ const MapComponentBase = (
           />
         </Source>
 
-        {/* ─── Liaisons de covoiturage ─────────────────────────────────── */}
+        {showVoiZones && voiZones && (
+          <Source id="voi-zones" type="geojson" data={voiZones}>
+            <Layer
+              id="voi-zones-fill"
+              beforeId={STOPS_LAYER_ID}
+              type="fill"
+              filter={['!=', ['get', 'kind'], 'limit']}
+              paint={{
+                'fill-color': ['match', ['get', 'kind'], 'no-ride', '#ef4444', 'no-parking', '#f59e0b', '#3b82f6'] as any,
+                'fill-opacity': ['match', ['get', 'kind'], 'no-ride', 0.22, 'no-parking', 0.2, 0.3] as any,
+              }}
+            />
+            <Layer
+              id="voi-zones-line"
+              beforeId={STOPS_LAYER_ID}
+              type="line"
+              filter={['!=', ['get', 'kind'], 'limit']}
+              paint={{
+                'line-color': ['match', ['get', 'kind'], 'no-ride', '#ef4444', 'no-parking', '#f59e0b', '#3b82f6'] as any,
+                'line-width': ['match', ['get', 'kind'], 'parking', 1, 2] as any,
+                'line-opacity': 0.8,
+              }}
+            />
+            <Layer
+              id="voi-zones-limit"
+              beforeId={STOPS_LAYER_ID}
+              type="line"
+              filter={['==', ['get', 'kind'], 'limit']}
+              paint={{
+                'line-color': '#ef4444',
+                'line-width': 2.5,
+                'line-opacity': 0.85,
+                'line-dasharray': [3, 2],
+              }}
+            />
+          </Source>
+        )}
+
         {carpoolFeatureCollection.features.length > 0 && (
           <Source id="carpool-lines" type="geojson" data={carpoolFeatureCollection}>
             <Layer
@@ -1484,7 +1426,6 @@ const MapComponentBase = (
           </Source>
         )}
 
-        {/* L'étiquette de chaque liaison, au milieu de son tracé. */}
         {carpoolLabels.map(({ line, at }) => (
           <Marker key={`carpool-${line.code}`} longitude={at[0]} latitude={at[1]} anchor="center">
             <div
@@ -1496,15 +1437,11 @@ const MapComponentBase = (
                 whiteSpace: 'nowrap',
               }}
             >
-              Ligne {line.shortName}
+              {appLanguage() === 'en' ? 'Line' : 'Ligne'} {line.shortName}
             </div>
           </Marker>
         ))}
 
-        {/* ─── Line shapes ─────────────────────────────────────────────────
-            Two layers per line: a white "casing" underneath for legibility,
-            and the coloured line on top. The id 'line-shapes' is unique so
-            re-renders replace the source cleanly. */}
         {hasLines && (
           <Source id="line-shapes" type="geojson" data={linesFeatureCollection}>
             <Layer
@@ -1534,7 +1471,6 @@ const MapComponentBase = (
 
         {animatedRouteLineFeatureCollection && animatedRouteLineFeatureCollection.features.length > 0 && (
           <Source id="route-line" type="geojson" data={animatedRouteLineFeatureCollection}>
-            {/* Walking segments - dashed gray */}
             <Layer
               id="route-line-walk"
               beforeId={STOPS_LAYER_ID}
@@ -1548,7 +1484,6 @@ const MapComponentBase = (
                 'line-opacity': 0.6,
               }}
             />
-            {/* Transit lines - solid with line color */}
             <Layer
               id="route-line-transit-casing"
               beforeId={STOPS_LAYER_ID}
@@ -1576,12 +1511,6 @@ const MapComponentBase = (
           </Source>
         )}
 
-        {/* ─── Pastilles de l'itinéraire ───────────────────────────────────
-            Posées *au-dessus* des arrêts : elles tombent exactement sur les
-            mêmes clusters, elles doivent donc les recouvrir. Seuls les points
-            où l'on agit (monter, descendre, changer, terminus) sont marqués —
-            les arrêts simplement desservis ne le sont plus, ils noyaient le
-            tracé sur les longs tronçons. */}
         {routeStops && routeStops.features.length > 0 && (
           <Source id="route-stops" type="geojson" data={routeStops}>
             <Layer
@@ -1590,7 +1519,7 @@ const MapComponentBase = (
               filter={['==', ['get', 'kind'], 'transfer']}
               paint={{
                 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 4, 14, 6, 17, 8] as any,
-                'circle-color': isDarkMode ? '#0f172a' : '#ffffff',
+                'circle-color': isDarkMode ? darkInk : '#ffffff',
                 'circle-stroke-color': ['get', 'color'] as any,
                 'circle-stroke-width': 3,
                 'circle-opacity': routeDrawProgress,
@@ -1613,7 +1542,6 @@ const MapComponentBase = (
           </Source>
         )}
 
-        {/* Badge de la ligne empruntée, au milieu de chaque tronçon. */}
         {routeLineBadges && mapState.zoom >= 11.5 && routeLineBadges.map(badge => (
           <Marker
             key={`route-badge-${badge.legIndex}`}
@@ -1647,7 +1575,7 @@ const MapComponentBase = (
                 border: '3px solid #111827',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
               }}
-              title={`Départ: ${routeStart.label}`}
+              title={`${appLanguage() === 'en' ? 'Start' : 'Départ'} : ${routeStart.label}`}
             />
           </Marker>
         )}
@@ -1663,14 +1591,11 @@ const MapComponentBase = (
                 border: '3px solid #111827',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
               }}
-              title={`Arrivée: ${routeEnd.label}`}
+              title={`${appLanguage() === 'en' ? 'Destination' : 'Arrivée'} : ${routeEnd.label}`}
             />
           </Marker>
         )}
 
-        {/* ─── Mobilités partagées (couches GPU) ─────────────────────────
-            Placées sous les arrêts via `beforeId` : le réseau structurant
-            reste prioritaire à la lecture. */}
         {stopsLayerReady && sharedMobility.citiz.length > 0 && (
           <Source
             id="citiz"
@@ -1707,10 +1632,6 @@ const MapComponentBase = (
           </Source>
         )}
 
-        {/* Épingles d'opérateur : elles remplacent les pastilles une fois la
-            carte suffisamment zoomée, sur le même principe que les noms
-            d'arrêts. L'icône dit le type de véhicule, la pastille verte qu'au
-            moins un véhicule est chargé à bloc. */}
         {sharedLabels.map(pin => (
           <Marker
             key={pin.key}
@@ -1743,17 +1664,10 @@ const MapComponentBase = (
           </Marker>
         ))}
 
-        {/* ─── Étiquettes de nom (DOM) ───────────────────────────────────
-            Seules les étiquettes réellement affichées existent dans le DOM :
-            au zoom rapproché, ou celle de l'arrêt survolé. */}
         {labelledStops.map(stop => {
           const accessible = isStopAccessible(accessibleStops, stop);
           return (
           <Marker key={`label-${stop.id}`} longitude={stop.lon} latitude={stop.lat} anchor="bottom">
-            {/* En mode accessibilité, le fauteuil quitte le nom pour devenir une
-                pastille posée au-dessus : on la repère sans lire. Elle s'efface
-                pendant le geste — large comme elle est, elle masquerait les
-                arrêts voisins qu'on fait défiler. */}
             {accessibilityMode && accessible && (
               <div
                 className="mx-auto mb-1 flex items-center justify-center rounded-xl border-2"
@@ -1761,7 +1675,7 @@ const MapComponentBase = (
                   width: 34,
                   height: 34,
                   borderColor: '#22c55e',
-                  backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)',
+                  backgroundColor: isDarkMode ? 'rgba(var(--gl-ink-rgb), 0.94)' : 'rgba(255, 255, 255, 0.96)',
                   boxShadow: '0 2px 6px rgba(0, 0, 0, 0.2)',
                   opacity: isMapMoving ? 0.25 : 1,
                   transition: 'opacity 180ms ease-out',
@@ -1773,28 +1687,22 @@ const MapComponentBase = (
             )}
             <div
               style={{
-                marginBottom: '10px',
+                marginBottom: accessibilityMode ? '16px' : '10px',
                 whiteSpace: 'nowrap',
-                fontSize: '11px',
+                fontSize: accessibilityMode ? '15px' : '11px',
                 fontWeight: 600,
                 color: isDarkMode ? '#f8fafc' : '#0f172a',
-                backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.92)',
-                padding: '2px 6px',
-                borderRadius: '6px',
+                backgroundColor: isDarkMode ? 'rgba(var(--gl-ink-rgb), 0.92)' : 'rgba(255, 255, 255, 0.92)',
+                padding: accessibilityMode ? '4px 9px' : '2px 6px',
+                borderRadius: accessibilityMode ? '9px' : '6px',
                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
                 pointerEvents: 'none',
                 letterSpacing: '0.01em',
               }}
             >
-              {/* Le nom n'est jamais tronqué : c'est la seule information
-                  qui identifie l'arrêt. Ce sont les badges de lignes qui
-                  cèdent la place (3 maximum, puis un +N). */}
               <span className="inline-flex items-center gap-1.5">
                 <span>
                   {stop.name}
-                  {/* Le fauteuil finit le nom, comme dans le panneau de
-                      l'arrêt : c'est la même information, elle se lit au même
-                      endroit. */}
                   {accessible && !accessibilityMode && (
                     <FaWheelchair
                       className="ml-1 inline-block h-[0.85em] w-[0.85em] align-baseline text-blue-500"
@@ -1809,7 +1717,6 @@ const MapComponentBase = (
           );
         })}
 
-        {/* ─── Address marker (from geocoder) ───────────────────────────── */}
         {selectedAddress && (
           <Marker
             longitude={selectedAddress.lon}
@@ -1831,7 +1738,6 @@ const MapComponentBase = (
           </Marker>
         )}
 
-        {/* ─── User's current location ────────────────────────────────── */}
         {currentLocation && (
           <Marker longitude={currentLocation.lon} latitude={currentLocation.lat}>
             <div
@@ -1851,21 +1757,6 @@ const MapComponentBase = (
   );
 };
 
-/**
- * Épingle d'un point de mobilité partagée.
- *
- * Goutte à la couleur de l'opérateur, icône du type de véhicule dominant, et
- * compteur quand le point en regroupe plusieurs. La pastille verte signale
- * qu'au moins un véhicule est chargé à bloc : c'est l'information qui décide
- * d'aller le chercher ou non.
- */
-/**
- * Épingle d'un véhicule ou d'un amas.
- *
- * Mémoïsée : MapLibre repositionne chaque marqueur à chaque image, et sans
- * cette barrière React reconstruisait aussi son contenu — icône, ombre,
- * pastille de batterie — pour un résultat identique.
- */
 const SharedPin = memo(function SharedPin({ pin, highlighted = false }: { pin: SharedPinData; highlighted?: boolean }) {
   const color = pin.operator === 'citiz' ? CITIZ_COLOR : VOI_COLOR;
   const formFactor = pin.point
@@ -1887,7 +1778,6 @@ const SharedPin = memo(function SharedPin({ pin, highlighted = false }: { pin: S
       animate={{ scale: highlighted ? 1.55 : 1, y: 0, opacity: 1 }}
       transition={{ duration: 0.16, ease: 'easeOut' }}
     >
-      {/* Goutte : un carré aux angles arrondis sauf un, pivoté de 45°. */}
       <div
         style={{
           width: 30,
@@ -1901,7 +1791,6 @@ const SharedPin = memo(function SharedPin({ pin, highlighted = false }: { pin: S
           justifyContent: 'center',
         }}
       >
-        {/* Contre-rotation pour que l'icône reste droite. */}
         <VehicleGlyph formFactor={formFactor} size={17} color="#ffffff" rotated />
       </div>
 

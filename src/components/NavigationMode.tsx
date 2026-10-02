@@ -1,3 +1,4 @@
+import { formatDurationLabel } from '../utils/formatDuration';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
 import MapLibreMap, { Marker, Source, Layer } from 'react-map-gl/maplibre';
@@ -54,15 +55,6 @@ import {
   type WalkPreferences,
 } from '../services/walkPreferences';
 
-/*
- * Les deux fonds de carte, dans le bon sens.
- *
- * Ils étaient échangés : `019f7c76` s'appelle « MRESO LIGHT MODE » et peint un
- * fond presque blanc, `019f7c73` s'appelle « MRESO DARK MODE ». Le guidage
- * demandait donc le clair quand il se croyait sombre — ce qui passait inaperçu
- * tant que le thème n'était pas transmis, puisqu'il tombait toujours du même
- * côté. `Map.tsx` les associe déjà correctement.
- */
 const DARK_MAP_STYLE_URL =
   'https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl';
 const LIGHT_MAP_STYLE_URL =
@@ -91,40 +83,17 @@ interface NavigationModeProps {
   stops: any[];
   lineLookup?: Map<string, AllLinesLine> | null;
   currentLocation?: { lat: number; lon: number } | null;
-  
+
   itineraryOptions?: RouteItinerary[];
   onItinerarySelected?: (itinerary: RouteItinerary) => void;
-  /**
-   * Le tracé corrigé, tronçon par tronçon, tel que la carte le dessine.
-   *
-   * Indexé par le rang du tronçon dans `allLegs`. Le guidage suivait jusqu'ici
-   * la polyligne brute du routeur, qu'il redécodait lui-même : il indiquait
-   * donc un chemin qui n'était pas celui qu'on voyait à l'écran — sans recalage
-   * sur les arrêts, sans découpe des variantes de ligne, sans les géométries de
-   * référence. Un seul tracé pour la carte et pour le guidage.
-   */
   legPaths?: Map<number, Array<[number, number]>>;
-  
+
   onBoardVehicle?: (info: { lineShortName: string; boardingStop: string | null }) => void;
-  
-  /**
-   * Le trajet est terminé, et voici ce qu'il a produit : les passages mesurés et
-   * les questions répondues. L'écran de fin en fait des points, et il ne peut
-   * pas les compter lui-même puisqu'ils naissent ici.
-   */
+
   onArrived?: (contributions: { observations: number; answers: number; travellersHelped: number }) => void;
-  /**
-   * Le rythme de rafraîchissement des prochains passages, en millisecondes.
-   *
-   * Le guidage interrogeait l'arrêt une seule fois, à l'ouverture : dix minutes
-   * de marche plus tard, le carrousel affichait encore les minutes calculées au
-   * départ, et le « dans 3 minutes » qu'on lisait sur le quai datait du salon.
-   * C'est le même réglage que celui des fiches d'arrêt — l'usager l'a déjà
-   * choisi dans les paramètres, il n'y a pas de raison qu'il ne vaille pas ici.
-   */
   refreshIntervalMs?: number;
   isMobile?: boolean;
-  
+
   theme?: 'light' | 'dark';
 }
 
@@ -143,22 +112,12 @@ interface NavStep {
   path: Array<[number, number]>;
 }
 
-/** Vert, orange, rouge : la pastille des prochains passages. */
 const CONFIDENCE_COLOR: Record<CrowdConfidence['level'], string> = {
   good: '#22c55e',
   fair: '#f59e0b',
   poor: '#ef4444',
 };
 
-/**
- * Ce que la pastille veut dire, en une phrase.
- *
- * On nomme la raison, pas la note. « Rouge » ne se décide pas ; « des voyageurs
- * signalent un passage qui n'est pas venu », si. On retient donc le motif le
- * plus grave parmi ceux qui sont documentés — un fantôme prime un bus plein,
- * qui prime un retard — et l'on dit sur combien d'avis il repose, pour qu'on
- * sache si l'on croit une personne ou vingt.
- */
 function confidenceLabel(confidence: CrowdConfidence, isFr: boolean): string {
   const count = confidence.sample;
   const voices = isFr
@@ -183,48 +142,20 @@ function confidenceLabel(confidence: CrowdConfidence, isFr: boolean): string {
   return `${reason} · ${voices}`;
 }
 
-/**
- * À quelle distance du poteau on considère qu'on y est.
- *
- * Quatre mètres : la longueur d'un abribus. En deçà, on est dessous ou juste à
- * côté, et l'on voit ce que les questions de quai demandent — l'afficheur, le
- * banc, l'état du mobilier.
- */
 const STOP_ARRIVAL_M = 4;
 
-/**
- * Et en dessous de quelle allure on considère qu'on attend.
- *
- * 0,7 m/s, soit un quart de l'allure de marche : on ne franchit pas ce seuil en
- * traversant l'arrêt, seulement en s'y arrêtant. Le seuil n'est pas à zéro parce
- * que la vitesse est déduite de positions successives, et qu'elle ne l'atteint
- * jamais tout à fait, même immobile.
- */
 const STOP_STILL_MPS = 0.7;
 
-const PANEL_BG = '#0f172a';
+const PANEL_BG = 'rgb(var(--gl-ink-rgb))';
 const PANEL_BG_LIGHT = '#f1f5f9';
 
-/**
- * Les surfaces du guidage, selon le thème.
- *
- * Le panneau était sombre en toutes circonstances : sur une carte claire, il
- * ouvrait un trou noir en bas de l'écran, et l'application changeait d'identité
- * à mi-hauteur. Les six valeurs ci-dessous suffisent à tout habiller, et les
- * garder ensemble empêche qu'une seule soit oubliée le jour où l'on retouche.
- */
 function panelSkin(isLight: boolean) {
   return {
     background: isLight ? PANEL_BG_LIGHT : PANEL_BG,
-    /** Le texte principal. */
     ink: isLight ? '#0f172a' : '#ffffff',
-    /** Ce qui accompagne sans commander. */
     muted: isLight ? '#475569' : '#94a3b8',
-    /** Le fond des pastilles et des pilules. */
     chip: isLight ? '#e2e8f0' : '#1e293b',
-    /** Les filets et séparateurs. */
     rule: isLight ? 'rgba(15,23,42,0.12)' : 'rgba(255,255,255,0.10)',
-    /** La plaque de la carte retenue, et l'encre qui va dessus. */
     plate: isLight ? '#0f172a' : '#ffffff',
     plateInk: (lineColor: string) => (isLight ? onDark(lineColor) : onWhite(lineColor)),
   };
@@ -237,17 +168,8 @@ const FOLLOW_PITCH = 55;
 
 const FOLLOW_LOOK_AHEAD_METERS = 30;
 
-/** Délai sans geste au bout duquel la carte se recentre d'elle-même. */
 const FOLLOW_RESUME_MS = 8000;
 
-/**
- * Une carte de passage et le vide qui la suit, en pixels.
- *
- * Le carrousel s'aimante : la carte retenue vient toujours se caler à gauche,
- * juste au-dessus du rail du tronçon. Faire correspondre le pas de défilement à
- * la largeur réelle d'une carte est ce qui permet de retrouver, depuis un simple
- * `scrollLeft`, laquelle est arrivée à cette place.
- */
 const RUN_CARD_WIDTH = 104;
 const RUN_CARD_GAP = 8;
 const RUN_CARD_PITCH = RUN_CARD_WIDTH + RUN_CARD_GAP;
@@ -255,15 +177,6 @@ const RUN_CARD_PITCH = RUN_CARD_WIDTH + RUN_CARD_GAP;
 const METRES_PER_DEG_LAT = 111320;
 const METRES_PER_DEG_LON_AT_45 = 78710;
 
-/**
- * Projette une position sur le tracé de l'étape.
- *
- * Le GPS d'un téléphone dérive de dix à vingt mètres en ville, et sur un tram
- * il dérive *à côté des rails*. Comme on sait par où passe le véhicule, on
- * ramène le point sur le tracé : la pastille suit la ligne au lieu de flotter
- * dans les immeubles. Au-delà de `maxSnapMeters`, on renonce — l'usager n'est
- * probablement pas encore sur l'itinéraire.
- */
 function snapToPath(
   path: Array<[number, number]>,
   point: [number, number],
@@ -305,16 +218,6 @@ function snapToPath(
   return best;
 }
 
-/**
- * Position lissée entre deux relevés GPS.
- *
- * Le navigateur ne rend une position que toutes les quelques secondes : la
- * pastille sautait d'un bond à chaque relevé. On interpole entre l'ancienne et
- * la nouvelle sur `SMOOTHING_MS`, ce qui donne un déplacement continu — et
- * comme la caméra suit cette valeur lissée, elle glisse au lieu de tressauter.
- * Un saut de plus de 300 m (reprise du signal, tunnel) est appliqué d'un coup :
- * l'interpoler ferait traverser la ville à la pastille.
- */
 const SMOOTHING_MS = 900;
 const SMOOTHING_TELEPORT_METERS = 300;
 
@@ -401,14 +304,6 @@ function stepColor(step: NavStep): string {
   return step.color;
 }
 
-/**
- * Noir ou blanc sur un aplat de ligne.
- *
- * Le réseau va du bleu nuit de la B au jaune de certaines Flexo : écrire en
- * blanc par défaut rendrait le bandeau illisible sur les lignes claires. La
- * luminance perçue pondère le vert plus que le rouge, et le bleu à peine —
- * l'œil n'y est pas également sensible.
- */
 function readableOn(background: string): string {
   const hex = background.replace('#', '');
   if (hex.length !== 6) return '#ffffff';
@@ -418,16 +313,6 @@ function readableOn(background: string): string {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? '#0f172a' : '#ffffff';
 }
 
-/**
- * Éclaircit ou assombrit une couleur de ligne.
- *
- * Les cartes du carrousel se posent sur un aplat de ligne. Un fond noir
- * translucide les rendait grises et ternes, sans rapport avec le véhicule
- * qu'elles annoncent : on les tient dans la teinte, simplement décalée d'un cran
- * pour qu'elles se détachent. Le sens du décalage suit la clarté du fond —
- * éclaircir un bleu nuit, assombrir un jaune — sinon l'une des deux familles de
- * lignes se retrouverait avec des cartes invisibles.
- */
 function shadeColor(hex: string, amount: number): string {
   const clean = hex.replace('#', '');
   if (clean.length !== 6) return hex;
@@ -446,14 +331,6 @@ function shadeColor(hex: string, amount: number): string {
   );
 }
 
-/**
- * La couleur d'une ligne, assez foncée pour s'écrire sur du blanc.
- *
- * Les codes officiels sont faits pour porter du texte, pas pour en être : le
- * jaune de la D ou l'or des chronos, posés tels quels sur une plaque blanche,
- * ne se lisent pas. On les assombrit jusqu'à ce qu'ils tiennent, en gardant la
- * teinte — c'est elle qui identifie la ligne, pas sa clarté.
- */
 function onWhite(hex: string): string {
   const clean = hex.replace('#', '');
   if (clean.length !== 6) return '#0f172a';
@@ -468,13 +345,6 @@ function onWhite(hex: string): string {
   return '#' + channels.map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * La couleur d'une ligne, assez claire pour s'écrire sur du sombre.
- *
- * Le pendant de `onWhite`. Les lignes très foncées — le bleu nuit de la B — ne se
- * lisent pas sur une plaque anthracite : on les éclaircit jusqu'à ce qu'elles
- * tiennent, en gardant la teinte.
- */
 function onDark(hex: string): string {
   const clean = hex.replace('#', '');
   if (clean.length !== 6) return '#ffffff';
@@ -489,13 +359,6 @@ function onDark(hex: string): string {
   return '#' + channels.map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * Ramène un nom d'arrêt à sa forme comparable.
- *
- * Le calculateur et l'API du réseau ne les écrivent pas pareil : accents,
- * apostrophes, tirets, « St » contre « Saint », majuscules. On enlève tout ce
- * qui ne distingue pas deux arrêts entre eux.
- */
 function normalizeStopName(value: unknown): string {
   return String(value ?? '')
     .normalize('NFD')
@@ -505,18 +368,6 @@ function normalizeStopName(value: unknown): string {
     .trim();
 }
 
-/**
- * Retrouve l'identifiant d'un arrêt à partir de ce que le calculateur en dit.
- *
- * Son `stopId` est celui de son propre référentiel : passé tel quel à l'API du
- * réseau, il ne renvoie rien. Le nom, lui, est le même des deux côtés — c'est
- * le seul point commun sur lequel s'appuyer.
- *
- * La position sert d'arbitre et de filet : « Victor Hugo » existe deux fois sur
- * l'agglomération, et le nom peut avoir été renommé d'un côté sans l'autre. À
- * moins de cent mètres, deux arrêts qui portent le même nom sont le même arrêt ;
- * sans nom qui corresponde, le plus proche fait l'affaire.
- */
 function resolveStopId(
   name: unknown,
   lat: unknown,
@@ -668,7 +519,7 @@ function buildSteps(
   legPaths?: Map<number, Array<[number, number]>>
 ): NavStep[] {
   const legs = itinerary.allLegs || [];
-  
+
   const cleanPlace = (value: unknown): string | undefined => {
     const name = typeof value === 'string' ? value.trim() : '';
     if (!name || name === 'Origin' || name === 'Destination') return undefined;
@@ -683,7 +534,7 @@ function buildSteps(
     if (leg.mode === 'WALK') {
       return {
         kind: 'walk',
-        
+
         instruction: cleanPlace(leg.to?.name)
           ? `${isFr ? 'Rejoignez' : 'Walk to'} ${cleanPlace(leg.to?.name)}`
           : (isFr ? 'À pied' : 'Walk'),
@@ -736,11 +587,6 @@ function StepIcon({ step, className }: { step: NavStep; className: string }) {
   return <TransportModeIcon mode={step.mode} className={className} />;
 }
 
-/**
- * Mode guidage : carte en haut avec le tracé de l'étape en cours, panneau bas
- * dans le style GreLines (bandeau bleu marine, cartes de ligne colorées,
- * timeline en pointillés) — repris directement du design fourni.
- */
 export function NavigationMode({
   itinerary,
   isOpen,
@@ -766,48 +612,11 @@ export function NavigationMode({
   );
   const [index, setIndex] = useState(() => loadNavigationStep(itinerary));
   const [hasStarted, setHasStarted] = useState(false);
-  /** Les tronçons dont on a déplié la liste d'arrêts intermédiaires. */
   const [openLegs, setOpenLegs] = useState<Set<number>>(new Set());
-  /**
-   * Le passage retenu dans le carrousel.
-   *
-   * Zéro par défaut : le prochain, celui que le calculateur a choisi. On en
-   * désigne un autre quand on sait qu'on marchera plus lentement que prévu —
-   * c'est le seul cas où l'usager en sait plus que l'algorithme.
-   */
-  /**
-   * Le passage désigné, tronçon par tronçon.
-   *
-   * Un seul rang pour tout le trajet ne suffisait pas : la correspondance est
-   * justement celle dont on veut changer l'horaire, et c'est rarement le tronçon
-   * où l'on se trouve. Chaque tronçon garde donc son choix.
-   *
-   * Tant qu'un tronçon n'a rien de désigné, sa carte suit l'heure prévue et se
-   * recale quand la liste se recompose — l'arrivée du temps réel, un changement
-   * d'étape. Dès qu'il y a un choix, on n'y touche plus : il a une raison qu'on
-   * ignore.
-   */
   const [pickedRuns, setPickedRuns] = useState<Map<number, number>>(new Map());
   const [runs, setRuns] = useState<Departure[]>([]);
-  /**
-   * Les passages théoriques de la ligne à l'arrêt de montée, en minutes depuis
-   * maintenant.
-   *
-   * Le temps réel du réseau ne rend que trois passages : impossible d'en montrer
-   * un avant celui qu'on vise, alors que c'est justement le plus utile — savoir
-   * qu'un tram part deux minutes avant qu'on arrive fait presser le pas. La
-   * fiche horaires, elle, contient la journée entière.
-   */
   const [scheduleRuns, setScheduleRuns] = useState<Map<number, number[]>>(new Map());
-  /** Minuterie qui attend l'arrêt du défilement avant de retenir une carte. */
   const scrollSettleRef = useRef<number>(0);
-  /**
-   * Vrai pendant qu'un doigt fait défiler le carrousel.
-   *
-   * Le repositionnement automatique se relance à chaque rendu ; sans ce drapeau
-   * il ramenait la bande à la carte retenue au milieu du geste, et l'on avait
-   * l'impression que le carrousel résistait.
-   */
   const scrollingRef = useRef(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpedSheetOpen, setIsHelpedSheetOpen] = useState(false);
@@ -840,39 +649,15 @@ export function NavigationMode({
     scheduleContribution();
     return () => window.clearTimeout(timer);
   }, [isOpen, hasStarted, helpedStorageKey]);
-  /** Les moments déjà annoncés : un avis par étape franchie, pas un de plus. */
   const notifiedRef = useRef<Set<string>>(new Set());
-  /** L'arrivée ne se solde qu'une fois, même si la position oscille au bout. */
   const arrivedRef = useRef(false);
-  /**
-   * L'arrêt où l'on a constaté qu'on attendait.
-   *
-   * Une fois qu'on y est, on y reste : le GPS oscille de quelques mètres à
-   * l'arrêt, et sans cette mémoire les questions de quai clignoteraient au
-   * rythme du bruit de position.
-   */
   const atStopRef = useRef<string | null>(null);
-  /**
-   * L'allure et le goût pour la marche, relus au navigateur.
-   *
-   * Ils ne changent rien au trajet déjà calculé — on ne va pas le recalculer
-   * sous les pieds de quelqu'un qui marche — mais ils valent pour tous les
-   * suivants, et pour le panneau d'itinéraire qui lit le même endroit.
-   */
   const [walkPrefs, setWalkPrefs] = useState<WalkPreferences>(() => loadWalkPreferences());
 
   const updateWalkPrefs = (next: WalkPreferences) => {
     setWalkPrefs(next);
     saveWalkPreferences(next);
   };
-  /**
-   * Le jeu d'affluence, une fois chargé.
-   *
-   * On ne garde qu'un compteur pour forcer le rendu : les données vivent dans le
-   * service, qui les partage entre tous les tronçons. Le téléchargement fait
-   * quatre cent trente kilooctets compressés et ne se refait qu'une fois par
-   * jour, mais il arrive après le premier rendu — d'où ce déclencheur.
-   */
   const [occupancyReady, setOccupancyReady] = useState(0);
 
   useEffect(() => {
@@ -886,17 +671,6 @@ export function NavigationMode({
     };
   }, [isOpen]);
 
-  /**
-   * La sheet se pousse au doigt.
-   *
-   * Elle n'est pas accrochée au bas de l'écran : on la remonte pour lire tout le
-   * trajet, on la redescend pour rendre la carte à l'usager. Trois positions,
-   * parce qu'on vise mal en marchant et qu'un glissement approximatif doit
-   * quand même arriver quelque part de net.
-   *
-   * En bas, elle laisse quinze pour cent d'elle-même : assez pour savoir qu'elle
-   * est là et pour la rattraper, pas assez pour manger la carte.
-   */
   const sheetY = useMotionValue(0);
   const [viewportHeight, setViewportHeight] = useState(() =>
     typeof window === 'undefined' ? 800 : window.innerHeight
@@ -908,15 +682,6 @@ export function NavigationMode({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  /**
-   * La hauteur du contenu, mesuree.
-   *
-   * La sheet ne fait plus defiler son contenu : elle prend sa hauteur, et si le
-   * trajet compte trois correspondances elle depasse l'ecran. C'est voulu — on
-   * la pousse alors vers le haut, et le bandeau des horaires sort par le haut
-   * comme n'importe quel autre element. Un trajet ne se lit pas en deux gestes
-   * concurrents, l'un pour la sheet et l'autre pour son contenu.
-   */
   const [contentHeight, setContentHeight] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -931,39 +696,11 @@ export function NavigationMode({
   }, [isOpen, index, openLegs, runs, scheduleRuns]);
 
   const sheetHeight = Math.max(viewportHeight * 0.85, contentHeight + 96);
-  /**
-   * Les bornes du glissement, et la hauteur d'entrée.
-   *
-   * Ce ne sont plus des paliers : la sheet s'arrête où le doigt la laisse. Une
-   * aimantation impose une hauteur à quelqu'un qui en visait une autre, et sur
-   * un trajet à trois correspondances la bonne hauteur dépend de ce qu'on lit —
-   * elle-même ne se devine pas.
-   *
-   * La borne haute devient négative quand le contenu dépasse l'écran : c'est ce
-   * qui permet de tirer au-delà du bord supérieur pour lire le bas du trajet.
-   * Sans elle, un long trajet serait tronqué sans recours, puisque rien ne
-   * défile plus à l'intérieur.
-   */
   const sheetBounds = useMemo(() => {
     const sheetTop = viewportHeight * 0.15;
     return {
-      /*
-       * La borne haute est la seule à dépendre du contenu : elle devient négative
-       * quand le trajet dépasse l'écran, ce qui permet de tirer au-delà du bord
-       * supérieur pour lire le bas.
-       */
       top: Math.min(0, viewportHeight - sheetTop - sheetHeight),
-      /** Repos initial : un peu plus de la moitié de l'écran. */
       resting: viewportHeight * 0.45 - sheetTop,
-      /*
-       * Et la borne basse n'en dépend pas.
-       *
-       * Elle se calculait sur la hauteur du contenu, si bien qu'un trajet à trois
-       * correspondances la repoussait si loin que la sheet disparaissait sous
-       * l'écran, sans moyen de la rattraper. Elle se mesure désormais depuis le
-       * bas de l'écran : quelle que soit la longueur du trajet, il en reste
-       * toujours un sixième visible.
-       */
       bottom: viewportHeight * 0.84 - sheetTop,
     };
   }, [sheetHeight, viewportHeight]);
@@ -979,23 +716,11 @@ export function NavigationMode({
     return () => controls.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, itinerary]);
-  /**
-   * Suivi de position. Actif par défaut : une fois le trajet lancé, la carte
-   * reste centrée sur l'usager et tournée dans le sens de la marche. Dès qu'il
-   * déplace la carte lui-même, le suivi s'interrompt — c'est lui qui regarde —
-   * et un bouton le rétablit.
-   */
   const [isFollowing, setIsFollowing] = useState(true);
   const boardedTransitKeyRef = useRef<string | null>(null);
   const lastCameraLocationRef = useRef<[number, number] | null>(null);
   const animateRecenterRef = useRef(false);
 
-  /**
-   * Écran maintenu allumé, mais seulement une fois le trajet lancé.
-   *
-   * Tant qu'on consulte les étapes sans être parti, rien ne justifie de brûler
-   * de la batterie ni d'empêcher le téléphone de se verrouiller dans une poche.
-   */
   useWakeLock(isOpen && hasStarted);
 
   useEffect(() => {
@@ -1017,11 +742,6 @@ export function NavigationMode({
 
   const step = steps[Math.min(index, steps.length - 1)];
 
-  /**
-   * Position affichée : relevé GPS ramené sur le tracé de l'étape, puis lissé.
-   * C'est elle que suivent la pastille *et* la caméra, pour qu'elles ne se
-   * contredisent jamais.
-   */
   const snappedLocation = useMemo<[number, number] | null>(() => {
     if (!currentLocation) return null;
     const here: [number, number] = [currentLocation.lon, currentLocation.lat];
@@ -1030,15 +750,6 @@ export function NavigationMode({
 
   const smoothedLocation = useSmoothedPosition(snappedLocation);
 
-  /**
-   * La vitesse, reconstituée à partir des relevés successifs.
-   *
-   * L'API de géolocalisation expose bien un champ `speed`, mais il est nul ou
-   * absent sur la moitié des appareils. Deux points et le temps qui les sépare
-   * suffisent, et le lissage exponentiel absorbe les sauts de précision du GPS
-   * — sans lui, un relevé imprécis en ville donnerait quarante km/h à quelqu'un
-   * qui attend à un feu.
-   */
   const lastFixRef = useRef<{ lat: number; lon: number; at: number } | null>(null);
   const [speedMps, setSpeedMps] = useState(0);
 
@@ -1057,22 +768,6 @@ export function NavigationMode({
     setSpeedMps((current) => current * 0.6 + (metres / elapsed) * 0.4);
   }, [currentLocation?.lat, currentLocation?.lon]);
 
-  /**
-   * Le passage d'un tronçon au suivant, sans que personne n'appuie.
-   *
-   * Un bouton « étape suivante » demande à l'usager de dire à l'application ce
-   * qu'elle peut voir : il marche, puis il roule à trente à l'heure le long
-   * d'une voie de tram — elle sait très bien qu'il est monté.
-   *
-   * Deux indices se recoupent : la distance au tracé de chaque tronçon, et la
-   * vitesse. Marcher le long d'une ligne de bus et rouler dedans donnent la
-   * même position ; seule la vitesse les sépare. On pénalise donc les tronçons
-   * incohérents avec l'allure plutôt que de trancher sur la seule distance.
-   *
-   * On n'avance jamais à reculons, et il faut trente mètres d'écart net pour
-   * changer d'avis : aux correspondances, deux tracés se superposent, et sans
-   * cette marge l'étape clignoterait de l'un à l'autre à chaque relevé.
-   */
   useEffect(() => {
     if (!isOpen || !hasStarted || !currentLocation) return;
     const here: [number, number] = [currentLocation.lon, currentLocation.lat];
@@ -1113,14 +808,6 @@ export function NavigationMode({
     if (best !== index && (currentDistance - bestDistance > 30 || steps[best]?.kind === 'transit')) setIndex(best);
   }, [isOpen, hasStarted, currentLocation?.lat, currentLocation?.lon, speedMps, steps, index]);
 
-  /**
-   * Reprise automatique du suivi.
-   *
-   * Interrompre le recentrage dès qu'on touche la carte est nécessaire — on
-   * regarde parfois la suite du trajet. Mais l'oublier ainsi condamnait
-   * l'usager à retrouver le bouton « Recentrer » : passé quelques secondes sans
-   * geste, la carte revient d'elle-même sur lui.
-   */
   useEffect(() => {
     if (!isOpen || !hasStarted || isFollowing) return;
     const timer = window.setTimeout(() => setIsFollowing(true), FOLLOW_RESUME_MS);
@@ -1162,14 +849,6 @@ export function NavigationMode({
     });
   }, [isOpen, index, step, isMobile]);
 
-  /**
-   * Recentre et oriente la carte à chaque nouvelle position.
-   *
-   * Le cap est pris vers le point du tracé situé une trentaine de mètres plus
-   * loin : viser le point suivant immédiat ferait vibrer la boussole à chaque
-   * relevé GPS. Le décalage vers le bas place l'usager au tiers inférieur de
-   * l'écran, avec la suite du chemin devant lui.
-   */
   useEffect(() => {
     if (!isOpen || !hasStarted || !isFollowing || !smoothedLocation) return;
     const map = mapRef.current;
@@ -1209,20 +888,6 @@ export function NavigationMode({
     onBoardVehicle({ lineShortName: step.lineShortName, boardingStop });
   }, [hasStarted, index, itinerary.allLegs, step.kind, step.lineShortName, step.fromName, onBoardVehicle]);
 
-  /**
-   * Ce que le voyageur mesure sans le savoir.
-   *
-   * Le réseau ne publie aucune position de véhicule : les horaires affichés
-   * partout dans l'application sont théoriques. Mais quelqu'un en guidage est,
-   * lui, à bord — et quand il monte ou descend, il constate l'heure réelle d'un
-   * passage. Deux mesures par tronçon, ni devinées ni interpolées : l'écart au
-   * départ de l'arrêt de montée, puis l'écart à l'arrivée à l'arrêt de descente.
-   *
-   * Cela ne sert pas à celui qui voyage — son bus, il l'a. Cela sert à ceux qui
-   * l'attendent en aval, et à qui l'on pourra dire que ce passage-là a trois
-   * minutes de retard. Ce qui part ne désigne personne : une ligne, deux arrêts,
-   * deux horodatages. Ni position, ni identifiant, ni trajet complet.
-   */
   const observedRef = useRef<Set<string>>(new Set());
   const lastStepRef = useRef(0);
 
@@ -1275,26 +940,7 @@ export function NavigationMode({
     lastStepRef.current = index;
   }, [hasStarted, index, itinerary.allLegs, isOpen]);
 
-  /**
-   * Et symétriquement : ce que les autres ont constaté sur cette ligne.
-   *
-   * Le trajet affiché reste celui du calculateur — c'est lui qui connaît les
-   * fréquences et les correspondances. On y ajoute seulement l'écart médian
-   * relevé par les voyageurs de la dernière demi-heure, quand il y en a assez
-   * pour y croire. En l'absence d'observation, rien ne s'affiche et l'écran est
-   * exactement celui d'avant : on ne remplace pas une information manquante par
-   * une information inventée.
-   */
   const [lineDelay, setLineDelay] = useState<LineDelay | null>(null);
-  /**
-   * Le véhicule qui compte : celui qu'on va prendre, pas celui où l'on est.
-   *
-   * Pendant qu'on marche vers l'arrêt, l'étape en cours est la marche — et tout
-   * ce qui parle d'une ligne se taisait : horaires, note, retard constaté. C'est
-   * précisément le moment où l'on en a besoin, puisque c'est là qu'on décide de
-   * presser le pas. On vise donc le premier tronçon en transport à partir de la
-   * position actuelle, et non l'étape littérale.
-   */
   const activeTransitIndex = useMemo(() => {
     for (let i = index; i < steps.length; i++) {
       if (steps[i]?.kind === 'transit') return i;
@@ -1324,14 +970,6 @@ export function NavigationMode({
     };
   }, [isOpen, currentLine]);
 
-  /**
-   * La réputation de la ligne, telle que les voyageurs l'ont écrite.
-   *
-   * Les enquêtes ne servaient qu'à l'exploitant : on les collectait sans jamais
-   * les rendre. Les afficher ici referme la boucle — celui qui a répondu la
-   * semaine dernière voit à quoi sa réponse a servi, et celui qui monte sait à
-   * quoi s'attendre.
-   */
   const [reputation, setReputation] = useState<LineReputation | null>(null);
 
   useEffect(() => {
@@ -1348,30 +986,12 @@ export function NavigationMode({
     };
   }, [isOpen, currentLine]);
 
-  /**
-   * Les prochains passages à l'arrêt de montée, pour le carrousel.
-   *
-   * Le calculateur ne rend qu'un départ : celui qu'il a retenu. Or on marche
-   * rarement à la vitesse qu'il a supposée, et savoir qu'un autre suit dans six
-   * minutes change la façon dont on presse le pas. On interroge donc l'arrêt
-   * lui-même, et l'on ne garde que la ligne concernée.
-   */
   const boardingStopId = useMemo(() => {
     const from = (itinerary.allLegs as any)?.[activeTransitIndex]?.from;
     if (!from) return undefined;
     return resolveStopId(from.name, from.lat, from.lon, stops);
   }, [itinerary.allLegs, activeTransitIndex, stops]);
 
-  /*
-   * L'identifiant que rend le calculateur est celui du *poteau* — « SEM:2109 »
-   * pour le quai de La Poya en direction de L'Étoile. Or les passages
-   * s'interrogent par *cluster* : « SEM:GENLAPOYA », qui regroupe les deux
-   * quais. Les deux ne se déduisent pas l'un de l'autre — le cluster porte un
-   * mnémonique, le poteau un numéro — d'où l'impasse de l'identifiant brut.
-   *
-   * On le garde tout de même en second recours : sur les réseaux voisins, où
-   * les clusters se dérivent du code, il tombe juste.
-   */
   const rawBoardingStopId = (itinerary.allLegs as any)?.[activeTransitIndex]?.from?.stopId as
     | string
     | undefined;
@@ -1421,18 +1041,6 @@ export function NavigationMode({
 
     void load();
 
-    /*
-     * Puis au rythme choisi dans les paramètres.
-     *
-     * Les minutes du carrousel comptent à rebours depuis l'instant de la
-     * requête : sans relance, elles décrivaient un passage qui, dix minutes de
-     * marche plus tard, était parti depuis longtemps. On reprend donc le même
-     * réglage que les fiches d'arrêt — quinze secondes à deux minutes, au
-     * choix — plutôt qu'un rythme fixe imposé ici.
-     *
-     * La borne basse n'est pas de la prudence : un intervalle mal transmis
-     * (zéro, NaN) déclencherait une requête par image.
-     */
     const period = Number.isFinite(refreshIntervalMs) ? Math.max(5000, refreshIntervalMs) : 30000;
     const timer = window.setInterval(() => void load(), period);
 
@@ -1442,18 +1050,6 @@ export function NavigationMode({
     };
   }, [isOpen, currentLine, boardingStopId, rawBoardingStopId, refreshIntervalMs]);
 
-  /**
-   * La confiance qu'on peut accorder aux prochains passages, ici et maintenant.
-   *
-   * Le réseau publie des horaires et une affluence moyenne. Il ne dit ni si le
-   * véhicule qui arrive sera plein, ni si la course annoncée existe vraiment —
-   * ces passages fantômes qu'on attend dix minutes pour rien. Personne ne le
-   * sait à part ceux qui sont sur le quai, et ceux-là répondent déjà aux
-   * questions du bandeau : leurs réponses reviennent ici en une pastille.
-   *
-   * Rien ne s'affiche tant que deux personnes au moins n'ont rien dit. Une
-   * pastille sur un seul avis serait une rumeur affichée comme une mesure.
-   */
   const [confidence, setConfidence] = useState<CrowdConfidence | null>(null);
 
   useEffect(() => {
@@ -1484,16 +1080,6 @@ export function NavigationMode({
     const legs = (itinerary.allLegs as any[]) ?? [];
     const controller = new AbortController();
 
-    /*
-     * On charge la fiche de chaque tronçon, pas seulement celui qu'on prend.
-     *
-     * Les horaires n'apparaissaient qu'une fois arrivé à la ligne concernée, si
-     * bien qu'on ne pouvait pas se représenter la suite du voyage — or c'est en
-     * préparant qu'on veut savoir si la correspondance passe toutes les huit
-     * minutes ou toutes les demi-heures. Les fiches sont mises en cache par
-     * ligne, donc trois correspondances coûtent trois requêtes une fois par
-     * heure, pas à chaque rendu.
-     */
     void (async () => {
       const collected = new Map<number, number[]>();
 
@@ -1535,31 +1121,8 @@ export function NavigationMode({
     return () => controller.abort();
   }, [isOpen, itinerary.allLegs]);
 
-  /**
-   * Ce que le carrousel affiche vraiment.
-   *
-   * Trois cartes, toujours. Quand le réseau répond, ce sont ses passages, temps
-   * réel compris ; quand il n'a rien pour cet arrêt, il reste l'horaire retenu
-   * par le calculateur, marqué « planifié » ; et quand il ne reste rien du tout,
-   * la carte affiche un tiret.
-   *
-   * Faire disparaître le carrousel faute de données déplaçait tout le bloc d'un
-   * coup, et l'on ne savait pas si l'information manquait ou si elle n'existait
-   * pas. Un tiret est une réponse ; une absence n'en est pas une.
-   *
-   * Ce hook doit rester au-dessus du premier `return` : un `useMemo` franchi
-   * conditionnellement fait planter React au rendu suivant.
-   */
   type RunCard = { minutes: number | null; scheduled: boolean; level: 0 | 1 | 2 | 3 };
 
-  /**
-   * L'affluence attendue pour un passage donné.
-   *
-   * Elle dépend de l'heure : le même tram est vide à 10 h et plein à 8 h 15. On
-   * interroge donc le profil à l'heure du passage, pas à l'heure qu'il est —
-   * c'est ce qui rend le carrousel utile, puisqu'en choisissant un départ plus
-   * tard on voit la charge changer.
-   */
   const levelForRun = (legIndex: number, minutesFromNow: number | null): 0 | 1 | 2 | 3 => {
     if (minutesFromNow === null) return 0;
     void occupancyReady;
@@ -1585,15 +1148,6 @@ export function NavigationMode({
     [itinerary.allLegs]
   );
 
-  /**
-   * Arriver déclenche l'écran de fin, sans que personne n'appuie.
-   *
-   * La dernière étape teinte déjà toute la carte en vert : c'est le signal que le
-   * trajet est fini, et attendre que l'usager ferme le guidage pour le lui dire
-   * laissait le moment passer. L'écran monte donc par-dessus le vert, un peu
-   * après lui — le lavis met une demi-seconde à basculer, et un écran qui
-   * monterait pendant ce fondu masquerait ce qu'il vient couronner.
-   */
   useEffect(() => {
     if (!isOpen || !hasStarted || arrivedRef.current) return;
     if (steps.length === 0 || index < steps.length - 1) return;
@@ -1612,14 +1166,6 @@ export function NavigationMode({
     return () => window.clearTimeout(timer);
   }, [isOpen, hasStarted, index, steps.length, answerCount, travellersHelpedNow, helpedStorageKey, onArrived]);
 
-  /**
-   * Les avis de trajet, à chaque étape franchie.
-   *
-   * L'étape courante est déjà déduite de la position et de l'allure : il suffit
-   * de dire à voix haute ce que l'écran affiche déjà, au moment où il change. On
-   * ne notifie pas les arrêts intermédiaires — un téléphone qui sonne à chaque
-   * quai finit en mode silencieux, et l'on perd aussi les avis qui comptaient.
-   */
   useEffect(() => {
     if (!isOpen || !hasStarted) return;
     const key = `${index}`;
@@ -1659,23 +1205,6 @@ export function NavigationMode({
   const delayMinutes = lineDelay ? Math.round(lineDelay.seconds / 60) : 0;
   const showDelay = Boolean(lineDelay) && delayMinutes !== 0;
 
-  /**
-   * L'arrêt où l'on attend — et seulement quand on y attend vraiment.
-   *
-   * Les questions de quai partaient dès que l'étape était une marche vers un
-   * arrêt : on les recevait donc en marchant, huit cents mètres avant d'y être,
-   * alors qu'elles portent sur un abri et un afficheur qu'on n'a pas encore
-   * sous les yeux. On ne peut pas y répondre, et on ne peut même pas les lire.
-   *
-   * Il faut donc deux conditions, pas une : être arrivé — quelques mètres du
-   * poteau, la distance en deçà de laquelle le GPS ne distingue plus rien — et
-   * s'être arrêté de marcher. La seconde compte autant que la première : passer
-   * devant un arrêt n'est pas y attendre.
-   *
-   * Une fois posé, on reste posé. Le GPS oscille de quelques mètres à l'arrêt,
-   * et un questionnaire qui apparaît et disparaît au gré du bruit serait pire
-   * que celui qui arrivait trop tôt.
-   */
   const waitingStop = (() => {
     if (step?.kind !== 'walk') return null;
     const next = steps[index + 1];
@@ -1725,30 +1254,6 @@ export function NavigationMode({
   const onRestore = () => undefined;
   const showCompact = false;
 
-  /**
-   * Les passages d'un tronçon, sur une fenêtre donnée.
-   *
-   * `extraMinutes` allonge la fin de la fenêtre : choisir un départ plus tard
-   * repousse l'heure d'arrivée, et il faut alors des cartes au-delà de celles
-   * qu'on avait calculées. La fonction reste pure pour qu'on puisse l'appeler
-   * deux fois — une pour trouver le défaut, une pour la fenêtre définitive —
-   * sans risquer une récursion.
-   */
-  /**
-   * Dans combien de minutes on sera sur le quai de ce tronçon.
-   *
-   * C'est la question qui commande tout le carrousel : les passages avant cette
-   * minute-là sont hors d'atteinte, celui qui la suit est celui qu'on prendra.
-   *
-   * Trois sources, de la plus sûre à la plus approximative. L'heure de départ du
-   * tronçon d'abord. À défaut, la fin du tronçon précédent — on est sur le quai
-   * dès qu'on descend. À défaut encore, on additionne les durées depuis
-   * maintenant.
-   *
-   * Ce dernier recours n'est pas de la coquetterie : quand `startTime` manquait,
-   * la fenêtre repartait de zéro et l'on proposait la correspondance « dans deux
-   * minutes » à quelqu'un qui avait vingt minutes de bus devant lui.
-   */
   const boardingInMinutes = (legIndex: number): number => {
     const legs = (itinerary.allLegs as any[]) ?? [];
     const leg = legs[legIndex];
@@ -1773,10 +1278,6 @@ export function NavigationMode({
     const endAt = leg?.endTime ? new Date(leg.endTime).getTime() : NaN;
     const plannedMinutes = boardingInMinutes(legIndex);
 
-    /*
-     * Le temps réel d'abord : le réseau n'en rend que trois, mais ce sont les
-     * seuls qui savent qu'un tram a du retard.
-     */
     const liveMinutes: number[] = [];
     if (legIndex === activeTransitIndex) {
       for (const run of runs) {
@@ -1784,12 +1285,6 @@ export function NavigationMode({
       }
     }
 
-    /*
-     * Puis la fiche horaires, de maintenant à la fin du tronçon. On ne remonte
-     * pas avant l'instant présent — un passage déjà parti ne se rattrape pas —
-     * et l'on s'arrête à l'heure où l'on descendra, ce qui donne assez de
-     * cartes pour changer d'avis sans en donner à l'infini.
-     */
     const cards: RunCard[] = liveMinutes.map((minutes) => ({
       minutes,
       scheduled: false,
@@ -1798,29 +1293,7 @@ export function NavigationMode({
 
     const schedule = scheduleRuns.get(legIndex) ?? [];
     if (schedule.length > 0) {
-      /*
-       * Pour le tronçon qu'on prend : de maintenant à l'heure de descente, avec
-       * au moins une heure de battement. S'arrêter à l'arrivée paraissait logique
-       * et ne donnait rien — quinze minutes de tram sur une ligne aux huit
-       * minutes, c'est deux cartes, donc aucun choix.
-       *
-       * Pour les correspondances à venir : autour de leur propre horaire, pas
-       * autour de maintenant. Un changement prévu dans quarante minutes n'a que
-       * faire des passages de cette minute-ci ; ce qu'on veut savoir, c'est la
-       * fréquence qu'on trouvera en arrivant.
-       */
       const isActive = legIndex === activeTransitIndex;
-      /*
-       * On remonte avant l'heure d'arrivée sur le quai.
-       *
-       * Ces passages-là sont hors d'atteinte au rythme prévu, et c'est justement
-       * ce qui les rend utiles : voir qu'un tram part six minutes avant celui
-       * qu'on vise, c'est savoir qu'on peut le prendre en marchant plus vite. Les
-       * cacher rendait le carrousel muet sur la seule décision qui reste à
-       * l'usager.
-       *
-       * Une demi-heure en arrière suffit : au-delà, c'est un autre trajet.
-       */
       const from = isActive ? 0 : Math.max(0, plannedMinutes - 30);
       const until = isActive
         ? Math.max(60, Math.round((endAt - Date.now()) / 60000)) + extraMinutes
@@ -1844,12 +1317,6 @@ export function NavigationMode({
     return cards.sort((a, b) => (a.minutes ?? 0) - (b.minutes ?? 0)).slice(0, 14);
   };
 
-  /**
-   * Le passage retenu par défaut : celui de l'heure où l'on arrivera au quai.
-   *
-   * Le premier de la liste serait le plus proche de maintenant, ce qui n'a aucun
-   * sens quand on a dix minutes de marche devant soi.
-   */
   const closestTo = (cards: RunCard[], target: number): number => {
     let best = 0;
     let gap = Infinity;
@@ -1871,10 +1338,6 @@ export function NavigationMode({
   const defaultRunIndex = closestTo(baseCards, plannedBoardingMinutes);
   const activeRun = pickedRuns.get(activeTransitIndex) ?? defaultRunIndex;
 
-  /*
-   * Le décalage du passage retenu allonge la fenêtre : plus on part tard, plus
-   * on descend tard, et plus il y a de départs à montrer derrière.
-   */
   const pickedShiftMinutes = (() => {
     const chosen = baseCards[activeRun]?.minutes;
     const reference = baseCards[defaultRunIndex]?.minutes;
@@ -1888,16 +1351,6 @@ export function NavigationMode({
   const runsForLeg = (legIndex: number): RunCard[] =>
     legIndex === activeTransitIndex ? activeCards : cardsFor(legIndex, 0);
 
-  /**
-   * La carte mise en avant, tronçon par tronçon.
-   *
-   * Elle se lisait de la même variable pour tous les blocs : la troisième carte
-   * d'une correspondance paraissait retenue parce que c'était le rang choisi sur
-   * le tronçon en cours, ce qui ne voulait rien dire. Chaque tronçon désigne
-   * désormais l'horaire auquel on devrait y arriver — et voir cet horaire-là
-   * surligné est ce qui montre qu'on peut prendre celui d'avant si l'on est en
-   * avance.
-   */
   const selectedIndexFor = (legIndex: number, cards: RunCard[]): number => {
     const chosen = pickedRuns.get(legIndex);
     if (chosen != null) return Math.min(chosen, Math.max(0, cards.length - 1));
@@ -1912,17 +1365,6 @@ export function NavigationMode({
     });
   };
 
-  /** L'heure d'un point du trajet, décalée du passage retenu s'il y a lieu. */
-  /**
-   * Le décalage propre à un tronçon, en millisecondes.
-   *
-   * Chaque tronçon se décale de l'écart entre le passage retenu et celui qu'on
-   * devait prendre. Le décalage ne se propage pas aux tronçons suivants : recaler
-   * la suite du voyage demanderait de recalculer l'itinéraire, et personne ne
-   * peut affirmer qu'un tram pris huit minutes plus tôt donne la même
-   * correspondance. Chaque bloc dit donc l'heure de *son* passage, ce qui est
-   * exact, plutôt qu'une heure d'arrivée finale qui serait devinée.
-   */
   const shiftFor = (legIndex: number): number => {
     const cards = runsForLeg(legIndex);
     const chosen = cards[selectedIndexFor(legIndex, cards)]?.minutes;
@@ -1943,10 +1385,6 @@ export function NavigationMode({
 
   const lineChips = (isCurrent: boolean) => (
     <div className="-mx-3 mb-2.5 flex items-center gap-2 overflow-x-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {/* Le sans-contact vaut sur tout le réseau : on monte et l'on paie avec sa
-          carte bancaire, sans titre acheté d'avance. Beaucoup l'ignorent, et
-          c'est précisément à l'approche du quai que l'information sert — donc
-          sur chaque véhicule du trajet, pas seulement celui qu'on prend. */}
       <span className={chipClass}>
         <CreditCardIcon className="h-3.5 w-3.5 opacity-80" />
         {isFr ? 'Sans contact' : 'Contactless'}
@@ -1959,10 +1397,6 @@ export function NavigationMode({
         <TicketIcon className="h-3.5 w-3.5 opacity-80" />
         {isFr ? 'Acheter un ticket' : 'Buy a ticket'}
       </button>
-      {/* La note ne s'affiche que sur le véhicule en cours : c'est la seule
-          ligne dont on soit allé chercher les avis. L'inventer pour les autres
-          coûterait une requête par correspondance, pour une information qu'on
-          ne regarde pas encore. */}
       {isCurrent && reputation?.rating != null && (
         <span
           className={chipClass}
@@ -2030,7 +1464,6 @@ export function NavigationMode({
   };
 
   const arriveLabel = itinerary.arr;
-  /** L'heure de départ, prise sur le premier tronçon plutôt que sur l'horloge. */
   const departureLabel = formatClock((itinerary.allLegs as any)?.[0]?.startTime);
 
   return (
@@ -2043,7 +1476,6 @@ export function NavigationMode({
         transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
         style={{ fontFamily: "Inter, 'Helvetica Neue', sans-serif" }}
       >
-        {/* Carte */}
         <div className="absolute inset-0">
           <MapLibreMap
             ref={mapRef}
@@ -2160,17 +1592,10 @@ export function NavigationMode({
           </MapLibreMap>
         </div>
 
-        {/* Le lavis de ligne.
-            C'est le geste qui manquait : teinter *toute* la carte de la couleur
-            de la ligne, et pas seulement y poser un tracé coloré. On sait quel
-            véhicule on suit avant même d'avoir lu quoi que ce soit — et le jour
-            où l'on change de correspondance, l'écran entier bascule de teinte.
-            Le fondu d'une demi-seconde rend ce basculement lisible plutôt que
-            brutal. */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-transparent" />
 
         <div
-          className="pointer-events-none absolute left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-0 flex -translate-x-1/2 flex-col items-center"
+          className="pointer-events-none absolute left-1/2 top-[max(1rem,var(--gl-safe-top))] z-0 flex -translate-x-1/2 flex-col items-center"
           style={{ fontFamily: "Inter, 'Helvetica Neue', sans-serif" }}
         >
           <motion.div
@@ -2180,10 +1605,10 @@ export function NavigationMode({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
           >
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: skin.muted }}>
+            <p className="mb-1 text-[0.625rem] font-semibold uppercase tracking-[0.14em]" style={{ color: skin.muted }}>
               {isFr ? "Heure d'arrivée" : 'Arrival time'}
             </p>
-            <p className="text-[28px] font-black leading-none tabular-nums text-white">
+            <p className="text-[1.75rem] font-black leading-none tabular-nums text-white">
               {arriveLabel}
             </p>
           </motion.div>
@@ -2207,7 +1632,7 @@ export function NavigationMode({
               {AVATARS.slice(0, Math.min(3, travellersHelpedNow)).map((avatar, index) => (
                 <motion.span
                   key={avatar}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-white text-[11px]"
+                  className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-white text-[0.6875rem]"
                   style={{ marginLeft: index === 0 ? 0 : -8, zIndex: 3 - index }}
                   aria-hidden="true"
                   initial={{ opacity: 0, scale: 0.65 }}
@@ -2228,21 +1653,8 @@ export function NavigationMode({
           </AnimatePresence>
         </div>
 
-        {/* Le numéro de ligne en très grand, à même la carte.
-            C'est la première chose qu'on cherche des yeux en levant le téléphone
-            — pas une instruction, juste : quel véhicule. Il est posé sur la
-            carte sans cartouche, comme une girouette, et l'emplacement en haut
-            à gauche reste libre pour le rang GreLiens le jour où il existera. */}
 
-        {/* Les commandes, empilées en colonne de pastilles rondes à droite :
-            fermer, valider son titre, recentrer. Une colonne se balaye du pouce
-            sans quitter la carte des yeux, là où une barre horizontale oblige à
-            viser. */}
-        {/* La croix reste au-dessus de tout : quitter doit rester possible
-            quelle que soit la hauteur de la sheet. Les deux autres passent
-            dessous et se laissent recouvrir — on ne cherche pas ses réglages
-            pendant qu'on lit son trajet. */}
-        <div className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-30 flex flex-col gap-2.5">
+        <div className="absolute right-4 top-[max(1rem,var(--gl-safe-top))] z-30 flex flex-col gap-2.5">
           <button
             onClick={handleClose}
             className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
@@ -2254,11 +1666,7 @@ export function NavigationMode({
 
         </div>
 
-        {/* Les commandes secondaires, sous le calque de la sheet : elle les
-            recouvre quand on la remonte. C'est voulu — on ne cherche pas ses
-            réglages pendant qu'on lit son trajet, et les laisser flotter
-            au-dessus donnait trois pastilles posées sur le texte. */}
-        <div className="absolute right-4 top-[calc(max(1rem,env(safe-area-inset-top))+3.5rem)] z-0 flex flex-col gap-2.5">
+        <div className="absolute right-4 top-[calc(max(1rem,var(--gl-safe-top))+3.5rem)] z-0 flex flex-col gap-2.5">
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-800 shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
@@ -2267,8 +1675,6 @@ export function NavigationMode({
             <Cog6ToothIcon className="h-5 w-5" />
           </button>
 
-          {/* Acheter son titre : le moment où l'on en a besoin est celui où l'on
-              marche vers l'arrêt. Sans transport en commun, rien à valider. */}
           {itinerary.lineKeys?.length > 0 && (
             <button
               onClick={() => openExternal(PASS_SHOP_URL)}
@@ -2301,19 +1707,6 @@ export function NavigationMode({
           </AnimatePresence>
         </div>
 
-        {/* ─── La sheet de trajet ─────────────────────────────────────────
-            Plus d'étapes, plus de « suivant ». Le trajet entier tient là, du
-            premier pas au dernier, et l'on y descend comme on descendrait la
-            liste de ce qu'on va faire : points gris pour la marche, bloc plein
-            de la couleur de la ligne pour chaque véhicule, et le motif se
-            répète autant de fois qu'il y a de correspondances.
-
-            Avancer d'un pas ne demandait rien de plus que de regarder — mais il
-            fallait appuyer, et donc sortir le téléphone à chaque changement.
-            Tout voir d'un coup coûte un défilement et rend l'appui inutile.
-
-            La sheet n'a pas de bord : un dégradé la raccorde à la carte, qui
-            continue de glisser derrière. */}
         <motion.div
           style={{ y: sheetY, height: sheetHeight }}
           drag="y"
@@ -2327,20 +1720,13 @@ export function NavigationMode({
             style={{ background: `linear-gradient(to bottom, transparent, ${skin.background})` }}
           />
 
-          {/* ── Le widget d'horaires ─────────────────────────────────────
-              Il est posé à cheval sur le dégradé, moitié sur la carte moitié
-              sur la sheet. Le dégradé seul ne servait à rien : c'était un vide
-              qu'on regardait. Lui donner à porter les deux heures du trajet le
-              justifie, et l'on obtient au passage l'information la plus
-              demandée — quand je pars, quand j'arrive — sans avoir à déplier
-              quoi que ce soit. */}
           <div className="absolute inset-x-3 top-3 z-20">
             <div
               className="rounded-2xl border px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.25)]"
               style={{ borderColor: skin.rule, backgroundColor: skin.background }}
             >
               <p
-                className="text-[22px] font-black leading-none tracking-tight"
+                className="text-[1.375rem] font-black leading-none tracking-tight"
                 style={{ color: skin.ink }}
               >
                 {departureLabel
@@ -2359,15 +1745,10 @@ export function NavigationMode({
                   </span>
                 </p>
                 <p className="tabular text-sm" style={{ color: skin.muted }}>
-                  {itinerary.dur}
+                  {formatDurationLabel(itinerary.dur)}
                 </p>
               </div>
 
-              {/* ── La jauge ──────────────────────────────────────────────
-                  Le trajet vu de côté, en une bande : un segment par tronçon, à
-                  sa couleur, les petits points gris pour la marche entre deux.
-                  Ce qui reste à faire est en retrait — on voit où l'on en est
-                  sans compter les blocs. */}
               <div className="mt-2.5 flex items-center gap-1">
               {steps.map((item, i) => {
                 const done = i <= index;
@@ -2444,31 +1825,11 @@ export function NavigationMode({
 
           </div>
 
-          {/* On ne fait défiler le contenu qu'une fois la sheet en haut. Ailleurs,
-              tout glissement lui appartient — sans quoi le doigt ne saurait
-              jamais s'il déplace la sheet ou son contenu.
-
-              Pas de padding en haut : la première marche démarre sous le widget
-              et en ressort, si bien que le fil du trajet paraît passer derrière
-              lui plutôt que commencer en dessous. */}
-          {/* Pas de marge horizontale ici : c'est ce conteneur qui rogne, et une
-              marge de seize pixels coupait le carrousel avant le bord de
-              l'écran. Les marges sont donc portées par chaque élément, et le
-              carrousel s'en dispense pour aller jusqu'au bord. */}
           <div
             ref={contentRef}
             className="flex-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
             style={{ background: skin.background }}
           >
-            {/* ── La timeline verticale ───────────────────────────────────
-                Le trajet complet, dans l'ordre où on le vivra. La marche est un
-                filet de points gris ; chaque véhicule est un bloc plein de sa
-                couleur, sans marge, qui va d'un bord à l'autre. Le motif se
-                répète : points, bloc, points, bloc.
-
-                Toucher un bloc le désigne comme l'étape en cours — c'est ce qui
-                remplace le bouton « suivant », et ça sert surtout quand le GPS
-                se perd ou qu'on prend le véhicule d'après. */}
             <div className="mt-4 space-y-0">
               {steps.map((item, i) => {
                 const isCurrent = i === index;
@@ -2478,13 +1839,6 @@ export function NavigationMode({
                 if (item.kind === 'walk') {
                   return (
                     <div key={i} className="flex items-center gap-3 py-2 pl-3">
-                      {/* Le filet de marche. Six points suffisent : il s'agit de
-                          signifier un intervalle, pas de le mesurer.
-
-                          La colonne fait la même largeur que le rail des lignes
-                          et démarre au même endroit : le trajet se lit comme un
-                          seul fil du départ à l'arrivée, pas comme des blocs
-                          posés côte à côte. */}
                       <span className="flex w-7 flex-col items-center gap-1.5">
                         {[0, 1, 2, 3, 4, 5].map((d) => (
                           <span
@@ -2529,27 +1883,11 @@ export function NavigationMode({
                     style={{ opacity: i < index ? 0.55 : 1 }}
                   >
 
-                    {/* Le fond de ligne remonte derrière les cartes.
-                        Sans lui, les cartes flottaient sur le fond sombre de la
-                        sheet et paraissaient appartenir à celle-ci ; posées sur
-                        la teinte de la ligne, elles appartiennent au véhicule.
-                        Il s'arrête à mi-hauteur du carrousel, pour que les
-                        cartes en dépassent encore par le haut. */}
                     <span
                       aria-hidden
                       className="absolute bottom-0 left-4 right-4 rounded-2xl"
                       style={{ backgroundColor: stepColor(item), top: '5.75rem' }}
                     />
-                    {/* ── Le carrousel des passages ─────────────────────────
-                        Le calculateur n'a retenu qu'un départ. Or on marche
-                        rarement à la vitesse qu'il a supposée : voir le suivant
-                        permet de choisir soi-même, plutôt que de courir.
-
-                        Le premier est aligné sur le rail et sélectionné par
-                        défaut — c'est celui du trajet calculé. Les cartes
-                        débordent de dix pixels au-dessus du bloc : elles
-                        appartiennent au véhicule, et ce débord dit qu'elles
-                        arrivent de l'extérieur du trajet calculé. */}
                     {(
                       <div
                         onPointerDownCapture={(e) => {
@@ -2561,13 +1899,6 @@ export function NavigationMode({
                           window.clearTimeout(scrollSettleRef.current);
                           scrollSettleRef.current = window.setTimeout(() => {
                             scrollingRef.current = false;
-                            /*
-                             * La carte arrivée à la place de tête devient la carte
-                             * retenue, qu'on ait fait défiler vers la gauche ou
-                             * vers la droite : reculer pour prendre le tram d'avant
-                             * est le geste qui compte le plus, puisque c'est celui
-                             * qu'on fait quand on est en avance.
-                             */
                             const at = Math.max(
                               0,
                               Math.round(element.scrollLeft / RUN_CARD_PITCH)
@@ -2576,20 +1907,6 @@ export function NavigationMode({
                           }, 110);
                         }}
                         ref={(element) => {
-                          /*
-                           * Le carrousel s'ouvre déjà placé sur la carte retenue.
-                           *
-                           * Il s'ouvrait sur le passage le plus proche de
-                           * maintenant, donc tout à gauche : on ne voyait pas que
-                           * le choix avait été fait, et les passages antérieurs
-                           * n'existaient pas à l'écran faute de pouvoir défiler
-                           * vers eux. En arrivant déjà positionné, il dit deux
-                           * choses d'un coup — celui-là est le tien, et il y en
-                           * avait avant.
-                           *
-                           * On ne replace rien dès que l'usager a choisi sur le
-                           * tronçon en cours : ce serait lui reprendre son geste.
-                           */
                           if (!element) return;
                           if (scrollingRef.current) return;
                           if (pickedRuns.has(i)) return;
@@ -2607,14 +1924,6 @@ export function NavigationMode({
                           const mins = run.minutes;
                           const empty = mins === null;
                           const picked = !empty && r === selected;
-                          /*
-                           * Au-delà d'une demi-heure, on donne l'heure.
-                           *
-                           * « 47 minutes » demande une addition, et personne ne la
-                           * fait sur un quai. Au-delà d'une demi-heure on ne
-                           * compte plus à rebours, on lit une heure de départ —
-                           * en dessous, l'attente reste une durée qu'on ressent.
-                           */
                           const asClock = !empty && mins! > 30;
                           const clock = asClock
                             ? formatClock(new Date(Date.now() + mins! * 60000).toISOString())
@@ -2636,19 +1945,6 @@ export function NavigationMode({
                               style={{
                                 width: RUN_CARD_WIDTH,
                                 height: 128,
-                                /*
-                                 * La carte retenue est blanche, pas à l'encre du
-                                 * bloc.
-                                 *
-                                 * Elle prenait cette encre — bleu nuit sur une
-                                 * ligne claire — et le carrousel débordant sur le
-                                 * fond de la sheet, qui est ce même bleu nuit, la
-                                 * carte s'y dissolvait : on ne voyait plus laquelle
-                                 * était choisie. Le blanc, lui, se détache autant
-                                 * du fond sombre que de n'importe quel aplat de
-                                 * ligne, et la lettre garde la teinte du véhicule,
-                                 * assombrie juste assez pour tenir dessus.
-                                 */
                                 ...(picked
                                   ? {
                                       backgroundColor: skin.plate,
@@ -2661,17 +1957,6 @@ export function NavigationMode({
                                     }),
                               }}
                             >
-                              {/* ── La pastille de confiance ────────────────
-                                  Ce que les voyageurs ont signalé sur cette
-                                  ligne à cet arrêt, à cette tranche horaire :
-                                  vert, on y va ; orange, ça se discute ; rouge,
-                                  c'est plein, en retard, ou ça n'est pas venu.
-
-                                  Un point, pas un texte : la carte porte déjà
-                                  deux nombres et un bandeau, et l'information
-                                  tient dans une couleur. Le détail est écrit
-                                  une seule fois sous le carrousel, où il y a la
-                                  place de le dire en toutes lettres. */}
                               {!empty && i === activeTransitIndex && confidence && (
                                 <span
                                   className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full"
@@ -2685,7 +1970,7 @@ export function NavigationMode({
                               )}
                               <span
                                 className={`tabular font-black leading-none ${
-                                  asClock ? 'text-[30px]' : 'text-[44px]'
+                                  asClock ? 'text-[1.875rem]' : 'text-[2.75rem]'
                                 }`}
                               >
                                 {empty ? '–' : asClock ? clock : mins}
@@ -2702,22 +1987,6 @@ export function NavigationMode({
                                   : 'minute'}
                               </span>
 
-                              {/* Le bandeau du bas dit une chose ou l'autre.
-                                  L'affluence quand on la connaît — elle vient
-                                  des avis de voyageurs, le réseau ne publiant
-                                  aucun taux de charge, donc elle vaut pour la
-                                  ligne et non pour ce passage-là. Sinon
-                                  « PLANIFIÉ », qui prévient que l'horaire est
-                                  théorique et non relevé en direct. Les deux
-                                  ensemble encombreraient une carte de 56 px. */}
-                              {/* « En direct » ne se dit que si quelqu'un est
-                                  réellement à bord de cette ligne et nous l'a
-                                  signalé. Le réseau marque ses horaires
-                                  « temps réel » même quand ils sortent d'une
-                                  prédiction : l'écrire sur cette foi-là serait
-                                  promettre plus qu'on ne sait. À défaut,
-                                  l'affluence si on la connaît, sinon
-                                  « planifié ». */}
                               {!empty && run.level > 0 ? (
                                 <span
                                   className="mt-2.5 flex items-center gap-1 rounded-lg px-2 py-1"
@@ -2737,7 +2006,7 @@ export function NavigationMode({
                                 </span>
                               ) : !empty && i === activeTransitIndex && lineDelay ? (
                                 <span
-                                  className="mt-2.5 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wide"
+                                  className="mt-2.5 rounded-lg px-2 py-1 text-[0.625rem] font-black uppercase tracking-wide"
                                   style={{
                                     backgroundColor: picked
                                       ? 'rgba(0,0,0,0.08)'
@@ -2749,7 +2018,7 @@ export function NavigationMode({
                               ) : (
                                 !empty && (
                                   <span
-                                    className="mt-2.5 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wide"
+                                    className="mt-2.5 rounded-lg px-2 py-1 text-[0.625rem] font-black uppercase tracking-wide"
                                     style={{
                                       backgroundColor: picked
                                         ? 'rgba(0,0,0,0.12)'
@@ -2765,14 +2034,6 @@ export function NavigationMode({
                           });
                         })()}
 
-                        {/* La piste d'élan.
-                            Sans elle, trois cartes tiennent dans la largeur et
-                            le carrousel ne défile pas du tout : la deuxième ne
-                            pouvait pas venir se caler au-dessus du rail, faute
-                            de place derrière elle. Ce vide donne à la dernière
-                            carte de quoi remonter jusqu'à la première place. Il
-                            est normal, alors, que les premières sortent de
-                            l'écran — c'est le principe. */}
                         <span
                           aria-hidden
                           className="flex-shrink-0"
@@ -2781,12 +2042,6 @@ export function NavigationMode({
                       </div>
                     )}
 
-                    {/* ── Ce que la pastille raconte ────────────────────────
-                        La couleur seule ne se lit pas : on saurait que quelque
-                        chose ne va pas sans savoir quoi, et l'on ne peut rien
-                        décider avec ça. La phrase est écrite une fois, sous le
-                        carrousel, et vaut pour toutes ses cartes — elles
-                        parlent de la même ligne au même arrêt. */}
                     {i === activeTransitIndex && confidence && (
                       <div className="relative z-10 -mt-1 mb-1 flex items-center gap-2 pl-9 pr-4">
                         <span
@@ -2794,7 +2049,7 @@ export function NavigationMode({
                           className="h-2 w-2 flex-shrink-0 rounded-full"
                           style={{ backgroundColor: CONFIDENCE_COLOR[confidence.level] }}
                         />
-                        <span className="truncate text-[11px] font-semibold" style={{ color: ink }}>
+                        <span className="truncate text-[0.6875rem] font-semibold" style={{ color: ink }}>
                           {confidenceLabel(confidence, isFr)}
                         </span>
                       </div>
@@ -2804,11 +2059,6 @@ export function NavigationMode({
 
                     {lineChips(i === activeTransitIndex)}
 
-                    {/* L'en-tête, posé au-dessus du rail : l'icône du mode
-                        occupe exactement la colonne du rail, et la destination
-                        s'écrit à sa droite — badge de ligne puis terminus, dans
-                        la même forme que les favoris, pour qu'on reconnaisse la
-                        ligne au même coup d'œil des deux côtés de l'app. */}
                     <div className="flex items-center gap-3">
                       <span className="flex w-7 justify-center">
                         <TransportModeIcon mode={item.mode} className="h-6 w-6 opacity-80" />
@@ -2824,24 +2074,14 @@ export function NavigationMode({
                         {item.headsign || item.instruction}
                       </span>
                       {isCurrent && (
-                        <span className="flex-shrink-0 rounded-full bg-black/20 px-2 py-1 text-[10px] font-bold uppercase tracking-wide">
+                        <span className="flex-shrink-0 rounded-full bg-black/20 px-2 py-1 text-[0.625rem] font-bold uppercase tracking-wide">
                           {isFr ? 'À bord' : 'On board'}
                         </span>
                       )}
                     </div>
 
                     <div className="pt-2">
-                      {/* Le rail. Même largeur que la colonne de marche, et les
-                          pastilles de montée et de descente sont posées dedans
-                          plutôt qu'à cheval : le fil garde une épaisseur
-                          constante du haut en bas du trajet. */}
                       <div className="flex gap-3">
-                        {/* Le rail nait d'un point et s'ouvre en bande.
-                            A pied, le trajet n'est qu'une file de points ; y
-                            monter est le moment ou il prend de l'epaisseur. La
-                            bande pousse donc depuis sa largeur de point quand
-                            le troncon devient le sien, ce qui donne au fait de
-                            monter une consequence visible a l'ecran. */}
                         <motion.div
                           className="flex flex-col items-center justify-between self-stretch overflow-hidden rounded-full bg-black/20 py-1.5"
                           initial={false}
@@ -2884,17 +2124,6 @@ export function NavigationMode({
                                     else next.add(i);
                                     return next;
                                   });
-                                  /*
-                                   * Déplier ne déplace plus la sheet.
-                                   *
-                                   * On la tirait jusqu'en haut pour faire de la
-                                   * place, mais la liste allonge le contenu et
-                                   * repousse d'autant la borne haute : le geste
-                                   * emportait la sheet bien au-delà de ce qu'on
-                                   * voulait lire, et l'on se retrouvait au bas du
-                                   * trajet. Elle grandit sur place, sous le
-                                   * doigt, et cela suffit.
-                                   */
                                   void opening;
                                 }}
                                 className="my-4 flex items-center gap-1 text-xs opacity-80"
@@ -2908,14 +2137,6 @@ export function NavigationMode({
                                   ? `Encore ${stopsBefore} arrêt${stopsBefore > 1 ? 's' : ''} avant…`
                                   : `${stopsBefore} more stop${stopsBefore > 1 ? 's' : ''}…`}
                               </span>
-                              {/* Le dépliage.
-                                  `height: auto` laisse framer mesurer la liste
-                                  et l'animer sans qu'on ait à connaître sa
-                                  hauteur — un nombre d'arrêts qu'on ignore, sur
-                                  des noms qui passent parfois à la ligne. Les
-                                  arrêts arrivent ensuite un par un, décalés de
-                                  trente millisecondes : la cascade dit dans quel
-                                  sens on roule. */}
                               <AnimatePresence initial={false}>
                                 {expanded && (
                                   <motion.ul
@@ -2944,13 +2165,6 @@ export function NavigationMode({
                               </AnimatePresence>
                             </>
                           )}
-                          {/* Sans arrêts intermédiaires, les deux quais se
-                              toucheraient : on garde l'espace pour que le rail
-                              ait une longueur, et le tronçon une durée. */}
-                          {/* L'espace ne dépend pas du nombre d'arrêts : un tronçon d'un
-                              seul arrêt et un tronçon de neuf doivent se lire de la
-                              même façon, et c'est la hauteur du rail qui dit qu'on
-                              roule un moment. */}
                           <div className={stopsBefore === 0 ? 'h-16' : 'h-8'} />
 
                           <div className="flex items-baseline justify-between gap-3">
@@ -2964,14 +2178,9 @@ export function NavigationMode({
                         </div>
                       </div>
 
-                      {/* Le retard mesuré par ceux qui y sont déjà. Sur un aplat
-                          de ligne, l'ambre et le vert ne tiennent plus — la
-                          couleur du fond change à chaque correspondance — donc
-                          un jeton translucide, lisible sur bleu nuit comme sur
-                          jaune. */}
                       {i === activeTransitIndex && showDelay && (
                         <span
-                          className="tabular mt-2.5 inline-block rounded-full bg-black/20 px-2 py-0.5 text-[11px] font-bold"
+                          className="tabular mt-2.5 inline-block rounded-full bg-black/20 px-2 py-0.5 text-[0.6875rem] font-bold"
                           title={
                             isFr
                               ? `D'après ${lineDelay!.sampleSize} observations de voyageurs`
@@ -2996,10 +2205,6 @@ export function NavigationMode({
           </div>
         </motion.div>
 
-        {/* ── Les réglages du guidage ──────────────────────────────────────
-            Une sheet posée par-dessus tout, vide pour l'instant. Elle existe
-            pour que le bouton mène quelque part plutôt que nulle part, et pour
-            que ce qui viendra s'y ajoute sans rien déplacer. */}
         <MapSheet
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
@@ -3010,12 +2215,6 @@ export function NavigationMode({
                 <h2 className="mb-4 text-lg font-black" style={{ color: skin.ink }}>
                   {isFr ? 'Réglages du guidage' : 'Navigation settings'}
                 </h2>
-                {/* Passer l'étape, à la main.
-                    Le guidage avance seul, d'après la position et l'allure. Il
-                    se trompe parfois — un GPS qui décroche sous un tunnel, un
-                    bus pris à l'arrêt d'après. Cette porte de sortie existe pour
-                    ces fois-là, et elle est rangée dans les réglages parce
-                    qu'elle ne doit pas devenir l'usage normal. */}
                 {index < steps.length - 1 && (
                   <button
                     onClick={() => {
@@ -3036,10 +2235,6 @@ export function NavigationMode({
                   </button>
                 )}
 
-                {/* Les avis de trajet.
-                    L'autorisation se demande ici, sur un geste : une demande qui
-                    surgit au chargement est refusée par les navigateurs, et iOS
-                    retient ce refus pour de bon. */}
                 <button
                   onClick={async () => {
                     if (notifyOn) {
@@ -3077,12 +2272,6 @@ export function NavigationMode({
                   </span>
                 </button>
 
-                {/* La voix.
-                    Coupée par défaut : une application qui se met à parler sans
-                    prévenir, dans un tram, se fait couper le son puis
-                    désinstaller. Elle ne s'affiche pas du tout si le navigateur
-                    n'a pas de synthèse vocale — proposer un réglage sans effet
-                    est pire que de ne rien proposer. */}
                 {voiceSupported() && (
                   <button
                     onClick={() => {
@@ -3164,7 +2353,7 @@ export function NavigationMode({
                   km/h
                 </p>
 
-                <p className="pb-2 text-center text-[11px] leading-snug text-slate-500">
+                <p className="pb-2 text-center text-[0.6875rem] leading-snug text-slate-500">
                   {isFr
                     ? 'Ces réglages sont conservés sur cet appareil et servent au calcul de vos prochains itinéraires.'
                     : 'These settings stay on this device and shape your next journeys.'}
@@ -3205,14 +2394,14 @@ export function NavigationMode({
             </div>
 
             <motion.p
-              className="tabular-nums text-[56px] font-black leading-none"
+              className="tabular-nums text-[3.5rem] font-black leading-none"
               style={{ color: skin.ink }}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
             >
               <AnimatedCount value={travellersHelpedNow} />
             </motion.p>
-            <p className="mt-5 max-w-sm text-[15px] leading-relaxed" style={{ color: skin.muted }}>
+            <p className="mt-5 max-w-sm text-[0.9375rem] leading-relaxed" style={{ color: skin.muted }}>
               {isFr
                 ? "Voici les personnes que vous avez aidées durant votre trajet. Merci d'utiliser GreLines."
                 : 'These are the travellers you have helped during your trip. Thank you for using GreLines.'}
@@ -3237,10 +2426,10 @@ export function NavigationMode({
                 transition={{ duration: 0.2 }}
                 onClick={e => e.stopPropagation()}
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/40">
+                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-white/40">
                   {isFr ? 'Voyage en cours' : 'Trip in progress'}
                 </p>
-                <h3 className="mt-2 text-[22px] font-black leading-tight">
+                <h3 className="mt-2 text-[1.375rem] font-black leading-tight">
                   {isFr
                     ? 'Voulez-vous terminer le voyage ?'
                     : 'Do you want to end the trip?'}
@@ -3296,23 +2485,23 @@ export function NavigationMode({
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                  <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-white/45">
                     {isFr ? 'Voyage minimisé' : 'Navigation minimized'}
                   </p>
-                  <h3 className="mt-1 truncate text-[18px] font-black leading-tight">
+                  <h3 className="mt-1 truncate text-[1.125rem] font-black leading-tight">
                     {compactTitle}
                   </h3>
                   <p className="mt-1 line-clamp-2 text-sm leading-snug text-white/72">
                     {compactSubtitle}
                   </p>
                 </div>
-                <span className="rounded-full bg-white/8 px-3 py-1 text-[11px] font-bold text-white/80">
+                <span className="rounded-full bg-white/8 px-3 py-1 text-[0.6875rem] font-bold text-white/80">
                   {isFr ? 'Touchez pour rouvrir' : 'Tap to reopen'}
                 </span>
               </div>
 
               <div className="mt-4 rounded-2xl bg-slate-900 px-3 py-3">
-                <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                <div className="mb-2 flex items-center justify-between text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-white/45">
                   <span>{isFr ? 'Prochaines actions' : 'Next actions'}</span>
                   <span className="tabular-nums">
                     {isFr
@@ -3350,7 +2539,7 @@ export function NavigationMode({
                         />
                         <div className="min-w-0">
                           <div className="truncate text-sm font-bold">{label}</div>
-                          <div className="text-[11px] text-white/55">
+                          <div className="text-[0.6875rem] text-white/55">
                             {time || compactActionLabel || (isFr ? 'À venir' : 'Upcoming')}
                           </div>
                         </div>

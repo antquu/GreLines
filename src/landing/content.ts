@@ -1,43 +1,8 @@
-/**
- * Ce que la vitrine raconte, en français et en anglais.
- *
- * Séparé de la mise en page : les textes d'une page de présentation se
- * retouchent souvent, et l'on ne devrait pas avoir à traverser du JSX pour
- * corriger une phrase.
- *
- * Rien n'y est inventé. Chaque chiffre et chaque promesse correspond à quelque
- * chose que l'application fait réellement — une vitrine qui promet plus que le
- * produit se retourne contre lui au premier lancement.
- */
-
 export type Lang = 'fr' | 'en';
 
-/**
- * Les réseaux et opérateurs desservis.
- *
- * L'ordre est celui du bandeau : les plus reconnaissables d'abord, pour qu'un
- * regard qui ne s'attarde pas tombe sur un nom qu'il connaît. `id` est le nom
- * du fichier, tel quel, dans `/assets/homepage/svg/` — casse comprise.
- *
- * Transaltitude n'y figure pas : son logotype ne tient pas la comparaison avec
- * les autres, et un bandeau vaut par son maillon le plus faible.
- */
 export interface Partner {
   id: string;
   name: string;
-  /**
-   * La zone utile du fichier, en fractions de la toile.
-   *
-   * Les onze logotypes sont dessinés sur la même toile de 1414 × 849, mais
-   * n'en occupent chacun qu'une bande, et jamais la même : de 34 % de la
-   * hauteur pour le plus large à 70 % pour le plus carré. Affichés à hauteur
-   * de fichier égale, ils paraîtraient donc deux fois plus gros les uns que
-   * les autres.
-   *
-   * On mesure donc la boîte englobante de chaque tracé — relevée sur le canal
-   * alpha, une fois pour toutes — et l'on cale la rangée sur la hauteur de
-   * l'encre, pas sur celle du fichier.
-   */
   box: { x0: number; x1: number; y0: number; y1: number };
 }
 
@@ -55,68 +20,33 @@ export const PARTNERS: Partner[] = [
 ];
 
 interface Feature {
-  /** Nom du fichier d'icône, dans `/assets/homepage/icons/`. */
   icon: string;
   title: string;
   body: string;
 }
 
 interface Showcase {
-  /** Nom du fichier de capture, dans `/assets/homepage/`. */
   image: string;
   title: string;
   body: string;
 }
 
-/**
- * Un pilier : une grande affirmation, une photo, une preuve, des capacités.
- *
- * C'est le motif que Vercel emploie pour ses trois publics — une phrase qui
- * tient debout seule, un visuel qui occupe la moitié de la largeur, une preuve
- * chiffrée, puis la liste de ce qu'on sait faire. Là où ils montrent des
- * captures de logiciel, on montre le réseau : des panneaux, un abribus, la
- * ville. Les fichiers sont détourés sur fond transparent, comme celui du haut
- * de page : ils sont posés dans la mise en page, jamais encadrés ni rognés.
- */
 export interface Pillar {
-  /** Nom du fichier détouré, dans `/assets/homepage/photos/`. */
   photo: string;
-  /** Ce que le montage montre, pour ceux qui ne le voient pas. */
   alt: string;
   title: string;
-  /** La preuve. `strong` est la part écrite en pleine encre. */
   proof: { strong: string; rest: string };
   items: { name: string; note: string }[];
 }
 
-/**
- * L'adresse de la page d'état du service.
- *
- * Sortie ici parce qu'elle n'existe pas encore : le jour où elle est hébergée
- * ailleurs, c'est la seule ligne à changer.
- */
 export const STATUS_URL = 'https://status.grelines.fr';
 
-/**
- * Une entrée du menu « Solutions ».
- *
- * Ce menu s'adresse aux réseaux, pas aux voyageurs : c'est là qu'un exploitant
- * qui tombe sur la page doit comprendre en trois lignes ce qu'on peut faire
- * pour lui. Chaque entrée correspond à quelque chose qui tourne déjà — rien
- * n'y est annoncé qui reste à écrire.
- */
 export interface Solution {
   name: string;
   note: string;
   href: string;
 }
 
-/**
- * Les intitulés de section, en petites capitales mono.
- *
- * Ils ne décrivent pas, ils situent : deux mots au-dessus d'un titre, pour dire
- * dans quelle partie du discours on se trouve.
- */
 export interface LandingCopy {
   eyebrows: {
     solutions: string;
@@ -138,7 +68,6 @@ export interface LandingCopy {
   };
   hero: {
     eyebrow: string;
-    /** Ce que montre le montage du hero, pour ceux qui ne le voient pas. */
     headerAlt: string;
     title: string;
     titleAccent: string;
@@ -151,9 +80,7 @@ export interface LandingCopy {
   featuresTitle: string;
   featuresBody: string;
   features: Feature[];
-  /** Les trois piliers, dans l'ordre d'apparition. */
   pillars: Pillar[];
-  /** Les lignes qui se relaient sous le grand titre du hero. */
   heroLines: { lead: string; rest: string }[];
   showcaseTitle: string;
   showcaseBody: string;
@@ -161,13 +88,6 @@ export interface LandingCopy {
   screenTitle: string;
   screenBody: string;
   screenNote: string;
-  /**
-   * La section des dernières nouvelles, en bas de page.
-   *
-   * Les articles viennent de la base ; ne sont écrits ici que les mots de la
-   * page elle-même — le titre de la section, les intitulés des deux lignes de
-   * pied de carte, et les deux liens.
-   */
   news: {
     eyebrow: string;
     title: string;
@@ -176,7 +96,6 @@ export interface LandingCopy {
     categoryLabel: string;
     read: string;
     all: string;
-    /** Ce qui s'écrit dans une carte dont l'article n'a pas de chapô. */
     fallbackKind: string;
   };
   finalTitle: string;

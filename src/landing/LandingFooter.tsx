@@ -1,13 +1,3 @@
-/**
- * Le pied de page, partagé par toutes les pages du site public.
- *
- * Il vivait dans la page d'accueil, et les pages légales comme le blog en
- * avaient reçu une version réduite à la ligne de copyright. C'était la même
- * erreur que pour l'en-tête : ces pages ne sont pas des annexes, ce sont des
- * pages du site, et l'on y cherche les mêmes liens qu'ailleurs — l'état du
- * service, les autres documents, le changement de langue, le choix du thème.
- */
-
 import { COPY, STATUS_URL, type Lang } from './content';
 
 const ASSETS = '/assets/homepage';
@@ -46,7 +36,6 @@ export function LandingFooter({
   theme,
   choice,
   onChoose,
-  /** Marque un lien de langue comme choix explicite, si la page en tient compte. */
   onPickLang,
   local = false,
 }: {
@@ -55,15 +44,6 @@ export function LandingFooter({
   choice: ThemeChoice;
   onChoose: (next: ThemeChoice) => void;
   onPickLang?: (next: Lang) => void;
-  /**
-   * Vrai sur la page d'accueil, où les ancres du pied désignent des sections
-   * de la page en cours.
-   *
-   * Ailleurs, une ancre ne désigne rien : le pied de la documentation ou d'une
-   * page légale renvoyait vers `#features`, qui n'existe pas là, et le lien ne
-   * faisait rien du tout. On lui rend alors son chemin, comme l'en-tête le fait
-   * déjà pour le menu des solutions.
-   */
   local?: boolean;
 }) {
   const copy = COPY[lang];
@@ -86,9 +66,6 @@ export function LandingFooter({
                     ? { target: '_blank', rel: 'noreferrer' }
                     : {})}
                   onClick={
-                    /* Les deux liens de langue du pied de page valent choix
-                       explicite : la détection cesse alors de renvoyer vers
-                       la langue de l'appareil. */
                     (link.href === '/fr' || link.href === '/en') && onPickLang
                       ? () => onPickLang(link.href.slice(1) as Lang)
                       : undefined
@@ -101,8 +78,6 @@ export function LandingFooter({
           ))}
         </div>
 
-        {/* La pastille seule, loin sous les colonnes : c'est la signature
-            de bas de page, elle n'a pas besoin du nom à côté d'elle. */}
         <div className="mt-24">
           <img
             src={`${ASSETS}/${theme === 'dark' ? 'logo_light.png' : 'logo.png'}`}
@@ -111,9 +86,6 @@ export function LandingFooter({
           />
         </div>
 
-        {/* La dernière ligne : l'état du service à gauche, le choix du
-            thème à droite. C'est la place que Vercel leur donne, et l'œil
-            va les y chercher. */}
         <div className="mt-8 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
             <a href={STATUS_URL} target="_blank" rel="noreferrer" className="landing-status">

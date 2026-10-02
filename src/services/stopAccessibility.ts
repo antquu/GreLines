@@ -1,34 +1,8 @@
-/**
- * Les arrêts où l'on peut monter en fauteuil.
- *
- * Le renseignement n'existe pas dans l'API du réseau : ni les clusters, ni les
- * horaires, ni les arrêts proches ne le portent. Il vit dans le GTFS, dont
- * l'archive pèse six mégaoctets — trop pour le navigateur, et pour trois
- * kilo-octets utiles. `scripts/accessible-stops.mjs` l'en extrait et dépose la
- * liste dans `public/accessible-stops.json` ; c'est ce fichier qu'on lit ici.
- *
- * La liste ne contient que les arrêts accessibles. Ne pas y figurer ne veut donc
- * pas dire « inaccessible » mais « on ne l'affirme pas » — la moitié du réseau
- * n'est pas renseignée, et l'absence de pictogramme ne doit jamais se lire
- * comme un refus.
- *
- * Un arrêt s'y trouve sous tous les noms que l'application lui donne : son
- * identifiant de cluster (`SEM:LP`), son mnémonique (`SEM:GENLP`) et ceux de ses
- * quais (`SEM:2109`). Le pictogramme s'affiche donc quel que soit l'endroit
- * d'où l'arrêt est regardé.
- */
-
 const URL = '/accessible-stops.json';
 
 let cache: Set<string> | null = null;
 let inflight: Promise<Set<string>> | null = null;
 
-/**
- * Charge la liste, une fois pour toute la session.
- *
- * L'échec est silencieux et rend un ensemble vide : un fichier manquant retire
- * des pictogrammes, il n'empêche pas de consulter un horaire.
- */
 export function loadAccessibleStops(): Promise<Set<string>> {
   if (cache) return Promise.resolve(cache);
   if (inflight) return inflight;
@@ -50,20 +24,61 @@ export function loadAccessibleStops(): Promise<Set<string>> {
   return inflight;
 }
 
-/** Ce qu'il faut d'un arrêt pour le reconnaître dans la liste. */
+let tclPlatforms: Promise<{ yes: Set<string>; no: Set<string> } | null> | null = null;
+const listeners = new Set<(stops: Set<string>) => void>();
+
+function loadTclPlatforms() {
+  tclPlatforms ??= fetch('/data/tcl-accessibility.json')
+    .then(response => (response.ok && (response.headers.get('content-type') ?? '').includes('json') ? response.json() : null))
+    .then((data: { yes?: string[]; no?: string[] } | null) =>
+      data ? { yes: new Set(data.yes ?? []), no: new Set(data.no ?? []) } : null)
+    .catch(() => null);
+  return tclPlatforms;
+}
+
+let notifyScheduled = false;
+function notifyListeners(stops: Set<string>) {
+  if (notifyScheduled) return;
+  notifyScheduled = true;
+  window.setTimeout(() => {
+    notifyScheduled = false;
+    const snapshot = new Set(stops);
+    for (const listener of listeners) listener(snapshot);
+  }, 50);
+}
+
+export function onAccessibleStopsChange(listener: (stops: Set<string>) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export async function registerTclStopGroups(groups: string[][]): Promise<void> {
+  const [stops, platforms] = await Promise.all([loadAccessibleStops(), loadTclPlatforms()]);
+  if (!platforms) return;
+  const local = (id: string) => id.replace(/^TCL:/, '');
+  let added = 0;
+  for (const group of groups) {
+    const ids = group.map(local);
+    const yes = ids.some(id => platforms.yes.has(id));
+    const no = ids.some(id => platforms.no.has(id));
+    for (const id of group) if (platforms.yes.has(local(id)) && !stops.has(id)) { stops.add(id); added += 1; }
+    if (yes && !no && !stops.has(group[0])) { stops.add(group[0]); added += 1; }
+  }
+  if (added > 0) notifyListeners(stops);
+}
+
+export async function registerAccessibleIds(ids: string[]): Promise<void> {
+  const stops = await loadAccessibleStops();
+  let added = 0;
+  for (const id of ids) if (!stops.has(id)) { stops.add(id); added += 1; }
+  if (added > 0) notifyListeners(stops);
+}
+
 export interface AccessibleStopRef {
   id?: string | null;
   clusterGtfsId?: string | null;
 }
 
-/**
- * Vrai si l'arrêt est annoncé accessible.
- *
- * `stops` vient de `loadAccessibleStops`. Tant qu'elle n'est pas chargée,
- * l'ensemble est vide et la réponse est « non » : le pictogramme apparaît une
- * fraction de seconde après le nom, ce qui vaut mieux qu'un nom qui saute pour
- * lui faire de la place.
- */
 export function isStopAccessible(
   stops: Set<string> | null | undefined,
   stop: AccessibleStopRef | null | undefined,
@@ -74,17 +89,6 @@ export function isStopAccessible(
   return false;
 }
 
-/**
- * Vrai si tout le trajet se fait par des arrêts annoncés accessibles.
- *
- * On regarde les seules étapes en véhicule, et pour chacune l'arrêt où l'on
- * monte et celui où l'on descend : ce sont les endroits où il faut franchir
- * une bordure. La marche entre les deux ne se juge pas ici — le calculateur
- * s'en charge quand on lui demande un trajet praticable en fauteuil.
- *
- * Un seul arrêt non renseigné suffit à ne rien annoncer. Le pictogramme dit
- * « tout le trajet se fait en fauteuil » ; il ne peut pas le dire à moitié.
- */
 export function isJourneyStepFree(
   stops: Set<string> | null | undefined,
   legs: Array<{ mode?: string; from?: { stopId?: string }; to?: { stopId?: string } }> | null | undefined,

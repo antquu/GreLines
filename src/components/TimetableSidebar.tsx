@@ -1,3 +1,4 @@
+import { isForeignLineId } from '../utils/foreignNetworks';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsRightLeftIcon, PaperClipIcon } from '@heroicons/react/24/solid';
@@ -5,21 +6,23 @@ import { LineBadge } from './LineBadge';
 import { resolveLineStyle } from '../utils/lineColors';
 import { LastRunRibbon } from './LastRunRibbon';
 import { MarqueeText } from './MarqueeText';
+import { getForeignTimetable } from '../services/foreignTimetable';
 import { getTimetable, formatTimetableTime, toTimetableRouteId, type Timetable, type TimetableDirection } from '../services/timetable';
 import type { Line } from '../types';
 
 interface TimetableSidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  
+
   line: Pick<Line, 'id' | 'shortName' | 'color' | 'textColor'> | null;
-  
+
   preferredHeadsign?: string | null;
-  
+
   highlightStopName?: string | null;
+  stopId?: string | null;
   isMobile: boolean;
   language: 'fr' | 'en';
-  
+
   onOpenLineMap?: () => void;
 }
 
@@ -42,46 +45,15 @@ const getText = (language: 'fr' | 'en') => {
   };
 };
 
-/** Hauteur d'une rangée. Fixe, parce que deux colonnes doivent s'aligner. */
 const ROW_HEIGHT = 46;
-/**
- * Nombre de courses montrées à la fois.
- *
- * Trois tiennent à l'aise sur la largeur d'un téléphone à côté du nom des
- * arrêts, et trois suffisent à répondre : celui-là, le suivant, celui d'après.
- * Au-delà, les colonnes se resserrent et l'on ne suit plus une course du doigt
- * sans glisser sur sa voisine.
- */
 const PER_PAGE = 3;
-/** Largeur de la colonne des arrêts, qui ne défile pas. */
 const NAME_WIDTH = 148;
 
-/** Secondes écoulées depuis minuit, pour situer l'heure qu'il est dans la grille. */
 function secondsSinceMidnight(): number {
   const now = new Date();
   return now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 }
 
-/**
- * La grille arrêts × courses.
- *
- * Une fiche horaire répond à une question qu'une liste d'heures par arrêt ne
- * posait même pas : je monte ici à telle heure, j'arrive là-bas quand ? On lit
- * donc une colonne de haut en bas — c'est une course, un bus, du terminus à
- * l'autre — et une rangée de gauche à droite, ce sont les passages de la
- * journée à cet arrêt. C'est la forme qu'ont les fiches papier collées aux
- * abribus, et ce n'est pas un hasard.
- *
- * Rien ne défile : on change de plage horaire avec deux flèches. Un tableau
- * qu'on pousse du doigt cache toujours la moitié de ce qu'il contient, et l'on
- * ne sait jamais s'il reste quelque chose à droite ; trois courses à la fois,
- * annoncées par leur plage, se lisent d'un coup d'oeil et se quittent d'une
- * tape.
- *
- * La grille s'ouvre sur la prochaine course, pas sur la première du jour : à
- * dix-huit heures, personne ne cherche le premier départ de cinq heures du
- * matin.
- */
 function TimetableGrid({
   direction,
   lineColor,
@@ -97,16 +69,6 @@ function TimetableGrid({
 }) {
   const stops = direction.stops;
 
-  /*
-   * Les courses qui existent vraiment.
-   *
-   * Les tableaux de l'API sont plus longs que le nombre de courses du jour :
-   * la queue est remplie de « | », des colonnes où aucun arrêt n'a d'heure.
-   * Affichées telles quelles, elles donnaient des pages entièrement vides,
-   * sans plage annoncée, et le « dernier passage » tombait sur une course qui
-   * n'a jamais circulé. On ne garde donc que les colonnes qui portent au moins
-   * une heure, et l'on travaille ensuite sur leur rang à elles.
-   */
   const trips = useMemo(() => {
     const width = stops.reduce((most, stop) => Math.max(most, stop.times.length), 0);
     const kept: number[] = [];
@@ -118,13 +80,6 @@ function TimetableGrid({
   const tripCount = trips.length;
   const pageCount = Math.max(1, Math.ceil(tripCount / PER_PAGE));
 
-  /*
-   * La course en cours de départ.
-   *
-   * Le repère est le premier arrêt de la course : c'est là qu'elle commence,
-   * et c'est l'heure qui décide si elle est encore devant nous. Faute de
-   * course à venir — la journée est finie —, on montre la dernière.
-   */
   const upcomingIndex = useMemo(() => {
     const now = secondsSinceMidnight();
     const found = trips.findIndex(trip => {
@@ -138,31 +93,18 @@ function TimetableGrid({
   }, [stops, trips, tripCount]);
 
   const [page, setPage] = useState(() => Math.floor(upcomingIndex / PER_PAGE));
-  /* Changer de sens rouvre sur l'heure qu'il est, et non sur la page où l'on
-     s'était arrêté dans l'autre sens, qui ne veut plus rien dire. */
   useEffect(() => {
     setPage(Math.floor(upcomingIndex / PER_PAGE));
   }, [upcomingIndex, direction.key]);
 
   const safePage = Math.min(page, pageCount - 1);
   const firstTrip = safePage * PER_PAGE;
-  /** Rangs affichés, dans l'ordre des courses retenues. */
   const visiblePositions = Array.from(
     { length: Math.max(0, Math.min(PER_PAGE, tripCount - firstTrip)) },
     (_, offset) => firstTrip + offset,
   );
-  /** Les colonnes correspondantes dans les tableaux de l'API. */
   const visibleTrips = visiblePositions.map(position => trips[position]);
 
-  /*
-   * La plage annoncée : le début de chaque course montrée.
-   *
-   * On ne peut pas la lire sur le seul terminus d'origine — toutes les courses
-   * n'en partent pas, et les dernières du soir démarrent souvent en cours de
-   * ligne. La barre restait alors vide, ce qui ne disait rien à personne. On
-   * prend donc, pour chaque colonne, la première heure qu'on y trouve en
-   * descendant : c'est l'heure à laquelle ce bus-là commence.
-   */
   const rangeLabel = useMemo(() => {
     const starts = visibleTrips
       .map(index => {
@@ -187,7 +129,6 @@ function TimetableGrid({
 
   return (
     <div className="mt-1">
-      {/* La plage montrée, entre ses deux flèches. */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <button
           type="button"
@@ -214,8 +155,6 @@ function TimetableGrid({
       </div>
 
       <div className="flex overflow-hidden rounded-2xl border border-slate-800">
-        {/* La colonne des arrêts, avec le tronc de la ligne à sa gauche : la
-            même grammaire que la fiche de ligne, puisqu'on lit le même parcours. */}
         <div className="flex-shrink-0 border-r border-slate-800" style={{ width: NAME_WIDTH }}>
           {stops.map((stop, index) => {
             const isEdge = index === 0 || index === stops.length - 1;
@@ -248,26 +187,17 @@ function TimetableGrid({
                     }}
                   />
                 </span>
-                {/*
-                  Les noms trop longs défilent plutôt que d'être coupés.
-
-                  « Fontaine Hôtel de Ville – La Source » ne tient dans aucune
-                  colonne raisonnable, et « Fontaine Hôtel de… » ne dit pas
-                  lequel c'est quand deux arrêts partagent leur début. Le
-                  bandeau est le même que celui des infos trafic en bas du site,
-                  au repos tant que le texte tient.
-                */}
                 <span className="min-w-0 flex-1">
                   {stop.city && (
                     <MarqueeText
                       text={stop.city}
-                      className="text-[10px] leading-tight text-slate-500"
+                      className="text-[0.625rem] leading-tight text-slate-500"
                       gap={24}
                     />
                   )}
                   <MarqueeText
                     text={stop.name}
-                    className="text-[13px] font-semibold leading-tight text-white"
+                    className="text-[0.8125rem] font-semibold leading-tight text-white"
                     gap={24}
                   />
                 </span>
@@ -276,7 +206,6 @@ function TimetableGrid({
           })}
         </div>
 
-        {/* Les trois courses de la plage. */}
         <div className="min-w-0 flex-1">
           {stops.map((stop, rowIndex) => {
             const isHighlighted =
@@ -295,12 +224,10 @@ function TimetableGrid({
                   return (
                     <span
                       key={position}
-                      className={`tabular flex min-w-0 flex-1 items-center justify-center text-[13px] ${
+                      className={`tabular flex min-w-0 flex-1 items-center justify-center text-[0.8125rem] ${
                         isUpcoming ? 'font-bold text-white' : 'text-slate-400'
                       }`}
                       style={{
-                        /* La colonne de la prochaine course se détache sur toute
-                           sa hauteur : c'est elle qu'on suit du doigt. */
                         backgroundColor: isUpcoming ? 'rgba(37,99,235,0.16)' : undefined,
                       }}
                     >
@@ -317,19 +244,6 @@ function TimetableGrid({
   );
 }
 
-/**
- * Le sélecteur de sens.
- *
- * Deux terminus, comme une girouette, et une pastille qui glisse de l'un à
- * l'autre plutôt que de s'éteindre ici pour se rallumer là. Le mouvement dit ce
- * qui vient de se passer — on a basculé de sens — là où deux fonds qui changent
- * de couleur au même instant laissent chercher lequel est désormais actif.
- *
- * La pastille est posée en pixels, mesurés sur l'onglet actif, et non en
- * pourcentages : les libellés n'ont pas la même longueur, et une pastille
- * calculée sur une fraction de la barre débordait du terminus court pour
- * amputer le long. La mesure se refait quand la barre change de taille.
- */
 function DirectionSwitch({
   directions,
   activeKey,
@@ -361,9 +275,6 @@ function DirectionSwitch({
       ref={barRef}
       className="relative mt-5 flex rounded-2xl border border-slate-800 bg-slate-900/60 p-1"
     >
-      {/* Tant que la mesure n'a pas eu lieu, pas de pastille : mieux vaut une
-          barre nue une image de plus qu'une pastille posée au mauvais endroit
-          qui glisse ensuite jusqu'à la bonne place. */}
       {pill && (
         <span
           aria-hidden="true"
@@ -380,7 +291,7 @@ function DirectionSwitch({
             data-active={active}
             onClick={() => onSelect(item.key)}
             aria-pressed={active}
-            className={`relative z-10 min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors duration-200 ${
+            className={`relative z-10 min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-[0.8125rem] font-semibold transition-colors duration-200 ${
               active ? 'text-white' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -392,23 +303,13 @@ function DirectionSwitch({
   );
 }
 
-/**
- * Fiche horaire d'une ligne.
- *
- * Une fiche horaire est un tableau arrêts × courses, et c'est ainsi qu'elle se
- * présente : une rangée par arrêt, une colonne par course. On suit une colonne
- * pour savoir où mène le bus de 18:03, une rangée pour connaître les passages
- * de la journée à un arrêt. Auparavant, chaque arrêt donnait ses heures sous
- * lui, dépliable : on voyait bien qu'il partait un bus à 18:03, mais rien ne
- * disait à quelle heure il arrivait ailleurs, ce qui est pourtant la seule
- * chose qu'une fiche horaire sache dire.
- */
 export function TimetableSidebar({
   isOpen,
   onClose,
   line,
   preferredHeadsign,
   highlightStopName,
+  stopId,
   isMobile,
   language,
   onOpenLineMap,
@@ -428,7 +329,10 @@ export function TimetableSidebar({
       setLoading(true);
       setTimetable(null);
     });
-    getTimetable(toTimetableRouteId(line.shortName || line.id), { signal: controller.signal })
+    const request = isForeignLineId(line.id)
+      ? getForeignTimetable(line.id, stopId, highlightStopName ?? undefined)
+      : getTimetable(toTimetableRouteId(line.shortName || line.id), { signal: controller.signal });
+    request
       .then(result => {
         if (!active) return;
         setTimetable(result);
@@ -442,7 +346,7 @@ export function TimetableSidebar({
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; controller.abort(); };
-  }, [isOpen, line?.id, line?.shortName, preferredHeadsign]);
+  }, [isOpen, line?.id, line?.shortName, preferredHeadsign, stopId, highlightStopName]);
 
   const direction = timetable?.directions.find(item => item.key === directionKey) ?? timetable?.directions[0];
   const lineStyle = line ? resolveLineStyle(line.id, line.color, line.textColor) : {};
@@ -450,13 +354,10 @@ export function TimetableSidebar({
 
   const body = (
     <>
-      {/* Le badge de ligne suffit à dire où l'on est : le titre « Fiche
-          horaire » répétait ce que le contenu montre déjà, et le filet
-          horizontal doublait le tronc coloré de la timeline juste en dessous.
-          Les deux retirés, le badge porte seul l'identité de l'écran. */}
       <div className="flex items-center justify-between gap-3">
         {line && <LineBadge line={line} size="md" />}
         <div className="flex flex-shrink-0 items-center gap-2">
+          {onOpenLineMap && (
           <button
             onClick={onOpenLineMap}
             aria-label={text.lineMap}
@@ -465,6 +366,7 @@ export function TimetableSidebar({
           >
             <PaperClipIcon className="h-4 w-4" />
           </button>
+          )}
           <button
             onClick={onClose}
             aria-label={text.close}
@@ -518,9 +420,6 @@ export function TimetableSidebar({
       <AnimatePresence>
         {isOpen && line && (
           <>
-            {/* Deux panneaux côte à côte ne laissent qu'un bandeau de carte :
-                on la floute plutôt que de la laisser distraire, et le voile
-                sert de zone de fermeture. */}
             <motion.div
               key="timetable-backdrop"
               initial={{ opacity: 0 }}
@@ -561,7 +460,7 @@ export function TimetableSidebar({
           <div
             className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 pb-12"
             style={{
-              paddingTop: 'max(1rem, calc(env(safe-area-inset-top) + 4px))',
+              paddingTop: 'max(1rem, calc(var(--gl-safe-top) + 4px))',
             }}
           >
             {body}

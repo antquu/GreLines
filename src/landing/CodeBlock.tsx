@@ -1,26 +1,7 @@
-/**
- * Le bloc de code de la documentation.
- *
- * Une barre de titre qui porte le nom du fichier et un bouton pour copier, puis
- * le code lui-même, coloré. C'est la forme qu'ont prise toutes les
- * documentations techniques, et pour de bonnes raisons : le nom du fichier dit
- * où coller ce qu'on lit, et le bouton évite la sélection à la souris, qui
- * attrape une ligne de trop une fois sur deux.
- *
- * La coloration est faite ici, à la main, plutôt que par une bibliothèque.
- * Celles qui font ça bien pèsent plusieurs centaines de kilo-octets et
- * connaissent deux cents langages ; il en faut quatre, sur des extraits de dix
- * lignes, dans une page qu'on veut légère. Le découpage ci-dessous est donc
- * volontairement grossier : il ne comprend pas le code, il reconnaît des
- * formes. Sur un extrait de documentation, cela suffit ; sur un fichier entier,
- * cela se verrait, et c'est pourquoi on n'en met pas.
- */
-
 import { useState } from 'react';
 
 export type CodeLang = 'ts' | 'bash' | 'env' | 'sql' | 'json' | 'txt';
 
-/** Un morceau de code et ce qu'on en a reconnu. */
 interface Token {
   text: string;
   kind: 'plain' | 'comment' | 'string' | 'number' | 'keyword' | 'call' | 'punct';
@@ -47,13 +28,6 @@ const KEYWORDS: Record<CodeLang, string[]> = {
   txt: [],
 };
 
-/**
- * Découpe une ligne en morceaux reconnus.
- *
- * L'ordre des essais compte : un commentaire peut contenir une apostrophe, une
- * chaîne peut contenir un dièse. On teste donc du plus englobant au plus
- * précis, et l'on avance dans la ligne sans jamais revenir en arrière.
- */
 function tokenize(line: string, lang: CodeLang): Token[] {
   const tokens: Token[] = [];
   const keywords = new Set(KEYWORDS[lang]);
@@ -66,7 +40,6 @@ function tokenize(line: string, lang: CodeLang): Token[] {
     buffer = '';
   };
 
-  /* Une ligne entièrement en commentaire se règle d'un coup. */
   const trimmed = line.trimStart();
   const commentStart =
     (lang === 'ts' || lang === 'json') && trimmed.startsWith('//')
@@ -81,8 +54,6 @@ function tokenize(line: string, lang: CodeLang): Token[] {
   while (index < line.length) {
     const char = line[index];
 
-    /* Les chaînes, de leur ouverture à leur fermeture, ou à la fin de la ligne
-       si l'extrait est coupé. */
     if (char === '"' || char === "'" || char === '`') {
       flush();
       let end = index + 1;
@@ -95,7 +66,6 @@ function tokenize(line: string, lang: CodeLang): Token[] {
       continue;
     }
 
-    /* Un mot : mot-clé, appel de fonction, ou rien de particulier. */
     if (/[A-Za-z_$]/.test(char)) {
       flush();
       let end = index;
@@ -115,7 +85,6 @@ function tokenize(line: string, lang: CodeLang): Token[] {
       continue;
     }
 
-    /* Un nombre. */
     if (/[0-9]/.test(char)) {
       flush();
       let end = index;
@@ -164,7 +133,6 @@ function CopyIcon({ copied }: { copied: boolean }) {
   );
 }
 
-/** L'étiquette du langage, dans la pastille à gauche du nom de fichier. */
 const BADGE: Record<CodeLang, string> = {
   ts: 'TS',
   bash: '>_',
@@ -183,7 +151,6 @@ export function CodeBlock({
 }: {
   code: string;
   lang?: CodeLang;
-  /** Le nom du fichier, s'il y en a un. Sans lui, la barre de titre disparaît. */
   file?: string;
   copyLabel: string;
   copiedLabel: string;
@@ -196,8 +163,6 @@ export function CodeBlock({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
-      /* Presse-papier refusé, en http ou sur un vieux navigateur : le code
-         reste sélectionnable à la main, ce qui marchait déjà avant. */
     }
   };
 

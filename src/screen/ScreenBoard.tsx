@@ -1,3 +1,4 @@
+import { getGtfsStopDetail, isGtfsNetworkId } from '../services/gtfsNetwork';
 import { useEffect, useRef, useState } from 'react';
 import { ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
 import type { Departure, StopDetail } from '../types';
@@ -21,19 +22,6 @@ const REFRESH_MS = 30_000;
 
 const tint = (color: string) => `color-mix(in srgb, ${color} 13%, #ffffff)`;
 
-/**
- * Un pavé de passage.
- *
- * Les trois pavés d'une direction sont identiques : l'ordre de lecture, de
- * gauche à droite, dit déjà lequel est le prochain. Ils reprennent la teinte
- * du bandeau de direction, donc celle de la ligne, très diluée — la couleur
- * franche reste sur la pastille, et un chiffre lisible de loin veut de l'encre
- * noire sur fond pâle.
- *
- * Les chiffres sont alignés à gauche, pas centrés : sur une grille de cartes,
- * un bord gauche commun se balaie du regard bien plus vite que trois axes de
- * symétrie qui se décalent selon le nombre de chiffres.
- */
 function TimeCell({ departure, color }: { departure?: Departure; color: string }) {
   const background = { backgroundColor: tint(color) };
 
@@ -56,16 +44,13 @@ function TimeCell({ departure, color }: { departure?: Departure; color: string }
       >
         {value}
       </span>
-      {/* L'unité n'accompagne que les minutes : ni l'heure de passage, ni le
-          zéro clignotant de l'arrivée n'en ont besoin. */}
       {!isArrival && !isClockTime && (
-        <span className="text-[11px] font-semibold text-slate-400 2xl:text-sm">min</span>
+        <span className="text-[0.6875rem] font-semibold text-slate-400 2xl:text-sm">min</span>
       )}
     </div>
   );
 }
 
-/** Une case de passage, version tableau : même règle de lecture, en petit. */
 function RowTime({ departure }: { departure?: Departure }) {
   if (!departure) {
     return <span className="tabular text-right text-base font-bold text-slate-300 2xl:text-xl">–</span>;
@@ -83,19 +68,12 @@ function RowTime({ departure }: { departure?: Departure }) {
         {value}
       </span>
       {!isArrival && !isClockTime && (
-        <span className="text-[10px] font-semibold text-slate-400 2xl:text-xs">min</span>
+        <span className="text-[0.625rem] font-semibold text-slate-400 2xl:text-xs">min</span>
       )}
     </span>
   );
 }
 
-/**
- * Disposition tableau : une ligne par direction, comme une feuille d'horaires.
- *
- * Elle sacrifie la taille des chiffres pour tout faire tenir sans défilement —
- * c'est le bon compromis quand l'écran est près des voyageurs, ou quand l'arrêt
- * est desservi par quinze lignes.
- */
 function DirectionRows({ groups }: { groups: ScreenLineGroup[] }) {
   const rows = groups.flatMap(group =>
     group.directions.map(direction => ({ group, direction })),
@@ -103,9 +81,6 @@ function DirectionRows({ groups }: { groups: ScreenLineGroup[] }) {
 
   return (
     <div className="border-y border-slate-200 bg-white">
-      {/* Figé en haut du défilement : sans repère de colonnes, trois nombres
-          alignés à droite ne disent plus lequel est le prochain passage.
-          Pas d'`overflow-hidden` sur le conteneur — il couperait l'adhérence. */}
       <div className="sticky top-0 z-10 grid grid-cols-[auto_1fr_repeat(3,minmax(0,4.5rem))] items-center gap-3 border-b border-slate-200 bg-slate-100 px-3 py-2 2xl:grid-cols-[auto_1fr_repeat(3,minmax(0,6rem))] 2xl:px-4">
         <span className="signal-label w-12 text-slate-400 2xl:w-14">Ligne</span>
         <span className="signal-label text-slate-400">Direction</span>
@@ -202,7 +177,11 @@ export function ScreenBoard({ stopId, layout }: { stopId: string; layout: Screen
   useEffect(() => {
     let active = true;
     void (async () => {
-      const fetched = isTclId(stopId) ? await getTclStopDetail(stopId) : await getStopDetail(stopId);
+      const fetched = isTclId(stopId)
+        ? await getTclStopDetail(stopId)
+        : isGtfsNetworkId(stopId)
+        ? await getGtfsStopDetail(stopId)
+        : await getStopDetail(stopId);
       if (!active) return;
       if (fetched) {
         setDetail(fetched);
@@ -223,6 +202,8 @@ export function ScreenBoard({ stopId, layout }: { stopId: string; layout: Screen
         ? refreshStopDepartures(current)
         : isTclId(stopId)
         ? getTclStopDetail(stopId)
+        : isGtfsNetworkId(stopId)
+        ? getGtfsStopDetail(stopId)
         : getStopDetail(stopId);
       void next.then(result => {
         if (!result) return;
@@ -239,8 +220,6 @@ export function ScreenBoard({ stopId, layout }: { stopId: string; layout: Screen
     <div className="gl-screen flex h-dvh w-full flex-col bg-[#eef2f7] text-slate-900">
       <ScreenTopBar stopName={detail?.name} />
 
-      {/* `overflow-hidden` et non `auto` : le défilement est piloté à la main,
-          aucune barre ne doit apparaître sur un téléviseur. */}
       <main
         ref={scrollRef}
         className={`min-h-0 flex-1 overflow-hidden ${layout === 'rows' ? '' : 'p-4 2xl:p-6'}`}
@@ -287,9 +266,6 @@ export function ScreenBoard({ stopId, layout }: { stopId: string; layout: Screen
               </div>
             )}
 
-            {/* Fin de liste : la marque du réseau, sur une plaque sombre parce
-                que le logo est écrit en blanc. Elle dit d'où viennent ces
-                horaires — un écran anonyme dans un hall n'inspire rien. */}
             <div className="mt-6 flex justify-center pb-6">
               <span className="inline-flex items-center rounded-xl bg-[#0f172a] px-5 py-3">
                 <img src="/assets/M-Reso.png" alt="M Réso" className="h-7 w-auto 2xl:h-9" />

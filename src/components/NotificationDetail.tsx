@@ -1,12 +1,3 @@
-/**
- * Le détail d'une notification.
- *
- * Il arrive par la droite, comme la suite de la liste dont il sort, et repart
- * du même côté. On y trouve le titre en grand, le jour dessous, puis le texte
- * dans un bloc à part : c'est un message qu'on lit, pas une fiche qu'on
- * consulte.
- */
-
 import { ChevronLeftIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
 import type { OuraNotification } from '../services/ouraCard';
 import { formatNotificationDay } from '../utils/notificationDay';
@@ -17,13 +8,6 @@ interface NotificationDetailProps {
   language: 'fr' | 'en';
   theme?: 'light' | 'dark';
   onClose: () => void;
-  /**
-   * La forme que prend le message ouvert.
-   *
-   * `screen` : une page qui arrive par la droite, celle du téléphone. `dialog` :
-   * une boîte posée au centre, celle du bureau — le portefeuille y tient dans un
-   * panneau, un message n'a pas à prendre l'écran entier pour être lu.
-   */
   variant?: 'screen' | 'dialog';
 }
 
@@ -35,8 +19,6 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
 
   return (
     <>
-    {/* Le voile de la boîte : il la détache du portefeuille resté derrière, et
-        la referme d'un clic à côté. */}
     {isDialog && (
       <div
         className={`fixed inset-0 z-[10005] bg-black/60 transition-opacity duration-200 ${
@@ -59,7 +41,7 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
       style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
       aria-hidden={!isOpen}
     >
-      <div className="px-3" style={{ paddingTop: isDialog ? '0.75rem' : 'max(calc(env(safe-area-inset-top) + 4px), 0.75rem)' }}>
+      <div className="px-3" style={{ paddingTop: isDialog ? '0.75rem' : 'max(calc(var(--gl-safe-top) + 4px), 0.75rem)' }}>
         <button
           type="button"
           onClick={onClose}
@@ -74,7 +56,7 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
 
       {notification && (
         <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-6">
-          <h2 className={`text-center text-[34px] font-bold leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+          <h2 className={`text-center text-[2.125rem] font-bold leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
             {notification.title}
           </h2>
           <p className="mt-2 text-center text-base text-slate-500">
@@ -91,11 +73,6 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
             </div>
           )}
 
-          {/* « Voyez plutôt là ». Les liens ne sont pas dans le texte mais sous
-              lui, en boutons : sur un téléphone, une adresse écrite au milieu
-              d'un paragraphe est une adresse à recopier à la main. Ils s'ouvrent
-              dehors — l'application installée n'a pas de barre d'adresse, une
-              page tierce y resterait prisonnière. */}
           {notification.links.length > 0 && (
             <div className="mt-5 space-y-2">
               {notification.links.map(link => (

@@ -1,28 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePerfSettings, type PerfSettings } from '../hooks/usePerfSettings';
 import { emitDevCommand } from '../utils/devCommands';
+import { clearOptedOutPopups } from '../utils/optedOutPopups';
 import { isSimulatedOffline, setSimulatedOffline } from '../services/networkSimulation';
 import { isOffline } from '../services/offlineSchedule';
 import { restartNetworkScheduleDownload } from '../services/networkSchedules';
 import { precacheOfflineMap } from '../services/offlineMap';
 import { idbCountPrefix } from '../services/persistentCache';
 import { resetAllCaches } from '../utils/resetCaches';
+import { NETWORKS } from '../services/api';
+import { clearRequestLog, getRequestLog, installRequestLog } from '../services/requestLog';
+import { isImageLoadingForced, setImageLoadingForced } from '../utils/forcedImageLoading';
+import { armLocationPick, resetFakeLocation } from '../utils/devLocation';
 
-/**
- * La console développeur.
- *
- * Six appuis sur « ² » l'ouvrent, en mode développeur seulement : une bande
- * grise translucide traverse l'écran à mi-hauteur, comme la console d'un jeu.
- * On y tape une commande ; au-dessus, une seconde bande propose celles qui
- * correspondent, ou affiche la réponse de la dernière. Rien ne s'anime :
- * c'est un outil, il doit répondre tout de suite.
- *
- * Elle est en anglais, volontairement : c'est un outil de développement,
- * pas une partie de l'interface, et les commandes se tapent telles quelles.
- *
- * Entrée lance, Tab complète, les flèches parcourent les propositions (ou
- * l'historique quand rien n'est proposé), Échap referme.
- */
+installRequestLog();
+
 
 type Output = string | string[] | void;
 
@@ -36,11 +28,15 @@ interface ConsoleCommand {
   name: string;
   usage?: string;
   description: string;
-  /** Rend ce qu'il faut afficher. Rien : la console se referme. */
   run: (args: string[], context: ConsoleContext) => Output | Promise<Output>;
+  complete?: (done: string[], context: ConsoleContext) => Suggestion[];
 }
 
-/** « on », « off », ou rien pour basculer. */
+interface Suggestion {
+  value: string;
+  detail?: string;
+}
+
 function toggle(arg: string | undefined, current: boolean): boolean | null {
   if (arg === undefined) return !current;
   const value = arg.toLowerCase();
@@ -53,18 +49,56 @@ type BooleanSetting = {
   [K in keyof PerfSettings]: PerfSettings[K] extends boolean ? K : never
 }[keyof PerfSettings];
 
-/** Une commande qui bascule un réglage. `invert` quand le réglage dit l'inverse du nom. */
+function parseNetworkCodes(args: string[]): { known: string[]; unknown: string[] } {
+  const known: string[] = [];
+  const unknown: string[] = [];
+  for (const arg of args) {
+    const network = NETWORKS.find(entry => entry.code.toLowerCase() === arg.toLowerCase());
+    if (network) known.push(network.code);
+    else unknown.push(arg);
+  }
+  return { known, unknown };
+}
+
+function networkSuggestions(active: boolean) {
+  return (done: string[], { settings }: ConsoleContext): Suggestion[] => {
+    const written = new Set(done.map(code => code.toUpperCase()));
+    return NETWORKS
+      .filter(network => settings.networks.includes(network.code) === active && !written.has(network.code.toUpperCase()))
+      .map(network => ({ value: network.code, detail: network.label }));
+  };
+}
+
+const ON_OFF: Suggestion[] = [{ value: 'on' }, { value: 'off' }];
+
 function settingToggle(name: string, key: BooleanSetting, description: string, invert = false): ConsoleCommand {
   return {
     name,
     usage: '[on|off]',
     description,
+    complete: done => (done.length === 0 ? ON_OFF : []),
     run: (args, { settings, setSetting }) => {
       const current = invert ? !settings[key] : settings[key];
       const next = toggle(args[0], current);
       if (next === null) return `Invalid value "${args[0]}". Use on or off.`;
       setSetting(key, invert ? !next : next);
       return `${name}: ${next ? 'on' : 'off'}`;
+    },
+  };
+}
+
+const isMobileView = () => window.innerWidth < 1024;
+
+function showOnMobile(name: string, description: string): ConsoleCommand {
+  return {
+    name,
+    description,
+    run: () => {
+      if (!isMobileView()) {
+        return `${name} only works in mobile view (under 1024 px wide). Open DevTools (F12) and turn on device mode.`;
+      }
+      emitDevCommand(name);
+      return undefined;
     },
   };
 }
@@ -79,6 +113,61 @@ const COMMANDS: ConsoleCommand[] = [
   { name: 'clear', description: 'Clear the console output', run: () => [] },
   { name: 'close', description: 'Close the console', run: () => undefined },
 
+  showOnMobile('show.onboarding', 'Replay the first-launch onboarding (mobile view only)'),
+  showOnMobile('show.notifications', 'Show the "turn on notifications" prompt (mobile view only)'),
+  showOnMobile('show.install', 'Show the "add to home screen" guide (mobile view only)'),
+  {
+    name: 'show.popup',
+    usage: '[infotraffic|promo]',
+    description: 'Show a test popup (traffic info by default)',
+    complete: done => (done.length === 0 ? [{ value: 'infotraffic' }, { value: 'promo' }] : []),
+    run: args => {
+      const kind = args[0] === 'promo' ? 'promo' : 'infotraffic';
+      emitDevCommand('show.popup', [kind]);
+      return `Popup shown: ${kind}`;
+    },
+  },
+  {
+    name: 'popup.reset',
+    description: 'Show again the announcements hidden with "Don’t show this again"',
+    run: () => {
+      const count = clearOptedOutPopups();
+      emitDevCommand('popup.reset');
+      return count === 0
+        ? 'No hidden announcement. Active ones reloaded.'
+        : `${count} hidden announcement${count > 1 ? 's' : ''} restored.`;
+    },
+  },
+  {
+    name: 'bypass.onboarding',
+    description: 'Close the onboarding and mark it as done',
+    run: () => { emitDevCommand('bypass.onboarding'); return 'Onboarding closed.'; },
+  },
+  {
+    name: 'bypass.notifications',
+    description: 'Close the notifications prompt and mark it as answered',
+    run: () => { emitDevCommand('bypass.notifications'); return 'Notifications prompt closed.'; },
+  },
+  {
+    name: 'bypass.install',
+    description: 'Close the "add to home screen" guide',
+    run: () => { emitDevCommand('bypass.install'); return 'Install guide closed.'; },
+  },
+  {
+    name: 'bypass.popup',
+    description: 'Close every popup on screen',
+    run: () => { emitDevCommand('bypass.popup'); return 'Popups closed.'; },
+  },
+  {
+    name: 'bypass.all',
+    description: 'Close every launch screen and popup at once (offline screen included)',
+    run: () => {
+      for (const name of ['bypassWIFI.popup', 'bypass.onboarding', 'bypass.notifications', 'bypass.install', 'bypass.popup']) {
+        emitDevCommand(name);
+      }
+      return 'Everything closed.';
+    },
+  },
   {
     name: 'bypassWIFI.popup',
     description: 'Dismiss the "You are offline" launch screen',
@@ -86,6 +175,50 @@ const COMMANDS: ConsoleCommand[] = [
   },
 
   settingToggle('devOverlay', 'devOverlay', 'Show the FPS and performance overlay'),
+  settingToggle('net.overlay', 'netOverlay', 'Raw live list of every network request, top right'),
+  {
+    name: 'location.pick',
+    description: 'Close the console; the next right-click on the map becomes your location',
+    run: () => { armLocationPick(); },
+  },
+  {
+    name: 'location.reset',
+    description: 'Forget the picked location and go back to the real one',
+    run: () => { resetFakeLocation(); return 'Location reset to the real one.'; },
+  },
+  {
+    name: 'images.loading',
+    usage: '[on|off]',
+    description: 'Keep place images in their loading state (shimmer)',
+    complete: done => (done.length === 0 ? ON_OFF : []),
+    run: args => {
+      const next = toggle(args[0], isImageLoadingForced());
+      if (next === null) return `Invalid value "${args[0]}". Use on or off.`;
+      setImageLoadingForced(next);
+      return `images.loading: ${next ? 'on' : 'off'}`;
+    },
+  },
+  {
+    name: 'notify.test',
+    usage: '[location|card]',
+    description: 'Show a test notification at the top of the screen',
+    complete: done => (done.length === 0 ? [{ value: 'location' }, { value: 'card' }] : []),
+    run: args => { emitDevCommand('notify.test', [args[0] ?? 'card']); },
+  },
+  {
+    name: 'net.clear',
+    description: 'Empty the network overlay and reset its counter',
+    run: () => { clearRequestLog(); return 'Network log cleared.'; },
+  },
+  {
+    name: 'net.count',
+    description: 'How many requests were made since the app started',
+    run: () => {
+      const { entries, total } = getRequestLog();
+      const failed = entries.filter(entry => entry.status === 0 || (entry.status ?? 0) >= 400).length;
+      return `Requests: ${total} (${failed} failed in the last ${entries.length})`;
+    },
+  },
   settingToggle('render.stopBadges', 'stopLineBadges', 'Line badges next to stops'),
   settingToggle('render.stopLabels', 'stopLabels', 'Stop names on the map'),
   settingToggle('render.lineShapes', 'lineShapes', 'Line shapes on the map'),
@@ -108,6 +241,45 @@ const COMMANDS: ConsoleCommand[] = [
   settingToggle('a11y', 'accessibility', 'Accessibility mode'),
   settingToggle('mobility.citiz', 'citiz', 'Citiz cars on the map'),
   settingToggle('mobility.voi', 'voi', 'Voi vehicles on the map'),
+  {
+    name: 'networks.list',
+    description: 'List every available network, with its code and state',
+    run: (_args, { settings }) => NETWORKS.map(network =>
+      `${settings.networks.includes(network.code) ? '[x]' : '[ ]'} ${network.code.padEnd(11)} ${network.label}`),
+  },
+  {
+    name: 'networks.select',
+    usage: '<code> [code…]',
+    description: 'Turn one or more networks on (see networks.list)',
+    complete: networkSuggestions(false),
+    run: (args, { settings, setSetting }) => {
+      if (args.length === 0) return 'Missing network code. Example: networks.select STAS';
+      const { known, unknown } = parseNetworkCodes(args);
+      if (known.length > 0) setSetting('networks', [...new Set([...settings.networks, ...known])]);
+      return [
+        ...(known.length ? [`On: ${known.join(', ')}`] : []),
+        ...(unknown.length ? [`Unknown network: ${unknown.join(', ')}. Type networks.list.`] : []),
+      ];
+    },
+  },
+  {
+    name: 'networks.deselect',
+    usage: '<code> [code…]',
+    description: 'Turn one or more networks off (see networks.list)',
+    complete: networkSuggestions(true),
+    run: (args, { settings, setSetting }) => {
+      if (args.length === 0) return 'Missing network code. Example: networks.deselect STAS';
+      const { known, unknown } = parseNetworkCodes(args);
+      const next = settings.networks.filter(code => !known.includes(code));
+      if (known.length > 0) setSetting('networks', next.length > 0 ? next : ['SEM', 'SE2']);
+      return [
+        ...(known.length ? [`Off: ${known.join(', ')}`] : []),
+        ...(next.length === 0 ? ['No network left: Tag (SEM, SE2) kept on.'] : []),
+        ...(unknown.length ? [`Unknown network: ${unknown.join(', ')}. Type networks.list.`] : []),
+      ];
+    },
+  },
+
   {
     name: 'settings.reset',
     description: 'Restore every setting to its default',
@@ -190,6 +362,7 @@ const COMMANDS: ConsoleCommand[] = [
     name: 'cache.reset',
     usage: 'confirm',
     description: 'Wipe every cache and reload (asks for "confirm")',
+    complete: done => (done.length === 0 ? [{ value: 'confirm' }] : []),
     run: (args) => {
       if (args[0] !== 'confirm') return 'This wipes all local data. Type: cache.reset confirm';
       void resetAllCaches();
@@ -219,7 +392,6 @@ const COMMANDS: ConsoleCommand[] = [
   { name: 'app.reload', description: 'Reload the app', run: () => { window.location.reload(); } },
 ];
 
-/* Couleurs posées en style : le thème clair recolore les classes utilitaires. */
 const BAND = 'rgba(20, 20, 20, 0.62)';
 const PANEL = 'rgba(20, 20, 20, 0.78)';
 const SELECTED = 'rgba(255, 255, 255, 0.12)';
@@ -230,7 +402,25 @@ const ERROR = '#f87171';
 const OPEN_KEY = '²';
 const OPEN_PRESSES = 6;
 const PRESS_GAP_MS = 2000;
-const MAX_OUTPUT_LINES = 14;
+const MAX_OUTPUT_LINES = 200;
+const HISTORY_KEY = 'greLines_devConsoleHistory_v1';
+const MAX_HISTORY = 50;
+
+function readHistory(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(entry => typeof entry === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeHistory(history: string[]) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch {
+  }
+}
 
 export function DevConsole() {
   const { settings, setSetting, resetSettings } = usePerfSettings();
@@ -239,11 +429,12 @@ export function DevConsole() {
   const [value, setValue] = useState('');
   const [selected, setSelected] = useState(0);
   const [output, setOutput] = useState<Array<{ text: string; error?: boolean }>>([]);
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<string[]>(readHistory);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+  const pickedWithArrowsRef = useRef(false);
 
-  /* Six appuis qui se suivent ; plus de deux secondes d'écart, on recompte. */
   useEffect(() => {
     if (!enabled || open) return;
     let count = 0;
@@ -269,16 +460,32 @@ export function DevConsole() {
   }, [open]);
 
   const typed = value.trim().split(/\s+/)[0] ?? '';
-  /* Les propositions ne portent que sur le nom : une fois l'espace tapé, on
-     écrit des arguments, plus une commande. */
   const typingName = typed.length > 0 && !/\s/.test(value.trimStart());
+  const browsingHistory = historyIndex >= 0;
   const matches = useMemo(() => {
-    if (!typingName) return [];
+    if (!typingName || browsingHistory) return [];
     const needle = typed.toLowerCase();
     return COMMANDS
       .filter(command => command.name.toLowerCase().includes(needle))
       .sort((a, b) => Number(!a.name.toLowerCase().startsWith(needle)) - Number(!b.name.toLowerCase().startsWith(needle)));
-  }, [typed, typingName]);
+  }, [typed, typingName, browsingHistory]);
+
+  const argumentMatches = useMemo((): Suggestion[] => {
+    if (typingName || browsingHistory || !/\s/.test(value.trimStart())) return [];
+    const command = COMMANDS.find(entry => entry.name.toLowerCase() === typed.toLowerCase());
+    if (!command?.complete) return [];
+    const words = value.trimStart().split(/\s+/).slice(1);
+    const needle = (words.pop() ?? '').toLowerCase();
+    return command.complete(words, { settings, setSetting, resetSettings })
+      .filter(entry => entry.value.toLowerCase() !== needle)
+      .filter(entry => entry.value.toLowerCase().includes(needle) || (entry.detail ?? '').toLowerCase().includes(needle))
+      .sort((a, b) => Number(!a.value.toLowerCase().startsWith(needle)) - Number(!b.value.toLowerCase().startsWith(needle)));
+  }, [value, typed, typingName, browsingHistory, settings, setSetting, resetSettings]);
+
+  useEffect(() => {
+    const panel = outputRef.current;
+    if (panel) panel.scrollTop = panel.scrollHeight;
+  }, [output, open]);
 
   if (!enabled || !open) return null;
 
@@ -296,10 +503,12 @@ export function DevConsole() {
     const [name, ...args] = line.split(/\s+/);
     if (!name) return;
     const exact = COMMANDS.find(command => command.name.toLowerCase() === name.toLowerCase());
-    /* Pas de correspondance exacte : la proposition surlignée tient lieu de
-       commande, comme dans une console de jeu. */
     const command = exact ?? matches[selected];
-    setHistory(previous => [line, ...previous.filter(entry => entry !== line)].slice(0, 30));
+    setHistory(previous => {
+      const next = [line, ...previous.filter(entry => entry !== line)].slice(0, MAX_HISTORY);
+      writeHistory(next);
+      return next;
+    });
     setHistoryIndex(-1);
     setValue('');
     setSelected(0);
@@ -325,6 +534,14 @@ export function DevConsole() {
     }
   };
 
+  const acceptArgument = (suggestion: Suggestion) => {
+    setValue(`${value.replace(/\S*$/, '')}${suggestion.value} `);
+    setSelected(0);
+    pickedWithArrowsRef.current = false;
+  };
+
+  const suggestionCount = matches.length > 0 ? matches.length : argumentMatches.length;
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === OPEN_KEY) {
       event.preventDefault();
@@ -335,14 +552,21 @@ export function DevConsole() {
       close();
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      void run();
+      const typingWord = /\S$/.test(value);
+      if ((typingWord || pickedWithArrowsRef.current) && argumentMatches.length > 0) {
+        acceptArgument(argumentMatches[selected] ?? argumentMatches[0]);
+      }
+      else void run();
     } else if (event.key === 'Tab' && matches.length > 0) {
       event.preventDefault();
       setValue(`${(matches[selected] ?? matches[0]).name} `);
       setSelected(0);
+    } else if (event.key === 'Tab' && argumentMatches.length > 0) {
+      event.preventDefault();
+      acceptArgument(argumentMatches[selected] ?? argumentMatches[0]);
     } else if (event.key === 'ArrowDown') {
       event.preventDefault();
-      if (matches.length > 0) setSelected(index => (index + 1) % matches.length);
+      if (suggestionCount > 0) { pickedWithArrowsRef.current = true; setSelected(index => (index + 1) % suggestionCount); }
       else if (historyIndex > 0) {
         setHistoryIndex(historyIndex - 1);
         setValue(history[historyIndex - 1]);
@@ -352,7 +576,7 @@ export function DevConsole() {
       }
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
-      if (matches.length > 0) setSelected(index => (index - 1 + matches.length) % matches.length);
+      if (suggestionCount > 0) { pickedWithArrowsRef.current = true; setSelected(index => (index - 1 + suggestionCount) % suggestionCount); }
       else if (historyIndex + 1 < history.length) {
         setHistoryIndex(historyIndex + 1);
         setValue(history[historyIndex + 1]);
@@ -361,7 +585,10 @@ export function DevConsole() {
   };
 
   const showSuggestions = matches.length > 0;
-  const showOutput = !showSuggestions && output.length > 0;
+  const showArguments = !showSuggestions && argumentMatches.length > 0;
+  const showOutput = !showSuggestions && !showArguments && output.length > 0;
+  const keepInView = (active: boolean) =>
+    active ? (element: HTMLDivElement | null) => element?.scrollIntoView({ block: 'nearest' }) : undefined;
 
   return (
     <div
@@ -369,16 +596,37 @@ export function DevConsole() {
       role="dialog"
       aria-label="Developer console"
     >
-      {(showSuggestions || showOutput) && (
+      {(showSuggestions || showArguments || showOutput) && (
         <div
-          className="absolute inset-x-0 bottom-full max-h-[40vh] overflow-y-auto py-1 font-mono text-[13px]"
+          ref={outputRef}
+          className="absolute inset-x-0 bottom-full max-h-[40vh] overflow-y-auto py-1 font-mono text-[0.8125rem]"
           style={{ backgroundColor: PANEL }}
-          role={showSuggestions ? 'listbox' : 'log'}
+          role={showSuggestions || showArguments ? 'listbox' : 'log'}
         >
-          {showSuggestions
+          {showArguments
+            ? argumentMatches.map((suggestion, index) => (
+              <div
+                key={suggestion.value}
+                ref={keepInView(index === selected)}
+                role="option"
+                aria-selected={index === selected}
+                onMouseDown={event => {
+                  event.preventDefault();
+                  acceptArgument(suggestion);
+                  inputRef.current?.focus();
+                }}
+                className="flex cursor-pointer items-baseline gap-4 px-3 py-1"
+                style={{ backgroundColor: index === selected ? SELECTED : 'transparent' }}
+              >
+                <span className="min-w-[7rem]" style={{ color: TEXT }}>{suggestion.value}</span>
+                {suggestion.detail && <span style={{ color: MUTED }}>{suggestion.detail}</span>}
+              </div>
+            ))
+            : showSuggestions
             ? matches.map((command, index) => (
               <div
                 key={command.name}
+                ref={keepInView(index === selected)}
                 role="option"
                 aria-selected={index === selected}
                 onMouseDown={event => {
@@ -417,6 +665,7 @@ export function DevConsole() {
             setValue(event.target.value);
             setSelected(0);
             setHistoryIndex(-1);
+            pickedWithArrowsRef.current = false;
           }}
           onKeyDown={onKeyDown}
           onBlur={() => inputRef.current?.focus()}
@@ -424,7 +673,7 @@ export function DevConsole() {
           autoComplete="off"
           placeholder="Enter command here. Syntax: command argument1 argument2"
           aria-label="Command"
-          className="block h-9 w-full border-0 bg-transparent px-1 text-[17px] outline-none placeholder:text-[#9ca3af]"
+          className="block h-9 w-full border-0 bg-transparent px-1 text-[1.0625rem] outline-none placeholder:text-[#9ca3af]"
           style={{ color: TEXT }}
         />
       </div>

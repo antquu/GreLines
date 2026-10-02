@@ -1,27 +1,3 @@
-/**
- * L'écran Favoris.
- *
- * Une page d'index, et rien de plus. Deux listes de rangées — les arrêts, les
- * trajets — où chaque rangée dit trois choses et s'arrête là : par quelles
- * lignes, vers quoi, et un chevron. Ce n'est pas ici qu'on lit ses horaires,
- * c'est ici qu'on choisit lequel on va lire.
- *
- * Les arrêts portent leurs badges de ligne en clair ; les trajets, une grappe
- * de toutes les lignes qu'ils empruntent — un trajet n'a pas d'icône propre, il
- * n'a que ses lignes, et leur couleur suffit à le reconnaître avant le titre.
- *
- * Toucher une rangée fait entrer sa page par la droite. Les actions — retirer,
- * renommer, ouvrir sur la carte — vivent là-bas, derrière les trois points :
- * une page d'index n'a pas à porter les outils de ce qu'elle indexe.
- *
- * Comme le Compte, c'est une page et non une feuille : elle occupe l'écran du
- * haut en bas et passe sous la barre d'onglets, qui ne bouge pas. Elle entre
- * par le côté d'où l'on vient — par la droite depuis « Autour », par la gauche
- * depuis « Compte » — de sorte que les quatre écrans forment une bande qu'on
- * fait défiler latéralement, et non quatre portes qui s'ouvrent au même
- * endroit.
- */
-
 import { useEffect, useRef, useState } from 'react';
 import { ChevronRightIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
@@ -41,40 +17,22 @@ import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import type { AllLinesLine } from '../services/allLines';
 import type { RouteItinerary } from '../services/api';
 
-/** Au-delà, la rangée n'est plus lisible : le reste se compte. */
 const MAX_ROW_BADGES = 3;
 
 interface FavoritesScreenProps {
   isOpen: boolean;
-  /**
-   * Le bord où la page se range quand elle est fermée — donc celui par lequel
-   * elle entre et repart. `left` quand le Compte occupe la page (il est à sa
-   * droite dans la barre d'onglets), `right` sinon.
-   */
   side: 'left' | 'right';
   language: 'fr' | 'en';
   theme?: 'light' | 'dark';
-  /** Les arrêts favoris et leurs passages, déjà chargés et rafraîchis par l'app. */
   stopDetails: FavoriteDetail[];
-  /** Les lignes mises en favori depuis leur fiche. */
   favoriteLines: FavoriteLine[];
   journeys: FavoriteJourney[];
-  /** Codes des lignes perturbées, en majuscules — pour les pastilles d'alerte. */
   disruptedLines?: Set<string>;
-  /** Catalogue des lignes : il donne leur famille, et donc leur ordre. */
   lineLookup?: Map<string, AllLinesLine> | null;
-  /**
-   * Ouvre la fiche d'un arrêt sur la carte — la page se referme derrière. Avec
-   * une ligne, la fiche s'ouvre filtrée sur elle.
-   */
   onOpenStop: (stopId: string, lineId?: string) => void;
-  /** Ouvre la fiche d'une ligne favorite — la page se referme derrière. */
   onOpenLine: (favoriteLine: FavoriteLine) => void;
-  /** Rejoue un trajet dans le planificateur, avec un itinéraire déjà choisi ou non. */
   onOpenJourney: (journey: FavoriteJourney, itinerary?: RouteItinerary) => void;
-  /** Ouvre la page de configuration : historique et ajout de trajets. */
   onConfigureJourneys: () => void;
-  /** L'écran défile : la barre d'onglets se resserre sur ses icônes. */
   onScrolledChange?: (scrolled: boolean) => void;
 }
 
@@ -119,10 +77,8 @@ export function FavoritesScreen({
   const isLight = theme === 'light';
   const lastScrollRef = useRef(0);
 
-  /** Le favori ouvert en grand, s'il y en a un. Un seul à la fois. */
   const [openStopId, setOpenStopId] = useState<string | null>(null);
   const [openJourneyId, setOpenJourneyId] = useState<string | null>(null);
-  /** Trajet en cours de renommage, ou `null`. */
   const [renaming, setRenaming] = useState<FavoriteJourney | null>(null);
 
   useEffect(() => {
@@ -156,7 +112,7 @@ export function FavoritesScreen({
       >
         <div
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-40"
-          style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 1.25rem)' }}
+          style={{ paddingTop: 'max(calc(var(--gl-safe-top) + 4px), 1.25rem)' }}
           onScroll={event => {
             const top = event.currentTarget.scrollTop;
             const previous = lastScrollRef.current;
@@ -166,11 +122,10 @@ export function FavoritesScreen({
             else if (top < previous - 2) onScrolledChange?.(false);
           }}
         >
-          <h2 className={`mb-5 px-1 text-[28px] font-extrabold leading-none ${titleClass}`}>
+          <h2 className={`mb-5 px-1 text-[1.75rem] font-extrabold leading-none ${titleClass}`}>
             {text.title}
           </h2>
 
-          {/* ── Arrêts ─────────────────────────────────────────────────── */}
           <section className="mb-9">
             <h3 className={`mb-3 px-1 text-sm font-semibold leading-none ${mutedClass}`}>{text.stops}</h3>
 
@@ -185,13 +140,7 @@ export function FavoritesScreen({
                   const shown = lines.slice(0, MAX_ROW_BADGES);
                   const extra = lines.length - shown.length;
                   return (
-                    /* La rangée n'est pas un seul bouton : les badges en sont
-                       chacun un. Toucher le « C1 » ouvre l'arrêt filtré sur le
-                       C1 ; toucher le reste de la rangée ouvre sa page. Deux
-                       intentions différentes, deux cibles. */
                     <div key={entry.favorite.stopId} className={rowClass}>
-                      {/* Les lignes d'abord : c'est par elles qu'on retrouve un
-                          arrêt dans une liste, avant même de lire son nom. */}
                       <span className="flex flex-shrink-0 items-center gap-1">
                         {shown.map(line => (
                           <button
@@ -224,10 +173,7 @@ export function FavoritesScreen({
                         className={`flex min-w-0 flex-1 items-center gap-3 text-left ${titleClass}`}
                       >
                         <span className="min-w-0 flex-1">
-                          {/* Un nom d'arrêt long défile plutôt que d'être coupé :
-                              « Grenoble, Hubert Dubedout — Maison du T… » ne dit
-                              plus lequel des deux arrêts on regarde. */}
-                          <MarqueeText text={entry.favorite.stopName} className="text-[16px] font-semibold" gap={40} />
+                          <MarqueeText text={entry.favorite.stopName} className="text-[1rem] font-semibold" gap={40} />
                           {entry.favorite.city && (
                             <span className={`block truncate text-xs ${mutedClass}`}>{entry.favorite.city}</span>
                           )}
@@ -241,7 +187,6 @@ export function FavoritesScreen({
             )}
           </section>
 
-          {/* ── Lignes ─────────────────────────────────────────────────── */}
           {favoriteLines.length > 0 && (
             <section className="mb-9">
               <h3 className={`mb-3 px-1 text-sm font-semibold leading-none ${mutedClass}`}>{text.lines}</h3>
@@ -258,7 +203,7 @@ export function FavoritesScreen({
                       size="sm"
                     />
                     <span className={`min-w-0 flex-1 ${titleClass}`}>
-                      <MarqueeText text={fav.longName} className="text-[16px] font-semibold" gap={40} />
+                      <MarqueeText text={fav.longName} className="text-[1rem] font-semibold" gap={40} />
                     </span>
                     <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${mutedClass}`} />
                   </button>
@@ -267,7 +212,6 @@ export function FavoritesScreen({
             </section>
           )}
 
-          {/* ── Trajets ────────────────────────────────────────────────── */}
           <section>
             <h3 className={`mb-3 px-1 text-sm font-semibold leading-none ${mutedClass}`}>{text.journeys}</h3>
 
@@ -292,7 +236,7 @@ export function FavoritesScreen({
                     <span className={`min-w-0 flex-1 ${titleClass}`}>
                       <MarqueeText
                         text={journey.name || defaultJourneyTitle(journey)}
-                        className="text-[16px] font-semibold"
+                        className="text-[1rem] font-semibold"
                         gap={40}
                       />
                     </span>
@@ -302,15 +246,12 @@ export function FavoritesScreen({
               </div>
             )}
 
-            {/* L'entrée de la configuration. Un rectangle plein largeur plutôt
-                qu'une étoile perdue dans le planificateur : ajouter un trajet
-                favori se fait ici, depuis l'endroit où on les consulte. */}
             <button
               type="button"
               onClick={onConfigureJourneys}
               className={`mt-3 flex w-full items-center gap-3 rounded-[26px] border px-4 py-4 text-left transition active:scale-[0.99] ${surfaceClass}`}
             >
-              <span className={`min-w-0 flex-1 text-[15px] font-bold ${titleClass}`}>{text.configure}</span>
+              <span className={`min-w-0 flex-1 text-[0.9375rem] font-bold ${titleClass}`}>{text.configure}</span>
               <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${mutedClass}`} />
             </button>
           </section>
@@ -373,13 +314,6 @@ export function FavoritesScreen({
   );
 }
 
-/**
- * Le renommage d'un trajet.
- *
- * Une feuille par-dessus la page, pas une boîte de dialogue du navigateur : le
- * clavier monte, le champ reste au-dessus, et le trajet qu'on renomme se lit
- * encore derrière.
- */
 function RenameSheet({
   journey,
   isLight,

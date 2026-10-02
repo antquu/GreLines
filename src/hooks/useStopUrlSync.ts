@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react';
 
 export interface UseStopUrlSyncArgs {
-  
+
   stopId: string | null | undefined;
-  
+
   selectedLines: Set<string>;
-  
+
   basePath?: string;
-  
+
   enabled?: boolean;
 }
 

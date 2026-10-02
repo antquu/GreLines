@@ -1,28 +1,3 @@
-/**
- * La vitrine de GreLines.
- *
- * Servie sur `/fr` et `/en`, et sur elles seules : `/` continue de mener droit
- * à l'application. On n'arrive donc ici que délibérément — par les réglages,
- * par un lien partagé, par un moteur de recherche.
- *
- * Elle est montée avant `App`, dans `main.tsx`, et ne charge rien de
- * l'application : ni carte, ni service d'horaires. Une page de présentation qui
- * met trois secondes à s'afficher ne présente rien du tout. La seule requête
- * qu'elle fasse est celle des trois derniers communiqués, en bas de page : elle
- * part après le premier rendu, et la section n'existe pas tant qu'elle n'a rien
- * rapporté.
- *
- * La page est entièrement claire ou entièrement sombre. Le thème est celui
- * choisi dans l'application — la vitrine relit le même réglage — et se change
- * depuis le pied de page. Les sections n'alternent plus les fonds : elles se
- * détachent par un second niveau de surface et par les filets.
- *
- * Aucune image n'est indispensable. Tant que `/assets/homepage` est vide, les
- * logos s'écrivent en toutes lettres, les captures laissent un cadre vide et
- * l'emplacement de la vidéo se remplit d'une trame. La page se tient debout
- * seule, et s'enrichit à mesure qu'on la remplit.
- */
-
 import { useEffect, useRef, useState } from 'react';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
@@ -34,16 +9,7 @@ import './landing.css';
 
 const ASSETS = '/assets/homepage';
 
-/* -------------------------------------------------------------------------
- * Petits outils de page.
- * ---------------------------------------------------------------------- */
 
-/**
- * Fait apparaître un bloc quand il entre dans le champ.
- *
- * Une seule fois : un contenu qui rejoue son animation à chaque passage donne
- * le mal de mer sur une page qu'on parcourt de haut en bas puis de bas en haut.
- */
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
 
@@ -88,13 +54,6 @@ function Reveal({
   );
 }
 
-/**
- * Une image qui s'efface si elle n'existe pas.
- *
- * Le dossier `/assets/homepage` se remplit au fil du temps ; d'ici là, mieux
- * vaut un cadre vide qu'une icône brisée. `onError` retire l'image, le parent
- * garde sa place.
- */
 function SoftImage({
   src,
   alt,
@@ -104,14 +63,6 @@ function SoftImage({
   src: string;
   alt: string;
   className?: string;
-  /**
-   * Vrai pour ce qui est visible d'emblée.
-   *
-   * Le chargement paresseux est une bonne idée partout, sauf sur la plus
-   * grande image du haut de page : le navigateur attend alors d'avoir calculé
-   * la mise en page pour décider de la télécharger, et l'on retarde
-   * précisément ce qu'on voulait montrer en premier.
-   */
   eager?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
@@ -129,24 +80,8 @@ function SoftImage({
   );
 }
 
-/** La hauteur d'encre commune à tous les logotypes du bandeau, en pixels. */
 const LOGO_INK_HEIGHT = 26;
 
-/**
- * Un logo de réseau, cadré sur son tracé.
- *
- * Le fichier employé est la version trouée de `svg/mono/`, produite par
- * `scripts/mono-logos.mjs` : dans les originaux, les contre-formes sont
- * peintes en blanc et non évidées, si bien qu'une fois ramenées à une seule
- * encre elles se referment — le « M » disparaît de son rond, la voiture de sa
- * goutte.
- *
- * L'image est agrandie jusqu'à ce que sa zone utile atteigne la hauteur
- * commune, puis décalée pour que le coin haut-gauche du tracé tombe dans le
- * coin de la fenêtre, qui rogne le vide. Tous les logotypes se retrouvent donc
- * à la même hauteur optique, quelle que soit la place qu'ils occupent dans
- * leur fichier — c'est ce qui fait qu'une rangée de marques paraît alignée.
- */
 function PartnerLogo({ id, name, box }: Partner) {
   const [failed, setFailed] = useState(false);
 
@@ -174,10 +109,6 @@ function PartnerLogo({ id, name, box }: Partner) {
               top: `${(-box.y0 / height) * 100}%`,
             }}
             onError={() => setFailed(true)}
-            /* Pas de chargement différé : le bandeau défile, et ce qui est loin
-               à droite n'entre jamais « dans la vue » au sens où le navigateur
-               l'entend. Les fichiers font quelques kilo-octets, ils arrivent
-               avec la page. */
           />
         </div>
       )}
@@ -185,14 +116,6 @@ function PartnerLogo({ id, name, box }: Partner) {
   );
 }
 
-/**
- * La pastille GL, en haut et en bas de la page.
- *
- * Deux fichiers, un par thème, et le nommage est celui du disque et non celui
- * du fond : `logo.png` est le disque noir, qu'on pose sur une page claire ;
- * `logo_light.png` est le disque blanc, pour la page sombre. Le nom du mot
- * s'écrit à côté, en toutes lettres — la pastille seule ne dit pas GreLines.
- */
 function ArrowRight() {
   return (
     <svg
@@ -210,24 +133,10 @@ function ArrowRight() {
   );
 }
 
-/** L'intitulé d'une section : deux mots en mono, au-dessus du titre. */
 function Eyebrow({ children }: { children: string }) {
   return <p className="landing-eyebrow">{children}</p>;
 }
 
-/**
- * Les trois dernières nouvelles, en cartes.
- *
- * La forme est celle d'un communiqué affiché : le titre, le chapô, puis — collé
- * au bas de la carte — les deux faits qu'on veut pouvoir comparer d'un coup
- * d'œil d'une carte à l'autre, la date et la catégorie. Ils sont alignés parce
- * qu'ils sont poussés en bas : trois chapôs de longueurs différentes ne
- * décalent donc pas trois dates.
- *
- * La section disparaît si la base ne répond pas ou si rien n'est publié. Une
- * salle de presse vide sur une page d'accueil dit quelque chose de faux sur le
- * produit ; mieux vaut qu'elle ne soit pas là.
- */
 function LatestNews({ lang }: { lang: Lang }) {
   const copy = COPY[lang];
   const [posts, setPosts] = useState<BlogPost[]>([]);
@@ -261,9 +170,6 @@ function LatestNews({ lang }: { lang: Lang }) {
           </div>
         </Reveal>
 
-        {/* Autant de colonnes que de communiqués, jusqu'à trois : un article
-            seul dans une grille de trois laisse deux tiers de vide, et la page
-            paraît alors amputée plutôt que sobre. */}
         <div
           className={`mt-14 grid gap-6 ${
             posts.length === 1
@@ -279,8 +185,6 @@ function LatestNews({ lang }: { lang: Lang }) {
                 <h3 className="landing-news-title">{post.title}</h3>
                 {post.excerpt && <p className="landing-body mt-3">{post.excerpt}</p>}
 
-                {/* Le vide qui pousse le pied de carte vers le bas, et aligne
-                    les dates des trois cartes sur une même ligne. */}
                 <div className="flex-1" />
 
                 <dl className="mt-8">
@@ -317,22 +221,11 @@ function LatestNews({ lang }: { lang: Lang }) {
 type Theme = 'light' | 'dark';
 type ThemeChoice = 'auto' | Theme;
 
-/** Ce que le système annonce à cet instant. */
 function systemTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
   return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
-/**
- * Le thème de la vitrine.
- *
- * Trois choix, comme partout : suivre le système, forcer le clair, forcer le
- * sombre. Le réglage vit sous la même clé que celui de l'application —
- * `greLines_theme` — et suit la même convention : « light » ou « dark » écrits
- * en toutes lettres, tout le reste valant « suivre le système ». Quelqu'un qui
- * arrive ici depuis les réglages ne voit donc pas la page basculer sous ses
- * yeux, et ce qu'il change ici vaut aussi pour l'application.
- */
 function useLandingTheme() {
   const [choice, setChoice] = useState<ThemeChoice>(() => {
     try {
@@ -346,7 +239,6 @@ function useLandingTheme() {
 
   const [system, setSystem] = useState<Theme>(systemTheme);
 
-  /* En automatique, la page suit le système jusque dans ses changements. */
   useEffect(() => {
     const media = window.matchMedia?.('(prefers-color-scheme: light)');
     if (!media) return;
@@ -368,42 +260,21 @@ function useLandingTheme() {
   return { theme, choice, choose };
 }
 
-/* -------------------------------------------------------------------------
- * La page.
- * ---------------------------------------------------------------------- */
 
 export function LandingApp({ lang }: { lang: Lang }) {
   const copy = COPY[lang];
-  /* Basculer depuis le pied de page est un choix : il est retenu, et la
-     détection de langue cesse alors de s'en mêler. */
   const rememberLang = (next: Lang) => {
-    try { localStorage.setItem('greLines_landingLang', next); } catch { /* ignoré */ }
+    try { localStorage.setItem('greLines_landingLang', next); } catch { }
   };
   const [stuck, setStuck] = useState(false);
   const { theme, choice, choose } = useLandingTheme();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  /**
-   * L'animation d'apparition, activée seulement si l'on sait la mener à bien.
-   *
-   * Le contenu est visible par défaut ; ce n'est qu'en posant cette classe
-   * qu'on le cache en attendant qu'il entre dans le champ. Faute
-   * d'`IntersectionObserver`, on ne le cache donc jamais.
-   */
   const [animated, setAnimated] = useState(() => typeof IntersectionObserver !== 'undefined');
 
   useEffect(() => {
     if (!animated) return;
 
-    /*
-     * Le garde-fou.
-     *
-     * Un observateur peut exister sans jamais rien signaler — onglet en
-     * arrière-plan au chargement, rendu non composité, extension qui s'en
-     * mêle. Passé deux secondes sans qu'un seul bloc soit apparu, on renonce à
-     * l'animation et l'on montre tout : une page de présentation vide est bien
-     * pire qu'une page sans effet.
-     */
     const timer = window.setTimeout(() => {
       if (document.querySelector('.landing-reveal.is-visible')) return;
       setAnimated(false);
@@ -414,25 +285,12 @@ export function LandingApp({ lang }: { lang: Lang }) {
 
   useEffect(() => {
     document.documentElement.lang = lang;
-    /*
-     * « Page / Marque », la marque en dernier.
-     *
-     * Un onglet est souvent assez étroit pour ne montrer que ses premiers
-     * caractères : ce qui distingue celui-ci des sept autres doit donc venir en
-     * premier — et dans une rangée d'onglets GreLines, « GreLines » est
-     * précisément ce qui ne distingue rien.
-     */
     document.title =
       lang === 'fr'
         ? 'Tous vos transports de Grenoble sur un seul écran \\ GreLines'
         : 'Every Grenoble transit network on a single screen \\ GreLines';
   }, [lang]);
 
-  /*
-   * Le menu se referme comme on s'y attend : par la touche d'échappement, et
-   * en cliquant ailleurs. Sans quoi il resterait ouvert dans le dos de celui
-   * qui a repris sa lecture plus bas.
-   */
   useEffect(() => {
     if (!menuOpen) return;
     const onKey = (event: KeyboardEvent) => {
@@ -450,7 +308,6 @@ export function LandingApp({ lang }: { lang: Lang }) {
     };
   }, [menuOpen]);
 
-  /* L'en-tête ne prend son fond qu'une fois la page défilée. */
   useEffect(() => {
     const onScroll = () => setStuck(window.scrollY > 24);
     onScroll();
@@ -462,19 +319,10 @@ export function LandingApp({ lang }: { lang: Lang }) {
 
   return (
     <div className={`landing ${animated ? 'landing-anim' : ''}`} data-theme={theme}>
-      {/*
-        L'en-tête est hors des pièces, et non dans la première.
-        Un `position: sticky` ne colle qu'à l'intérieur de la boîte de son
-        parent : posé dans la première section, l'en-tête la suivait puis
-        décrochait au bout de mille cinq cents pixels, ce qui se lit comme une
-        panne. Enfant direct de la page, il tient du haut jusqu'en bas.
-      */}
       <LandingHeader lang={lang} theme={theme} stuck={stuck} local />
 
-      {/* ================================================== pièce sombre */}
       <div className="landing-surface">
 
-        {/* ------------------------------------------------ hero */}
         <section className="mx-auto max-w-6xl px-6 pb-24 pt-20 sm:pt-28">
           <div className="grid items-center gap-12 lg:grid-cols-[1fr_0.95fr]">
             <div>
@@ -490,10 +338,6 @@ export function LandingApp({ lang }: { lang: Lang }) {
             </h1>
           </Reveal>
 
-          {/* Les trois raisons d'ouvrir l'application, empilées sous le titre.
-              Chacune commence par sa proposition en pleine encre, la suite en
-              gris : le regard descend la colonne des amorces sans avoir à lire
-              les phrases entières. */}
           <Reveal delay={140}>
             <div className="mt-10 max-w-2xl">
               {copy.heroLines.map(line => (
@@ -518,13 +362,6 @@ export function LandingApp({ lang }: { lang: Lang }) {
 
             </div>
 
-            {/* Le montage du réseau, à droite du titre.
-                Posé sans cadre ni filet : le fichier est détouré, et
-                l'enfermer dans une boîte rendrait le détourage inutile. C'est
-                aussi la seule image en couleurs de la page — le reste étant
-                d'une neutralité stricte, elle porte tout le regard, et la
-                désaturer reviendrait à éteindre la seule chose qui montre le
-                réseau tel qu'il est. */}
             <Reveal delay={240}>
               <div className="mx-auto w-full max-w-[34rem] lg:-mr-8">
                 <SoftImage
@@ -538,7 +375,6 @@ export function LandingApp({ lang }: { lang: Lang }) {
           </div>
         </section>
 
-        {/* ------------------------------------------------ réseaux */}
         <section id="networks" className="border-t border-[var(--line)] py-16">
           <Reveal>
             <div className="mx-auto mb-12 max-w-6xl px-6">
@@ -555,13 +391,10 @@ export function LandingApp({ lang }: { lang: Lang }) {
           </div>
         </section>
 
-        {/* ------------------------------------------------ chiffres */}
         <section className="border-t border-[var(--line)]">
           <div className="mx-auto grid max-w-6xl grid-cols-2 lg:grid-cols-4">
             {copy.stats.map((stat, index) => (
               <Reveal key={stat.label} delay={index * 60}>
-                {/* Les filets ne se posent qu'entre les cases, jamais au bord :
-                    d'où ces conditions, qui suivent le nombre de colonnes. */}
                 <div
                   className={`h-full px-6 py-12 ${
                     index % 2 === 0 ? 'border-r border-[var(--line)]' : ''
@@ -587,7 +420,6 @@ export function LandingApp({ lang }: { lang: Lang }) {
         </section>
       </div>
 
-      {/* ================================================== les piliers */}
       <div id="features" className="landing-surface border-t border-[var(--line)]">
         {copy.pillars.map((pillar, index) => (
           <section
@@ -596,16 +428,6 @@ export function LandingApp({ lang }: { lang: Lang }) {
           >
             <div className="mx-auto max-w-6xl px-6 py-24">
               <div className="grid items-center gap-14 lg:grid-cols-2">
-                {/* Le visuel change de côté d'un pilier à l'autre. `order` et
-                    non deux mises en page : la lecture reste la même sur
-                    téléphone, où tout se remet en colonne. */}
-                {/* Le visuel est posé, pas encadré.
-                    Les trois fichiers sont des montages détourés sur fond
-                    transparent, comme celui du haut de page : les enfermer dans
-                    un cadre au ratio fixe rendrait le détourage inutile, et
-                    ferait apparaître le vide qui les entoure comme un défaut de
-                    cadrage. Ils gardent donc leurs proportions, et le fond de la
-                    section passe derrière eux. */}
                 <Reveal className={index % 2 === 1 ? 'lg:order-2' : ''}>
                   <div className="mx-auto w-full max-w-[32rem]">
                     <SoftImage
@@ -638,12 +460,9 @@ export function LandingApp({ lang }: { lang: Lang }) {
         ))}
       </div>
 
-      {/* ================================================== pièce sombre */}
       <div className="landing-surface">
-        {/* ------------------------------------------------ actualités */}
         <LatestNews lang={lang} />
 
-        {/* ------------------------------------------------ appel final */}
         <section className="border-t border-[var(--line)]">
           <div className="mx-auto max-w-6xl px-6 py-32 text-center">
             <Reveal>
@@ -660,8 +479,6 @@ export function LandingApp({ lang }: { lang: Lang }) {
           </div>
         </section>
 
-        {/* ------------------------------------------------ pied */}
-        {/* ------------------------------------------------ pied de page */}
         <LandingFooter
           lang={lang}
           theme={theme}

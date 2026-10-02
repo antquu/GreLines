@@ -1,28 +1,3 @@
-/**
- * La page d'une solution, servie sur `/fr/solutions/<slug>`.
- *
- * Six pages, un seul composant, une seule charpente. C'est délibéré : un
- * exploitant qui compare deux offres ne veut pas réapprendre où regarder à
- * chaque page. Le plan est toujours le même, du haut vers le bas :
- *
- *   une affirmation et un visuel
- *   trois raisons, en une ligne chacune
- *   quatre chiffres
- *   trois étapes, en images
- *   quatre capacités, en images
- *   une bande large
- *   trois détails
- *   les autres solutions, puis un appel
- *
- * L'en-tête et le pied de page sont ceux du site. Ces pages ne sont pas des
- * pages d'atterrissage détachées : on y arrive depuis le menu « Solutions »,
- * et l'on doit pouvoir en repartir par où l'on est venu.
- *
- * Les images sont toutes facultatives. Tant qu'un fichier manque, son cadre
- * disparaît et le texte se referme dessus : la page se tient debout vide, et
- * s'enrichit à mesure qu'on remplit `/assets/homepage/solutions/<slug>/`.
- */
-
 import { useEffect, useRef, useState } from 'react';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
@@ -37,9 +12,6 @@ const ASSETS = '/assets/homepage';
 type Theme = 'light' | 'dark';
 type ThemeChoice = 'auto' | Theme;
 
-/* -------------------------------------------------------------------------
- * Le thème, tenu comme sur le reste du site.
- * ---------------------------------------------------------------------- */
 
 function systemTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
@@ -53,7 +25,6 @@ function useSolutionTheme() {
       if (stored === 'light' || stored === 'dark') return stored;
       if (stored === 'blue') return 'dark';
     } catch {
-      /* Stockage refusé : on suivra le système. */
     }
     return 'auto';
   });
@@ -73,16 +44,12 @@ function useSolutionTheme() {
       if (next === 'auto') localStorage.removeItem('greLines_theme');
       else localStorage.setItem('greLines_theme', next);
     } catch {
-      /* Le choix ne tiendra que le temps de la visite. */
     }
   };
 
   return { theme: (choice === 'auto' ? system : choice) as Theme, choice, choose };
 }
 
-/* -------------------------------------------------------------------------
- * Petits outils de page, repris de la vitrine.
- * ---------------------------------------------------------------------- */
 
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
@@ -145,13 +112,6 @@ function Eyebrow({ children }: { children: string }) {
   return <p className="landing-eyebrow">{children}</p>;
 }
 
-/**
- * Une image qui s'efface si elle n'existe pas, et son cadre avec elle.
- *
- * Le dossier des visuels se remplit au fil du temps. D'ici là, mieux vaut que
- * la place disparaisse qu'un rectangle vide reste : douze cadres gris sur une
- * page de vente donnent l'impression d'un site en travaux.
- */
 function Shot({
   src,
   alt,
@@ -163,13 +123,6 @@ function Shot({
   alt: string;
   className?: string;
   eager?: boolean;
-  /**
-   * Prévenu quand le fichier n'est pas là.
-   *
-   * Le cadre disparaît tout seul, mais la place qu'il occupait dans une mise en
-   * page à deux colonnes, elle, ne disparaît pas : la colonne reste, vide. Ce
-   * signal permet au parent de refermer la mise en page dessus.
-   */
   onMissing?: () => void;
 }) {
   const [failed, setFailed] = useState(false);
@@ -191,24 +144,14 @@ function Shot({
   );
 }
 
-/* -------------------------------------------------------------------------
- * La page.
- * ---------------------------------------------------------------------- */
 
 export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
   const { theme, choice, choose } = useSolutionTheme();
   const [stuck, setStuck] = useState(false);
-  /* Le visuel de tête manque tant qu'il n'a pas été dessiné. Sans lui, le titre
-     prend toute la largeur au lieu de laisser la moitié de la page blanche. */
   const [hasHero, setHasHero] = useState(true);
   const chrome = CHROME[lang];
   const solution = findSolution(lang, slug);
 
-  /*
-   * L'animation d'apparition, activée seulement si l'on sait la mener à bien.
-   * Le contenu est visible par défaut ; c'est en posant cette classe qu'on le
-   * cache en attendant qu'il entre dans le champ.
-   */
   const [animated, setAnimated] = useState(() => typeof IntersectionObserver !== 'undefined');
 
   useEffect(() => {
@@ -233,11 +176,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
     document.title = solution ? `${solution.name} \\ GreLines` : 'Solutions \\ GreLines';
   }, [lang, solution]);
 
-  /*
-   * Une adresse inventée renvoie la liste des six solutions plutôt qu'une page
-   * vide. Un lien devenu faux après un renommage rend donc quelque chose
-   * d'utile, et l'on ne perd pas le visiteur.
-   */
   if (!solution) {
     return (
       <SolutionIndex
@@ -251,8 +189,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
     );
   }
 
-  /* Les visuels d'une solution vivent dans son dossier. Le seul qui puisse
-     être ailleurs est celui de tête, quand le contenu lui donne un chemin. */
   const asset = (name: string) => `${ASSETS}/solutions/${solution.slug}/${name}`;
   const hero = `${ASSETS}/${solution.hero ?? `solutions/${solution.slug}/hero.png`}`;
   const others = SOLUTIONS[lang].filter(item => item.slug !== solution.slug);
@@ -262,7 +198,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
       <LandingHeader lang={lang} theme={theme} stuck={stuck} />
 
       <div className="landing-surface">
-        {/* ------------------------------------------------ hero */}
         <section className="mx-auto max-w-6xl px-6 pb-20 pt-16 sm:pt-24">
           <nav className="solution-crumbs" aria-label={chrome.eyebrow}>
             <a href={`/${lang}`}>{chrome.home}</a>
@@ -290,9 +225,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
                 </p>
               </Reveal>
 
-              {/* Les trois raisons, chacune ouverte par sa proposition en pleine
-                  encre : le regard descend la colonne des amorces sans avoir à
-                  lire les phrases entières. */}
               <Reveal delay={210}>
                 <div className={`mt-10 ${hasHero ? 'max-w-xl' : 'max-w-2xl'}`}>
                   {solution.points.map(point => (
@@ -328,12 +260,10 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
           </div>
         </section>
 
-        {/* ------------------------------------------------ chiffres */}
         <section className="border-t border-[var(--line)]">
           <div className="mx-auto grid max-w-6xl grid-cols-2 lg:grid-cols-4">
             {solution.stats.map((stat, index) => (
               <Reveal key={stat.label} delay={index * 60}>
-                {/* Les filets ne se posent qu'entre les cases, jamais au bord. */}
                 <div
                   className={`h-full px-6 py-12 ${
                     index % 2 === 0 ? 'border-r border-[var(--line)]' : ''
@@ -359,7 +289,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
         </section>
       </div>
 
-      {/* ------------------------------------------------ les trois étapes */}
       <div className="landing-surface-alt border-t border-[var(--line)]">
         <section className="mx-auto max-w-6xl px-6 py-24">
           <Reveal>
@@ -382,7 +311,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
         </section>
       </div>
 
-      {/* ------------------------------------------------ les capacités */}
       <div className="landing-surface border-t border-[var(--line)]">
         <section className="mx-auto max-w-6xl px-6 py-24">
           <Reveal>
@@ -404,7 +332,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
         </section>
       </div>
 
-      {/* ------------------------------------------------ la bande large */}
       <div className="landing-surface-alt border-t border-[var(--line)]">
         <section className="mx-auto max-w-6xl px-6 py-24">
           <Reveal>
@@ -419,7 +346,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
         </section>
       </div>
 
-      {/* ------------------------------------------------ les trois détails */}
       <div className="landing-surface border-t border-[var(--line)]">
         <section className="mx-auto max-w-6xl px-6 py-24">
           <Reveal>
@@ -440,7 +366,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
         </section>
       </div>
 
-      {/* ------------------------------------------------ les autres solutions */}
       <div className="landing-surface-alt border-t border-[var(--line)]">
         <section className="mx-auto max-w-6xl px-6 py-24">
           <Reveal>
@@ -466,7 +391,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
         </section>
       </div>
 
-      {/* ------------------------------------------------ appel final */}
       <div className="landing-surface border-t border-[var(--line)]">
         <section className="mx-auto max-w-6xl px-6 py-28 text-center">
           <Reveal>
@@ -490,9 +414,6 @@ export function SolutionPage({ lang, slug }: { lang: Lang; slug?: string }) {
   );
 }
 
-/* -------------------------------------------------------------------------
- * La liste, quand aucune solution n'est nommée.
- * ---------------------------------------------------------------------- */
 
 function SolutionIndex({
   lang,

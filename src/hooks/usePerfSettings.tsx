@@ -1,65 +1,49 @@
-
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DEFAULT_NETWORK_CODES, NETWORKS } from '../services/api';
 
 export interface PerfSettings {
-  
+
   hideFooterTicker: boolean;
 
   devMode: boolean;
-  
+
   devOverlay: boolean;
+  netOverlay: boolean;
 
   stopLineBadges: boolean;
-  
+
   stopLabels: boolean;
-  
+
   lineShapes: boolean;
-  
+
   animations: boolean;
-  
+
   blurEffects: boolean;
-  
+
   shadows: boolean;
-  
+
   markerCap: number;
 
-  /**
-   * Le mode accessibilité.
-   *
-   * Il ne change pas ce que l'application sait, mais la place que ce savoir
-   * prend. Le fauteuil quitte la fin du nom d'arrêt, où il tenait de la
-   * ponctuation, pour devenir une pastille au-dessus du point : on la voit sans
-   * lire, et l'on repère de loin les arrêts où l'on peut monter. Il ouvre aussi
-   * les itinéraires accessibles, ci-dessous.
-   */
   accessibility: boolean;
 
-  /**
-   * N'proposer que des itinéraires praticables en fauteuil.
-   *
-   * C'est le calculateur qui s'en charge : il écarte les correspondances par
-   * escalier et les arrêts non repris. Distinct du mode ci-dessus, parce qu'on
-   * peut vouloir l'un sans l'autre — repérer les arrêts accessibles sans
-   * s'interdire un trajet, ou l'inverse. Le mode l'allume en s'allumant.
-   */
   pmrRouting: boolean;
 
   networks: string[];
 
   citiz: boolean;
-  
+
   voi: boolean;
 
   networksRevision: number;
 }
 
-export const NETWORKS_REVISION = 2;
+export const NETWORKS_REVISION = 6;
 
 export const DEFAULT_PERF_SETTINGS: PerfSettings = {
   hideFooterTicker: false,
   devMode: false,
   devOverlay: false,
+  netOverlay: false,
   stopLineBadges: true,
   stopLabels: true,
   lineShapes: true,
@@ -83,9 +67,9 @@ function readStoredSettings(): PerfSettings {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_PERF_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<PerfSettings>;
-    
+
     const merged = { ...DEFAULT_PERF_SETTINGS, ...parsed };
-    
+
     if (!Array.isArray(merged.networks) || merged.networks.length === 0) {
       merged.networks = DEFAULT_NETWORK_CODES;
     }
@@ -135,7 +119,7 @@ export function PerfSettingsProvider({ children }: { children: ReactNode }) {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     } catch {
-      
+
     }
   }, [settings]);
 

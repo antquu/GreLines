@@ -33,13 +33,13 @@ export function MobileNotificationPrompt({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[1450] overflow-hidden bg-[#020617] text-white"
+      className="fixed inset-0 z-[1450] overflow-hidden bg-black text-white"
       role="dialog"
       aria-modal="true"
       aria-label={isFr ? 'Activer les notifications' : 'Enable notifications'}
     >
       <motion.div
-        className="flex h-[100dvh] min-h-[30rem] flex-col px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] text-center"
+        className="flex h-[100dvh] min-h-[30rem] flex-col px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,var(--gl-safe-top))] text-center"
         initial={{ opacity: 0, y: '100%' }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.34, ease: [0.32, 0.72, 0, 1] }}
@@ -62,7 +62,7 @@ export function MobileNotificationPrompt({
           <h1 className="mt-6 max-w-sm text-3xl font-black leading-tight" style={{ color: '#ffffff' }}>
             {isFr ? 'Restez informe pendant votre trajet' : 'Stay informed during your trip'}
           </h1>
-          <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-white/65">
+          <p className="mt-3 max-w-sm text-[0.9375rem] leading-relaxed text-white/65">
             {isFr
               ? 'Nous vous avertirons au moment de partir, de changer ou de descendre.'
               : 'We will alert you when it is time to leave, transfer, or get off.'}
@@ -74,7 +74,7 @@ export function MobileNotificationPrompt({
             type="button"
             whileTap={{ scale: 0.98 }}
             onClick={onEnable}
-            className="rounded-full bg-white px-6 py-3 text-[15px] font-extrabold text-slate-950"
+            className="rounded-full bg-white px-6 py-3 text-[0.9375rem] font-extrabold text-slate-950"
           >
             {isFr ? 'Activer les notifications' : 'Enable notifications'}
           </motion.button>
@@ -91,7 +91,7 @@ export function MobileNotificationPrompt({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 8 }}
                   transition={{ duration: 0.22 }}
-                  className="text-[15px] font-semibold text-white/55"
+                  className="text-[0.9375rem] font-semibold text-white/55"
                 >
                   {isFr ? 'Continuer sans notifications' : 'Continue without notifications'}
                 </motion.button>

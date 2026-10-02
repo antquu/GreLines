@@ -1,16 +1,10 @@
 import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
-import { isSncfLine, SNCF_TER_COLOR } from '../utils/lineColors';
+import { badgeImage } from '../utils/badgeImages';
+import { isSncfLine, resolveLineStyle, SNCF_TER_COLOR } from '../utils/lineColors';
+import { relayTramOf } from './LineBadge';
+import { tclBadge } from '../utils/tclLogos';
+import { TclModeCorner } from './TclLogo';
 
-/**
- * La pastille d'une ligne, dans la liste des passages.
- *
- * Elle porte la même pastille d'alerte que les pastilles de ligne du haut de la
- * fiche : un triangle ambre piqué dans le coin. Sans elle, on lisait « ligne A
- * perturbée » en haut de l'écran, puis quatre départs plus bas sans savoir
- * lesquels étaient concernés — il fallait déplier chaque ligne pour le
- * découvrir. La marque est identique des deux côtés, parce qu'elle dit la même
- * chose.
- */
 function TrafficMark() {
   return (
     <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-amber-200 bg-amber-400/90 text-amber-900 shadow-sm">
@@ -36,9 +30,39 @@ export function DepartureLineBadge({
   round: boolean;
 
   sizeClass: string;
-  /** Une perturbation touche cette ligne. */
   hasTraffic?: boolean;
 }) {
+  const tcl = tclBadge(routeRef);
+  if (tcl) {
+    return (
+      <div
+        className={`relative flex flex-shrink-0 items-center justify-center font-bold ${tcl.round ? 'rounded-full' : 'rounded-2xl'} ${sizeClass}`}
+        style={tcl.style}
+      >
+        <span className={(tcl.label ?? label).length >= 4 ? 'text-[0.8em] tracking-tight' : ''}>{tcl.label ?? label}</span>
+        <TclModeCorner id={routeRef} height={15} />
+        {hasTraffic && <TrafficMark />}
+      </div>
+    );
+  }
+
+  const isGrenoble = /^SEM[:_]/i.test(routeRef) || !routeRef.includes(':');
+  const relayTram = isGrenoble ? (relayTramOf(label) ?? relayTramOf(routeRef)) : null;
+  if (relayTram) {
+    return (
+      <div className={`relative flex flex-shrink-0 items-center justify-center ${sizeClass}`}>
+        <img src={badgeImage('/assets/bus_relais.svg')} alt="Bus relais" className="absolute inset-0 h-full w-full object-contain" />
+        <div
+          className="absolute bottom-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-white/75 shadow-lg"
+          style={resolveLineStyle(`SEM:${relayTram}`)}
+        >
+          <span className="text-[0.5625rem] font-extrabold leading-none">{relayTram}</span>
+        </div>
+        {hasTraffic && <TrafficMark />}
+      </div>
+    );
+  }
+
   if (isSncfLine(routeRef)) {
     return (
       <div
@@ -46,8 +70,8 @@ export function DepartureLineBadge({
         className={`relative flex flex-shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl ${sizeClass}`}
         style={{ backgroundColor: SNCF_TER_COLOR, color: '#ffffff' }}
       >
-        <img src="/assets/ter.png" alt="TER" className="h-2.5 w-auto object-contain" />
-        <span className="text-[10px] font-extrabold leading-none">{label}</span>
+        <img src={badgeImage('/assets/ter.png')} alt="TER" className="h-2.5 w-auto object-contain" />
+        <span className="text-[0.625rem] font-extrabold leading-none">{label}</span>
         {hasTraffic && <TrafficMark />}
       </div>
     );

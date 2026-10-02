@@ -11,7 +11,7 @@ export function VehicleGlyph({
   formFactor: string;
   size?: number;
   color?: string;
-  
+
   rotated?: boolean;
 }) {
   const Icon =

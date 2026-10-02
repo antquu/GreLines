@@ -1,17 +1,3 @@
-/**
- * Les lieux à visiter, et ce qu'on en dit.
- *
- * Séparés du carrousel qui les montre : ce sont des données, elles changeront
- * pour d'autres raisons et à d'autres moments que la mise en page. Les garder
- * dans le même fichier privait aussi le composant du rechargement à chaud, qui
- * ne fonctionne que pour un fichier n'exportant que des composants.
- *
- * Les noms de lignes s'écrivent entre doubles crochets, `[[A]]`, `[[C1]]`. Le
- * carrousel les remplace par la pastille de la ligne, avec sa couleur : c'est
- * ainsi qu'on la cherche sur un plan et sur un quai, pas sous forme de lettre
- * au milieu d'une phrase.
- */
-
 export interface PlaceSection {
   heading?: string;
   body: string[];
@@ -25,47 +11,18 @@ export interface PlaceCredit {
 
 export interface Place {
   id: string;
-  /** L'image, en pleine définition : elle occupe l'écran entier une fois ouverte. */
   image: string;
-  /** Ce qui s'écrit sous la vignette, sur deux lignes au plus. */
   card: string;
-  /** Le titre de l'en-tête, posé sur la photographie. */
   title: string;
-  /** La ligne d'appoint de l'en-tête : horaires, saison, quartier. */
   kicker: string;
-  /** Le grand titre, sous la photographie. */
   headline: string;
-  /** La phrase qui donne envie d'y aller. */
   tagline: string;
   sections: PlaceSection[];
-  /**
-   * Où c'est, pour le bouton « Y aller ».
-   *
-   * Le point visé est le lieu lui-même et non son arrêt : le calculateur sait
-   * finir à pied, et viser l'arrêt aurait décidé à la place du voyageur par
-   * quelle ligne il y va.
-   */
   lat: number;
   lon: number;
-  /**
-   * Qui a pris la photographie, et sous quelle licence.
-   *
-   * Les trois images viennent de Wikimedia Commons, sous licence Creative
-   * Commons : elles s'utilisent librement, à condition de nommer l'auteur et
-   * de dire la licence. La mention se pose donc en bas de la feuille, après ce
-   * qu'on est venu lire, mais dans la même feuille, pas ailleurs.
-   */
   credit: PlaceCredit;
 }
 
-/**
- * Trois lieux, et pas plus.
- *
- * Ce n'est pas un office de tourisme : c'est ce qu'on montre à quelqu'un qui
- * descend du train et demande quoi voir. La Bastille pour la vue, le musée
- * pour la pluie, le parc et sa tour pour la ville d'en bas, et chacun se
- * rejoint par le réseau, ce qui est le sujet de l'application.
- */
 export function grenoblePlaces(language: 'fr' | 'en'): Place[] {
   const fr = language === 'fr';
   return [

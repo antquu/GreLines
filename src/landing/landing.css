@@ -1,34 +1,3 @@
-/*
- * La vitrine.
- *
- * Strictement noir et blanc. Pas un bleu, pas un dégradé de couleur, pas un
- * halo : la hiérarchie tient au contraste, à la graisse et au vide. C'est ce
- * qui distingue une page qui a l'air chère d'une page qui a l'air décorée.
- *
- * Trois familles, trois usages, jamais mélangés :
- *
- *   Geist       les grands titres, en graisse 450 et très resserrés. C'est le
- *               réglage de Vercel : compact, dense, tenu.
- *   Inter       tout le texte courant. C'est déjà celle de l'application.
- *   Geist Mono  les intitulés de section, en petites capitales très espacées.
- *               Le mono sert d'étiquette, jamais de texte.
- *
- * La page est entièrement claire ou entièrement sombre, jamais les deux : le
- * relief vient d'un second niveau de surface et des filets, pas d'un fond qui
- * bascule en cours de lecture.
- *
- * Feuille de style à part, chargée avec la page : l'application ne la voit
- * jamais, et rien de ce qui suit ne peut déteindre sur elle.
- */
-
-/*
- * Les encres sont franches.
- *
- * Vercel ne fond pas son noir vers le bleu : `#000` exactement, et un blanc de
- * texte légèrement rabattu à `#ededed` pour que les grandes surfaces ne vibrent
- * pas. Les valeurs des deux thèmes sont plus bas ; ici, seules les polices et
- * la mise en page générale.
- */
 .landing {
   --sans: 'Inter', 'Helvetica Neue', system-ui, sans-serif;
   --display: 'Geist Variable', 'Geist', var(--sans);
@@ -38,32 +7,9 @@
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /*
-   * `clip` et non `hidden`.
-   *
-   * Les deux empêchent le bandeau des réseaux de faire déborder la page vers la
-   * droite, mais `hidden` fait de la boîte un conteneur de défilement, et un
-   * `position: sticky` posé à l'intérieur se cale alors sur une zone qui ne
-   * défile jamais : il ne colle plus à rien. C'est ce qui empêchait l'en-tête de
-   * tenir en haut de l'écran, et c'est ce qui aurait empêché le sommaire de la
-   * documentation de suivre la lecture. `clip` rogne sans créer ce conteneur.
-   */
   overflow-x: clip;
 }
 
-/* --------------------------------------------------------------------------
- * Les deux thèmes.
- *
- * La page entière est claire, ou entièrement sombre. Il n'y a plus de sections
- * qui alternent : une vitrine qui passe du noir au blanc en descendant se lit
- * comme deux sites cousus ensemble, et sur un téléphone réglé en clair elle
- * éblouit une fois sur deux.
- *
- * Le relief vient donc d'un second niveau de surface — `landing-surface-alt` —
- * qui n'est qu'un ton plus loin du fond, et des filets. Un seul jeu de
- * variables change ; tout ce qui est posé dessus suit sans rien savoir du
- * thème.
- */
 
 .landing[data-theme='dark'] {
   --bg: #000000;
@@ -98,44 +44,16 @@
   background: var(--bg);
 }
 
-/* Un ton plus loin du fond : c'est tout ce qu'il faut pour détacher un bloc. */
 .landing-surface-alt {
   background: var(--bg-alt);
 }
 
-/* --------------------------------------------------------------------------
- * Les marges de l'application, rendues à la vitrine.
- *
- * `index.css` habille les éléments nus pour l'application : `h1, h2 { … }` y
- * pose une marge, `p` la remet à zéro. Ces règles ne sont dans aucune couche,
- * et une déclaration hors couche l'emporte sur n'importe quelle couche, quelle
- * que soit la spécificité : les utilitaires de Tailwind, qui vivent dans
- * `@layer utilities`, perdaient donc systématiquement. Sur la vitrine, tous les
- * `mt-*`, `mb-*` et `mx-auto` posés sur un titre ou un paragraphe étaient
- * silencieusement annulés — d'où le grand titre de fin qui ne se centrait pas,
- * et les écarts verticaux qui manquaient.
- *
- * `revert-layer` renvoie la marge à la couche précédente, c'est-à-dire aux
- * utilitaires : ils reprennent la main, sans qu'il faille les répéter ici ni
- * toucher aux règles de l'application.
- * ------------------------------------------------------------------------ */
 
 .landing :is(h1, h2, h3, h4, p) {
   margin: revert-layer;
 }
 
-/* --------------------------------------------------------------------------
- * Le texte.
- * ------------------------------------------------------------------------ */
 
-/*
- * Le grand titre.
- *
- * Graisse 450 et approche à −0,06 em : c'est le réglage de Vercel, et c'est
- * exactement ce qui fait la différence. Une graisse entre le normal et le demi
- * gras, resserrée au point que les lettres se touchent presque — un titre
- * compact, dense, qui tient comme un bloc au lieu de s'étaler.
- */
 .landing-display {
   font-family: var(--display);
   font-weight: 450;
@@ -163,13 +81,6 @@
   color: var(--fg);
 }
 
-/*
- * L'intitulé de section.
- *
- * Onze pixels, capitales, très espacé : à cette taille, l'espacement est la
- * seule chose qui rende le mot lisible, et c'est aussi ce qui le fait lire
- * comme une étiquette et non comme une phrase.
- */
 .landing-eyebrow {
   font-family: var(--mono);
   font-size: 0.6875rem;
@@ -191,12 +102,6 @@
   color: var(--fg-muted);
 }
 
-/* --------------------------------------------------------------------------
- * Les filets.
- *
- * Une page monochrome se structure au trait. Pas d'ombre portée, pas de coin
- * arrondi généreux : des filets d'un pixel, et des angles presque droits.
- * ------------------------------------------------------------------------ */
 
 .landing-rule {
   border-color: var(--line);
@@ -212,13 +117,6 @@
   border-color: var(--line-strong);
 }
 
-/* --------------------------------------------------------------------------
- * Les boutons.
- *
- * Un plein et un vide, tous deux dans l'encre de la section. Sur fond sombre
- * le plein est blanc, sur fond clair il est noir : c'est la même règle, elle
- * n'a pas besoin d'être écrite deux fois.
- * ------------------------------------------------------------------------ */
 
 .landing-cta {
   display: inline-flex;
@@ -239,7 +137,6 @@
   transform: translateY(1px);
 }
 
-/* Le bouton plein prend le contraire du fond : blanc sur noir, noir sur blanc. */
 .landing-cta-primary {
   background: var(--contrast-bg);
   color: var(--contrast-fg);
@@ -258,18 +155,6 @@
   border-color: var(--line-strong);
 }
 
-/* --------------------------------------------------------------------------
- * Les cartes d'actualité.
- *
- * Une carte de communiqué se lit en deux temps : ce dont il s'agit — le titre
- * et le chapô, en haut —, puis ce qui permet de le situer — la date et la
- * catégorie, en bas, sur deux lignes réglées comme celles d'une fiche.
- *
- * Le pied est collé au bas de la carte plutôt que suspendu à la fin du chapô :
- * trois textes de longueurs différentes donneraient sinon trois dates à trois
- * hauteurs, et l'on ne pourrait plus les comparer d'un coup d'œil. C'est tout
- * l'intérêt d'une rangée de cartes plutôt que d'une liste.
- * ------------------------------------------------------------------------ */
 
 .landing-news-card {
   display: flex;
@@ -288,9 +173,6 @@
   color: var(--fg);
 }
 
-/* Une ligne de fiche : l'intitulé à gauche, la valeur à droite, un filet
-   au-dessus. Le dernier filet manque volontairement — le bouton suit, et deux
-   traits d'affilée feraient une barre. */
 .landing-news-meta {
   display: flex;
   align-items: baseline;
@@ -316,14 +198,6 @@
   text-align: right;
 }
 
-/* --------------------------------------------------------------------------
- * Les pages de solution.
- *
- * Douze emplacements d'images par page, et pas une seule qui soit obligatoire.
- * Les cadres se dessinent au filet, comme le reste du site, sauf celui du haut
- * qui n'en a pas : le visuel de tête est un montage détouré, comme celui de la
- * page d'accueil, et l'enfermer dans une boîte rendrait le détourage inutile.
- * ------------------------------------------------------------------------ */
 
 .solution-shot {
   position: relative;
@@ -341,7 +215,6 @@
   object-fit: cover;
 }
 
-/* Le visuel de tête : posé, sans cadre, à ses proportions. */
 .solution-shot.is-bare {
   overflow: visible;
   border: 0;
@@ -355,7 +228,6 @@
   object-fit: contain;
 }
 
-/* La bande large, qui coupe la page en deux dans sa longueur. */
 .solution-shot.is-wide {
   aspect-ratio: 21 / 9;
 }
@@ -366,7 +238,6 @@
   }
 }
 
-/* Le fil d'Ariane, au-dessus du titre. */
 .solution-crumbs {
   display: flex;
   flex-wrap: wrap;
@@ -392,12 +263,6 @@
   color: var(--fg);
 }
 
-/*
- * Le numéro d'une étape.
- *
- * Écrit sur deux chiffres, en mono : « 01 » et « 02 » occupent alors la même
- * largeur, et la colonne des amorces reste droite d'une étape à l'autre.
- */
 .solution-step-mark {
   font-family: var(--mono);
   font-size: 0.6875rem;
@@ -411,7 +276,6 @@
   background: var(--bg-alt);
 }
 
-/* La carte d'une autre solution, en bas de page. */
 .solution-other {
   display: block;
   padding: 1.5rem;
@@ -427,18 +291,6 @@
   color: var(--fg);
 }
 
-/* --------------------------------------------------------------------------
- * La documentation.
- *
- * Deux colonnes : un sommaire qui ne bouge pas, une colonne de lecture étroite.
- * C'est la forme que prennent toutes les documentations qui se lisent, et pour
- * une raison simple : on y entre par le milieu, depuis un lien ou une
- * recherche, et il faut pouvoir savoir tout de suite où l'on est tombé.
- *
- * La colonne de texte est bornée à deux tiers de la largeur utile. Une ligne de
- * documentation trop longue se relit mal, et l'on saute une ligne sur trois en
- * revenant à la marge.
- * ------------------------------------------------------------------------ */
 
 .docs-header {
   position: sticky;
@@ -449,7 +301,6 @@
   backdrop-filter: saturate(180%) blur(12px);
 }
 
-/* La contre-oblique entre la pastille et le mot « Docs ». */
 .docs-slash {
   color: var(--line-strong);
   font-size: 1.0625rem;
@@ -470,12 +321,6 @@
   opacity: 0.66;
 }
 
-/*
- * Le champ de filtre.
- *
- * Il ne cherche pas dans le texte, il filtre le sommaire. C'est moins ambitieux
- * qu'une recherche, et cela ne ment pas sur ce que ça fait.
- */
 .docs-search {
   align-items: center;
   gap: 0.5rem;
@@ -517,7 +362,6 @@
   white-space: nowrap;
 }
 
-/* ---------------------------------------------------------------- sommaire */
 
 .docs-toc {
   display: none;
@@ -539,12 +383,6 @@
   }
 }
 
-/*
- * Sur petit écran, le sommaire se déplie au-dessus du texte plutôt que de
- * s'ouvrir en tiroir. Un tiroir demande un fond, une fermeture, un piège au
- * clavier ; un bloc qui pousse le contenu vers le bas ne demande rien et se
- * referme d'un second appui.
- */
 @media (max-width: 1023px) {
   .docs-toc.is-open {
     display: block;
@@ -557,28 +395,11 @@
   }
 }
 
-/* ------------------------------------------------------------- accordéon */
 
 .docs-cat + .docs-cat {
   margin-top: 0.125rem;
 }
 
-/*
- * L'en-tête d'une catégorie.
- *
- * Pleine largeur, parce qu'un titre repliable qu'il faut viser au pixel près
- * est un titre qu'on n'ouvre pas. Le chevron est à droite, seul, et c'est lui
- * qui dit l'état : le titre ne change pas de graisse selon qu'il est ouvert ou
- * fermé, sinon la colonne se mettrait à sautiller à chaque clic.
- */
-/*
- * Le titre est un lien, le chevron est un bouton.
- *
- * Les deux gestes ne veulent pas dire la même chose : cliquer le nom d'une
- * catégorie, c'est vouloir la voir ; cliquer le chevron, c'est vouloir regarder
- * ce qu'elle contient sans quitter la page où l'on est. Les confondre dans un
- * seul bouton oblige à choisir lequel des deux on sacrifie.
- */
 .docs-cat-head-row {
   display: flex;
   align-items: center;
@@ -601,8 +422,6 @@
   opacity: 0.7;
 }
 
-/* La catégorie dont on regarde la page. Le lecteur doit pouvoir répondre à
-   « où suis-je » sans relire l'adresse. */
 .docs-cat-head.is-current {
   text-decoration: underline;
   text-underline-offset: 0.25rem;
@@ -636,7 +455,6 @@
   transform: rotate(90deg);
 }
 
-/* Les entrées d'une catégorie ouverte, alignées sur un filet vertical. */
 .docs-cat-list {
   margin: 0.125rem 0 0.75rem;
   border-left: 1px solid var(--line);
@@ -666,11 +484,6 @@
   color: var(--fg);
 }
 
-/*
- * La section sous les yeux : pleine encre, et son filet aussi. C'est le seul
- * endroit du sommaire où le trait se voit vraiment, ce qui suffit à repérer
- * d'un coup d'oeil où l'on en est.
- */
 .docs-toc-link.is-active {
   color: var(--fg);
   border-left-color: var(--fg);
@@ -680,7 +493,6 @@
   opacity: 1;
 }
 
-/* --------------------------------------------------------- cartes de tête */
 
 .docs-group-card {
   padding: 1.5rem;
@@ -708,10 +520,6 @@
   opacity: 0.7;
 }
 
-/*
- * Le pictogramme dans sa case : un carré au filet, qui donne à la liste une
- * colonne de gauche stable quelle que soit la longueur des titres.
- */
 .docs-group-icon,
 .docs-entry-icon {
   display: inline-flex;
@@ -738,13 +546,7 @@
   color: var(--fg);
 }
 
-/* ------------------------------------------------------------- le corps */
 
-/*
- * `scroll-margin-top` est ce qui rend les ancres utilisables : sans elle, un
- * lien du sommaire amène le titre exactement sous l'en-tête collant, qui le
- * recouvre, et l'on croit être tombé au mauvais endroit.
- */
 .docs-entry {
   scroll-margin-top: 5rem;
   padding-top: 4rem;
@@ -764,7 +566,6 @@
   gap: 0.875rem;
 }
 
-/* Le numéro : une pastille sobre, calée sur la première ligne du texte. */
 .docs-step-mark {
   flex: 0 0 auto;
   display: inline-flex;
@@ -780,11 +581,6 @@
   color: var(--fg-muted);
 }
 
-/*
- * L'encadré : un filet à gauche, rien d'autre. Une couleur d'alerte n'aurait
- * pas de sens dans une page qui n'en a aucune, et ce qui est écrit là n'est pas
- * un danger : c'est ce qu'on aurait aimé savoir avant.
- */
 .docs-note {
   padding: 0.125rem 0 0.125rem 1.125rem;
   border-left: 2px solid var(--line-strong);
@@ -812,16 +608,7 @@
   background: var(--bg-alt);
 }
 
-/* ------------------------------------------------- les cartes des étages */
 
-/*
- * La carte d'une catégorie, sur le sommaire.
- *
- * Elle ne liste pas ses sections. C'est tout l'intérêt d'avoir trois étages :
- * la première page répond à « de quoi parle cette documentation », pas à
- * « quelles sont ses trente-trois sections ». Le compte en haut suffit à dire
- * ce qui attend derrière.
- */
 .docs-cat-card {
   display: block;
   padding: 1.5rem;
@@ -853,7 +640,6 @@
   color: var(--fg);
 }
 
-/* La carte d'une section, sur la page d'une catégorie. */
 .docs-entry-card {
   display: flex;
   flex-direction: column;
@@ -870,7 +656,6 @@
   color: var(--fg);
 }
 
-/* ------------------------------------------------------- le fil d'Ariane */
 
 .docs-crumbs {
   display: flex;
@@ -897,7 +682,6 @@
   color: var(--fg);
 }
 
-/* --------------------------------------------- précédent et suivant */
 
 .docs-nav {
   display: grid;
@@ -925,8 +709,6 @@
   border-color: var(--line-strong);
 }
 
-/* La carte de droite s'aligne à droite : la flèche du suivant doit pointer vers
-   le bord, sans quoi les deux cartes se lisent comme deux fois « précédent ». */
 .docs-nav-card.is-next {
   align-items: flex-end;
   text-align: right;
@@ -951,15 +733,6 @@
   color: var(--fg);
 }
 
-/* --------------------------------------------------------------------------
- * Le bloc de code.
- *
- * Une barre de titre, puis le code. Le fond ne suit pas le thème de la page :
- * il reste sombre dans les deux, et c'est délibéré. Un extrait de code se lit
- * dans un terminal ou dans un éditeur, tous deux sombres neuf fois sur dix ; le
- * rendre clair sur une page claire le ferait passer pour du texte, alors que
- * tout son intérêt est qu'on le repère sans le lire.
- * ------------------------------------------------------------------------ */
 
 .docs-code {
   --code-bg: #0a0a0a;
@@ -983,7 +756,6 @@
   background: var(--code-bar);
 }
 
-/* La pastille du langage, à gauche du nom de fichier. */
 .docs-code-badge {
   display: inline-flex;
   align-items: center;
@@ -1027,7 +799,6 @@
   background: rgba(255, 255, 255, 0.07);
 }
 
-/* Sans barre de titre, le bouton se pose sur le code, en haut à droite. */
 .docs-code-copy-float {
   position: absolute;
   top: 0.375rem;
@@ -1046,14 +817,6 @@
   padding: 0.875rem 1rem;
 }
 
-/*
- * `display: block` est ici pour une raison, et il faut la connaître avant de
- * l'enlever : `index.css` habille les éléments nus de l'application, et sa
- * règle `code { display: inline-flex }` s'appliquait aussi ici. Les lignes du
- * bloc, qui sont des blocs, devenaient alors des éléments souples posés côte à
- * côte sur une seule rangée : les trois lignes d'un extrait de terminal se
- * retrouvaient bout à bout, sans le moindre espace entre elles.
- */
 .docs-code code {
   display: block;
   font-family: var(--mono);
@@ -1068,14 +831,6 @@
   display: block;
 }
 
-/*
- * La coloration.
- *
- * Cinq teintes, pas davantage. Un extrait de dix lignes n'a pas besoin qu'on
- * distingue une propriété d'une variable : il a besoin qu'on voie d'un coup
- * d'oeil où sont les chaînes, où sont les commentaires, et où commence chaque
- * instruction.
- */
 .tok-comment {
   color: #6b7280;
   font-style: italic;
@@ -1101,14 +856,6 @@
   color: #8b8b8b;
 }
 
-/* --------------------------------------------------------------------------
- * Le bandeau des réseaux.
- *
- * Une piste doublée qui glisse d'une demi-longueur puis reprend à zéro : la
- * couture est invisible parce que la seconde moitié est la copie exacte de la
- * première. Les bords s'effacent en fondu, sans quoi les logos apparaîtraient
- * et disparaîtraient d'un coup.
- * ------------------------------------------------------------------------ */
 
 .landing-marquee {
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
@@ -1121,7 +868,6 @@
   animation: landing-marquee 52s linear infinite;
 }
 
-/* Survoler le bandeau l'arrête : on peut vouloir lire un nom au passage. */
 .landing-marquee:hover .landing-marquee-track {
   animation-play-state: paused;
 }
@@ -1131,19 +877,6 @@
   to { transform: translateX(-50%); }
 }
 
-/*
- * Les logos, ramenés à une seule encre.
- *
- * Onze chartes graphiques côte à côte font une foire ; une seule teinte fait
- * une liste de partenaires. `brightness(0)` est ce qui donne un monochrome
- * vraiment monochrome : il écrase toutes les couleurs sur le noir sans toucher
- * à la transparence, d'où une silhouette pleine plutôt qu'un gris moyen. Sur
- * fond sombre, `invert(1)` la retourne en blanc.
- *
- * `grayscale` seul ne suffirait pas : il ne fait que désaturer, et un logo
- * jaune resterait clair quand un logo bleu marine resterait sombre — la
- * rangée paraîtrait alors bancale.
- */
 .landing-logo {
   opacity: 0.45;
   transition: opacity 0.25s ease;
@@ -1161,7 +894,6 @@
   opacity: 0.9;
 }
 
-/* Le repli quand un fichier manque : le nom, à la même place. */
 .landing-logo-text {
   font-family: var(--display);
   font-size: 1.0625rem;
@@ -1176,13 +908,6 @@
   color: var(--fg);
 }
 
-/* --------------------------------------------------------------------------
- * Le cadre du téléphone.
- *
- * Dessiné en CSS plutôt qu'apporté en image : une capture suffit, et le cadre
- * s'adapte à toutes les tailles sans qu'on ait à redécouper un PNG. Un simple
- * filet, pas de reflet ni de biseau — le faux verre fait toujours faux.
- * ------------------------------------------------------------------------ */
 
 .landing-phone {
   position: relative;
@@ -1209,9 +934,6 @@
   display: block;
 }
 
-/* --------------------------------------------------------------------------
- * Le cadre large : l'emplacement de la vidéo de démonstration.
- * ------------------------------------------------------------------------ */
 
 .landing-frame {
   position: relative;
@@ -1229,11 +951,6 @@
   object-fit: cover;
 }
 
-/*
- * En attendant la vidéo : une trame de lignes fines qui glissent lentement.
- * Ce n'est pas une image volée ailleurs, ce n'est pas un rectangle vide non
- * plus — juste de quoi tenir la place sans mentir sur ce qu'elle contiendra.
- */
 .landing-placeholder {
   position: absolute;
   inset: 0;
@@ -1252,15 +969,6 @@
   to { background-position: 240px 0; }
 }
 
-/* --------------------------------------------------------------------------
- * L'apparition au défilement.
- *
- * Visible par défaut, caché seulement lorsqu'on est sûr de pouvoir le montrer :
- * l'inverse laisse une page entièrement blanche partout où l'observateur ne se
- * déclenche pas. La classe `landing-anim` n'est posée que si
- * `IntersectionObserver` existe, et retirée s'il n'a rien révélé en deux
- * secondes.
- * ------------------------------------------------------------------------ */
 
 .landing-reveal {
   transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
@@ -1288,9 +996,6 @@
   }
 }
 
-/* --------------------------------------------------------------------------
- * L'en-tête.
- * ------------------------------------------------------------------------ */
 
 .landing-header {
   position: sticky;
@@ -1300,10 +1005,8 @@
   transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
-/* Le fond n'arrive qu'une fois la page défilée : en haut, l'en-tête flotte. */
 .landing-header.is-stuck {
   border-bottom-color: var(--line);
-  /* `color-mix` plutôt qu'un rgba figé : le voile suit le fond du thème. */
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(12px);
 }
@@ -1317,21 +1020,7 @@
   color: var(--fg);
 }
 
-/* --------------------------------------------------------------------------
- * Le pilier.
- *
- * Le motif de Vercel, repris tel quel : une grande affirmation, un visuel qui
- * occupe la moitié de la largeur, une preuve chiffrée en dessous, puis la liste
- * des capacités séparées par des filets. Les piliers alternent le côté du
- * visuel, ce qui suffit à rythmer une page longue sans changer de mise en page.
- *
- * Le visuel n'a pas de style à lui : les montages sont détourés, posés à même
- * le fond de la section, et gardent leurs proportions. Rien à cadrer, rien à
- * rogner, rien à désaturer — ce sont les seules images en couleurs de la page
- * avec celle du haut, et c'est ce qui montre le réseau tel qu'il est.
- * ------------------------------------------------------------------------ */
 
-/* La liste des capacités : une ligne, un filet, rien d'autre. */
 .landing-list {
   border-top: 1px solid var(--line);
 }
@@ -1369,13 +1058,6 @@
   }
 }
 
-/*
- * La preuve.
- *
- * Un chiffre dans l'encre pleine, la phrase autour en gris : c'est la façon
- * dont Vercel écrit ses références clients, et elle se lit d'un coup d'œil
- * sans avoir l'air d'une publicité.
- */
 .landing-proof {
   font-family: var(--display);
   font-weight: 450;
@@ -1390,14 +1072,6 @@
   color: var(--fg);
 }
 
-/* --------------------------------------------------------------------------
- * Le menu déroulant « Solutions ».
- *
- * Un panneau qui descend sous l'en-tête, pas une liste flottante : c'est ce
- * qui donne l'impression d'un rayon plutôt que d'un menu contextuel. Il
- * s'ouvre au survol sur grand écran et au clic partout, parce qu'un menu qui
- * ne s'ouvre qu'au survol n'existe pas sur un téléphone.
- * ------------------------------------------------------------------------ */
 
 .landing-menu {
   position: absolute;
@@ -1446,9 +1120,6 @@
   color: var(--fg-muted);
 }
 
-/* --------------------------------------------------------------------------
- * Le pied de page.
- * ------------------------------------------------------------------------ */
 
 .landing-footer-title {
   font-size: 0.8125rem;
@@ -1469,17 +1140,6 @@
   color: var(--fg);
 }
 
-/*
- * L'état du service.
- *
- * Une pastille et trois mots, tout en bas à droite : c'est la convention, et
- * elle rassure précisément parce qu'elle est discrète. La pastille bat
- * lentement — un point vert fixe pourrait être une image, un point qui respire
- * dit que quelque chose interroge vraiment quelque chose.
- *
- * C'est le seul endroit de la page où une couleur est admise, avec le montage
- * du hero : un état de service qui serait gris ne voudrait plus rien dire.
- */
 .landing-status {
   display: inline-flex;
   align-items: center;
@@ -1520,7 +1180,6 @@
   }
 }
 
-/* Le sélecteur de thème du pied de page : deux pastilles dans un cadre. */
 .landing-theme {
   display: inline-flex;
   padding: 0.1875rem;
@@ -1544,13 +1203,6 @@
   color: var(--fg);
 }
 
-/* --------------------------------------------------------------------------
- * Le sommaire d'une page légale.
- *
- * Une colonne de liens tenus à gauche, dont celui de la section qu'on est en
- * train de lire se détache. Le trait vertical fait office de repère : sans lui,
- * on ne voit pas où l'on en est dans un document qui en compte sept.
- * ------------------------------------------------------------------------ */
 .landing-toc-link {
   display: block;
   font-size: 0.875rem;

@@ -1,14 +1,5 @@
-/**
- * Option d'itinéraire en VTC (Uber).
- *
- * Uber estime le prix et la durée de la course, mais ne trace rien : le chemin
- * vient du routeur en mode voiture, comme pour Citiz. La course part du point de
- * départ — aucune marche d'approche, c'est le véhicule qui vient.
- */
-
 import { planDirectItinerary, type RouteItinerary, type UberJourneyInfo } from './api';
 
-/** Produit retenu quand Uber en propose plusieurs. */
 const PREFERRED_PRODUCTS = ['uberx', 'uber x'];
 
 interface UberProduct {
@@ -25,10 +16,6 @@ interface UberProduct {
 const formatClock = (value: number): string =>
   new Date(value).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-/**
- * Le produit le plus courant d'abord, sinon le moins cher : entre deux courses
- * pour le même trajet, c'est le prix qui départage.
- */
 function pickProduct(products: UberProduct[]): UberProduct | null {
   const usable = products.filter(product => product.lowEstimate !== null || product.estimate);
   if (usable.length === 0) return null;
@@ -43,10 +30,6 @@ function pickProduct(products: UberProduct[]): UberProduct | null {
     .sort((a, b) => (a.lowEstimate ?? Infinity) - (b.lowEstimate ?? Infinity))[0];
 }
 
-/**
- * Lien universel Uber : il ouvre l'application avec le trajet pré-rempli, et
- * bascule sur le site quand elle n'est pas installée. Aucun jeton n'y circule.
- */
 function deeplink(options: {
   fromLatitude: number;
   fromLongitude: number;
@@ -67,13 +50,6 @@ function deeplink(options: {
   return `https://m.uber.com/ul/?${params.toString()}`;
 }
 
-/**
- * Construit l'option Uber d'un trajet.
- *
- * Renvoie `null` sans bruit quand le jeton n'est pas configuré, quand Uber ne
- * dessert pas la zone ou qu'il refuse la requête : cette option complète la
- * liste, elle ne la conditionne pas.
- */
 export async function planUberJourney(options: {
   fromLatitude: number;
   fromLongitude: number;

@@ -1,4 +1,3 @@
-
 const DB_NAME = 'greLines';
 const DB_VERSION = 1;
 const STORE = 'cache';
@@ -79,7 +78,6 @@ export async function idbDelete(key: string): Promise<void> {
   await withStore('readwrite', (store) => store.delete(key));
 }
 
-/** Le nombre d'entrées dont la clé commence par `prefix`. */
 export async function idbCountPrefix(prefix: string): Promise<number> {
   const count = await withStore<number>('readonly', (store) =>
     store.count(IDBKeyRange.bound(prefix, `${prefix}￿`)),

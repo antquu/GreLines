@@ -1,12 +1,11 @@
-
 export type LineFamily = 'tram' | 'chrono' | 'proximo' | 'flexo' | 'other';
 
 export interface AllLinesLine {
-  id: string;        
-  shortName: string; 
-  longName: string;  
-  color: string;     
-  textColor: string; 
+  id: string;
+  shortName: string;
+  longName: string;
+  color: string;
+  textColor: string;
   family: LineFamily;
 }
 
@@ -34,7 +33,7 @@ function hydrateCache(): void {
     if (Date.now() - parsed.timestamp > CACHE_TTL_MS) return;
     cache = parsed.data;
   } catch {
-    
+
   }
 }
 
@@ -46,7 +45,7 @@ function persistCache(lines: AllLinesLine[]): void {
       data: lines,
     }));
   } catch {
-    
+
   }
 }
 
@@ -55,12 +54,6 @@ function withHash(hex: string | undefined, fallback: string): string {
   return hex.startsWith('#') ? hex : `#${hex}`;
 }
 
-/**
- * Map the MTAG `type` field to our internal family. The remote API uses many
- * fine-grained tags (CHRONO, CHRONO_PERI, SCOL, NATURE, C38_*, MCO…); we only
- * surface the four families our infotrafic filter cares about and bucket
- * everything else into "other".
- */
 function familyFromType(type: string | undefined): LineFamily {
   switch ((type || '').toUpperCase()) {
     case 'TRAM':         return 'tram';
@@ -72,11 +65,6 @@ function familyFromType(type: string | undefined): LineFamily {
   }
 }
 
-/**
- * Returns every SEM line with its id, shortName, official color and family.
- * Cached: subsequent calls return the in-memory list. Returns an empty array
- * on failure so callers can still render with default colours.
- */
 export async function getAllSemLines(): Promise<AllLinesLine[]> {
   hydrateCache();
   if (cache) return cache;
@@ -111,22 +99,6 @@ export async function getAllSemLines(): Promise<AllLinesLine[]> {
   return inflight;
 }
 
-/**
- * Build a lookup map keyed by uppercase shortName ("A", "C1", "16") so the
- * infotrafic panel can resolve a traffic-info line name to its colour and
- * family.
- */
-/**
- * Réseaux prioritaires pour un code de ligne ambigu.
- *
- * Trois codes existent sur deux réseaux à la fois : `C1` et `C6` (SEM et SNC),
- * `C11` (SE2 et SNC). Ce sont les lignes TER qui portent les mêmes numéros que
- * des lignes urbaines. Sans arbitrage, le dernier arrivé dans le catalogue
- * l'emportait — d'où une ligne C1 affichée avec la couleur du TER.
- *
- * L'ordre dit ce que désigne un code nu : dans une application centrée sur
- * l'agglomération, « C1 » veut dire la ligne urbaine.
- */
 const NETWORK_PRIORITY = ['SEM', 'SE2', 'GSV', 'TPV', 'BUL', 'FUN', 'TRA', 'MCO', 'SNC', 'C38'];
 
 function networkRank(id: string): number {
@@ -134,14 +106,6 @@ function networkRank(id: string): number {
   return rank === -1 ? NETWORK_PRIORITY.length : rank;
 }
 
-/**
- * Index des lignes, par identifiant complet et par code nu.
- *
- * L'identifiant complet est toujours exact. Le code nu ne l'est pas quand deux
- * réseaux le partagent : il désigne alors la ligne du réseau le plus
- * prioritaire, et les appelants qui connaissent l'identifiant complet doivent
- * le passer plutôt que le code.
- */
 export function buildLineLookup(lines: AllLinesLine[]): Map<string, AllLinesLine> {
   const m = new Map<string, AllLinesLine>();
 

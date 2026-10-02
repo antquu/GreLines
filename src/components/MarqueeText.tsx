@@ -5,7 +5,7 @@ const MARQUEE_SPEED_PX_PER_SEC = 60;
 export function MarqueeText({
   text,
   className = '',
-  
+
   gap = 48,
 }: {
   text: string;
@@ -32,7 +32,7 @@ export function MarqueeText({
     };
 
     update();
-    
+
     const observer = new ResizeObserver(update);
     observer.observe(container);
     return () => observer.disconnect();

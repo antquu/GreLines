@@ -1,13 +1,3 @@
-/**
- * « Voulez-vous ajouter ce trajet ? »
- *
- * Une boîte au centre, pas une feuille par le bas : ce n'est pas un formulaire
- * qu'on remplit mais une question fermée, et on doit pouvoir y répondre sans
- * changer de position. Elle redit le trajet en entier — départ, arrivée et
- * lignes — parce qu'on l'ajoute d'après une liste de résultats où trois lignes
- * se ressemblent.
- */
-
 import { ArrowRightIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
 import type { RouteLocation } from '../services/api';
@@ -15,7 +5,6 @@ import type { RouteLocation } from '../services/api';
 export interface PendingJourney {
   from: RouteLocation;
   to: RouteLocation;
-  /** Les lignes de l'itinéraire choisi — elles habilleront l'onglet. */
   lines: string[];
 }
 
@@ -23,7 +12,6 @@ export function AddJourneyDialog({
   journey,
   language,
   isLight,
-  /** La liste est pleine : on le dit au lieu d'ajouter dans le vide. */
   isFull,
   onConfirm,
   onCancel,
@@ -64,9 +52,9 @@ export function AddJourneyDialog({
           }`}
         >
           <div className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{journey.from.label}</span>
+            <span className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold">{journey.from.label}</span>
             <ArrowRightIcon className="h-4 w-4 flex-shrink-0 text-slate-400" />
-            <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{journey.to.label}</span>
+            <span className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold">{journey.to.label}</span>
           </div>
           {journey.lines.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">

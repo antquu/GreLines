@@ -1,6 +1,15 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { isOffline } from './offlineSchedule';
 
+export interface CmsPopupLine {
+  id: string;
+  short: string;
+  name?: string;
+  color: string;
+  textColor: string;
+  category?: string;
+}
+
 export interface CmsPopup {
   id: string;
   type: 'promo' | 'infotraffic';
@@ -10,21 +19,35 @@ export interface CmsPopup {
   link_url: string | null;
   target_scope: 'global' | 'line' | 'stop';
   target_id: string | null;
+  target_network: string | null;
+  target_lines: CmsPopupLine[];
   priority: number;
 }
+
+const POPUP_COLUMNS = 'id, type, title, message, image_url, link_url, target_scope, target_id, priority';
 
 export async function getActivePopups(context?: { lineId?: string; stopId?: string }): Promise<CmsPopup[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
-    const { data, error } = await supabase
+    const targeted = await supabase
       .from('popups')
-      .select('id, type, title, message, image_url, link_url, target_scope, target_id, priority')
+      .select(`${POPUP_COLUMNS}, target_network, target_lines`)
       .order('priority', { ascending: false });
+
+    const { data, error } = targeted.error
+      ? await supabase.from('popups').select(POPUP_COLUMNS).order('priority', { ascending: false })
+      : targeted;
 
     if (error || !data) return [];
 
-    return (data as CmsPopup[]).filter((popup) => {
+    const popups = (data as Array<Partial<CmsPopup> & { id: string }>).map(popup => ({
+      ...popup,
+      target_network: popup.target_network ?? null,
+      target_lines: Array.isArray(popup.target_lines) ? popup.target_lines : [],
+    })) as CmsPopup[];
+
+    return popups.filter((popup) => {
       if (popup.target_scope === 'global') return true;
       if (popup.target_scope === 'line') return popup.target_id === context?.lineId;
       if (popup.target_scope === 'stop') return popup.target_id === context?.stopId;
@@ -35,13 +58,6 @@ export async function getActivePopups(context?: { lineId?: string; stopId?: stri
   }
 }
 
-/**
- * Un tronçon en transport, de quai à quai.
- *
- * Jamais la marche : le premier et le dernier tronçon à pied d'un trajet
- * partent de chez quelqu'un et y reviennent. On garde de quoi établir les
- * trajets moyens sur le réseau, pas de quoi savoir où habitent les gens.
- */
 export interface TripSurveyLeg {
   line: string;
   from: string;
@@ -56,15 +72,7 @@ export interface TripSurveyAnswers {
   boardingStop?: string | null;
 
   boardingTime?: string | null;
-  /**
-   * L'instant de la réponse, vu du téléphone.
-   *
-   * `created_at` dira quand la base a reçu la ligne, ce qui peut arriver
-   * plusieurs minutes plus tard sur un réseau lent. C'est pourtant l'écart avec
-   * l'heure de montée qui situe le véhicule sur son parcours.
-   */
   answeredAt?: string;
-  /** Le voyage, tronçons en transport seulement. */
   journey?: TripSurveyLeg[];
   cleanliness?: number;
   punctuality?: number;
@@ -97,18 +105,9 @@ export async function submitTripSurvey(answers: TripSurveyAnswers): Promise<bool
   }
 }
 
-/**
- * Un avis sur un arrêt, recueilli pendant l'attente.
- *
- * Les enquêtes véhicule ne disaient rien du quai, alors qu'on y passe autant de
- * temps qu'à bord et que ses défauts lui sont propres : un afficheur éteint, un
- * abri cassé, un quai peu rassurant le soir. On ne peut les constater qu'en
- * étant là, ce qui fait de l'attente le seul moment où la question a un sens.
- */
 export interface StopSurveyAnswers {
   stopId: string;
   stopName?: string | null;
-  /** Échelle 1 / 3 / 5, la même que les enquêtes véhicule pour qu'elles se comparent. */
   displayReadable?: number;
   shelterCondition?: number;
   feelsSafe?: number;
@@ -152,14 +151,6 @@ export interface LineOverrideEntry {
   hidden: boolean;
 }
 
-/**
- * Les corrections d'arrêts, gardées sur l'appareil.
- *
- * Le chargement des arrêts les attend avant d'afficher la carte. Sans réseau,
- * Supabase réessaie pendant sept secondes avant d'abandonner, et l'écran de
- * lancement restait figé tout ce temps. Hors connexion, on sert la dernière
- * liste reçue, tout de suite.
- */
 const STOP_OVERRIDES_KEY = 'greLines_stopOverrides_v1';
 
 function toOverrideMap(entries: StopOverrideEntry[]): Map<string, StopOverrideEntry> {
@@ -185,7 +176,6 @@ export async function getStopOverrides(): Promise<Map<string, StopOverrideEntry>
     try {
       localStorage.setItem(STOP_OVERRIDES_KEY, JSON.stringify(data));
     } catch {
-      /* Plein ou refusé : on les redemandera. */
     }
     return toOverrideMap(data as StopOverrideEntry[]);
   } catch {

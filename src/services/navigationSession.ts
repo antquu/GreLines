@@ -1,35 +1,15 @@
-/**
- * Guidage en cours, conservé entre deux ouvertures de l'application.
- *
- * Un téléphone interrompt : un appel arrive, l'écran s'éteint, le système
- * récupère la mémoire de l'onglet. Retrouver son trajet en cours au retour évite
- * de tout ressaisir au milieu d'un quai. La reprise a une date de péremption :
- * revenir deux heures après pour un trajet de vingt minutes, ce n'est plus le
- * même voyage.
- */
-
 import type { RouteItinerary } from './api';
 
 const STORAGE_KEY = 'greLines_navigationSession_v1';
 
-/**
- * Marge après l'arrivée prévue.
- *
- * Un trajet déborde : correspondance manquée, bus en retard. Un quart d'heure
- * couvre ces aléas sans ressusciter un trajet de la veille.
- */
 const GRACE_MS = 15 * 60 * 1000;
 
-/** Plafond de reprise, quand la durée annoncée est inexploitable. */
 const MAX_SESSION_MS = 3 * 60 * 60 * 1000;
 
 interface StoredSession {
   itinerary: RouteItinerary;
-  /** Dernière étape affichée dans le guidage. */
   currentStepIndex?: number;
-  /** Horodatage de démarrage du guidage. */
   startedAt: number;
-  /** Au-delà, la session ne vaut plus rien. */
   expiresAt: number;
 }
 
@@ -39,7 +19,6 @@ function durationMs(itinerary: RouteItinerary): number {
   return Math.min(minutes * 60_000 + GRACE_MS, MAX_SESSION_MS);
 }
 
-/** Mémorise le trajet guidé. Sans effet si le stockage est plein ou refusé. */
 export function saveNavigationSession(itinerary: RouteItinerary): void {
   try {
     const startedAt = Date.now();
@@ -64,7 +43,6 @@ function sameItinerary(a: RouteItinerary, b: RouteItinerary): boolean {
   );
 }
 
-/** Met à jour l'étape sans prolonger la durée de vie de la session. */
 export function saveNavigationStep(itinerary: RouteItinerary, currentStepIndex: number): void {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -93,14 +71,9 @@ export function clearNavigationSession(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
-    /* rien à nettoyer */
   }
 }
 
-/**
- * Trajet à reprendre, ou `null` s'il n'y en a pas — ou s'il est périmé, auquel
- * cas l'entrée est effacée au passage.
- */
 export function loadNavigationSession(): RouteItinerary | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

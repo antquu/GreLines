@@ -1,3 +1,4 @@
+import { isForeignLineId } from '../utils/foreignNetworks';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { MapSheet } from './MapSheet';
@@ -9,6 +10,7 @@ import { formatDepartureTime, getDepartures } from '../services/api';
 import { getStopsServedByLines, stopNameKey, type ServedStopPoint } from '../services/lineShapes';
 import type { Stop, TrafficDetail, Departure } from '../types';
 import type { AllLinesLine } from '../services/allLines';
+import { getLineFiche } from '../services/foreignTimetable';
 import { resolveLineStyle } from '../utils/lineColors';
 import { DepartureQuickActions } from './DepartureQuickActions';
 import {
@@ -35,16 +37,9 @@ interface LineSidebarProps {
   autoSync: boolean;
   refreshIntervalMs: number;
   theme?: 'light' | 'dark';
-  
-  /**
-   * Ouvre la fiche horaire de la ligne.
-   *
-   * Avec un arrêt, la fiche s'ouvre sur cet arrêt-là, surligné dans la
-   * colonne : c'est la question qu'on se pose devant un arrêt déplié — « et à
-   * quelle heure, ici ? » —, et non celle de la ligne entière.
-   */
-  onOpenTimetable?: (options?: { stopName?: string }) => void;
-  
+
+  onOpenTimetable?: (options?: { stopName?: string; stopId?: string }) => void;
+
   onOpenLineMap?: () => void;
 }
 
@@ -76,20 +71,6 @@ const getSidebarText = (language: 'fr' | 'en') => {
   };
 };
 
-/**
- * Bifurcation exceptionnelle de la ligne E.
- *
- * Le dépôt n'est pas sur le tracé normal : certaines courses le rejoignent en
- * quittant les rails entre Estacade - Condorcet et Vallier - Libération, par
- * une desserte qui rallonge le trajet avant de retrouver le vrai terminus,
- * Plaine des Sports. Mélangés au tracé principal, ces arrêts semblaient posés
- * n'importe où avant le terminus ; ici ils forment leur propre branche.
- *
- * Pas de source de données pour les patterns/variantes GTFS de la ligne :
- * l'endpoint MTAG `/routes/{id}/stops` renvoie une liste à plat, sans ordre
- * de parcours ni notion de branche. La liste est donc figée à la main, pour
- * cette ligne seulement.
- */
 const LINE_E_FORK_STOP_NAME = 'Estacade - Condorcet';
 const LINE_E_DEPOT_BRANCH_STOPS = [
   'Foch - Ferrié',
@@ -108,21 +89,8 @@ const LINE_E_DEPOT_BRANCH_STOPS = [
   'Plaine des Sports',
 ];
 
-/**
- * Bifurcations et termini secondaires des autres lignes du réseau.
- *
- * Même souci que pour la ligne E : l'endpoint MTAG ne connaît qu'une liste
- * à plat par ligne, sans branches. Ici, contrairement au dépôt de la ligne
- * E, les arrêts de chaque embranchement suivent déjà l'ordre du tracé dans
- * cette liste (ils arrivent juste après le point de bifurcation) : un
- * simple découpage séquentiel suffit, pas besoin de recouper avec l'annuaire
- * complet des arrêts.
- */
 interface LineSpurConfig {
   forkAfterStop: string;
-  /** Le tronc s'arrête-t-il déjà là pour le service normal (ex. ligne C,
-   *  terminus de jour), ou continue-t-il aussi tout droit (ex. ligne D,
-   *  qui dessert encore Neyrpic - Belledonne et la suite) ? */
   forkIsTerminus: boolean;
   branchStopNames: string[];
 }
@@ -147,14 +115,10 @@ const LINE_SPUR_CONFIG: Record<string, LineSpurConfig> = {
   },
 };
 
-/** Arrêts intermédiaires où certaines courses terminent réellement, sans
- *  bifurcation physique : juste une voie directe qui redescend de là. */
 const LINE_EXTRA_TERMINI: Record<string, string[]> = {
   A: ["Grand'place"],
 };
 
-/** Doublons renvoyés par l'API à filtrer : même arrêt physique que celui
- *  déjà présent plus tôt dans la liste, sous un nom légèrement différent. */
 const LINE_DROP_STOPS: Record<string, string[]> = {
   B: ['Grenoble Cité Internationale'],
 };
@@ -256,35 +220,67 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
   const stopMatchThreshold = 0.0001;
   const isDark = theme === 'dark';
 
+  const [loadedRoute, setLoadedRoute] = useState<{ lineId: string; order: Map<string, number>; ends: [string, string] } | null>(null);
+  const foreignRoute = loadedRoute && loadedRoute.lineId === line?.id ? loadedRoute : null;
+  useEffect(() => {
+    const id = String(line?.id ?? '');
+    if (!isForeignLineId(id)) return;
+    let active = true;
+    void getLineFiche(id).then(fiche => {
+      if (!active) return;
+      const main = fiche?.directions
+        .slice()
+        .sort((a, b) => b.trips.length - a.trips.length || b.stops.length - a.stops.length)[0];
+      if (!main || main.stops.length < 2) return;
+      setLoadedRoute({
+        lineId: id,
+        order: new Map(main.stops.map((stop, index) => [stopNameKey(stop.name), index])),
+        ends: [main.stops[0].name, main.stops[main.stops.length - 1].name],
+      });
+    });
+    return () => { active = false; };
+  }, [line?.id]);
+
+  const stopsByName = useMemo(() => {
+    const byName = new Map<string, Stop[]>();
+    for (const stop of stops) {
+      const key = stopNameKey(stop.name);
+      const list = byName.get(key);
+      if (list) list.push(stop);
+      else byName.set(key, [stop]);
+    }
+    return byName;
+  }, [stops]);
+
   const lineStops = useMemo(() => {
     if (!servedStopPoints || stops.length === 0) return [];
     const uniqueStops = new Map<string, Stop>();
-    servedStopPoints.forEach(point => {
+    const nearestAmong = (point: ServedStopPoint, candidates: Stop[]) => {
       let bestMatch: Stop | null = null;
       let bestDist = Infinity;
-      for (const stop of stops) {
+      for (const stop of candidates) {
         const dist = getDistanceSq(point, stop);
         if (dist < bestDist) {
           bestDist = dist;
           bestMatch = stop;
         }
       }
-      if (bestMatch && bestDist <= stopMatchThreshold) {
-        uniqueStops.set(bestMatch.id, bestMatch);
-      }
+      return bestMatch && bestDist <= stopMatchThreshold ? bestMatch : null;
+    };
+    servedStopPoints.forEach(point => {
+      const sameName = point.name ? stopsByName.get(stopNameKey(point.name)) : undefined;
+      const match = (sameName && nearestAmong(point, sameName)) || nearestAmong(point, stops);
+      if (match) uniqueStops.set(match.id, match);
     });
-    return Array.from(uniqueStops.values());
-  }, [servedStopPoints, stops]);
+    const found = Array.from(uniqueStops.values());
+    if (!foreignRoute) return found;
+    const rank = (stop: Stop) => foreignRoute.order.get(stopNameKey(stop.name)) ?? Number.MAX_SAFE_INTEGER;
+    return found.sort((a, b) => rank(a) - rank(b));
+  }, [servedStopPoints, stops, stopsByName, foreignRoute]);
   const renderedStops = lineStops;
 
   const isLineE = normalizedLineKey === 'E';
 
-  /**
-   * Découpe la liste plate en tronc commun + deux branches quand c'est la
-   * ligne E : le tronc s'arrête à Estacade - Condorcet, la desserte dépôt
-   * suit la liste figée ci-dessus, et tout le reste (le tracé normal après
-   * la bifurcation) forme la branche principale.
-   */
   const lineEBranches = useMemo(() => {
     if (!isLineE || renderedStops.length === 0) return null;
     const forkKey = stopNameKey(LINE_E_FORK_STOP_NAME);
@@ -312,12 +308,6 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
     return { trunk, mainBranch, depotBranch };
   }, [isLineE, renderedStops, stops]);
 
-  /**
-   * Même découpage tronc + branche pour les autres lignes, mais plus simple :
-   * les arrêts de l'embranchement suivent déjà l'ordre du tracé juste après
-   * le point de bifurcation, un simple passage séquentiel suffit à les
-   * séparer de la continuation normale.
-   */
   const genericSpurBranches = useMemo(() => {
     if (isLineE || !normalizedLineKey || renderedStops.length === 0) return null;
     const config = LINE_SPUR_CONFIG[normalizedLineKey];
@@ -365,11 +355,6 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
     ? genericSpurBranches.trunk.length + genericSpurBranches.spur.length + genericSpurBranches.continuation.length
     : flatRenderedStops.length;
 
-  /**
-   * La branche ne tourne qu'à certaines heures (dépôt, prolongement du
-   * soir...). Le premier arrêt qui lui est propre suffit à dire si elle est
-   * active maintenant ; sinon elle se grise, quelle que soit la ligne.
-   */
   const [spurBranchActive, setSpurBranchActive] = useState<boolean | null>(null);
   const spurBranchProbeStopId = lineEBranches?.depotBranch[0]?.id ?? genericSpurBranches?.spur[0]?.id ?? null;
 
@@ -436,28 +421,21 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
     const interval = setInterval(refreshExpandedStops, refreshIntervalMs);
     return () => clearInterval(interval);
   }, [isOpen, line?.id, autoSync, refreshIntervalMs, expandedStops, renderedStops, fetchStopDepartures]);
+  const SPUR_FIRST_STOP_Y = 20;
+  const [spurCurveLead, setSpurCurveLead] = useState(49);
+  const measureSpurLead = useCallback((block: HTMLDivElement | null) => {
+    const previousRow = block?.previousElementSibling as HTMLElement | null;
+    if (!previousRow) return;
+    const lead = Math.round(previousRow.offsetHeight - SPUR_FIRST_STOP_Y);
+    if (lead > 0) setSpurCurveLead(current => (current === lead ? current : lead));
+  }, []);
   if (!line) return null;
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
   const railStyle: any = line ? resolveLineStyle(line.id, line.color, line.textColor) : {};
 
   const lineColor = railStyle.backgroundColor || '#475569';
-  /**
-   * L'encre de la ligne, celle de sa pastille.
-   *
-   * Blanche sur le bleu du tram A, noire sur le jaune des chrono : c'est
-   * `resolveLineTextColor` qui tranche, et il connaît déjà les exceptions du
-   * réseau. Le badge « Terminus » s'en sert plutôt que d'un blanc fixe, qui
-   * disparaissait sur les lignes claires.
-   */
   const lineInk = railStyle.color || '#ffffff';
 
-  /**
-   * Une ligne de temps, comme celle d'un itinéraire.
-   *
-   * Même trait fin porté par les arrêts, même dépliage en grille plutôt
-   * qu'une carte encadrée qui s'ouvre : c'est le style de `JourneyTimeline`,
-   * repris ici pour qu'une ligne et un trajet se lisent pareil.
-   */
   const MUTED_RAIL_COLOR = '#475569';
 
   const renderStopRow = (
@@ -486,8 +464,6 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
               style={{ backgroundColor: railColor }}
             />
           )}
-          {/* Même trait, même rond plein que dans la timeline d'un
-              itinéraire (`JourneyTimeline`) : pas d'anneau creux ici. */}
           <div
             className="absolute left-1/2 top-5 z-10 -translate-x-1/2 -translate-y-1/2 flex-shrink-0 rounded-full"
             style={{
@@ -506,10 +482,10 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
           >
             <div className="min-w-0 flex-1">
               <p className="flex min-w-0 items-center gap-2">
-                <span className={`truncate text-[15px] font-semibold ${muted ? 'text-slate-500' : 'text-white'}`}>{stop.name}</span>
+                <span className={`truncate text-[0.9375rem] font-semibold ${muted ? 'text-slate-500' : 'text-white'}`}>{stop.name}</span>
                 {isTerminus && (
                   <span
-                    className="flex-shrink-0 rounded-md px-1.5 py-px text-[11px] font-semibold leading-tight"
+                    className="flex-shrink-0 rounded-md px-1.5 py-px text-[0.6875rem] font-semibold leading-tight"
                     style={{ backgroundColor: railColor, color: muted ? '#cbd5e1' : lineInk }}
                   >
                     {text.terminus}
@@ -521,8 +497,6 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
             <ChevronDownIcon className={`w-4 h-4 text-slate-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
           </button>
 
-          {/* Dépliement animé par la grille : même mécanique que dans la
-              timeline d'un itinéraire, pas de carte qui apparaît autour. */}
           <div
             className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
               isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
@@ -555,7 +529,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
                 style={railStyle}
                 actions={[
                   { label: text.openStop, Icon: MapIcon, onSelect: () => onStopClick?.(stop) },
-                  { label: text.timetable, Icon: ClockIcon, onSelect: () => onOpenTimetable?.({ stopName: stop.name }) },
+                  { label: text.timetable, Icon: ClockIcon, onSelect: () => onOpenTimetable?.({ stopName: stop.name, stopId: stop.id }) },
                   {
                     label: favorite ? text.removeFavorite : text.addFavorite,
                     Icon: favorite ? BookmarkIcon : BookmarkOutlineIcon,
@@ -582,57 +556,52 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
     );
   };
 
-  /**
-   * L'embranchement, comme un rameau qui part du tronc.
-   *
-   * Le tronc continue tout droit — c'est la voie que la ligne suit le plus
-   * souvent — et la desserte la plus courte se détache dans un encart en
-   * retrait, relié par une courbe. Rien ne s'arrête pour elle : le trait
-   * principal reste continu derrière l'encart, exactement comme sur les
-   * plans de réseau où une antenne se glisse à côté de la ligne plutôt que
-   * de la couper.
-   */
   const BRANCH_INDENT = 40;
+  const SPUR_BEND_RADIUS = 14;
 
-  /**
-   * Le rameau qui part du tronc, comme sur un graphe git : le tronc reste
-   * un trait continu de haut en bas, une courbe s'en détache à angle franc
-   * puis file vers une seconde colonne de cercles, décalée à droite — pas
-   * un onglet qui se replie sur lui-même.
-   */
-  const renderSpurBranch = (branchStops: Stop[]) => {
+  const renderSpurBranch = (branchStops: Stop[], options: { trunkContinues: boolean }) => {
     if (branchStops.length === 0) return null;
     const muted = spurBranchActive === false;
     const branchColor = muted ? MUTED_RAIL_COLOR : lineColor;
     return (
-      <div className="relative">
-        {/* Une vraie courbe, souple, comme sur un graphe git : le trait
-            descend, s'incurve, puis file à l'horizontale vers la branche.
-            Peinte avant le tronc, pour ne jamais le recouvrir quand elle
-            est grisée. */}
+      <div className="relative" ref={measureSpurLead}>
         <svg
-          className="pointer-events-none absolute left-0 top-0 overflow-visible"
+          className="pointer-events-none absolute left-0 overflow-visible"
+          style={{ top: -spurCurveLead }}
           width={BRANCH_INDENT + 16}
-          height="24"
-          viewBox={`0 0 ${BRANCH_INDENT + 16} 24`}
+          height={spurCurveLead + SPUR_FIRST_STOP_Y}
+          viewBox={`0 0 ${BRANCH_INDENT + 16} ${spurCurveLead + SPUR_FIRST_STOP_Y}`}
           fill="none"
           aria-hidden="true"
         >
           <path
-            d={`M8 0 C 8 12, 20 20, 34 20 H ${BRANCH_INDENT + 16}`}
+            d={(() => {
+              const fromX = 8;
+              const toX = BRANCH_INDENT + 16;
+              const endY = spurCurveLead + SPUR_FIRST_STOP_Y;
+              const middle = endY / 2;
+              const bend = Math.min(SPUR_BEND_RADIUS, middle, (toX - fromX) / 2);
+              return [
+                `M${fromX} 0`,
+                `V ${middle - bend}`,
+                `Q ${fromX} ${middle}, ${fromX + bend} ${middle}`,
+                `H ${toX - bend}`,
+                `Q ${toX} ${middle}, ${toX} ${middle + bend}`,
+                `V ${endY}`,
+              ].join(' ');
+            })()}
             stroke={branchColor}
             strokeWidth="4"
             strokeLinecap="round"
           />
         </svg>
-        {/* Le tronc continue tout droit, toujours à sa couleur, par-dessus
-            la courbe : lui n'est pas concerné par l'activité de la branche
-            qui s'en détache. */}
-        <div
-          className="absolute left-2 top-0 bottom-0 w-1 -translate-x-1/2"
-          style={{ backgroundColor: lineColor }}
-          aria-hidden="true"
-        />
+        {options.trunkContinues && (
+          <div
+            className="absolute left-2 top-0 bottom-0 w-1 -translate-x-1/2"
+            style={{ backgroundColor: lineColor }}
+            aria-hidden="true"
+          />
+        )}
         <div style={{ marginLeft: BRANCH_INDENT + 8 }}>
           {branchStops.map((stop, index) =>
             renderStopRow(stop, {
@@ -657,9 +626,9 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
           <LineBadge line={line} size="md" />
 
           {(() => {
-            const [left, right] = splitTerminusPair(line.longName);
+            const [left, right] = foreignRoute ? foreignRoute.ends : splitTerminusPair(line.longName);
             return (
-              <h2 className={`min-w-0 flex-1 text-[26px] font-extrabold leading-[1.12] tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              <h2 className={`min-w-0 flex-1 text-[1.625rem] font-extrabold leading-[1.12] tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 <span>{left}</span>
                 {right && (
                   <>
@@ -675,9 +644,6 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
 
 }
         <div className="flex flex-shrink-0 items-center gap-2">
-          {/* Le favori de la ligne : creux, puis plein et bleu — le même
-              langage que le signet d'un arrêt, mais sa propre couleur pour
-              ne pas se confondre avec celle de la ligne. */}
           <button
             onClick={() => {
               if (isLineFav) {
@@ -716,7 +682,13 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
             style={railStyle}
             actions={[
               ...(onOpenLineMap ? [{ label: text.lineMap, Icon: PaperClipIcon, onSelect: onOpenLineMap }] : []),
-              ...(onOpenTimetable ? [{ label: text.timetable, Icon: ClockIcon, onSelect: () => onOpenTimetable() }] : []),
+              ...(onOpenTimetable ? [{
+                label: text.timetable,
+                Icon: ClockIcon,
+                onSelect: () => isForeignLineId(String(line?.id ?? '')) && lineStops[0]
+                  ? onOpenTimetable({ stopName: lineStops[0].name, stopId: lineStops[0].id })
+                  : onOpenTimetable(),
+              }] : []),
             ]}
           />
         </div>
@@ -725,7 +697,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
       {lineTraffic.length > 0 && (
         <div className="mb-7">
           <div className="mb-2.5 flex items-baseline justify-between border-b border-amber-800/40 pb-2">
-            <p className="signal-label text-amber-400/90">{text.trafficInfo}</p>
+            <p className="text-[0.8125rem] font-bold text-amber-400">{text.trafficInfo}</p>
             <p className="tabular text-xs text-amber-500/70">{lineTraffic.length}</p>
           </div>
           <div className="space-y-2">
@@ -742,9 +714,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
 
       <div className="mb-6">
         <div className="mb-1 flex items-baseline justify-between border-b border-slate-800 pb-2">
-          {/* En Inter et sans capitales : c'est un titre de section, pas une
-              étiquette de tableau de bord. */}
-          <p className="text-[13px] font-bold text-slate-300">{text.stops}</p>
+          <p className="text-[0.8125rem] font-bold text-slate-300">{text.stops}</p>
           <p className="tabular text-xs text-slate-500">
             {totalStopsCount}{' '}
             {(totalStopsCount === 1 ? text.stop : text.stops).toLocaleLowerCase(language)}
@@ -758,10 +728,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
         ) : lineEBranches ? (
           <div>
             {lineEBranches.trunk.map((stop, index) => renderStopRow(stop, { isFirst: index === 0, isLast: false }))}
-            {/* La desserte dépôt est l'exception : c'est elle qui se détache
-                du tronc comme un rameau. Le tracé normal continue tout droit
-                — c'est la ligne, pas la bifurcation. */}
-            {renderSpurBranch(lineEBranches.depotBranch)}
+            {renderSpurBranch(lineEBranches.depotBranch, { trunkContinues: lineEBranches.mainBranch.length > 0 })}
             {lineEBranches.mainBranch.map((stop, index) =>
               renderStopRow(stop, { isFirst: false, isLast: index === lineEBranches.mainBranch.length - 1 })
             )}
@@ -772,11 +739,11 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
               const isLastTrunk = index === genericSpurBranches.trunk.length - 1;
               return renderStopRow(stop, {
                 isFirst: index === 0,
-                isLast: false,
+                isLast: isLastTrunk && genericSpurBranches.continuation.length === 0,
                 isTerminus: isLastTrunk ? genericSpurBranches.forkIsTerminus : undefined,
               });
             })}
-            {renderSpurBranch(genericSpurBranches.spur)}
+            {renderSpurBranch(genericSpurBranches.spur, { trunkContinues: genericSpurBranches.continuation.length > 0 })}
             {genericSpurBranches.continuation.map((stop, index) =>
               renderStopRow(stop, { isFirst: false, isLast: index === genericSpurBranches.continuation.length - 1 })
             )}

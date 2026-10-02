@@ -16,10 +16,6 @@ function serverlessFunctions(): Plugin {
     configureServer(server) {
       const mode = server.config.mode;
 
-      // Une même fonction sert les deux mondes : Vercel en production, ce
-      // middleware en développement. Les secrets sont relus depuis le fichier
-      // d'environnement à chaque appel, pour qu'une clé ajoutée ne demande pas
-      // de redémarrer le serveur.
       const serve = (route: string, file: string, keys: string[]) => {
         server.middlewares.use(route, async (req, res) => {
           try {
@@ -41,6 +37,10 @@ function serverlessFunctions(): Plugin {
 
       serve('/api/tcl', '/api/tcl.js', ['GRANDLYON_USERNAME', 'GRANDLYON_PASSWORD']);
       serve('/api/uber', '/api/uber.js', ['UBER_API_TOKEN', 'UBER_AUTH_SCHEME']);
+      serve('/api/stan', '/api/stan.js', []);
+      serve('/api/gtfsrt', '/api/gtfsrt.js', []);
+      serve('/api/where', '/api/where.js', []);
+      serve('/api/pdf', '/api/pdf.js', []);
     },
   };
 }
@@ -49,10 +49,6 @@ function serverlessFunctions(): Plugin {
 export default defineConfig({
   plugins: [react(), serverlessFunctions()],
   build: {
-    /* La liste des fichiers produits, que le service worker lit pour garder
-       toute l'application sur l'appareil et l'ouvrir sans réseau. */
-    /* À la racine plutôt que dans « .vite/ » : un dossier caché n'est pas
-       servi partout. */
     manifest: 'asset-manifest.json',
     rollupOptions: {
       output: {
@@ -64,8 +60,8 @@ export default defineConfig({
         },
       },
     },
-    
-    
+
+
     chunkSizeWarningLimit: 1200,
   },
   server: {

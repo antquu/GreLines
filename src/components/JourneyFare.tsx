@@ -1,11 +1,3 @@
-/**
- * Détail du prix d'un itinéraire : titre M réso pour les trajets en transport
- * en commun, décomposition de la course pour les véhicules partagés.
- *
- * Le résumé d'une ligne, affiché sur les cartes de résultats, vit ailleurs :
- * `utils/journeyFare`.
- */
-
 import { PhoneIcon, TicketIcon } from '@heroicons/react/24/solid';
 import type { RouteItinerary } from '../services/api';
 import { formatEuro } from '../services/sharedPricing';
@@ -55,18 +47,14 @@ function TransitFareBlock({
           </span>
         </div>
       )}
-      {/* Le titre M réso ne couvre pas tout : mieux vaut le dire que d'annoncer
-          un prix que le voyageur ne paiera pas. */}
       {fare.uncoveredNetworks.length > 0 && (
-        <p className="mt-2 text-[11px] leading-snug text-amber-400">
+        <p className="mt-2 text-[0.6875rem] leading-snug text-amber-400">
           {isFr ? 'Hors ' : 'Excludes '}
           {fare.uncoveredNetworks.map(networkLabel).join(', ')}
           {isFr ? ' : titre à acheter séparément.' : ': separate ticket required.'}
         </p>
       )}
 
-      {/* Le prix appelle l'achat : la boutique s'ouvre à côté, sans faire perdre
-          l'itinéraire en cours. */}
       <button
         type="button"
         onClick={() => openExternal(PASS_SHOP_URL)}
@@ -128,9 +116,7 @@ function SharedFareBlock({ journey, language }: { journey: RouteItinerary; langu
           </div>
         ))}
       </div>
-      {/* Le temps facturé dépend du trafic et du chemin réellement pris : la
-          somme annoncée est un ordre de grandeur, pas un devis. */}
-      <p className="mt-2 text-[11px] leading-snug text-slate-500">
+      <p className="mt-2 text-[0.6875rem] leading-snug text-slate-500">
         {isFr
           ? 'Estimation sur la durée du trajet calculé, hors abonnement et hors stationnement.'
           : 'Based on the computed ride time, excluding passes and parking.'}
@@ -157,9 +143,7 @@ function UberFareBlock({ journey, language }: { journey: RouteItinerary; languag
         <span className="text-sm text-slate-400">{isFr ? 'Estimation Uber' : 'Uber estimate'}</span>
         <span className="text-lg font-bold text-white">{label}</span>
       </div>
-      {/* Uber annonce une fourchette, pas un prix : le tarif définitif dépend du
-          trafic et de la demande au moment de la commande. */}
-      <p className="mt-2 text-[11px] leading-snug text-slate-500">
+      <p className="mt-2 text-[0.6875rem] leading-snug text-slate-500">
         {isFr
           ? 'Fourchette annoncée par Uber, hors majoration au moment de la commande.'
           : 'Range quoted by Uber, before surge pricing at booking time.'}
@@ -195,9 +179,7 @@ function TaxiFareBlock({ journey, language }: { journey: RouteItinerary; languag
           ~{taxi.pickupDelayMinutes} min
         </span>
       </div>
-      {/* Le prix d'un taxi se lit au compteur : la fourchette vient d'un modèle
-          calé sur la grille publiée, elle n'engage pas la compagnie. */}
-      <p className="mt-2 text-[11px] leading-snug text-slate-500">
+      <p className="mt-2 text-[0.6875rem] leading-snug text-slate-500">
         {isFr
           ? 'Estimation d’après la grille tarifaire publiée ; le montant dû reste celui du compteur.'
           : 'Estimated from the published rate card; the meter sets the final fare.'}

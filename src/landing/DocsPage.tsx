@@ -1,33 +1,3 @@
-/**
- * La documentation, servie sur `/fr/docs` et `/en/docs`.
- *
- * Trois étages, et un seul composant pour les trois.
- *
- *   /fr/docs                      le sommaire : les huit catégories
- *   /fr/docs/deploy               une catégorie : ses sections
- *   /fr/docs/deploy/variables     une section : l'article entier
- *
- * Une page par section plutôt qu'une seule page très longue. Ce n'est pas un
- * détail d'agencement : une adresse par sujet, c'est un lien qu'on colle dans
- * un message sans dire « cherche le titre Variables au milieu », c'est un
- * onglet qui garde son titre, et c'est une page qui ne fait pas défiler trente
- * sections pour en lire une.
- *
- * La navigation se fait sans recharger. Les liens restent de vrais liens, avec
- * une vraie adresse : un clic ordinaire est intercepté et l'on change de vue,
- * un clic du milieu ou avec une touche ouvre un onglet, comme partout ailleurs.
- * Le bouton « précédent » du navigateur fonctionne, parce que c'est l'historique
- * qu'on manipule et non un état inventé à côté.
- *
- * L'en-tête n'est pas celui du site. Une page de documentation ne se visite pas
- * comme une page de présentation : on n'y arrive pas pour être convaincu, on y
- * arrive pour trouver quelque chose. Les menus déroulants de la vitrine, qui
- * vendent des solutions, deviendraient ici du bruit. À leur place : la pastille
- * seule, une contre-oblique, le mot « Docs », un champ qui filtre le sommaire,
- * et le bouton qui ouvre l'application. Le pied de page, lui, reste celui de
- * tout le site : cette page n'est pas une annexe.
- */
-
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
@@ -50,15 +20,11 @@ const ASSETS = '/assets/homepage';
 type Theme = 'light' | 'dark';
 type ThemeChoice = 'auto' | Theme;
 
-/** Où l'on se trouve dans la documentation. Rien de plus que deux segments. */
 interface Route {
   group?: string;
   entry?: string;
 }
 
-/* -------------------------------------------------------------------------
- * Le thème, tenu comme sur le reste du site.
- * ---------------------------------------------------------------------- */
 
 function systemTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
@@ -72,7 +38,6 @@ function useDocsTheme() {
       if (stored === 'light' || stored === 'dark') return stored;
       if (stored === 'blue') return 'dark';
     } catch {
-      /* Stockage refusé : on suivra le système. */
     }
     return 'auto';
   });
@@ -92,16 +57,12 @@ function useDocsTheme() {
       if (next === 'auto') localStorage.removeItem('greLines_theme');
       else localStorage.setItem('greLines_theme', next);
     } catch {
-      /* Le choix ne tiendra que le temps de la visite. */
     }
   };
 
   return { theme: (choice === 'auto' ? system : choice) as Theme, choice, choose };
 }
 
-/* -------------------------------------------------------------------------
- * Petits outils.
- * ---------------------------------------------------------------------- */
 
 function ArrowRight({ className = 'h-4 w-4' }: { className?: string }) {
   return (
@@ -154,7 +115,6 @@ function SearchIcon() {
   );
 }
 
-/** Le chevron d'une catégorie : pointe à droite fermée, vers le bas ouverte. */
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -172,12 +132,6 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-/**
- * Le mot recherché, sans ses accents ni sa casse.
- *
- * On filtre un sommaire français : quelqu'un qui tape « ecran » vite fait
- * cherche « écran », et lui rendre une liste vide serait ridicule.
- */
 function fold(value: string): string {
   return value
     .normalize('NFD')
@@ -186,9 +140,6 @@ function fold(value: string): string {
     .trim();
 }
 
-/* -------------------------------------------------------------------------
- * Les blocs d'une section.
- * ---------------------------------------------------------------------- */
 
 function Block({
   block,
@@ -250,15 +201,10 @@ function Block({
       );
 
     default:
-      /* Un bloc d'un type qu'on ne connaît pas est ignoré, jamais rendu de
-         travers : la page reste lisible pendant qu'on corrige le contenu. */
       return null;
   }
 }
 
-/* -------------------------------------------------------------------------
- * La page.
- * ---------------------------------------------------------------------- */
 
 export function DocsPage({
   lang,
@@ -274,20 +220,9 @@ export function DocsPage({
   const [query, setQuery] = useState('');
   const [tocOpen, setTocOpen] = useState(false);
   const [route, setRoute] = useState<Route>({ group: initialGroup, entry: initialEntry });
-  /**
-   * Les catégories dépliées à la main.
-   *
-   * On ne retient que les gestes du lecteur. La catégorie où l'on se trouve
-   * s'ouvre en plus, sans être notée ici : sans quoi elle resterait ouverte
-   * pour toujours une fois qu'on l'a quittée, et l'accordéon finirait à plat.
-   */
   const [opened, setOpened] = useState<string[]>([]);
 
-  /* ------------------------------------------------------ ce qu'on regarde */
 
-  /* Une catégorie ou une section inconnue ramène au sommaire. Une adresse
-     inventée, ou devenue fausse après un renommage, rend donc quelque chose
-     d'utile au lieu d'une page vide. */
   const currentGroup: DocGroup | undefined = useMemo(
     () => copy.groups.find(item => item.id === route.group),
     [copy.groups, route.group],
@@ -305,7 +240,6 @@ export function DocsPage({
   const path = (groupId?: string, entryId?: string) =>
     `/${lang}/docs${groupId ? `/${groupId}` : ''}${entryId ? `/${entryId}` : ''}`;
 
-  /* ------------------------------------------------------------ navigation */
 
   const go = useCallback(
     (next: Route, push = true) => {
@@ -318,8 +252,6 @@ export function DocsPage({
     [lang],
   );
 
-  /* Le bouton « précédent » du navigateur. Sans lui, une page qui change sans
-     recharger devient un piège : on recule, et l'on sort du site. */
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
       const state = event.state as Route | null;
@@ -327,7 +259,6 @@ export function DocsPage({
         go(state, false);
         return;
       }
-      /* Pas d'état : on relit l'adresse, qui fait toujours foi. */
       const parts = window.location.pathname.split('/').filter(Boolean);
       go({ group: parts[2], entry: parts[3] }, false);
     };
@@ -335,14 +266,6 @@ export function DocsPage({
     return () => window.removeEventListener('popstate', onPop);
   }, [go]);
 
-  /**
-   * Un lien de documentation.
-   *
-   * L'adresse est écrite dans le `href`, toujours : c'est elle que voit le
-   * navigateur au survol, qu'on copie d'un clic droit, et qu'un moteur suit.
-   * L'interception ne vaut que pour le clic ordinaire, sans touche appuyée :
-   * détourner un `ctrl`-clic priverait le lecteur de l'onglet qu'il demandait.
-   */
   const DocLink = ({
     to,
     className,
@@ -366,17 +289,13 @@ export function DocsPage({
     </a>
   );
 
-  /* ------------------------------------------------------------------ titre */
 
   useEffect(() => {
     document.documentElement.lang = lang;
-    /* « Page \ Marque », la marque en dernier : dans une rangée d'onglets
-       GreLines, « GreLines » est précisément ce qui ne distingue rien. */
     const parts = [currentEntry?.title, currentGroup?.title, 'Documentation'].filter(Boolean);
     document.title = `${parts[0]} \\ GreLines`;
   }, [lang, currentGroup, currentEntry]);
 
-  /* ---------------------------------------------------------- le sommaire */
 
   const groups = useMemo(() => {
     const needle = fold(query);
@@ -396,16 +315,7 @@ export function DocsPage({
       current.includes(id) ? current.filter(item => item !== id) : [...current, id],
     );
 
-  /* --------------------------------------------------- section suivante */
 
-  /**
-   * Les deux sections voisines, à travers les catégories.
-   *
-   * On aplatit tout et l'on prend ce qui entoure : la dernière section d'une
-   * catégorie mène donc à la première de la suivante. C'est ce qu'on attend
-   * d'une documentation qu'on lit d'un bout à l'autre, et cela évite un
-   * cul-de-sac tous les trois articles.
-   */
   const [previous, next] = useMemo(() => {
     if (!currentEntry) return [undefined, undefined] as const;
     const flat = copy.groups.flatMap(item =>
@@ -418,7 +328,6 @@ export function DocsPage({
   return (
     <div className="landing" data-theme={theme}>
       <div className="landing-surface min-h-screen">
-        {/* ============================================== en-tête de la doc */}
         <header className="docs-header">
           <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-6">
             <a href={`/${lang}`} className="flex flex-shrink-0 items-center" aria-label="GreLines">
@@ -429,9 +338,6 @@ export function DocsPage({
               />
             </a>
 
-            {/* La contre-oblique, puis « Docs ». Deux caractères qui disent
-                qu'on est dans une sous-partie du site et non sur un autre site,
-                et c'est la même barre que celle des titres d'onglets. */}
             <span className="docs-slash" aria-hidden>
               \
             </span>
@@ -467,16 +373,9 @@ export function DocsPage({
           </div>
         </header>
 
-        {/* Deux colonnes à partir du grand écran, une seule en dessous.
-            La disposition passe en bloc plutôt qu'en ligne : déplié sur
-            téléphone, le sommaire occupait toute la largeur de la rangée et
-            écrasait le texte à côté de lui, jusqu'à zéro pixel. */}
         <div className="mx-auto max-w-6xl px-6 lg:flex lg:gap-12">
-          {/* ============================================ sommaire */}
           <nav className={`docs-toc ${tocOpen ? 'is-open' : ''}`} aria-label={copy.tocTitle}>
             <div className="docs-toc-inner">
-              {/* Le champ est répété ici pour les petits écrans, où celui de
-                  l'en-tête n'a pas la place d'exister. */}
               <label className="docs-search mb-6 flex md:hidden">
                 <SearchIcon />
                 <input
@@ -491,9 +390,6 @@ export function DocsPage({
               {groups.length === 0 && <p className="landing-body">{copy.searchEmpty}</p>}
 
               {groups.map(item => {
-                /* Une recherche ouvre tout ce qu'elle a trouvé : masquer un
-                   résultat derrière un chevron reviendrait à ne pas l'avoir
-                   trouvé. */
                 const isOpen =
                   Boolean(query) || opened.includes(item.id) || currentGroup?.id === item.id;
 
@@ -538,9 +434,7 @@ export function DocsPage({
             </div>
           </nav>
 
-          {/* ============================================ contenu */}
           <main className="min-w-0 flex-1 pb-28 pt-14">
-            {/* ------------------------------------------------ le sommaire */}
             {level === 'index' && (
               <>
                 <p className="landing-eyebrow">{copy.eyebrow}</p>
@@ -556,9 +450,6 @@ export function DocsPage({
                   </a>
                 </div>
 
-                {/* Les huit catégories. Une carte mène à sa page, où l'on
-                    trouvera ses sections : le sommaire ne déballe donc pas
-                    trente titres à quelqu'un qui vient d'arriver. */}
                 <div className="mt-16 grid gap-5 sm:grid-cols-2">
                   {copy.groups.map(item => (
                     <DocLink key={item.id} to={{ group: item.id }} className="landing-card docs-cat-card">
@@ -577,7 +468,6 @@ export function DocsPage({
               </>
             )}
 
-            {/* ------------------------------------------------ une catégorie */}
             {level === 'group' && currentGroup && (
               <>
                 <nav className="docs-crumbs" aria-label={copy.tocTitle}>
@@ -612,7 +502,6 @@ export function DocsPage({
               </>
             )}
 
-            {/* ------------------------------------------------ une section */}
             {level === 'entry' && currentGroup && currentEntry && (
               <>
                 <nav className="docs-crumbs" aria-label={copy.tocTitle}>
@@ -642,10 +531,6 @@ export function DocsPage({
                   ))}
                 </article>
 
-                {/* La section d'avant et celle d'après, à travers les
-                    catégories : une documentation se lit aussi de bout en bout,
-                    et un cul-de-sac tous les trois articles la rendrait
-                    impraticable. */}
                 <nav className="docs-nav mt-16" aria-label={copy.tocTitle}>
                   {previous ? (
                     <DocLink
@@ -677,7 +562,6 @@ export function DocsPage({
               </>
             )}
 
-            {/* ---------------------------------------- l'aide, tout en bas */}
             <div className="landing-card docs-help mt-16">
               <h2 className="landing-subtitle">{copy.helpTitle}</h2>
               <p className="landing-body mt-3 max-w-xl">{copy.helpBody}</p>

@@ -1,3 +1,5 @@
+import { stripHtml } from '../utils/stripHtml';
+import { formatDurationLabel } from '../utils/formatDuration';
 import { useState, type ReactNode } from 'react';
 import { FaWalking } from 'react-icons/fa';
 import { LineBadge } from './LineBadge';
@@ -5,7 +7,6 @@ import { TrafficAlertCard } from './TrafficAlertCard';
 import { VehicleGlyph } from './VehicleGlyph';
 import { MdDirectionsBike } from 'react-icons/md';
 
-/** Les modes qu'on pédale, et le vert qui les désigne partout. */
 const BIKE_MODES = new Set(['BICYCLE', 'BICYCLE_RENT']);
 const BIKE_COLOR = '#22c55e';
 import { JourneyFareBlock } from './JourneyFare';
@@ -29,7 +30,6 @@ interface JourneyDetailsProps {
   stops: any[];
   lineLookup?: Map<string, AllLinesLine> | null;
   trafficInfo?: Map<string, TrafficDetail[]>;
-  /** Décide de la variante des logos d'opérateurs. */
   theme?: 'light' | 'dark';
 
   onStartNavigation?: () => void;
@@ -105,9 +105,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
           </div>
           <div className="flex min-w-0 flex-1 flex-col justify-between gap-6">
             <div className="min-w-0">
-              {/* « Voiture Citiz » n'existe pas : pour une voiture, le type ne
-                  dit rien de plus que la marque, et `formFactorLabel` le laisse
-                  vide. */}
               <p className="text-sm font-semibold leading-tight text-white">
                 {[formFactorLabel(formFactor, language), SHARED_OPERATOR_LABELS[sharedOperator]]
                   .filter(Boolean)
@@ -132,16 +129,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
       return;
     }
 
-    /*
-     * À vélo.
-     *
-     * Sans ce cas, le vélo retombait dans le tronçon de ligne ordinaire : un
-     * trait gris, sans pastille, annoncé en « minutes et arrêts » alors qu'il
-     * ne dessert rien. Il prend donc la même forme que les autres modes qui ne
-     * sont pas des lignes — un carré à sa couleur, son pictogramme en blanc,
-     * son trait de la même teinte — et se dit en distance, qui est ce qu'on
-     * veut savoir avant d'enfourcher.
-     */
     if (BIKE_MODES.has(String(leg.mode ?? '').toUpperCase())) {
       timelineItems.push(
         <div key={`bike-${i}`} className="flex gap-3">
@@ -270,12 +257,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
               </p>
             )}
 
-            {/* Dépliement animé en hauteur : la liste pousse la suite du trajet
-                vers le bas, et l'œil suit le mouvement au lieu de chercher ce
-                qui a changé. La transition porte sur la grille — `height: auto`
-                ne s'anime pas — et l'état d'arrivée reste du CSS, donc juste
-                même si l'animation ne joue pas. Le trait de la ligne suffit à
-                porter les arrêts : un second filet à côté ferait doublon. */}
             <div
               className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
                 isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
@@ -291,7 +272,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
                     <span className="truncate text-xs text-slate-400">
                       {String(stop?.name ?? '').replace(/^[^,]+,\s*/, '')}
                     </span>
-                    <span className="flex-shrink-0 text-[11px] text-slate-600">
+                    <span className="flex-shrink-0 text-[0.6875rem] text-slate-600">
                       {formatClock(stop?.arrival ?? stop?.departure)}
                     </span>
                   </li>
@@ -348,8 +329,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
               {isFr ? 'À pied' : 'Walk'} · {durationMin} min
               {leg.distance ? ` · ${formatDistance(Number(leg.distance), language)}` : ''}
             </p>
-            {/* Marche d'approche vers un véhicule partagé : sans le point
-                d'arrivée, on ne sait pas vers quoi on marche. */}
             {allLegs[i + 1]?.sharedOperator && (
               <p className="mt-0.5 truncate text-xs text-slate-500">
                 → {String(leg.to?.name ?? '').replace(/^[^,]+,\s*/, '')}
@@ -363,13 +342,10 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
 
   return (
     <div className="overflow-y-auto flex-1 px-4 pb-4">
-      {/* Title */}
       <div className="mb-4">
         <p className="text-xs uppercase tracking-[0.18em] text-slate-500 mb-2">
           {isFr ? 'Détails du trajet' : 'Journey details'}
         </p>
-        {/* Deux noms d'arrêts longs ne tiennent pas sur une ligne de téléphone :
-            ils passent à la ligne plutôt que de déborder de l'écran. */}
         <h2 className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-lg font-semibold" style={{ color: '#ffffff' }}>
           <span className="break-words">{journey.depName}</span>
           <span aria-hidden>→</span>
@@ -380,8 +356,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
         </p>
       </div>
 
-      {/* Marque de l'option, puis l'état du véhicule : la batterie décide autant
-          que le prix. */}
       {brand && (
         <img
           src={brand.logo}
@@ -409,7 +383,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
         </div>
       )}
 
-      {/* Lines used */}
       {journey.lineKeys?.length > 0 && (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {journey.lineKeys.map(lineKey => {
@@ -462,8 +435,8 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
                 <p className="font-semibold text-amber-400 mb-1">{isFr ? 'Infotrafic' : 'Traffic info'} {line.lineKey}</p>
                 {line.details[0] ? (
                   <>
-                    <p className="text-slate-200">{line.details[0].titre}</p>
-                    <p className="text-slate-400 mt-1">{line.details[0].description}</p>
+                    <p className="text-slate-200">{stripHtml(line.details[0].titre)}</p>
+                    <p className="text-slate-400 mt-1 whitespace-pre-line line-clamp-6">{stripHtml(line.details[0].description)}</p>
                     <p className="text-slate-500 mt-1">{isFr ? 'Fin estimée' : 'Estimated end'} {line.details[0].dateFin || 'N/A'}</p>
                   </>
                 ) : (
@@ -472,9 +445,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
               </div>
             );
           })()}
-          {/* Une carte par perturbation, et non un bloc unique qui les
-              regroupait derrière un seul cadre : chacune se déplie pour elle
-              seule, comme dans la fiche d'un arrêt. */}
           <div className="space-y-2.5">
             {trafficLines.flatMap(({ lineKey, details }) =>
               details.map((detail, index) => (
@@ -490,14 +460,13 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
     </div>
   )}
 
-      {/* Duration summary */}
       <div className="flex items-center gap-4 mb-6 p-3 rounded-2xl bg-slate-900 border border-slate-800">
         <div>
           <p className="text-lg font-bold text-white">{journey.dep}</p>
           <p className="text-xs text-slate-500">{isFr ? 'Départ' : 'Depart'}</p>
         </div>
         <div className="flex-1 border-t border-dashed border-slate-600" />
-        <p className="text-sm font-semibold text-slate-300">{journey.dur}</p>
+        <p className="text-sm font-semibold text-slate-300">{formatDurationLabel(journey.dur)}</p>
         <div className="flex-1 border-t border-dashed border-slate-600" />
         <div className="text-right">
           <p className="text-lg font-bold text-white">{journey.arr}</p>
@@ -507,9 +476,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
 
       <JourneyFareBlock journey={journey} language={language} />
 
-      {/* Ouvrir l'application de l'opérateur est le seul geste qui déverrouille
-          le véhicule — ou commande la course : le lien vaut mieux qu'une
-          consigne. */}
       {brand && (journey.shared?.rentalUrl || journey.uber) && (
         <a
           href={journey.uber ? journey.uber.deeplink : journey.shared!.rentalUrl}
@@ -526,8 +492,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
         </a>
       )}
 
-      {/* Le guidage se déclenche juste sous les horaires : on décide de partir
-          après avoir lu l'heure de départ, pas avant. */}
       {onStartNavigation && (
         <button
           type="button"
@@ -539,7 +503,6 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
         </button>
       )}
 
-      {/* Timeline */}
       <div className="relative space-y-2">
         <p className="text-xs uppercase tracking-[0.18em] text-slate-500 mb-3">
           {isFr ? 'Étapes' : 'Steps'}

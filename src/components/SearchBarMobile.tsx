@@ -1,4 +1,5 @@
-﻿import { MagnifyingGlassIcon, XMarkIcon, ArrowDownIcon } from '@heroicons/react/24/solid';
+﻿import { foreignAsCatalogLine, isForeignLineId } from '../utils/foreignNetworks';
+import { MagnifyingGlassIcon, XMarkIcon, ArrowDownIcon } from '@heroicons/react/24/solid';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SearchHistoryItem, Stop, TrafficDetail } from '../types';
@@ -21,17 +22,15 @@ interface SearchBarMobileProps {
   onLineClick: (line: AllLinesLine) => void;
   isFocused: boolean;
   onFocus: (focused: boolean) => void;
-  
+
   addressResults?: AddressResult[];
-  
+
   onAddressClick?: (address: AddressResult) => void;
   language?: 'fr' | 'en';
   theme?: 'light' | 'dark';
-  
+
   calculateItineraryWith?: string;
-  /** Rend la barre dans le flux, pour l'en-tête de la feuille d'accueil. */
   inline?: boolean;
-  /** L'état du trafic, pour dire « Service normal » ou l'alerte du jour sous une ligne. */
   trafficInfo?: Map<string, TrafficDetail[]>;
 }
 
@@ -43,26 +42,8 @@ export const SearchBarMobile = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const isLight = theme === 'light';
 
-  /**
-   * Plein écran quand la barre inline prend le focus.
-   *
-   * Repliée dans l'en-tête de la feuille d'accueil, la recherche est à
-   * l'étroit : la liste flottait sur 68 % de l'écran, coincée sous la barre.
-   * Focalisée, elle prend toute la page — même geste que le planificateur
-   * d'itinéraire pour choisir un lieu — et on la referme en la tirant vers
-   * le bas, pas seulement en la vidant ou en la quittant du doigt.
-   */
   const wantOverlay = inline && isFocused;
 
-  /*
-   * L'ouverture et la fermeture sont deux temps distincts du montage.
-   *
-   * `showOverlay` dit si le plein écran existe dans le DOM ; `entered` dit
-   * s'il est à sa position finale. Se refermer prend le même temps que
-   * s'ouvrir : on éteint `entered` d'abord, pour que la barre redescende et
-   * que le fond s'efface, et l'on ne démonte qu'une fois ce geste joué —
-   * sans quoi la page disparaissait d'un coup, sans jamais reculer.
-   */
   const OVERLAY_ANIM_MS = 260;
   const [showOverlay, setShowOverlay] = useState(false);
   const [entered, setEntered] = useState(false);
@@ -83,9 +64,7 @@ export const SearchBarMobile = ({
     return () => cancelAnimationFrame(raf);
   }, [showOverlay, wantOverlay]);
 
-  /** Le conteneur écouté pour le geste : toute la page, en-tête compris. */
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  /** La seule chose qui défile réellement : c'est son scrollTop qui compte. */
   const listRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef<number | null>(null);
   const dragYRef = useRef(0);
@@ -101,21 +80,11 @@ export const SearchBarMobile = ({
     onFocus(false);
   };
 
-  /*
-   * Le plein écran vit dans un portail : un nouveau champ y naît, distinct de
-   * celui qu'on vient de toucher, et le clavier retombe faute d'un doigt
-   * dessus. On lui rend le focus ici, avant la peinture — assez tôt pour que
-   * le clavier reste, ou revienne sans qu'on l'ait vu partir.
-   */
   useLayoutEffect(() => {
     if (!showOverlay || !wantOverlay) return;
     const el = inputRef.current;
     if (!el) return;
     el.focus({ preventScroll: true });
-    /* Le curseur se pose parfois à côté du texte plutôt qu'au bon endroit —
-       la position calculée au moment du focus, sur un champ qui vient de
-       naître. Redonner la sélection au même endroit force le navigateur à
-       la recalculer une fois la mise en page posée. */
     const caret = el.value.length;
     el.setSelectionRange(caret, caret);
   }, [showOverlay, wantOverlay]);
@@ -144,6 +113,7 @@ export const SearchBarMobile = ({
         return;
       }
       if (event.cancelable) event.preventDefault();
+      if (offset > 8 && document.activeElement === inputRef.current) inputRef.current?.blur();
       if (offset > DRAG_HINT_PX && !hasBuzzedRef.current) {
         hasBuzzedRef.current = true;
         hapticTap();
@@ -175,11 +145,6 @@ export const SearchBarMobile = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showOverlay]);
 
-  /*
-   * `SearchResultsList` parle la langue du planificateur d'itinéraire
-   * (`RouteLocation`), pas celle de cette barre. On y traduit chaque arrêt et
-   * chaque adresse, en gardant l'original dans `raw` pour le rendre au choix.
-   */
   const resultStops: RouteLocation[] = matchedStops.map(stop => ({
     id: stop.id,
     label: stop.name,
@@ -197,11 +162,6 @@ export const SearchBarMobile = ({
     raw: address,
   }));
 
-  /*
-   * L'historique parle la même langue que les résultats : les mêmes traits
-   * colorés sous un arrêt, le même service sous une ligne. Il n'y avait pas
-   * de raison qu'il ait l'air d'un autre écran une fois la recherche vidée.
-   */
   const historyStops: RouteLocation[] = searchHistoryItems
     .filter((item): item is Extract<SearchHistoryItem, { kind: 'stop' }> => item.kind === 'stop')
     .map(item => {
@@ -228,8 +188,10 @@ export const SearchBarMobile = ({
   const historyLines: AllLinesLine[] = searchHistoryItems
     .filter((item): item is Extract<SearchHistoryItem, { kind: 'line' }> => item.kind === 'line')
     .map(item =>
-      allLines.find(candidate => candidate.id === item.id) ||
-      allLines.find(candidate => candidate.shortName === item.shortName),
+      isForeignLineId(item.id)
+        ? foreignAsCatalogLine(item)
+        : allLines.find(candidate => candidate.id === item.id) ||
+          allLines.find(candidate => candidate.shortName === item.shortName),
     )
     .filter((line): line is AllLinesLine => Boolean(line));
 
@@ -242,7 +204,7 @@ export const SearchBarMobile = ({
   const showDropdown =
     isFocused &&
     (searchQuery.trim() !== ''
-      ? true 
+      ? true
       : searchHistoryItems.length > 0);
 
   const closeAfterSelection = () => {
@@ -266,13 +228,6 @@ export const SearchBarMobile = ({
   const mobilePlaceholder = language === 'fr' ? 'On va où ?' : 'Where to?';
   const dragToCloseLabel = language === 'fr' ? 'Glissez vers le bas pour fermer' : 'Swipe down to close';
 
-  /*
-   * À l'ouverture, la barre monte à sa position finale et le fond apparaît en
-   * fondu ; à la fermeture, elle redescend à sa position de base pendant que
-   * le fond s'efface — le même mouvement joué à l'envers. Le glissement du
-   * doigt prend le dessus tant qu'il dure : `dragY` remplace alors le
-   * décalage d'entrée.
-   */
   const restingOffsetPx = entered ? 0 : 18;
   const overlayOffsetPx = dragY > 0 ? dragY : restingOffsetPx;
 
@@ -283,7 +238,7 @@ export const SearchBarMobile = ({
           ? 'fixed inset-0 z-[1000] flex flex-col'
           : inline
             ? 'relative w-full'
-            : 'fixed left-4 right-4 top-[max(0.75rem,env(safe-area-inset-top))]'
+            : 'fixed left-4 right-4 top-[max(0.75rem,var(--gl-safe-top))]'
       }
       style={
         showOverlay
@@ -297,9 +252,6 @@ export const SearchBarMobile = ({
             : { zIndex: 5 }
       }
     >
-      {/* Plein écran, le fond prend la couleur du thème : c'est ici, et nulle
-          part ailleurs sur la page, qu'on cherche — même surface que le
-          planificateur d'itinéraire. */}
       {showOverlay && (
         <div
           className={`pointer-events-none absolute inset-0 -z-10 ${isLight ? 'bg-slate-50' : 'bg-slate-950'}`}
@@ -310,10 +262,9 @@ export const SearchBarMobile = ({
       <div
         ref={showOverlay ? scrollerRef : undefined}
         className={showOverlay ? 'flex min-h-0 flex-1 flex-col' : 'relative transition-all duration-300 ease-out'}
-        style={showOverlay ? { paddingTop: 'max(0.75rem, env(safe-area-inset-top))' } : undefined}
+        style={showOverlay ? { paddingTop: 'max(0.75rem, var(--gl-safe-top))' } : undefined}
       >
 
-        {/* Search input — wider on mobile, fixed at top */}
         <div
           className={`flex flex-shrink-0 items-center gap-3 px-4 border backdrop-blur-xl shadow-2xl transition-all duration-300 rounded-[28px] ${showOverlay ? 'mx-3' : ''} ${
             isLight
@@ -333,12 +284,10 @@ export const SearchBarMobile = ({
             onChange={e => onSearchChange(e.target.value)}
             onFocus={() => onFocus(true)}
             onBlur={() => {
-              /* Les résultats retirent le focus sur `mousedown`, avant le
-                 clic : ce blur-ci n'est donc jamais celui d'un choix. */
               if (!searchQuery) onFocus(false);
             }}
             placeholder={isFocused ? searchPlaceholder : mobilePlaceholder}
-            className={`min-w-0 flex-1 border-none bg-transparent text-[18px] font-semibold outline-none ${
+            className={`min-w-0 flex-1 border-none bg-transparent text-[1.125rem] font-semibold outline-none ${
               isLight ? 'text-slate-900 placeholder-slate-400' : 'text-white placeholder-slate-400'
             }`}
             autoComplete="off"
@@ -364,23 +313,9 @@ export const SearchBarMobile = ({
           )}
         </div>
 
-        {/* Dropdown */}
         {showDropdown && (
           <div
             ref={showOverlay ? listRef : undefined}
-            /*
-             * Le geste vertical appartient à la liste, pas à la feuille.
-             *
-             * `pan-y` le dit au navigateur, et `overscroll-contain` l'empêche
-             * de repasser la main à ce qu'il y a derrière une fois la liste
-             * arrivée en bout. La feuille d'accueil, elle, suspend sa propre
-             * poignée tant que la recherche est ouverte — c'est son affaire,
-             * pas celle de cette liste, qui sert aussi flottante sur la carte.
-             *
-             * En plein écran, la liste tient tout le bas de page et le
-             * glissement depuis son sommet referme la recherche — le même
-             * geste que la fiche d'itinéraire.
-             */
             className={
               showOverlay
                 ? 'mt-3 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain'
@@ -393,11 +328,6 @@ export const SearchBarMobile = ({
           >
 
             {hasActiveResults ? (
-              /* Même liste, même lecture, qu'on tape une recherche ou qu'on
-                 retrouve l'historique : un trait à la couleur de la ligne et
-                 l'état de son service, ou les couleurs de ce qui dessert un
-                 arrêt, en dessous de son nom — comme dans le planificateur
-                 d'itinéraire. */
               <SearchResultsList
                 lines={activeLines}
                 stops={activeStops}
@@ -422,16 +352,12 @@ export const SearchBarMobile = ({
         )}
       </div>
 
-      {/* Le voile de fermeture. Posé par-dessus la page mais translucide : la
-          recherche et ses résultats restent lisibles dessous, simplement
-          grisés. Il ne prend aucun geste, c'est le doigt qui tire la liste
-          qui doit continuer à la tirer. */}
       {showOverlay && (
         <div
           className="pointer-events-none absolute inset-0 z-[60] flex items-start justify-center transition-opacity duration-150"
           style={{
             opacity: isDragHintVisible ? 1 : 0,
-            backgroundColor: isLight ? 'rgba(148,163,184,0.55)' : 'rgba(15,23,42,0.62)',
+            backgroundColor: isLight ? 'rgba(148,163,184,0.55)' : 'rgba(var(--gl-ink-rgb), 0.62)',
             backdropFilter: 'grayscale(1)',
             paddingTop: '28vh',
           }}
@@ -454,13 +380,5 @@ export const SearchBarMobile = ({
     </div>
   );
 
-  /*
-   * Plein écran, la recherche s'affiche hors de la feuille d'accueil.
-   *
-   * La feuille anime ses paliers avec un `transform`, et un `transform` sur
-   * un ancêtre redéfinit ce à quoi un descendant `fixed` s'accroche : sans ce
-   * portail, notre plein écran restait confiné à la boîte de la feuille au
-   * lieu de couvrir l'écran du téléphone.
-   */
   return showOverlay ? createPortal(content, document.body) : content;
 };

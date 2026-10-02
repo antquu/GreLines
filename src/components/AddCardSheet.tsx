@@ -1,28 +1,18 @@
-/**
- * Ajouter une carte OURA.
- *
- * Trois étapes, annoncées d'avance : la carte, le visage, le nom. La première
- * lit le carton — par l'appareil photo, qui déclenche tout seul, ou en tapant
- * les dix chiffres. La deuxième demande un portrait, présenté pour ce qu'il est
- * du point de vue du voyageur : la vérification que la carte est bien la
- * sienne. La troisième lui demande comment il s'appelle, en lui montrant à
- * côté ce que la carte dit déjà de lui — grisé, impossible à corriger, mais
- * visible : c'est ce qui prouve qu'on parle bien de sa carte.
- *
- * Rien ne s'enregistre sans photo ni sans nom : une carte à moitié remplie ne
- * vaut rien au contrôle.
- */
-
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeftIcon,
   CameraIcon,
   CheckCircleIcon,
+  ChevronRightIcon,
+  CreditCardIcon,
+  DocumentCheckIcon,
   LockClosedIcon,
   PencilSquareIcon,
+  UserCircleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/solid';
-import { attachKnownCard, findKnownCard, saveTestCard, lookupOuraCard, saveOuraCard, type OuraCard, type OuraCardLookup } from '../services/ouraCard';
+import { attachKnownCard, findKnownCard, saveTestCard, lookupOuraCard, saveOuraCard, recordTermsAcceptance, type OuraCard, type OuraCardLookup } from '../services/ouraCard';
+import { getOuraTerms } from './ouraTermsContent';
 import { scanCard, toCanvas, waitForSteadyFrame } from '../services/cardOcr';
 
 interface AddCardSheetProps {
@@ -31,51 +21,15 @@ interface AddCardSheetProps {
   theme?: 'light' | 'dark';
   onClose: () => void;
   onSaved: (card: OuraCard) => void;
-  /**
-   * Proposer la lecture par l'appareil photo.
-   *
-   * Faux sur ordinateur : une webcam ne cadre pas une carte tenue à la main, et
-   * proposer un chemin qui ne mène nulle part vaut moins que de ne pas le
-   * proposer. Il ne reste alors que la saisie du numéro — et comme c'est le
-   * seul chemin, on y entre directement, sans écran de choix à une option.
-   * L'étape du portrait tombe avec lui, pour la même raison.
-   */
   allowScan?: boolean;
-  /**
-   * La forme que prend la fenêtre.
-   *
-   * `sheet` : une feuille qui monte du bas, celle du téléphone, qu'on referme
-   * en la tirant. `dialog` : une boîte posée au centre, celle du bureau — sur
-   * un grand écran, une feuille pleine hauteur laisse la moitié de la fenêtre
-   * ouverte sur rien. `screen` : l'écran entier, sans voile ni poignée, pour la
-   * mise en route — une feuille posée sur un écran d'accueil qui n'est lui-même
-   * qu'un fond noir montrait un bord de feuille sur du vide.
-   */
   variant?: 'sheet' | 'dialog' | 'screen';
-  /**
-   * Le portefeuille se contente de rattacher des cartes existantes.
-   *
-   * C'est le cas du bureau : on y retrouve une carte déjà déclarée, on n'en
-   * crée pas. Remplir un nom, un prénom et une photo suppose d'avoir le carton
-   * sous les yeux et un appareil photo à portée — c'est le téléphone, pas
-   * l'ordinateur. Un numéro inconnu renvoie donc à l'application mobile au lieu
-   * d'ouvrir un formulaire qu'on ne peut pas remplir correctement.
-   */
   linkOnly?: boolean;
 }
 
-type Step = 'choice' | 'scan' | 'manual' | 'selfie' | 'identity';
+type Step = 'choice' | 'scan' | 'manual' | 'terms' | 'selfie' | 'identity';
 
-/**
- * Où en est la lecture de la carte.
- *
- * `aiming` : la caméra tourne, on cadre. `reading` : la photo est prise et
- * figée à l'écran, Tesseract la lit. `ok` / `fail` : le verdict, affiché une
- * seconde par-dessus la photo avant de passer à la suite.
- */
 type ScanPhase = 'aiming' | 'reading' | 'ok' | 'fail';
 
-/** Au-delà, on cesse d'insister et l'on propose la saisie à la main. */
 const MAX_SCAN_ATTEMPTS = 3;
 
 const wait = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
@@ -84,6 +38,12 @@ const getText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
     title: isFr ? 'Ajouter une carte' : 'Add a card',
+    choiceTitle: isFr ? 'Ajouter une carte OURA' : 'Add an OURA card',
+    choiceBody: isFr
+      ? 'Votre carte s’affichera dans GreLines, avec votre photo et votre abonnement.'
+      : 'Your card will appear in GreLines, with your photo and your pass.',
+    stepTerms: isFr ? 'Conditions' : 'Terms',
+    termsRequired: isFr ? 'Acceptez les conditions pour continuer.' : 'Accept the terms to continue.',
     scanTitle: isFr ? 'Scanner ma carte' : 'Scan my card',
     scanHint: isFr ? 'La face au numéro et à la photo' : 'The side with the number and photo',
     manualTitle: isFr ? 'Saisir le numéro' : 'Enter the number',
@@ -171,14 +131,6 @@ function formatDate(value?: string): string {
   return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-/**
- * La coche qui se trace.
- *
- * Le tracé de Lucide — deux segments, bouts arrondis — dessiné par un
- * `stroke-dashoffset` qui se résorbe. La version animée de la bibliothèque
- * s'installe par shadcn, que ce projet n'utilise pas ; le trait, lui, tient en
- * six lignes.
- */
 function DrawnCheck({ className = '' }: { className?: string }) {
   return (
     <svg
@@ -211,27 +163,20 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Vrai quand la carte a été lue : l'écran demande alors confirmation. */
   const [wasScanned, setWasScanned] = useState(false);
-  /** Photo déjà hébergée, reprise d'une carte déjà déclarée ailleurs. */
   const [knownPhotoPath, setKnownPhotoPath] = useState<string | undefined>();
   const [knownPhotoUrl, setKnownPhotoUrl] = useState<string | undefined>();
   const [known, setKnown] = useState<OuraCard | null>(null);
-  /** Numéro d'une carte d'essai en cours d'ajout : elle ne passe pas par le réseau. */
   const [testCode, setTestCode] = useState<string | null>(null);
-  /** Vrai dès que le portrait a été validé : l'étape 2 est franchie. */
   const [identityDone, setIdentityDone] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsChecked, setTermsChecked] = useState(false);
+  const terms = getOuraTerms(language);
 
   const [scanPhase, setScanPhase] = useState<ScanPhase>('aiming');
-  /** La photo qu'on est en train de lire, figée à l'écran pendant la lecture. */
   const [frozenCard, setFrozenCard] = useState<string | null>(null);
   const scanRunRef = useRef(0);
 
-  /**
-   * L'annonce « carte reconnue » descend du haut de l'écran, comme celle qui
-   * confirme une adresse copiée : c'est une nouvelle, pas une ligne de plus
-   * dans le formulaire qu'on est en train de remplir.
-   */
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const announce = (message: string) => {
@@ -243,10 +188,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
   }, []);
 
-  /**
-   * Tirer la feuille vers le bas la referme, comme n'importe quelle feuille.
-   * La croix reste, mais elle n'est plus le seul moyen d'en sortir.
-   */
   const dragStartRef = useRef<number | null>(null);
   const dragYRef = useRef(0);
   const [dragY, setDragY] = useState(0);
@@ -273,24 +214,21 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const selfieVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  /** Levé quand le voyageur appuie sur le déclencheur, pour capturer sans attendre l'immobilité. */
   const manualCaptureRef = useRef(false);
 
-  const surface = isLight ? 'border-slate-200 bg-white' : 'border-slate-800 bg-slate-900';
-  const strong = isLight ? 'text-slate-900' : 'text-white';
+  const surface = isLight ? 'border-transparent bg-[rgba(0,0,0,0.05)]' : 'border-transparent bg-[rgba(255,255,255,0.06)]';
+  const strong = isLight ? 'text-[#000000]' : 'text-[#ffffff]';
+  const soft = isLight ? 'text-[#525252]' : 'text-[#a3a3a3]';
   const field = isLight
-    ? 'border-slate-200 bg-white text-slate-900'
-    : 'border-slate-800 bg-slate-900 text-white';
-  /**
-   * Les libellés se lisent comme le reste : Inter, casse normale.
-   *
-   * Les petites capitales espacées qu'on trouve partout dans les interfaces
-   * bricolées n'apportent rien ici — elles hurlent au-dessus de champs qui
-   * n'ont rien d'urgent, et rompent avec le reste de l'application.
-   */
+    ? 'border-transparent bg-[rgba(0,0,0,0.05)] text-[#000000]'
+    : 'border-transparent bg-[rgba(255,255,255,0.06)] text-[#ffffff]';
+  const pageBg = isLight ? 'bg-[#ffffff]' : 'bg-[#0b0b0b]';
+  const focus = isLight ? 'focus:border-[#000000]' : 'focus:border-[rgba(255,255,255,0.6)]';
+  const pageIcon = `h-12 w-12 ${strong}`;
+  const pageTitle = `pt-5 text-[1.625rem] font-medium leading-[1.15] ${strong}`;
+  const pageBody = `pt-3 text-[1.0625rem] leading-snug ${soft}`;
   const label = 'mb-1.5 block px-1 text-sm font-semibold text-slate-500';
 
-  /** Referme la caméra dès qu'on quitte l'écran qui l'utilise. */
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach(track => track.stop());
     streamRef.current = null;
@@ -318,6 +256,8 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     setKnown(null);
     setTestCode(null);
     setIdentityDone(false);
+    setTermsAccepted(false);
+    setTermsChecked(false);
     setFrozenCard(null);
     setScanPhase('aiming');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,25 +273,22 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     return () => URL.revokeObjectURL(url);
   }, [photo]);
 
-  /**
-   * Où l'on va une fois le numéro reconnu.
-   *
-   * Une carte déjà déclarée porte déjà son visage : la vérification a eu lieu
-   * ailleurs, on ne la redemande pas. Sur ordinateur non plus — il n'y a rien
-   * à photographier avec une webcam.
-   */
   const advanceAfterVerify = (existing: OuraCard | null) => {
+    if (existing === null && !linkOnly) {
+      setStep('terms');
+      return;
+    }
     const skipSelfie = existing !== null || !allowScan;
     setIdentityDone(skipSelfie);
     setStep(skipSelfie ? 'identity' : 'selfie');
   };
 
-  /**
-   * Vérifie un numéro auprès du réseau.
-   *
-   * Renseigne tout ce qu'on sait de la carte, mais ne change pas d'écran :
-   * c'est à l'appelant de le faire, une fois son animation terminée.
-   */
+  const acceptTerms = () => {
+    setTermsAccepted(true);
+    setIdentityDone(!allowScan);
+    setStep(allowScan ? 'selfie' : 'identity');
+  };
+
   const verify = async (
     rawCode: string,
     scanned: boolean,
@@ -396,15 +333,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     return { ok: true, existing: existing ?? null };
   };
 
-  /**
-   * La lecture de la carte, qui se déclenche seule.
-   *
-   * Personne n'appuie sur rien : la caméra s'ouvre, on laisse le temps de
-   * cadrer, puis une image est prise et lue. Ratée, on recommence — trois fois,
-   * après quoi la saisie à la main vaut mieux qu'un quatrième essai. Pendant la
-   * lecture, l'image prise reste à l'écran sous un voile qui respire : c'est
-   * elle qu'on lit, autant la montrer.
-   */
   useEffect(() => {
     if (!isOpen || step !== 'scan') {
       scanRunRef.current += 1;
@@ -451,15 +379,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         if (stale()) return;
         if (!video?.videoWidth) continue;
 
-        /*
-         * On ne photographie plus à intervalle fixe : on attend le moment où la
-         * carte est présentée et la main arrêtée. Voir `waitForSteadyFrame`.
-         *
-         * Après un échec, on exige que le cadre ait bougé avant de reprendre —
-         * sinon la même image immobile redonnerait la même lecture ratée, et
-         * les trois essais se consommeraient en trois secondes sans que le
-         * voyageur ait eu le temps de comprendre ce qu'on attend de lui.
-         */
         const steady = await waitForSteadyFrame(video, {
           cancelled: stale,
           requireMotionFirst: attempt > 1,
@@ -516,20 +435,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, isOpen]);
 
-  /**
-   * La caméra frontale, pour la vérification d'identité.
-   *
-   * `exact` et non le simple souhait : `facingMode: 'user'` n'est qu'une
-   * préférence, qu'un navigateur est libre d'ignorer — et il l'ignore volontiers
-   * quand un autre flux vient de tourner sur l'objectif arrière, qu'il se
-   * contente alors de resservir. On demande donc la caméra avant sans échappée
-   * possible, quitte à retomber sur le souhait si l'appareil n'en a pas (une
-   * webcam d'ordinateur, qui n'a qu'un objectif, refuse l'`exact`).
-   *
-   * Le flux précédent est coupé avant, pas après : sur téléphone, les deux
-   * objectifs ne filment pas en même temps, et demander l'avant pendant que
-   * l'arrière tourne rend l'arrière une seconde fois.
-   */
   useEffect(() => {
     if (!isOpen || step !== 'selfie' || photo) {
       if (step !== 'selfie') stopCamera();
@@ -574,7 +479,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, isOpen, photo]);
 
-  /** Prend le portrait : un cadre trois quarts, centré sur le visage. */
   const handleSelfie = async () => {
     const video = selfieVideoRef.current;
     if (!video?.videoWidth) return;
@@ -617,6 +521,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         setError(text.saveFailed);
         return;
       }
+      if (termsAccepted) void recordTermsAcceptance(testCode);
       onSaved(saved);
       onClose();
       return;
@@ -629,29 +534,38 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
       setError(text.saveFailed);
       return;
     }
+    if (!known && termsAccepted) void recordTermsAcceptance(saved.cardCode);
     onSaved(saved);
     onClose();
   };
 
   const stepIndex =
     step === 'choice' ? 0
-    : step === 'identity' ? 3
-    : step === 'selfie' ? 2
+    : step === 'identity' ? 4
+    : step === 'selfie' ? 3
+    : step === 'terms' ? 2
     : 1;
 
-  /** Le formulaire ne se valide pas à moitié : visage et nom, ou rien. */
   const hasFace = Boolean(photo || knownPhotoPath || knownPhotoUrl);
   const canSave = known
     ? lastName.trim().length > 0
-    : Boolean(firstName.trim() && lastName.trim() && hasFace);
+    : Boolean(firstName.trim() && lastName.trim() && hasFace && termsAccepted);
 
   const goBack = () => {
     setError(null);
     if (step === 'identity') {
-      setStep(identityDone && allowScan && !known ? 'selfie' : wasScanned ? 'scan' : 'manual');
+      setStep(
+        identityDone && allowScan && !known ? 'selfie'
+        : !known && termsAccepted ? 'terms'
+        : wasScanned ? 'scan' : 'manual',
+      );
       return;
     }
     if (step === 'selfie') {
+      setStep(!known && termsAccepted ? 'terms' : wasScanned ? 'scan' : 'manual');
+      return;
+    }
+    if (step === 'terms') {
       setStep(wasScanned ? 'scan' : 'manual');
       return;
     }
@@ -659,23 +573,15 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
     if (!allowScan && step === 'manual') onClose();
   };
 
-  const steps = [text.stepCard, text.stepIdentity, text.stepName];
-  /** L'étape en cours, comptée pour le voyageur : 1, 2, 3. */
-  const humanStep = stepIndex <= 1 ? 1 : stepIndex === 2 ? 2 : 3;
+  const steps = [text.stepCard, text.stepTerms, text.stepIdentity, text.stepName];
+  const humanStep = stepIndex <= 1 ? 1 : stepIndex;
 
-  /** Numéro valide, porteur inconnu, poste qui ne crée pas de carte. */
   const isMobileOnly = Boolean((lookup || testCode) && linkOnly && !known);
 
-  const primary = 'w-full rounded-2xl bg-blue-600 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50';
+  const primary = `w-full rounded-2xl py-4 text-[1.0625rem] font-semibold transition active:scale-[0.98] disabled:opacity-40 ${
+    isLight ? 'bg-[#000000] text-[#ffffff]' : 'bg-[#ffffff] text-[#000000]'
+  }`;
 
-  /**
-   * Ce qui fait avancer d'une étape reste au bas de la feuille.
-   *
-   * Sorti des panneaux qui défilent : un bouton posé à la suite d'un formulaire
-   * descend hors de l'écran dès que le clavier monte ou que le contenu
-   * s'allonge, et il faut alors chercher en faisant défiler ce qu'on vient de
-   * remplir. Ici il est toujours au même endroit, sous le pouce.
-   */
   const action = (() => {
     if (step === 'choice') return null;
     if (step === 'scan') {
@@ -683,7 +589,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         <button
           type="button"
           onClick={() => { setError(null); setStep('manual'); }}
-          className="w-full py-2 text-sm font-semibold text-blue-500"
+          className={`w-full py-2 text-[0.9375rem] font-semibold underline underline-offset-4 ${strong}`}
         >
           {text.typeInstead}
         </button>
@@ -704,13 +610,32 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         </button>
       );
     }
+    if (step === 'terms') {
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            if (!termsChecked) {
+              setError(text.termsRequired);
+              return;
+            }
+            setError(null);
+            acceptTerms();
+          }}
+          disabled={!termsChecked}
+          className={primary}
+        >
+          {terms.accept}
+        </button>
+      );
+    }
     if (step === 'selfie') {
       return photoUrl ? (
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => setPhoto(null)}
-            className={`flex-1 rounded-2xl border py-3.5 text-sm font-bold transition active:scale-[0.98] ${surface} ${strong}`}
+            className={`flex-1 rounded-2xl border py-4 text-[1.0625rem] font-semibold transition active:scale-[0.98] ${surface} ${strong}`}
           >
             {text.selfieRetake}
           </button>
@@ -771,20 +696,15 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
       {toast && (
         <div
           className="gl-drop pointer-events-none fixed inset-x-0 top-0 z-[10010] flex justify-center px-4"
-          style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 0.75rem)' }}
+          style={{ paddingTop: 'max(calc(var(--gl-safe-top) + 4px), 0.75rem)' }}
         >
-          <div className="flex items-center gap-2 rounded-full border border-emerald-500/40 bg-slate-900/95 px-4 py-2 shadow-2xl backdrop-blur">
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-[#141414] px-4 py-2 shadow-2xl">
             <CheckCircleIcon className="h-5 w-5 flex-shrink-0 text-emerald-400" />
             <span className="text-sm font-semibold text-white">{toast}</span>
           </div>
         </div>
       )}
 
-      {/* Feuille dessinée à la main plutôt qu'empruntée à `react-modal-sheet` :
-          cette bibliothèque ne rend son conteneur visible qu'au terme d'une
-          animation pilotée en JavaScript, et une animation qui n'aboutit pas la
-          laisse invisible pour de bon. Ici le glissement est une transition
-          CSS, dont l'état d'arrivée est déclaré donc atteint. */}
       {!isScreen && (
         <div
           className={`fixed inset-0 z-[10001] bg-black/50 transition-opacity duration-300 ${
@@ -795,32 +715,26 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
         />
       )}
       <div
-        /* Boîte au centre sur ordinateur, feuille montante sur téléphone. La
-           boîte ne se tire pas : elle se ferme par sa croix ou par le voile, et
-           un geste de glissement sur une fenêtre posée au milieu de l'écran ne
-           veut rien dire. */
         className={
           isScreen
             ? `fixed inset-0 z-[10002] flex flex-col overflow-hidden transition-opacity duration-300 ${
                 isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
-              } ${isLight ? 'bg-slate-50' : 'bg-black'}`
+              } ${pageBg}`
             : isDialog
             ? `fixed left-1/2 top-1/2 z-[10002] flex max-h-[80vh] w-[min(30rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border shadow-2xl transition-all duration-200 ${
                 isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
-              } ${isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950'}`
+              } ${isLight ? 'border-slate-200' : 'border-white/10'} ${pageBg}`
             : `fixed inset-x-0 bottom-0 top-8 z-[10002] flex flex-col overflow-hidden rounded-t-3xl border-t transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
                 isOpen ? 'translate-y-0' : 'translate-y-full'
-              } ${isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950'}`
+              } ${isLight ? 'border-slate-200' : 'border-white/10'} ${pageBg}`
         }
         style={{
           pointerEvents: isOpen ? 'auto' : 'none',
           transform: !isDialog && !isScreen && dragY > 0 ? `translateY(${dragY}px)` : undefined,
           transition: !isDialog && !isScreen && dragY > 0 ? 'none' : undefined,
-          paddingTop: isScreen ? 'env(safe-area-inset-top)' : undefined,
+          paddingTop: isScreen ? 'var(--gl-safe-top)' : undefined,
         }}
         aria-hidden={!isOpen}
-        /* L'écran plein ne se tire pas : il n'a pas de bord à saisir, et
-           glisser dessus doit faire défiler son contenu. */
         onPointerDown={isDialog || isScreen ? undefined : handleDragStart}
         onPointerMove={isDialog || isScreen ? undefined : handleDragMove}
         onPointerUp={isDialog || isScreen ? undefined : handleDragEnd}
@@ -846,10 +760,10 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                 </button>
               )}
               <div className="min-w-0 flex-1">
-                <div className={`truncate text-base font-bold ${strong}`}>{text.title}</div>
+                {step !== 'choice' && <div className={`truncate text-base font-bold ${strong}`}>{text.title}</div>}
                 {step !== 'choice' && (
                   <div className="truncate text-xs font-semibold text-slate-500">
-                    {text.stepOf} {humanStep}/3 · {steps[humanStep - 1]}
+                    {text.stepOf} {humanStep}/{steps.length} · {steps[humanStep - 1]}
                   </div>
                 )}
               </div>
@@ -865,72 +779,66 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
               </button>
             </div>
 
-            {/* Le chemin parcouru, montré plutôt que deviné : trois traits qui
-                se remplissent l'un après l'autre. */}
             {step !== 'choice' && (
               <div className="flex gap-1.5 px-4 pb-3" aria-hidden>
                 {steps.map((label, index) => (
                   <div
                     key={label}
                     className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
-                      index < humanStep ? 'bg-blue-500' : isLight ? 'bg-slate-200' : 'bg-slate-800'
+                      index < humanStep ? (isLight ? 'bg-[#000000]' : 'bg-[#ffffff]') : isLight ? 'bg-slate-200' : 'bg-white/10'
                     }`}
                   />
                 ))}
               </div>
             )}
 
-            {/* Les écrans défilent latéralement dans la feuille : on avance
-                dans une même conversation, on ne change pas d'endroit. */}
             <div className="min-h-0 flex-1 overflow-hidden">
               <div
-                className="flex h-full w-[400%] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
-                style={{ transform: `translateX(-${(stepIndex * 100) / 4}%)` }}
+                className="flex h-full w-[500%] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                style={{ transform: `translateX(-${(stepIndex * 100) / 5}%)` }}
               >
-                {/* 1 — le choix */}
-                <div className="h-full w-1/4 overflow-y-auto px-5 pb-8">
+                <div className="h-full w-1/5 overflow-y-auto px-6 pb-8 pt-2">
+                  <CreditCardIcon className={pageIcon} aria-hidden="true" />
+                  <p className={pageTitle}>{text.choiceTitle}</p>
+                  <p className={`${pageBody} mb-7`}>{text.choiceBody}</p>
                   {allowScan && (
                   <button
                     type="button"
                     onClick={() => { setError(null); setStep('scan'); }}
-                    className={`mb-3 flex w-full items-center gap-3 rounded-2xl border px-4 py-4 text-left transition active:scale-[0.99] ${surface}`}
+                    className={`mb-3 flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left transition active:scale-[0.99] ${surface}`}
                   >
-                    <CameraIcon className="h-6 w-6 flex-shrink-0 text-blue-500" />
+                    <CameraIcon className={`h-6 w-6 flex-shrink-0 ${strong}`} />
                     <span className="min-w-0 flex-1">
-                      <span className={`block text-[0.95rem] font-semibold ${strong}`}>{text.scanTitle}</span>
-                      <span className="block truncate text-xs text-slate-500">{text.scanHint}</span>
+                      <span className={`block text-[1.0625rem] font-medium ${strong}`}>{text.scanTitle}</span>
+                      <span className={`block truncate text-sm ${soft}`}>{text.scanHint}</span>
                     </span>
+                    <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${soft}`} />
                   </button>
                   )}
                   <button
                     type="button"
                     onClick={() => { setError(null); setStep('manual'); }}
-                    className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-4 text-left transition active:scale-[0.99] ${surface}`}
+                    className={`flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left transition active:scale-[0.99] ${surface}`}
                   >
-                    <PencilSquareIcon className="h-6 w-6 flex-shrink-0 text-blue-500" />
+                    <PencilSquareIcon className={`h-6 w-6 flex-shrink-0 ${strong}`} />
                     <span className="min-w-0 flex-1">
-                      <span className={`block text-[0.95rem] font-semibold ${strong}`}>{text.manualTitle}</span>
-                      <span className="block truncate text-xs text-slate-500">{text.manualHint}</span>
+                      <span className={`block text-[1.0625rem] font-medium ${strong}`}>{text.manualTitle}</span>
+                      <span className={`block truncate text-sm ${soft}`}>{text.manualHint}</span>
                     </span>
+                    <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${soft}`} />
                   </button>
                 </div>
 
-                {/* 2 — la carte : la caméra qui lit toute seule, ou la saisie */}
-                <div className={`h-full w-1/4 ${step === 'scan' ? 'overflow-hidden' : 'overflow-y-auto px-5 pb-8'}`}>
+                <div className={`h-full w-1/5 ${step === 'scan' ? 'overflow-hidden' : 'overflow-y-auto px-6 pb-8 pt-2'}`}>
                   {step === 'scan' ? (
                     <>
                       <div className="relative h-full w-full overflow-hidden rounded-3xl bg-black">
                         <video ref={videoRef} playsInline muted className="h-full w-full object-cover" />
 
-                        {/* La photo prise reste sous les yeux pendant qu'on la
-                            lit : c'est elle le sujet, pas un écran noir. */}
                         {frozenCard && (
                           <img src={frozenCard} alt="" className="absolute inset-0 h-full w-full object-cover" />
                         )}
 
-                        {/* Le guide cadre la carte, au centre de toute la zone
-                            caméra. Il ne change pas de couleur : c'est le voile
-                            posé sur la photo qui dit que ça travaille. */}
                         <div
                           className="pointer-events-none absolute left-1/2 top-1/2 w-[85%] -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-white/70"
                           style={{ aspectRatio: '1024 / 630' }}
@@ -979,6 +887,9 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                     </>
                   ) : (
                     <>
+                      <PencilSquareIcon className={pageIcon} aria-hidden="true" />
+                      <p className={pageTitle}>{text.manualTitle}</p>
+                      <p className={`${pageBody} mb-7`}>{text.manualHint}</p>
                       <label className={label}>{text.numberLabel}</label>
                       <input
                         value={code}
@@ -986,31 +897,46 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                         inputMode="numeric"
                         enterKeyHint="go"
                         placeholder="0000000000"
-                        className={`h-14 w-full rounded-2xl border px-4 text-base tabular outline-none focus:border-blue-500 ${field}`}
+                        className={`h-14 w-full rounded-2xl border px-4 text-base tabular outline-none ${focus} ${field}`}
                       />
-                      <p className="mt-2 px-1 text-sm leading-relaxed text-slate-500">{text.manualHint}</p>
                     </>
                   )}
                 </div>
 
-                {/*
-                  3 — la vérification d'identité.
+                <div className="h-full w-1/5 overflow-y-auto px-6 pb-8 pt-2">
+                  <DocumentCheckIcon className={pageIcon} aria-hidden="true" />
+                  <p className={pageTitle}>{terms.title}</p>
+                  <p className={pageBody}>{terms.intro}</p>
+                  {terms.sections.map(section => (
+                    <section key={section.title} className="pt-6">
+                      <p className={`text-[1.125rem] font-medium leading-tight ${strong}`}>{section.title}</p>
+                      {section.paragraphs.map((paragraph, index) => (
+                        <p key={index} className={`pt-2 text-[0.9375rem] leading-snug ${soft}`}>{paragraph}</p>
+                      ))}
+                    </section>
+                  ))}
+                  <label className={`mt-7 flex cursor-pointer items-start gap-3 rounded-2xl p-4 ${surface}`}>
+                    <input
+                      type="checkbox"
+                      checked={termsChecked}
+                      onChange={event => {
+                        setTermsChecked(event.target.checked);
+                        if (event.target.checked) setError(null);
+                      }}
+                      className="mt-0.5 h-5 w-5 flex-shrink-0 accent-[#ffffff]"
+                    />
+                    <span className={`text-[0.9375rem] leading-snug ${strong}`}>{terms.checkbox}</span>
+                  </label>
+                  <p className={`pt-4 text-center text-[0.8125rem] ${soft}`}>{terms.version}</p>
+                </div>
 
-                  Le seul écran de la feuille qui ne défile pas : la caméra prend
-                  toute la largeur du téléphone et toute la hauteur qui reste
-                  sous le texte, jusqu'au bouton. Elle était posée dans une
-                  vignette arrondie de trois quarts, ce qui débordait de l'écran
-                  et donnait un cadrage à faire glisser — on se cherchait dans
-                  une fenêtre qu'il fallait d'abord trouver.
-                */}
-                <div className="flex h-full w-1/4 flex-col overflow-hidden">
-                  <div className="flex-shrink-0 px-5">
-                    <p className={`text-lg font-bold ${strong}`}>{text.selfieTitle}</p>
-                    <p className="mb-4 mt-2 text-sm leading-relaxed text-slate-500">{text.selfieBody}</p>
+                <div className="flex h-full w-1/5 flex-col overflow-hidden">
+                  <div className="flex-shrink-0 px-6 pt-2">
+                    <CameraIcon className={pageIcon} aria-hidden="true" />
+                    <p className={pageTitle}>{text.selfieTitle}</p>
+                    <p className={`${pageBody} mb-5`}>{text.selfieBody}</p>
                   </div>
 
-                  {/* Bord à bord : pas de coins arrondis, rien qui laisse voir
-                      le fond derrière. C'est un viseur, pas une vignette. */}
                   <div className="relative min-h-0 w-full flex-1 bg-black">
                     {photoUrl ? (
                       <img src={photoUrl} alt="" className="h-full w-full object-cover" />
@@ -1020,12 +946,9 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                         playsInline
                         muted
                         className="h-full w-full object-cover"
-                        /* Miroir à l'écran : on se regarde comme dans une
-                           glace. L'image enregistrée, elle, ne l'est pas. */
                         style={{ transform: 'scaleX(-1)' }}
                       />
                     )}
-                    {/* L'ovale place le visage là où la découpe l'attend. */}
                     {!photoUrl && (
                       <div className="pointer-events-none absolute inset-x-[16%] inset-y-[10%] rounded-[50%] border-2 border-dashed border-white/70" />
                     )}
@@ -1037,27 +960,21 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                   </div>
                 </div>
 
-                {/* 4 — le nom, et ce que la carte dit déjà */}
-                <div className="h-full w-1/4 overflow-y-auto px-5 pb-8">
-                  {/* Numéro valide mais porteur inconnu, et l'on est sur un
-                      poste qui ne crée pas de carte : on le dit et l'on s'arrête
-                      là. Ouvrir un formulaire de nom et de photo ici donnerait
-                      une carte à moitié remplie, que le téléphone devrait
-                      corriger ensuite. */}
+                <div className="h-full w-1/5 overflow-y-auto px-6 pb-8 pt-2">
                   {isMobileOnly ? (
                     <div className="pt-2">
-                      <p className={`mb-3 text-lg font-bold ${strong}`}>{text.mobileOnlyTitle}</p>
-                      <p className="text-sm leading-relaxed text-slate-500">{text.mobileOnlyBody}</p>
+                      <CreditCardIcon className={pageIcon} aria-hidden="true" />
+                      <p className={pageTitle}>{text.mobileOnlyTitle}</p>
+                      <p className={pageBody}>{text.mobileOnlyBody}</p>
                     </div>
                   ) : (lookup || testCode) && (
                     <>
-                      <p className={`text-lg font-bold ${strong}`}>
+                      <UserCircleIcon className={pageIcon} aria-hidden="true" />
+                      <p className={pageTitle}>
                         {known ? text.known : wasScanned ? text.yourInfo : text.fillInfo}
                       </p>
-                      <p className="mb-6 mt-2 text-sm leading-relaxed text-slate-500">{text.nameBody}</p>
+                      <p className={`${pageBody} mb-7`}>{text.nameBody}</p>
 
-                      {/* Le visage qu'on vient de vérifier reste visible ici :
-                          c'est lui qu'on est en train d'enregistrer. */}
                       {(photoUrl || knownPhotoUrl) && (
                         <div className="mb-6 flex items-center gap-4">
                           <img
@@ -1074,7 +991,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                               <button
                                 type="button"
                                 onClick={() => setStep('selfie')}
-                                className="mt-1.5 block text-sm font-semibold text-blue-500"
+                                className={`mt-1.5 block text-sm font-semibold underline underline-offset-4 ${strong}`}
                               >
                                 {text.selfieRetake}
                               </button>
@@ -1083,8 +1000,6 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                         </div>
                       )}
 
-                      {/* Carte connue : seul le nom de famille est demandé, et
-                          il sert de vérification — le reste est déjà là. */}
                       {!known && (
                         <div className="mb-5">
                           <label className={label}>
@@ -1094,7 +1009,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                             value={firstName}
                             onChange={event => setFirstName(event.target.value)}
                             placeholder={text.firstName}
-                            className={`h-14 w-full rounded-2xl border px-4 text-base outline-none focus:border-blue-500 ${field}`}
+                            className={`h-14 w-full rounded-2xl border px-4 text-base outline-none ${focus} ${field}`}
                           />
                         </div>
                       )}
@@ -1102,23 +1017,15 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                         <label className={label}>
                           {text.lastName} · {text.required}
                         </label>
-                        {/* Le nom est en capitales sur le carton : il l'est ici
-                            aussi, à la saisie comme à l'affichage. */}
                         <input
                           value={lastName}
                           onChange={event => setLastName(event.target.value.toUpperCase())}
                           placeholder={text.lastName}
                           style={{ textTransform: 'uppercase' }}
-                          className={`h-14 w-full rounded-2xl border px-4 text-base outline-none focus:border-blue-500 ${field}`}
+                          className={`h-14 w-full rounded-2xl border px-4 text-base outline-none ${focus} ${field}`}
                         />
                       </div>
 
-                      {/* Ce que la carte dit, elle, ne se corrige pas — mais se
-                          montre, sous la même forme que ce qu'on demande de
-                          remplir : des champs, simplement grisés et cadenassés.
-                          Rien n'annonce la section : on voit tout de suite que
-                          ces lignes-là sont déjà remplies. Une carte d'essai
-                          n'ayant rien à en dire, elle n'affiche que son numéro. */}
                       {[
                         { key: text.numberLabel, value: lookup?.code ?? testCode ?? '—', tabular: true },
                         ...(lookup?.contracts[0]
@@ -1159,24 +1066,15 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
               </div>
             </div>
 
-            {/* Le conseil de cadrage se tient juste au-dessus du trait qui
-                sépare la photo de son bouton : c'est la dernière chose qu'on
-                lit avant d'appuyer. Il ne vaut que tant qu'il y a quelque chose
-                à cadrer, et s'en va donc avec la caméra, une fois le portrait
-                pris. */}
             {step === 'selfie' && !photoUrl && (
               <p className="flex-shrink-0 px-5 pb-4 text-center text-sm leading-relaxed text-pretty text-slate-500">
                 {text.selfieHint}
               </p>
             )}
 
-            {/* Le pied de la feuille : ce qui fait avancer, et ce qui bloque.
-                Toujours visible, quoi qu'il y ait au-dessus. */}
             {(action || error) && (
               <div
-                className={`flex-shrink-0 border-t px-5 pt-4 ${
-                  isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950'
-                }`}
+                className={`flex-shrink-0 px-5 pt-4 ${pageBg}`}
                 style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 1rem)' }}
               >
                 {error && (

@@ -2,7 +2,7 @@ import { Suspense, type ReactNode } from 'react';
 import { useMountOnOpen } from '../hooks/useMountOnOpen';
 
 interface DeferredPanelProps {
-  
+
   isOpen: boolean;
   children: ReactNode;
 }

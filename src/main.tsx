@@ -6,6 +6,7 @@ import './index.css'
 import './light-theme.css'
 import { PerfSettingsProvider } from './hooks/usePerfSettings.tsx'
 import { installNetworkSimulation } from './services/networkSimulation'
+import { preloadBadgeImages } from './utils/badgeImages'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 
@@ -15,32 +16,15 @@ console.log(`_
 | (_| | | | | || (_| | |_| |
  \\__,_|_| |_|\\__\\__, |\\__,_|
                    |_|
-                   
+
        made by antqu • github.com/antquu`
 )
 
 installNetworkSimulation()
+preloadBadgeImages()
 
 const root = createRoot(document.getElementById('root')!)
 
-/**
- * La vitrine, sur `/fr` et `/en` — et sur elles seules.
- *
- * Le routage se fait ici, avant tout le reste : `App` réécrit toute adresse
- * inconnue en `/app`, si bien qu'une vitrine montée à l'intérieur serait
- * renvoyée à l'application avant d'avoir paru. `/` continue donc de mener
- * droit à l'app, ce qui reste la porte d'entrée par défaut.
- */
-/**
- * La langue de la page d'accueil.
- *
- * L'adresse commande : quelqu'un qui a suivi un lien vers `/en` veut l'anglais,
- * quelle que soit la langue de son téléphone. C'est la racine, `/`, qui laisse
- * la question ouverte — et là on répond avec l'appareil, en le renvoyant vers
- * l'adresse correspondante plutôt qu'en servant deux contenus sous la même
- * URL : une page traduite doit avoir sa propre adresse, sinon ni les moteurs
- * ni les liens partagés ne s'y retrouvent.
- */
 function deviceLang(): 'fr' | 'en' {
   const tags = Array.isArray(navigator.languages) && navigator.languages.length
     ? navigator.languages
@@ -58,54 +42,17 @@ const landingLang = /^\/(fr|en)\/?$/.exec(window.location.pathname)?.[1] as
   | 'en'
   | undefined;
 
-/**
- * Les pages légales, sous `/fr/legals/...` et `/en/legals/...`.
- *
- * L'adresse du document est la même dans les deux langues : un lien vers la
- * politique de confidentialité se colle dans un courriel ou dans un formulaire
- * de magasin d'applications, et il vaut mieux qu'il désigne le même texte quelle
- * que soit la langue de celui qui l'a copié.
- */
 const legalRoute = /^\/(fr|en)\/legals\/([a-z-]+)\/?$/.exec(window.location.pathname);
 
-/**
- * La salle de presse : la liste, et un communiqué.
- *
- * `newsroom` est l'adresse ; `blog` reste comprise, parce qu'elle a pu être
- * partagée avant le changement de nom. Une adresse publiée ne se retire pas.
- */
 const blogRoute = /^\/(fr|en)\/(?:newsroom|blog)\/?$/.exec(window.location.pathname);
-/*
- * La documentation, sur trois étages.
- *
- * `/fr/docs` est le sommaire, `/fr/docs/<categorie>` la liste d'une catégorie,
- * `/fr/docs/<categorie>/<section>` l'article lui-même. Les deux derniers
- * segments sont facultatifs, et une adresse qui nomme une catégorie inconnue
- * retombe sur le sommaire plutôt que de rendre une page vide : c'est la page
- * qui en décide, pas cette expression, qui se contente de découper.
- */
 const docsRoute = /^\/(fr|en)\/docs(?:\/([a-z0-9-]+))?(?:\/([a-z0-9-]+))?\/?$/.exec(
   window.location.pathname,
 );
-/**
- * Les pages de solution, sur `/fr/solutions/<slug>`.
- *
- * Le segment est facultatif : sans lui, la page rend la liste des six. Un slug
- * inconnu fait de même, plutôt que de laisser tomber le visiteur dans
- * l'application.
- */
 const solutionRoute = /^\/(fr|en)\/solutions(?:\/([a-z0-9-]+))?\/?$/.exec(
   window.location.pathname,
 );
 const postRoute = /^\/(fr|en)\/(?:newsroom|blog)\/([A-Za-z0-9-]+)\/?$/.exec(window.location.pathname);
 
-/**
- * La langue choisie par le visiteur, si tant est qu'il en ait choisi une.
- *
- * Tant qu'il n'a rien dit, l'appareil décide. Dès qu'il bascule lui-même, son
- * choix l'emporte pour toujours : le renvoyer chaque fois vers la langue de son
- * téléphone reviendrait à défaire ce qu'il vient de faire.
- */
 const LANDING_LANG_KEY = 'greLines_landingLang';
 
 if (solutionRoute) {
@@ -168,7 +115,7 @@ if (solutionRoute) {
   );
 } else if (landingLang) {
   let chosen: string | null = null;
-  try { chosen = localStorage.getItem(LANDING_LANG_KEY); } catch { /* navigation privée */ }
+  try { chosen = localStorage.getItem(LANDING_LANG_KEY); } catch { }
 
   const wanted = deviceLang();
   if (!chosen && wanted !== landingLang) {
@@ -179,6 +126,16 @@ if (solutionRoute) {
     root.render(
       <StrictMode>
         <LandingApp lang={landingLang} />
+        <Analytics />
+        <SpeedInsights />
+      </StrictMode>,
+    )
+  })
+} else if (/^\/(?:trafic|traffic)\/?$/.test(window.location.pathname)) {
+  void import('./traffic/TrafficPage').then(({ TrafficPage }) => {
+    root.render(
+      <StrictMode>
+        <TrafficPage />
         <Analytics />
         <SpeedInsights />
       </StrictMode>,
@@ -211,7 +168,7 @@ if (solutionRoute) {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
-      
+
     })
   })
 }

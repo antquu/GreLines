@@ -1,17 +1,3 @@
-/**
- * La configuration des trajets favoris.
- *
- * On y arrive depuis le rectangle de la page Favoris, et la page entre par la
- * droite : c'est un cran plus loin dans les favoris, pas un écran voisin.
- *
- * Ce qu'on y voit d'abord, ce sont les trajets qu'on a déjà faits. C'est la
- * bonne matière première : un favori, c'est presque toujours un trajet qu'on
- * vient de refaire pour la troisième fois. Le saisir à nouveau de zéro serait
- * une corvée qu'on s'inflige pour rien — d'où le bouton « Nouveau trajet »
- * relégué en bas, fixe au-dessus du défilement : il reste sous le pouce, mais
- * il n'est pas le premier chemin proposé.
- */
-
 import { ArrowLeftIcon, ArrowRightIcon, PlusIcon, TrashIcon, CheckIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
 import {
@@ -27,9 +13,7 @@ interface JourneyConfigScreenProps {
   history: JourneyHistoryEntry[];
   favorites: FavoriteJourney[];
   onClose: () => void;
-  /** Demande l'ajout d'un trajet de l'historique : la question passe par la popup. */
   onPickFromHistory: (entry: JourneyHistoryEntry) => void;
-  /** Ouvre la recherche d'itinéraire, un cran plus loin encore. */
   onNewJourney: () => void;
 }
 
@@ -52,7 +36,6 @@ const getText = (language: 'fr' | 'en') => {
   };
 };
 
-/** « Aujourd'hui », « hier », puis la date — un historique se lit en relatif. */
 function formatWhen(timestamp: number, language: 'fr' | 'en'): string {
   const isFr = language === 'fr';
   const day = new Date(timestamp);
@@ -94,7 +77,7 @@ export function JourneyConfigScreen({
     >
       <header
         className="flex flex-shrink-0 items-center gap-1 px-2 pb-2"
-        style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 0.5rem)' }}
+        style={{ paddingTop: 'max(calc(var(--gl-safe-top) + 4px), 0.5rem)' }}
       >
         <button
           type="button"
@@ -135,11 +118,11 @@ export function JourneyConfigScreen({
                     className="min-w-0 flex-1 text-left disabled:opacity-60"
                   >
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className={`min-w-0 flex-1 truncate text-[15px] font-bold ${titleClass}`}>
+                      <span className={`min-w-0 flex-1 truncate text-[0.9375rem] font-bold ${titleClass}`}>
                         {entry.from.label}
                       </span>
                       <ArrowRightIcon className={`h-4 w-4 flex-shrink-0 ${mutedClass}`} />
-                      <span className={`min-w-0 flex-1 truncate text-[15px] font-bold ${titleClass}`}>
+                      <span className={`min-w-0 flex-1 truncate text-[0.9375rem] font-bold ${titleClass}`}>
                         {entry.to.label}
                       </span>
                     </div>
@@ -192,8 +175,6 @@ export function JourneyConfigScreen({
         )}
       </div>
 
-      {/* Le bouton ne défile pas avec la liste : c'est l'action de la page, et
-          une action qu'on doit faire défiler pour retrouver n'en est plus une. */}
       <div
         className={`flex-shrink-0 border-t px-4 pt-3 ${
           isLight ? 'border-slate-200 bg-white/95' : 'border-slate-800 bg-slate-950/95'

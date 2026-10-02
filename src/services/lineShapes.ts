@@ -1,4 +1,4 @@
-
+import { isGtfsNetworkId } from './gtfsNetworkIds';
 import type { Line } from '../types';
 import { idbGet, idbSet } from './persistentCache';
 import { isOffline } from './offlineSchedule';
@@ -6,9 +6,9 @@ import { isOffline } from './offlineSchedule';
 const GEOMETRY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface LineGeometry {
-  
+
   code: string;
-  
+
   geojson: GeoJSON.FeatureCollection;
 }
 
@@ -24,10 +24,6 @@ function toSemCode(lineId: string): string {
   return `SEM_${id.toUpperCase()}`;
 }
 
-/**
- * Fetch the geometry of a single SEM line. Cached: subsequent calls for the
- * same line return the cached result (geometries don't change at runtime).
- */
 export async function getLineGeometry(
   lineId: string,
   options?: { signal?: AbortSignal }
@@ -77,7 +73,6 @@ export async function getLineGeometry(
       resultCache.set(semCode, result);
       return result;
     } catch (err) {
-      if ((err as { name?: string }).name !== 'AbortError') {      }
       return null;
     } finally {
       inflightCache.delete(semCode);
@@ -88,10 +83,6 @@ export async function getLineGeometry(
   return promise;
 }
 
-/**
- * Fetch geometries for multiple lines in parallel. Lines whose geometry is
- * unavailable are simply omitted from the result — no errors propagate up.
- */
 export async function getLinesGeometry(
   lines: Pick<Line, 'id' | 'shortName'>[]
 ): Promise<LineGeometry[]> {
@@ -104,10 +95,6 @@ export async function getLinesGeometry(
 
 const PLAN_ENDPOINT = 'https://data.mobilites-m.fr/api/routers/default/plan';
 
-/**
- * Decode a Google-encoded polyline string into an array of `[lon, lat]`
- * coordinate pairs (the order MapLibre GeoJSON sources expect).
- */
 function decodePolyline(encoded: string): [number, number][] {
   let index = 0;
   let lat = 0;
@@ -136,10 +123,6 @@ function decodePolyline(encoded: string): [number, number][] {
   return coords;
 }
 
-/**
- * Normalize a line code for loose comparison: strip the SEM prefix and
- * uppercase. So "SEM:C1", "SEM_C1", "c1" all become "C1".
- */
 function normalizeLineKey(value: string): string {
   let id = value.trim();
   if (id.startsWith('SEM:')) id = id.slice(4);
@@ -151,20 +134,10 @@ const planGeometryCache = new Map<string, LineGeometry | null>();
 const planGeometryInflight = new Map<string, Promise<LineGeometry | null>>();
 const ENDPOINT_MATCH_THRESHOLD_METERS = 300;
 
-/**
- * Distance maximale entre un arrêt desservi et le tracé pour le considérer
- * couvert. Large : l'écart entre le quai et le centroïde du groupe d'arrêts
- * atteint déjà 100 m sur les grands boulevards.
- */
 const STOP_COVERAGE_THRESHOLD_METERS = 200;
 
-/**
- * Proportion d'arrêts devant être couverts pour retenir le tracé du moteur
- * d'itinéraires. En dessous, il manque une branche ou un bout de ligne.
- */
 const MIN_STOP_COVERAGE_RATIO = 0.9;
 
-/** Distance d'un point à une polyligne, en mètres. */
 function distanceToPolylineMetres(
   point: { lat: number; lon: number },
   coords: [number, number][]
@@ -188,13 +161,6 @@ function distanceMeters(
   return Math.sqrt(dLat * dLat + dLon * dLon);
 }
 
-/**
- * Fetch a single line's geometry terminus-to-terminus via the routing engine.
- * Returns `null` (so the caller can fall back to the static geometry) when:
- *   - we can't resolve the line's two terminus stops
- *   - the planner returns no itinerary
- *   - the planner's itinerary doesn't actually ride this line
- */
 export async function getLineGeometryViaPlan(
   lineId: string,
   options?: { signal?: AbortSignal }
@@ -298,7 +264,6 @@ export async function getLineGeometryViaPlan(
       planGeometryCache.set(key, result);
       return result;
     } catch (err) {
-      if ((err as { name?: string }).name !== 'AbortError') {      }
       return null;
     } finally {
       planGeometryInflight.delete(key);
@@ -309,43 +274,32 @@ export async function getLineGeometryViaPlan(
   return promise;
 }
 
-/**
- * Like `getLinesGeometry`, but uses the routing engine for a terminus-to-
- * terminus trace. For each line we try the planner first; if it can't give us
- * a clean trace — or if the trace covers significantly less ground than the
- * static geometry (typical sign of a multi-terminus line where one /plan call
- * can only see one branch) — we fall back to the static geometry so the user
- * always sees the full line, even if its endpoints are a bit messy.
- */
 export async function getLinesGeometryPrecise(
   lines: Pick<Line, 'id' | 'shortName'>[]
 ): Promise<LineGeometry[]> {
   const tclLines = lines.filter(line => String(line.id).startsWith('TCL:'));
-  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:'));
+  const gtfsLines = lines.filter(line => isGtfsNetworkId(line.id));
+  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:') && !isGtfsNetworkId(line.id));
 
   const ids = mtagLines
     .map(l => l.shortName || l.id)
     .filter(Boolean) as string[];
 
-  const [results, tclGeometries] = await Promise.all([
+  const [results, tclGeometries, gtfsGeometries] = await Promise.all([
     Promise.all(ids.map(id => resolveLineGeometry(id))),
     tclLines.length > 0
       ? import('./tclNetwork').then(module => module.getTclLineGeometries(tclLines))
       : Promise.resolve([]),
+    gtfsLines.length > 0
+      ? import('./gtfsNetwork').then(module => module.getGtfsLineGeometries(gtfsLines))
+      : Promise.resolve([]),
   ]);
 
-  return [...results.filter((r): r is LineGeometry => r !== null), ...tclGeometries];
+  return [...results.filter((r): r is LineGeometry => r !== null), ...tclGeometries, ...gtfsGeometries];
 }
 
-/**
- * Résout la géométrie d'une ligne en passant d'abord par IndexedDB. Le résultat
- * est celui *après* arbitrage plan/statique : on ne rejoue ni le calcul ni les
- * requêtes au prochain affichage de la même ligne.
- */
 async function resolveLineGeometry(id: string): Promise<LineGeometry | null> {
   const cacheKey = `lineGeometry_v2_${normalizeLineKey(id)}`;
-  /* Périmé, un tracé reste bon à montrer sans réseau : une ligne ne change
-     pas de rues d'une semaine à l'autre. */
   const cached = await idbGet<LineGeometry>(cacheKey, { allowStale: true });
   if (cached && (!cached.stale || isOffline())) return cached.value;
 
@@ -376,8 +330,6 @@ async function computeLineGeometry(id: string): Promise<LineGeometry | null> {
   }
 }
 
-/** Sum the lengths of every LineString/MultiLineString in a LineGeometry, in
- *  degrees (good enough for ratio comparisons). */
 function totalPolylineLength(g: LineGeometry): number {
   let total = 0;
   for (const feat of g.geojson.features) {
@@ -409,7 +361,6 @@ const STOPS_ENDPOINT_BASE = 'https://data.mobilites-m.fr/api/routers/default/ind
 export interface ServedStopPoint {
   lat: number;
   lon: number;
-  /** Nom renvoyé par MTAG, utilisé pour rattraper les écarts de coordonnées. */
   name?: string;
 }
 
@@ -423,10 +374,6 @@ function toSemRouteId(lineId: string): string {
   return `SEM:${id.toUpperCase()}`;
 }
 
-/**
- * Pull a coordinate from a stop record, accepting the various field names that
- * MTAG endpoints use (lat/lon, latitude/longitude, y/x).
- */
 function extractLatLon(s: any): ServedStopPoint | null {
   const lat =
     typeof s?.lat === 'number' ? s.lat :
@@ -444,9 +391,6 @@ function extractLatLon(s: any): ServedStopPoint | null {
   return { lat, lon, name };
 }
 
-/**
- * Fetch the stops served by a single SEM line, as `{lat, lon}` points.
- */
 export async function getStopsServedByLine(
   lineId: string,
   options?: { signal?: AbortSignal }
@@ -473,7 +417,6 @@ export async function getStopsServedByLine(
       try {
         resp = await fetch(url, { signal: options?.signal });
       } catch (error) {
-        /* Sans réseau, la liste d'avant vaut mieux que rien. */
         if (usable) return usable;
         throw error;
       }
@@ -495,7 +438,6 @@ export async function getStopsServedByLine(
       if (points.length > 0) void idbSet(cacheKey, points, GEOMETRY_TTL_MS);
       return points;
     } catch (err) {
-      if ((err as { name?: string }).name !== 'AbortError') {      }
       return null;
     } finally {
       stopsInflightCache.delete(routeId);
@@ -506,10 +448,6 @@ export async function getStopsServedByLine(
   return promise;
 }
 
-/**
- * Garde d'avance le tracé et les arrêts d'une ligne, pour le hors ligne.
- * Rend vrai quand les deux sont gardés.
- */
 export async function prefetchLineForOffline(shortName: string): Promise<boolean> {
   const [geometries, stops] = await Promise.all([
     getLinesGeometryPrecise([{ id: shortName, shortName }]).catch(() => []),
@@ -518,40 +456,35 @@ export async function prefetchLineForOffline(shortName: string): Promise<boolean
   return geometries.length > 0 && !!stops && stops.length > 0;
 }
 
-/**
- * Fetch the union of all stop points served by the given lines.
- * Returns `null` if every fetch failed.
- */
 export async function getStopsServedByLines(
   lines: Pick<Line, 'id' | 'shortName'>[]
 ): Promise<ServedStopPoint[] | null> {
   const tclLines = lines.filter(line => String(line.id).startsWith('TCL:'));
-  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:'));
+  const gtfsLines = lines.filter(line => isGtfsNetworkId(line.id));
+  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:') && !isGtfsNetworkId(line.id));
 
   const ids = mtagLines
     .map(l => l.shortName || l.id)
     .filter(Boolean) as string[];
 
-  const [results, tclServed] = await Promise.all([
+  const [results, tclServed, gtfsServed] = await Promise.all([
     Promise.all(ids.map(id => getStopsServedByLine(id))),
     tclLines.length > 0
       ? import('./tclNetwork').then(module => module.getTclStopsServedByLines(tclLines))
       : Promise.resolve([] as ServedStopPoint[]),
+    gtfsLines.length > 0
+      ? import('./gtfsNetwork').then(module => module.getGtfsStopsServedByLines(gtfsLines))
+      : Promise.resolve([] as ServedStopPoint[]),
   ]);
 
   const successful = results.filter((r): r is ServedStopPoint[] => r !== null);
-  if (successful.length === 0 && tclServed.length === 0) return null;
-  return [...successful.flat(), ...tclServed];
+  if (successful.length === 0 && tclServed.length === 0 && gtfsServed.length === 0) return null;
+  return [...successful.flat(), ...tclServed, ...gtfsServed];
 }
 
 const METRES_PER_DEG_LAT = 111320;
 const METRES_PER_DEG_LON_AT_45 = 78710;
 
-/**
- * Clé de comparaison de noms d'arrêts : sans accents, sans casse et sans
- * ponctuation, pour que « Berriat-Le Magasin » et « Berriat - Le Magasin »
- * soient reconnus comme le même arrêt.
- */
 export function stopNameKey(value: string | undefined | null): string {
   return String(value || '')
     .normalize('NFD')
@@ -560,21 +493,6 @@ export function stopNameKey(value: string | undefined | null): string {
     .replace(/[^a-z0-9]/g, '');
 }
 
-/**
- * Détermine si `stop` fait partie des arrêts desservis (`points`).
- *
- * La comparaison géographique seule ne suffit pas : l'endpoint MTAG
- * `/routes/<id>/stops` renvoie la position des *quais*, alors que nos arrêts
- * portent le centroïde du groupe d'arrêts. L'écart atteint 100 m sur les
- * grands boulevards — mesuré sur la ligne A, 24 des 63 arrêts étaient rejetés
- * par le seuil de 35 m, dont Gares, Alsace-Lorraine et Victor Hugo, tous
- * pourtant homonymes exacts de nos arrêts.
- *
- * On teste donc le nom en premier. Le rayon, lui, reste volontairement serré :
- * élargi à 140 m il faisait entrer des arrêts voisins non desservis — « Colonel
- * Dumont », à 82 m d'un quai de la ligne E, apparaissait dans le filtre E alors
- * que seul le 25 y passe.
- */
 export function stopIsNearAny(
   stop: { lat: number; lon: number; name?: string },
   points: ServedStopPoint[],
@@ -593,21 +511,12 @@ export function stopIsNearAny(
   return false;
 }
 
-/**
- * Extract every line segment from a `LineGeometry`'s GeoJSON, regardless of
- * whether the geometries are `LineString` or `MultiLineString`.
- * Returns arrays of `[lon, lat]` coordinate pairs.
- */
 interface ProjectionResult {
   distSq: number;
   lat: number;
   lon: number;
 }
 
-/**
- * Project `point` onto the segment `[a, b]` and return the closest point on
- * the segment, in *projected metres* relative to `point`.
- */
 function projectOntoSegmentMetres(
   point: { lat: number; lon: number },
   aLat: number,
@@ -641,11 +550,6 @@ function projectOntoSegmentMetres(
   return { distSq, lat, lon };
 }
 
-/**
- * For a given stop, find the closest point on any segment of the provided
- * polylines. Returns `null` if the closest point is farther than
- * `maxSnapMeters` (so we don't drag stops absurdly far away).
- */
 export function snapStopToLines(
   stop: { lat: number; lon: number },
   geometries: LineGeometry[],
@@ -657,14 +561,6 @@ export function snapStopToLines(
   let bestDistSq = Infinity;
   let bestLat = stop.lat;
   let bestLon = stop.lon;
-  /*
-   * La couleur du tracé le plus proche voyage avec le point calé.
-   *
-   * Elle est lue sur la feature elle-même, où l'appelant l'a déjà posée pour
-   * peindre la ligne : arrêt et tracé tirent ainsi leur couleur de la même
-   * source, et ne peuvent pas diverger. La redéduire ici du code de la ligne
-   * donnait une autre couleur que celle du trait.
-   */
   let bestColor = '';
 
   for (const geometry of geometries) {

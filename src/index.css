@@ -1,29 +1,9 @@
 @import "tailwindcss";
 
-/*
- * Inter comme police par défaut.
- *
- * Elle était déclarée dans `tailwind.config.js`, que Tailwind 4 n'ouvre plus :
- * sans directive `@config`, ce fichier est ignoré entièrement. Les dix
- * `@font-face` ci-dessous chargeaient donc Inter pour personne, et toute
- * l'application s'affichait dans la police système — visible surtout sur les
- * chiffres, qui n'ont ni la même largeur ni le même dessin.
- *
- * En Tailwind 4, la valeur se déclare ici : `--font-sans` alimente à la fois
- * l'utilitaire `font-sans` et la règle que le préambule applique à `html`.
- */
 @theme {
   --font-sans: 'Inter', 'Helvetica Neue', system-ui, sans-serif;
 }
 
-/*
- * Canaro a été retirée : plus qu'Inter, partout.
- *
- * Elle n'avait aucun usage dans le code — la classe `font-canaro` n'était
- * appliquée nulle part — mais son fichier restait téléchargé par le navigateur,
- * qui suit les `@font-face` déclarés. Un TrueType de plusieurs centaines de
- * kilooctets pour une police que personne ne demandait.
- */
 
 @font-face {
   font-family: 'Inter';
@@ -98,6 +78,12 @@
 }
 
 :root {
+  --gl-ink-rgb: 15, 23, 42;
+  --gl-sheet-rgb: 23, 30, 44;
+  --gl-sheet-border-rgb: 148, 163, 184;
+
+  --gl-safe-top: calc(env(safe-area-inset-top, 0px) * 1.35);
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -113,9 +99,6 @@
   --heading: 'Inter', 'Helvetica Neue', sans-serif;
   --mono: 'Inter', 'Monaco', 'Consolas', monospace;
   --code-bg: rgba(255, 255, 255, 0.05);
-  /* Fond des feuilles mobiles. Il est peint en style en ligne par les
-     composants (react-modal-sheet impose le style), donc hors de portee des
-     regles du theme clair : cette variable est le seul point de bascule. */
   --gl-sheet-bg: #0f172a;
   color-scheme: light;
 }
@@ -129,22 +112,6 @@
   --code-bg: rgba(255, 255, 255, 0.05);
 }
 
-/*
- * Le thème sombre, en gris neutres.
- *
- * L'application est écrite en `slate`, une gamme de gris volontairement tirés
- * vers le bleu : c'est ce qui donnait au sombre son fond bleu nuit. On garde
- * ces classes — les réécrire toutes serait absurde — mais on remplace la
- * gamme par des gris sans teinte, du noir franc jusqu'au blanc cassé.
- *
- * Tailwind 4 expose chaque couleur du thème en variable, et ses utilitaires y
- * puisent : redéfinir `--color-slate-900` ici suffit donc à repeindre tout ce
- * qui porte `bg-slate-900`, sans toucher au moindre composant.
- *
- * `theme-blue` restitue la gamme d'origine, et c'est l'ancien thème sombre qui
- * porte désormais ce nom. Faute de cette classe, on est en gris neutres — le
- * sombre par défaut est donc le noir.
- */
 :root.dark:not(.theme-blue) {
   --color-slate-950: #000000;
   --color-slate-900: #0a0a0a;
@@ -158,12 +125,6 @@
   --color-slate-100: #f5f5f5;
   --color-slate-50: #fafafa;
 
-  /*
-   * `gray` en plus de `slate` : une quarantaine d'endroits l'emploient, et sa
-   * gamme est elle aussi tirée vers le bleu. Sans cette seconde série, ces
-   * surfaces-là resteraient bleutées au milieu des autres, ce qui se voit
-   * beaucoup plus qu'un fond uniformément bleu.
-   */
   --color-gray-950: #000000;
   --color-gray-900: #0a0a0a;
   --color-gray-800: #1f1f1f;
@@ -176,9 +137,10 @@
   --color-gray-100: #f5f5f5;
   --color-gray-50: #fafafa;
 
-  /* Le fond des feuilles mobiles, peint en style en ligne par les composants
-     et donc hors de portée des utilitaires ci-dessus. */
   --gl-sheet-bg: #0a0a0a;
+  --gl-ink-rgb: 10, 10, 10;
+  --gl-sheet-rgb: 18, 18, 18;
+  --gl-sheet-border-rgb: 255, 255, 255;
 }
 
 .mapboxgl-canvas {
@@ -217,15 +179,6 @@ body {
   font-feature-settings: 'tnum' 1;
 }
 
-/*
- * Glissement horizontal du tutoriel « app sur l'écran d'accueil ».
- *
- * En CSS et non via framer-motion : une transformation pilotée en JavaScript
- * peut rester bloquée à sa valeur de départ (réglage « animations » désactivé,
- * onglet non composité), ce qui décale durablement tout le contenu. Ici l'état
- * final est déclaratif, et `perf-no-animations` se contente de l'atteindre
- * immédiatement.
- */
 @keyframes install-slide-from-right {
   from { opacity: 0; transform: translateX(60px); }
   to   { opacity: 1; transform: none; }
@@ -236,21 +189,9 @@ body {
   to   { opacity: 1; transform: none; }
 }
 
-/*
- * `forwards` et non `both` : si l'animation ne démarre jamais (onglet en
- * arrière-plan, compositing suspendu), l'élément reste à sa place naturelle
- * plutôt que figé sur le décalage de départ.
- */
 .install-slide-right { animation: install-slide-from-right 0.24s ease-out forwards; }
 .install-slide-left  { animation: install-slide-from-left  0.24s ease-out forwards; }
 
-/*
- * Bandeaux du planificateur d'itinéraire sur téléphone : celui qui remonte du
- * bas (rappel du trajet quand la page est repliée sur la carte) et celui qui
- * descend du haut (choix d'un point sur la carte). Même parti pris que
- * ci-dessus : l'état final est la position naturelle, si bien qu'une animation
- * qui ne démarre jamais laisse le bandeau à sa place plutôt qu'hors de l'écran.
- */
 @keyframes gl-rise-from-bottom {
   from { opacity: 0; transform: translateY(90px); }
   to   { opacity: 1; transform: none; }
@@ -264,12 +205,6 @@ body {
 .gl-rise { animation: gl-rise-from-bottom 0.26s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
 .gl-drop { animation: gl-drop-from-top 0.24s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
 
-/*
- * Arrivée en cascade du contenu du planificateur : chaque bloc monte à son
- * tour, très vite, si bien que la page se remplit de bas en haut au lieu
- * d'apparaître d'un coup. Le décalage est porté par `animation-delay`, posé en
- * style en ligne par le composant.
- */
 @keyframes gl-stagger-in {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: none; }
@@ -277,15 +212,6 @@ body {
 
 .gl-stagger { animation: gl-stagger-in 0.26s cubic-bezier(0.32, 0.72, 0, 1) both; }
 
-/*
- * Lecture d'une carte en cours.
- *
- * Un pourcentage ne dit rien à personne — surtout celui d'une reconnaissance de
- * texte, qui avance par à-coups. On garde donc sous les yeux la photo qui vient
- * d'être prise — c'est elle qu'on est en train de lire — et c'est le voile noir
- * posé dessus qui respire : la carte s'assombrit puis s'éclaircit, en boucle.
- * Un écran noir, lui, laisserait croire que la caméra s'est éteinte.
- */
 @keyframes gl-scanning {
   0%, 100% { opacity: 0.66; }
   50%      { opacity: 0.24; }
@@ -293,13 +219,6 @@ body {
 
 .gl-scanning { animation: gl-scanning 1.4s ease-in-out infinite; }
 
-/*
- * Le verdict de la lecture.
- *
- * La coche se trace — le trait part du bas et remonte, comme une main qui
- * coche —, la croix se contente d'apparaître : on célèbre une réussite, on
- * n'insiste pas sur un échec. Les deux sont précédées d'un disque qui enfle.
- */
 @keyframes gl-verdict-pop {
   from { opacity: 0; transform: scale(0.72); }
   to   { opacity: 1; transform: none; }
@@ -314,6 +233,42 @@ body {
   to   { opacity: 1; }
 }
 
+@keyframes gl-shimmer {
+  from { background-position: 150% 0; }
+  to   { background-position: -50% 0; }
+}
+
+.gl-shimmer {
+  background-color: #1e293b;
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.08) 42%,
+    rgba(255, 255, 255, 0.16) 50%,
+    rgba(255, 255, 255, 0.08) 58%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: gl-shimmer 1.3s ease-in-out infinite;
+}
+
+.gl-shimmer-light {
+  background-color: #e2e8f0;
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.55) 42%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0.55) 58%,
+    transparent 80%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gl-shimmer { animation: none; }
+}
+
 .gl-verdict { animation: gl-verdict-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
 
 .gl-check-path {
@@ -324,16 +279,6 @@ body {
 
 .gl-fade { animation: gl-fade-in 0.32s ease-out both; }
 
-/*
- * Le passage de la liste d'itinéraires à la fiche, et le retour.
- *
- * La fiche vient de la droite, comme une page qu'on pousse ; le retour ramène
- * la liste par la gauche, d'où on l'avait quittée. Le sens dit qu'on avance ou
- * qu'on revient, ce qu'un simple fondu ne disait pas.
- *
- * `forwards` et non `both` : si l'animation ne démarre jamais, l'écran reste à
- * sa place naturelle plutôt que figé sur son décalage de départ.
- */
 @keyframes gl-page-from-right {
   from { opacity: 0; transform: translateX(28%); }
   to   { opacity: 1; transform: none; }
@@ -515,13 +460,8 @@ code {
   color: #e2e8f0;
 }
 
-.text-size-small { font-size: 13px; }
-.text-size-small h3 { font-size: 15px; }
-.text-size-small label, .text-size-small p { font-size: 12px; }
-
-.text-size-large { font-size: 16px; }
-.text-size-large h3 { font-size: 20px; }
-.text-size-large label, .text-size-large p { font-size: 15px; }
+html.text-size-small { font-size: 87.5%; }
+html.text-size-large { font-size: 115%; }
 
 .scrollbar-hide {
   -ms-overflow-style: none;
@@ -537,33 +477,10 @@ code {
   to { transform: translateX(-50%); }
 }
 
-/*
- * Une feuille ne se pousse pas de côté.
- *
- * `react-modal-sheet` donne à son conteneur de défilement un `overflow: auto`
- * complet, donc horizontal aussi. Il suffit alors qu'un contenu déborde un
- * instant — un écran qui entre par la droite, une capture cadrée plus large que
- * sa fenêtre — pour qu'on puisse faire glisser la feuille entière latéralement.
- * L'impression est celle d'une page zoomée qu'on promène, et l'on cherche
- * longtemps comment revenir au cadrage d'origine.
- *
- * Le défilement vertical, lui, reste entier : c'est celui qu'on est venu
- * chercher.
- */
 .react-modal-sheet-content-scroller {
   overflow-x: hidden;
 }
 
-/*
- * L'intertitre d'une section de fiche.
- *
- * « Prochains départs », « Lignes », « Cet arrêt est concerné » : trois
- * intertitres qui disaient la même chose de la même façon, mais chacun avec sa
- * propre valeur d'interlettrage. Très espacées, des capitales cessent de se
- * lire comme un mot et prennent l'air d'un gabarit posé là ; un cran suffit à
- * les aérer sans les délier. Un seul réglage, pour que les trois restent
- * identiques quand l'un d'eux bougera.
- */
 .section-caps {
   font-family: 'Inter', 'Helvetica Neue', sans-serif;
   font-size: 12px;

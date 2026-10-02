@@ -1,3 +1,4 @@
+import { getGtfsStops, GTFS_NETWORKS } from '../services/gtfsNetwork';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import type { Stop } from '../types';
 import { buildScreenUrl, parseScreenLayout, parseScreenStopId, type ScreenLayout } from './screenUtils';
@@ -10,7 +11,7 @@ import './screen.css';
 
 export function ScreenApp() {
   const [stopId, setStopId] = useState(() => parseScreenStopId(window.location.pathname));
-  
+
   const [layout, setLayout] = useState<ScreenLayout>(() => parseScreenLayout(window.location.search));
 
   useLayoutEffect(() => {
@@ -34,29 +35,12 @@ export function ScreenApp() {
   }, []);
 
   const handleSelect = useCallback((stop: Stop, chosenLayout: ScreenLayout) => {
-    
+
     window.history.pushState(null, '', buildScreenUrl(stop.id, chosenLayout));
     setStopId(stop.id);
     setLayout(chosenLayout);
   }, []);
 
-  /**
-   * Les adresses d'écran envoyées par courriel, et les codes qui ont changé
-   * depuis.
-   *
-   * Un écran s'installe une fois : son adresse est écrite dans un message, dans
-   * un signet, parfois collée au dos du téléviseur. Elle ne se corrige pas. Le
-   * soir où le réseau renomme un arrêt, tout ce qui pointait dessus affiche un
-   * identifiant inconnu — et personne n'est là pour taper la nouvelle adresse.
-   *
-   * On accepte donc les identifiants durables de `stopAliases`, et l'on remonte
-   * jusqu'à l'arrêt d'aujourd'hui par le nom de la station. La barre d'adresse
-   * est réécrite au passage, en `replaceState` : l'écran reste sur le code
-   * courant, et un rechargement ne repasse pas par la traduction.
-   *
-   * La liste des arrêts n'est chargée que dans ce cas-là, jamais autrement : un
-   * identifiant qui fonctionne n'a rien à faire résoudre.
-   */
   useEffect(() => {
     const printedId = normalizeStopId(stopId);
     if (!printedId || !PRINTED_STOP_IDS[printedId]) return;
@@ -64,15 +48,18 @@ export function ScreenApp() {
 
     void (async () => {
       const networks = getActiveNetworks();
-      const [mtag, tcl] = await Promise.all([
+      const [mtag, tcl, stan] = await Promise.all([
         getStopsByPrefixes(networks).catch(() => [] as Stop[]),
         networks.includes(TCL_NETWORK)
           ? getTclStops().catch(() => [] as Stop[])
           : Promise.resolve([] as Stop[]),
+        Promise.all(GTFS_NETWORKS.filter(network => networks.includes(network.code))
+          .map(network => getGtfsStops(network.code).catch(() => [] as Stop[])))
+          .then(lists => lists.flat()),
       ]);
       if (!active) return;
 
-      const resolved = resolveStopFromUrlId(printedId, [...mtag, ...tcl]);
+      const resolved = resolveStopFromUrlId(printedId, [...mtag, ...tcl, ...stan]);
       if (!resolved || resolved.id === stopId) return;
       window.history.replaceState(null, '', buildScreenUrl(resolved.id, layout));
       setStopId(resolved.id);

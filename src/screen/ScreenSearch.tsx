@@ -1,3 +1,4 @@
+import { getGtfsStops, GTFS_NETWORKS } from '../services/gtfsNetwork';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MagnifyingGlassIcon, MapPinIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
 import type { Line, Stop } from '../types';
@@ -33,12 +34,15 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
     let active = true;
     void (async () => {
       const networks = getActiveNetworks();
-      const [mtag, tcl] = await Promise.all([
+      const [mtag, tcl, stan] = await Promise.all([
         getStopsByPrefixes(networks).catch(() => [] as Stop[]),
         networks.includes(TCL_NETWORK) ? getTclStops().catch(() => [] as Stop[]) : Promise.resolve([] as Stop[]),
+        Promise.all(GTFS_NETWORKS.filter(network => networks.includes(network.code))
+          .map(network => getGtfsStops(network.code).catch(() => [] as Stop[])))
+          .then(lists => lists.flat()),
       ]);
       if (!active) return;
-      setStops([...mtag, ...tcl]);
+      setStops([...mtag, ...tcl, ...stan]);
       setLoading(false);
       inputRef.current?.focus();
     })();
@@ -55,7 +59,7 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
       const city = stop.city ? normalize(stop.city) : '';
       return name.includes(q) || city.includes(q) || stop.id.toLowerCase().includes(q);
     });
-    
+
     const rank = (stop: Stop) => {
       const name = normalize(stop.name);
       if (name === q) return 0;
@@ -90,7 +94,7 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
     return () => {
       active = false;
     };
-    
+
   }, [results]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -184,8 +188,6 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
             </ul>
           )}
 
-          {/* Le choix se fait ici, avant d'ouvrir l'écran : une fois le
-              téléviseur en place, plus personne n'a de clavier devant lui. */}
           <div className="mt-6 flex items-center justify-center gap-2">
             {LAYOUT_OPTIONS.map(option => {
               const isActive = layout === option.id;

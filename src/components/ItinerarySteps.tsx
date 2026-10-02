@@ -1,3 +1,4 @@
+import { formatMinutesCompact } from '../utils/formatDuration';
 import { memo } from 'react';
 import { FaWalking } from 'react-icons/fa';
 import { LineBadge } from './LineBadge';
@@ -23,8 +24,7 @@ const formatTime = (leg: any): string => {
 
 const getLegDuration = (leg: any): string => {
   if (leg.duration) {
-    const mins = Math.round(leg.duration / 60);
-    return `${mins} min`;
+    return formatMinutesCompact(Math.round(leg.duration / 60));
   }
   return '';
 };
@@ -32,7 +32,7 @@ const getLegDuration = (leg: any): string => {
 export const ItinerarySteps = memo(({ itinerary, language, stops, lineLookup }: ItineraryStepsProps) => {
   const isFr = language === 'fr';
   const allLegs = itinerary.allLegs || [];
-  
+
   if (allLegs.length === 0) {
     return null;
   }
@@ -42,9 +42,9 @@ export const ItinerarySteps = memo(({ itinerary, language, stops, lineLookup }: 
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
         {isFr ? 'Étapes' : 'Steps'}
       </div>
-      
+
       <div className="relative space-y-3 pl-6">
-        
+
         {allLegs.map((leg, idx) => {
           const isWalk = leg.mode === 'WALK';
           const line = resolveRouteLine({
@@ -55,15 +55,13 @@ export const ItinerarySteps = memo(({ itinerary, language, stops, lineLookup }: 
             stops,
           });
           const lineColor = line?.color || '#94a3b8';
-          
+
           return (
             <div key={idx} className="relative">
-              {/* Colored connector for this leg (from this step downwards) */}
               <div
                 className={`absolute -left-[22px] top-7 bottom-0 w-0.5 ${isWalk ? 'bg-slate-700' : ''}`}
                 style={isWalk ? undefined : { backgroundColor: lineColor }}
               />
-              {/* Step dot/icon */}
               <div
                 className={`absolute -left-[26px] top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 ${
                   isWalk ? 'bg-slate-900 border-slate-700' : ''
@@ -76,8 +74,7 @@ export const ItinerarySteps = memo(({ itinerary, language, stops, lineLookup }: 
                   <div className="h-3 w-3 rounded-full bg-white" />
                 )}
               </div>
-              
-              {/* Step content */}
+
               <div className={`rounded-2xl border p-3 ${
                 isWalk
                   ? 'border-slate-700 bg-slate-950'
@@ -106,7 +103,7 @@ export const ItinerarySteps = memo(({ itinerary, language, stops, lineLookup }: 
                   <>
                     <div className="flex items-center gap-2">
                       {line && (
-                        <LineBadge 
+                        <LineBadge
                           line={{ id: line.id, shortName: line.shortName, color: line.color, textColor: line.textColor }}
                           size="sm"
                         />

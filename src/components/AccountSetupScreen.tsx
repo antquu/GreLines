@@ -17,39 +17,12 @@ import {
   type Account,
 } from '../services/account';
 
-/**
- * L'ouverture d'un compte, une question par écran.
- *
- * Trois temps : la carte qui portera le compte, la photo, le pseudonyme. Chacun
- * tient tout l'écran et ne pose qu'une question, avec un seul bouton en bas.
- * C'est plus long à parcourir qu'un formulaire unique, et c'est le but : on
- * choisit son visage et son nom une fois, autant les regarder.
- *
- * La carte n'est demandée que lorsqu'il y en a plusieurs. Avec une seule dans le
- * portefeuille, la question n'en est pas une et l'on commence directement par la
- * photo.
- *
- * La photo et le pseudonyme se choisissent désormais librement. Ils étaient
- * tirés au sort dans des listes closes, faute de pouvoir modérer ce que les gens
- * déposent — c'est un risque assumé, et il faut le savoir : une photographie
- * déposée s'affiche telle quelle aux autres voyageurs, et rien ici ne la
- * regarde avant.
- */
 
 type Step = 'card' | 'photo' | 'pseudo';
 
-/** Ce que le pseudonyme accepte, arobase non comprise. */
 const PSEUDO_MIN = 2;
 const PSEUDO_MAX = 24;
 
-/**
- * L'arobase n'appartient pas au pseudonyme.
- *
- * Elle se dessine devant le champ et ne s'efface pas : c'est une marque de
- * forme, pas un caractère qu'on aurait le droit d'oublier. L'état, lui, ne
- * retient que le nom — sans quoi il faudrait vérifier partout que l'arobase est
- * bien là, et se demander ce que vaut un pseudonyme qui n'aurait qu'elle.
- */
 function stripAt(value: string): string {
   return value.replace(/^@+/, '');
 }
@@ -72,20 +45,16 @@ export function AccountSetupScreen({
   const isFr = language === 'fr';
   const offline = useIsOffline();
   const [step, setStep] = useState<Step>('card');
-  /** 1 : on avance, -1 : on recule. Décide du côté par lequel l'écran entre. */
   const [direction, setDirection] = useState(1);
 
-  /** Change d'étape en disant dans quel sens. */
   const goTo = (next: Step, way: 1 | -1) => {
     setDirection(way);
     setStep(next);
   };
   const [picked, setPicked] = useState<OuraCard | null>(null);
 
-  /** Émoji choisi. `null` veut dire « la photo », de carte ou déposée. */
   const [avatar, setAvatar] = useState<string | null>(null);
   const [avatarSpin, setAvatarSpin] = useState(0);
-  /** Photographie déposée, pas encore envoyée. */
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -126,14 +95,6 @@ export function AccountSetupScreen({
     setPseudo(stripAt(suggestedPseudo(card.firstName, card.lastName)));
     setTaken(false);
     setDirection(1);
-    /*
-     * On interroge la base avant d'avancer d'un écran.
-     *
-     * Passer d'abord à la photo puis se raviser donnait un battement : on
-     * voyait apparaître un écran de création, le temps d'une requête, pour
-     * quelqu'un qui n'avait rien à créer. L'attente se passe donc sur l'écran
-     * du choix de carte, qui ne bouge pas.
-     */
     setCheckingExistingAccount(true);
     void loadAccountForCard(card.cardCode)
       .then(existing => {
@@ -141,27 +102,12 @@ export function AccountSetupScreen({
           setStep('photo');
           return;
         }
-        /*
-         * Cette carte porte déjà un compte : il n'y a rien à créer.
-         *
-         * On proposait alors de rechoisir la photo et le pseudonyme, avec les
-         * anciens pré-remplis. C'était une porte ouverte sur un écrasement :
-         * quelqu'un qui retrouve son compte sur un nouveau téléphone traverse
-         * deux écrans qui lui demandent de refaire des choix déjà faits, et il
-         * suffit d'appuyer sans lire pour remplacer son visage par un émoji.
-         *
-         * On se rattache donc directement, et l'on rend la main. Le nom et la
-         * photo se modifient depuis le profil, où c'est une décision et non
-         * une étape à franchir.
-         */
         onDone(adoptAccount(existing));
       })
       .finally(() => setCheckingExistingAccount(false));
   }
 
   const pseudoTrimmed = pseudo.trim();
-  /* Ce qui part en base garde l'arobase : c'est ainsi que les comptes existants
-     sont écrits, et le pseudonyme doit rester comparable à eux. */
   const pseudoStored = `@${pseudoTrimmed}`;
   const pseudoValid = pseudoTrimmed.length >= PSEUDO_MIN && pseudoTrimmed.length <= PSEUDO_MAX;
 
@@ -169,8 +115,6 @@ export function AccountSetupScreen({
     if (!picked || saving || !pseudoValid) return;
     setSaving(true);
 
-    /* Aucune exception à faire : une carte qui portait déjà un compte n'arrive
-       jamais jusqu'ici — elle est reprise telle quelle dès qu'on la choisit. */
     const free = await isPseudoFree(pseudoStored);
     if (!free) {
       setTaken(true);
@@ -197,14 +141,6 @@ export function AccountSetupScreen({
   const ink = isLight ? 'text-slate-900' : 'text-white';
   const muted = isLight ? 'text-slate-500' : 'text-slate-400';
 
-  /**
-   * Le bouton du bas, seul de son espèce sur chaque écran.
-   *
-   * `sticky` est borné par son parent : la coquille réserve normalement `pb-28`
-   * sous le contenu pour son menu à trois points, et le bouton s'arrêtait donc
-   * cent douze pixels trop haut. On lui demande ici de ne pas la garder — cette
-   * page n'a pas de menu — et le bouton touche alors le bas de l'écran.
-   */
   const footer = (label: string, onClick: () => void, disabled = false) => (
     <div
       className={`sticky bottom-0 -mx-4 mt-8 px-4 pt-3 ${isLight ? 'bg-slate-50' : 'bg-slate-950'}`}
@@ -221,7 +157,6 @@ export function AccountSetupScreen({
     </div>
   );
 
-  /* ---------------------------------------------------------------- la carte */
   const cardStep = (
     <div className="space-y-3 px-4">
       <p className={`px-1 text-sm ${muted}`}>
@@ -266,7 +201,6 @@ export function AccountSetupScreen({
     </div>
   );
 
-  /* ---------------------------------------------------------------- la photo */
   const shown = photoUrl ?? (avatar ? null : picked?.photoUrl ?? null);
 
   const photoStep = picked && (
@@ -277,9 +211,6 @@ export function AccountSetupScreen({
           : 'This is how other riders will see you.'}
       </p>
 
-      {/* Le rond, au milieu de l'écran et aussi grand qu'il peut l'être.
-          Il est lui-même le bouton : on touche son visage pour le changer, ce
-          qui se devine sans qu'on l'écrive. */}
       <div className="flex flex-1 items-center justify-center py-10">
         <button
           type="button"
@@ -287,12 +218,6 @@ export function AccountSetupScreen({
           className="relative aspect-square w-[min(66vw,17rem)] transition active:scale-[0.98]"
           aria-label={isFr ? 'Choisir une photo' : 'Choose a photo'}
         >
-          {/*
-            Le disque qui rogne, et rien d'autre.
-            La pastille de l'appareil photo lui est extérieure : posée dedans,
-            elle était coupée par le masque rond — un cercle ne garde que ce qui
-            tombe à l'intérieur, et elle en dépassait par le coin.
-          */}
           <span
             className={`absolute inset-0 flex items-center justify-center overflow-hidden rounded-full border-2 ${
               isLight ? 'border-slate-200 bg-white' : 'border-slate-700 bg-slate-900'
@@ -318,8 +243,6 @@ export function AccountSetupScreen({
           </AnimatePresence>
           </span>
 
-          {/* La pastille, posée par-dessus le disque et débordant sur son bord :
-              elle dit que le rond se touche, sans ajouter une ligne de texte. */}
           <span
             className={`absolute -bottom-1 right-1 z-10 flex h-12 w-12 items-center justify-center rounded-full border-4 bg-blue-600 shadow-lg ${
               isLight ? 'border-slate-50' : 'border-slate-950'
@@ -344,8 +267,6 @@ export function AccountSetupScreen({
         }}
       />
 
-      {/* Les deux replis, discrets : un émoji si l'on n'a pas de photo sous la
-          main, la photo de la carte si l'on n'en veut pas d'autre. */}
       <div className="flex items-center justify-center gap-6">
         <button
           type="button"
@@ -383,7 +304,6 @@ export function AccountSetupScreen({
     </div>
   );
 
-  /* ------------------------------------------------------------- le pseudonyme */
   const pseudoStep = picked && (
     <div className="flex flex-1 flex-col px-4">
       <p className={`px-1 text-center text-sm ${muted}`}>
@@ -393,8 +313,6 @@ export function AccountSetupScreen({
       </p>
 
       <div className="flex flex-1 flex-col items-center justify-center py-10">
-        {/* L'arobase est dessinée à part, devant le champ : elle tient sa place
-            sans jamais entrer dans la saisie, donc rien ne peut l'effacer. */}
         <div
           className={`flex w-full items-center rounded-2xl border px-4 py-4 transition focus-within:border-blue-500 ${
             isLight
@@ -462,19 +380,13 @@ export function AccountSetupScreen({
       isOpen={isOpen}
       title={offline ? '' : title}
       isLight={isLight}
-      /* Cette page pose son propre bouton en bas d'écran : la réserve que la
-         coquille garde pour son menu l'empêcherait de descendre jusqu'au bord. */
       bottomInset={false}
-      /* Reculer d'un écran à la fois. Depuis la photo, on ne revient au choix
-         de la carte que s'il y avait un choix à faire. */
       onBack={() => {
         if (step === 'pseudo') goTo('photo', -1);
         else if (step === 'photo' && cards.length > 1) goTo('card', -1);
         else onBack();
       }}
     >
-      {/* Créer un compte passe par le serveur : sans réseau, on le dit
-          plutôt que de laisser une étape tourner dans le vide. */}
       {offline ? (
         <OfflinePanel
           language={language}
@@ -485,20 +397,6 @@ export function AccountSetupScreen({
         />
       ) : (
       <>
-      {/*
-        Chaque étape entre par le côté d'où elle vient : par la droite quand on
-        avance, par la gauche quand on recule.
-
-        Le glissement est une animation CSS et non un `initial`/`animate` de
-        framer-motion, pour une raison précise : l'état d'arrivée de ces
-        keyframes est la position naturelle. Une animation qui ne démarrerait
-        pas — onglet en arrière-plan, réglage « animations réduites », rendu non
-        composité — laisse donc l'étape à sa place, alors qu'un `initial` non
-        résolu la laisserait hors de l'écran, et la page paraîtrait vide.
-
-        Pas d'animation de sortie : elle n'apporte rien ici, et il faudrait
-        garder deux étapes montées pour la jouer.
-      */}
       <div
         key={step}
         className={direction > 0 ? 'install-slide-right' : 'install-slide-left'}

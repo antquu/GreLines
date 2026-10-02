@@ -1,0 +1,184 @@
+[
+  {
+    "code": "STAN",
+    "label": "Stan — Nancy",
+    "city": "Nancy",
+    "center": [
+      48.6921,
+      6.1844
+    ],
+    "gtfs": "https://transport.data.gouv.fr/resources/83710/download",
+    "tripUpdates": "https://proxy.transport.data.gouv.fr/resource/fluo-stan-nancy-gtfs-rt-trip-update",
+    "alertsFromStanSite": true,
+    "shortNames": {
+      "CITADINE 1": "Cit1",
+      "CITADINE 2": "Cit2",
+      "PLEINE LUNE": "Lune",
+      "14exp": "14E"
+    }
+  },
+  {
+    "code": "STAS",
+    "label": "STAS — Saint-Étienne",
+    "city": "Saint-Étienne",
+    "center": [
+      45.4397,
+      4.3872
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/fc66b270-658c-4678-9794-229a1a8a4938",
+    "tripUpdates": "https://www.data.gouv.fr/api/1/datasets/r/a414cd50-a9ea-4891-99ce-88e0fedd4411"
+  },
+  {
+    "code": "T2C",
+    "label": "T2C — Clermont-Ferrand",
+    "city": "Clermont-Ferrand",
+    "center": [
+      45.7772,
+      3.087
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/4e237a58-cd14-4746-b729-1337a40a8a7b",
+    "tripUpdates": "https://proxy.transport.data.gouv.fr/resource/t2c-clermont-gtfs-rt-trip-update"
+  },
+  {
+    "code": "SIBRA",
+    "label": "Sibra — Annecy",
+    "city": "Annecy",
+    "center": [
+      45.8992,
+      6.1294
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/8b12f6db-9aa7-43dc-a179-013998a1c4c0"
+  },
+  {
+    "code": "SYNCHRO",
+    "label": "Synchro Bus — Chambéry",
+    "city": "Chambéry",
+    "center": [
+      45.5646,
+      5.9178
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/a81cdf4b-5a70-43c9-8803-cef0430ed170",
+    "tripUpdates": "https://www.data.gouv.fr/api/1/datasets/r/fbd5179e-fb3c-4361-853e-6d868f9a42b5",
+    "alerts": "https://www.data.gouv.fr/api/1/datasets/r/fca16c60-b6f9-49ab-98c0-0c5985ba799e"
+  },
+  {
+    "code": "RUBIS",
+    "label": "Rubis — Bourg-en-Bresse",
+    "city": "Bourg-en-Bresse",
+    "center": [
+      46.2052,
+      5.2255
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/cd0ec3c7-431b-48df-bab5-269e5d5c05bb"
+  },
+  {
+    "code": "ONDEA",
+    "label": "Ondéa — Aix-les-Bains",
+    "city": "Aix-les-Bains",
+    "center": [
+      45.6885,
+      5.9153
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/b4e8d98c-e17a-4fb0-857f-8cb618039b2a",
+    "tripUpdates": "https://proxy.transport.data.gouv.fr/resource/ondea-aix-les-bains-gtfs-rt-trip-update",
+    "alerts": "https://proxy.transport.data.gouv.fr/resource/ondea-aix-les-bains-gtfs-rt-alerts"
+  },
+  {
+    "code": "TACM",
+    "label": "TAC — Annemasse",
+    "city": "Annemasse",
+    "center": [
+      46.1934,
+      6.2342
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/373e19e2-af0a-4939-9f33-3f1268d1e0bb",
+    "tripUpdates": "https://proxy.transport.data.gouv.fr/resource/tac-annemasse-gtfs-rt-trip-update",
+    "alerts": "https://proxy.transport.data.gouv.fr/resource/annemasse-tp2a-gtfs-rt-alerts"
+  },
+  {
+    "code": "LVA",
+    "label": "L'va — Vienne",
+    "city": "Vienne",
+    "center": [
+      45.5255,
+      4.8746
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/e0831d78-5577-4cae-aa00-de5eeaf3ecb6",
+    "tripUpdates": "https://www.data.gouv.fr/api/1/datasets/r/4e87a135-b46e-46b3-8aaa-0233ec3c242a",
+    "alerts": "https://www.data.gouv.fr/api/1/datasets/r/1d919c39-41d4-4453-998c-9417c45b2f28"
+  },
+  {
+    "code": "STARR",
+    "label": "STAR — Roanne",
+    "city": "Roanne",
+    "center": [
+      46.036,
+      4.068
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/ff0dffab-3cf5-4c6b-b576-05bd462a1e33",
+    "tripUpdates": "https://www.data.gouv.fr/api/1/datasets/r/46b88327-a75e-44b4-b369-c6f2943145cf"
+  },
+  {
+    "code": "START",
+    "label": "STAR'T — Thonon-les-Bains",
+    "city": "Thonon-les-Bains",
+    "center": [
+      46.3705,
+      6.4797
+    ],
+    "gtfs": "https://transport.data.gouv.fr/resources/84108/download"
+  },
+  {
+    "code": "MAELIS",
+    "label": "Maelis — Montluçon",
+    "city": "Montluçon",
+    "center": [
+      46.3401,
+      2.6034
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/e8599784-71ba-4814-a905-4e215295109f",
+    "tripUpdates": "https://proxy.transport.data.gouv.fr/resource/maelis-montlucon-gtfs-rt-trip-update"
+  },
+  {
+    "code": "MOBIVIE",
+    "label": "Mobivie — Vichy",
+    "city": "Vichy",
+    "center": [
+      46.1277,
+      3.4259
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/c087ca61-f4db-44b2-bdc1-ec221c2bf762",
+    "tripUpdates": "https://proxy.transport.data.gouv.fr/resource/mobivie-vichy-gtfs-rt-trip-update"
+  },
+  {
+    "code": "MONTELIBUS",
+    "label": "Montélibus — Montélimar",
+    "city": "Montélimar",
+    "center": [
+      44.5581,
+      4.7509
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/974cede8-3a14-4c7b-b94d-b2655c31932e",
+    "tripUpdates": "https://proxy.transport.data.gouv.fr/resource/montelibus-montelimar-gtfs-rt-trip-update"
+  },
+  {
+    "code": "VELAY",
+    "label": "Mobilité en Velay — Le Puy-en-Velay",
+    "city": "Le Puy-en-Velay",
+    "center": [
+      45.0434,
+      3.8858
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/c3d26d87-0b2d-4d26-83b5-9474f12e31a4"
+  },
+  {
+    "code": "TRANSCAB",
+    "label": "Trans'Cab — Aurillac",
+    "city": "Aurillac",
+    "center": [
+      44.9264,
+      2.4396
+    ],
+    "gtfs": "https://transport.data.gouv.fr/resources/84136/download"
+  }
+]

@@ -1,34 +1,16 @@
-/**
- * Les liaisons de covoiturage M'Covoit ligne+.
- *
- * Quatre liaisons, toutes vertes, tracées sur les grands axes de la cuvette.
- * Elles se chargent à part du reste du réseau : leur tracé n'est publié que par
- * l'API géographique, tandis que leur nom et leur couleur viennent de l'API des
- * lignes. Ni l'une ni l'autre ne suffit seule, alors on les réunit ici, une
- * fois, et l'on garde le résultat pour la session.
- *
- * Le tracé pèse plusieurs dizaines de milliers de points : on ne le recharge
- * pas à chaque ouverture d'un point d'arrêt.
- */
-
 export interface McoLine {
-  /** « MCO:VOIR ». */
   id: string;
-  /** « VOIR ». */
   code: string;
   shortName: string;
   longName: string;
-  /** Avec le dièse, prête à peindre. */
   color: string;
   textColor: string;
-  /** Le tracé, en MultiLineString GeoJSON. */
   geometry: GeoJSON.MultiLineString | GeoJSON.LineString | null;
 }
 
 const GEOMETRY_ENDPOINT = 'https://data.mobilites-m.fr/api/lines/json?types=ligne&reseaux=MCO';
 const ROUTES_ENDPOINT = 'https://data.mobilites-m.fr/api/routers/default/index/routes';
 
-/** Le vert du covoiturage, si l'API des lignes ne répond pas. */
 const FALLBACK_COLOR = '#49B170';
 
 let cache: McoLine[] | null = null;
@@ -40,12 +22,6 @@ function withHash(value: unknown, fallback: string): string {
   return raw.startsWith('#') ? raw : `#${raw}`;
 }
 
-/**
- * Toutes les liaisons de covoiturage, tracé compris.
- *
- * Rend une liste vide plutôt que d'échouer : un point de covoiturage sans ses
- * liaisons reste un point de covoiturage, et la fiche a de quoi le dire.
- */
 export async function getMcoLines(): Promise<McoLine[]> {
   if (cache) return cache;
   if (inflight) return inflight;
@@ -97,14 +73,6 @@ export async function getMcoLines(): Promise<McoLine[]> {
   return inflight;
 }
 
-/**
- * Le point milieu d'un tracé, où poser son étiquette.
- *
- * Le centre du rectangle englobant tomberait souvent à côté de la route — une
- * liaison qui contourne un massif dessine un arc, dont le centre est dans le
- * massif. On prend donc le point situé à la moitié de la longueur parcourue,
- * qui est toujours sur le tracé.
- */
 export function midpointOf(geometry: McoLine['geometry']): [number, number] | null {
   if (!geometry) return null;
   const parts: number[][][] =

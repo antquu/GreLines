@@ -7,10 +7,6 @@ export interface Stop {
   clusterGtfsId?: string;
 }
 
-/**
- * Arrêt desservi entre la montée et la descente d'un tronçon d'itinéraire, tel
- * que le planificateur le renvoie.
- */
 export interface JourneyIntermediateStop {
   name?: string;
   stopId?: string;
@@ -39,25 +35,14 @@ export interface Line {
 
 export interface Departure {
   lineId: string;
-  
+
   routeId?: string;
   lineName: string;
   lineShortName?: string;
   destination: string;
   departureTime: number;
-  /**
-   * L'instant du passage, en millisecondes. `departureTime` est un nombre de
-   * minutes figé à la lecture de l'API : suffisant pour un décompte rafraîchi
-   * toutes les trente secondes, trompeur pour une heure d'horloge affichée des
-   * heures plus tard, comme celle des premiers passages du lendemain.
-   */
   at?: number;
   realtime: boolean;
-  /**
-   * Tiré de la fiche horaire gardée sur l'appareil, et non du réseau à
-   * l'instant : hors connexion, ou pour une ligne que le temps réel ne
-   * montrait pas. L'heure est une estimation.
-   */
   theoretical?: boolean;
   type: 'BUS' | 'TRAM' | 'RAIL' | 'METRO' | 'OTHER';
   occupancy?: 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED';

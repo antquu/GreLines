@@ -1,23 +1,11 @@
-/**
- * Les onglets de l'infotrafic, partagés par le panneau de bureau et la feuille
- * du téléphone.
- *
- * Ils vivaient en double, et le second n'a pas suivi le premier : les
- * perturbations du Grésivaudan, du Pays Voironnais et des Cars Région ont
- * réapparu sur téléphone mais pas sur ordinateur. Une seule table, désormais.
- *
- * Le classement suit deux logiques qui n'en font qu'une : les lignes de la
- * Métropole se rangent par famille — c'est ainsi qu'on les nomme, un tram, une
- * Chrono, une Proximo —, et tout le reste se range par réseau, parce qu'un
- * voyageur du Voironnais pense à son réseau avant de penser au type de son bus.
- */
-
 import type { AllLinesLine } from '../services/allLines';
+import gtfsNetworks from '../data/gtfsNetworks.json';
+import { gtfsCodeOf } from '../services/gtfsNetworkIds';
+import { gtfsLineMode, gtfsShortName } from '../services/gtfsNetwork';
+import { tclCode, tclLogoEntry } from './tclLogos';
 
-/** Les familles de la Métropole, dans l'ordre où on les lit. */
 export type MetroFamily = 'tram' | 'chrono' | 'proximo' | 'flexo';
 
-/** Les réseaux qui deviennent chacun un onglet, s'ils ont des perturbations. */
 export const NETWORK_FILTERS: Array<{ code: string; label: string }> = [
   { code: 'GSV', label: 'Grésivaudan' },
   { code: 'TPV', label: 'Pays Voironnais' },
@@ -27,14 +15,10 @@ export const NETWORK_FILTERS: Array<{ code: string; label: string }> = [
   { code: 'MCO', label: "M'Covoit" },
   { code: 'TRA', label: 'Transaltitude' },
   { code: 'FUN', label: 'Funiculaire' },
+  { code: 'TCL', label: 'Lyon' },
+  ...(gtfsNetworks as Array<{ code: string; city: string }>).map(network => ({ code: network.code, label: network.city })),
 ];
 
-/**
- * La famille d'une ligne de la Métropole.
- *
- * Rend `null` pour ce qui n'en relève pas : cette ligne-là se rangera sous son
- * réseau.
- */
 export function getMetroFamily(line: string): MetroFamily | null {
   const n = line.trim().toUpperCase();
   if (['A', 'B', 'C', 'D', 'E'].includes(n)) return 'tram';
@@ -50,17 +34,30 @@ export function getMetroFamily(line: string): MetroFamily | null {
   return null;
 }
 
-/**
- * La catégorie d'une ligne : sa famille dans la Métropole, ou son réseau.
- *
- * `other` ne doit jamais servir à écarter une ligne de la liste — c'est
- * exactement ce que faisait l'ancien code, et des réseaux entiers de
- * perturbations n'apparaissaient nulle part, y compris sous « Tout ».
- */
+const NO_LOOKUP = {};
+const categoryCache = new WeakMap<object, Map<string, string>>();
+
 export function trafficCategory(
   line: string,
   lineLookup?: Map<string, AllLinesLine> | null,
 ): string {
+  const cacheKey = lineLookup ?? NO_LOOKUP;
+  let cache = categoryCache.get(cacheKey);
+  if (!cache) { cache = new Map(); categoryCache.set(cacheKey, cache); }
+  const known = cache.get(line);
+  if (known !== undefined) return known;
+  const category = computeTrafficCategory(line, lineLookup);
+  cache.set(line, category);
+  return category;
+}
+
+function computeTrafficCategory(
+  line: string,
+  lineLookup?: Map<string, AllLinesLine> | null,
+): string {
+  if (line.startsWith('TCL:')) return 'TCL';
+  const gtfsCode = gtfsCodeOf(line);
+  if (gtfsCode) return gtfsCode;
   const family = getMetroFamily(line);
   if (family) return family;
   const full = lineLookup?.get(line.toUpperCase().trim())?.id ?? '';
@@ -68,19 +65,11 @@ export function trafficCategory(
   return NETWORK_FILTERS.some(entry => entry.code === network) ? network : 'other';
 }
 
-/** Le rang d'une catégorie, pour trier la liste des perturbations. */
 export function categoryRank(category: string): number {
   const rank: Record<string, number> = { tram: 0, chrono: 1, proximo: 2, flexo: 3 };
   return rank[category] ?? 90;
 }
 
-/**
- * Les onglets à afficher.
- *
- * Les quatre familles de la Métropole toujours ; un réseau seulement s'il a
- * quelque chose à montrer. Une rangée de filtres dont la moitié ne renvoie rien
- * fait douter que l'écran fonctionne.
- */
 export function trafficFilters(
   present: Set<string>,
   language: 'fr' | 'en',
@@ -97,4 +86,138 @@ export function trafficFilters(
       label: entry.label,
     })),
   ];
+}
+
+
+const MODE_LABELS: Record<string, { fr: string; en: string }> = {
+  metro: { fr: 'Métro', en: 'Metro' },
+  tram: { fr: 'Tram', en: 'Tram' },
+  trambus: { fr: 'Trambus', en: 'Trolleybus' },
+  chrono: { fr: 'Chrono', en: 'Chrono' },
+  funi: { fr: 'Funiculaire', en: 'Funicular' },
+  train: { fr: 'Train', en: 'Train' },
+  bus: { fr: 'Bus', en: 'Bus' },
+  relais: { fr: 'Bus relais', en: 'Replacement bus' },
+};
+const MODE_ORDER = ['metro', 'tram', 'trambus', 'chrono', 'funi', 'train', 'bus'];
+
+const TCL_MODES: Record<string, string> = {
+  M: 'metro', T: 'tram', TB: 'trambus', C: 'chrono', F: 'funi', BUS: 'bus', RELAIS: 'relais',
+};
+const GTFS_MODES: Record<string, string> = { METRO: 'metro', TRAM: 'tram', RAIL: 'train' };
+
+function nameGroup(shortName: string): string {
+  const name = shortName.trim();
+  if (/^\d+[A-Za-z]?$/.test(name)) return 'num';
+  const prefix = /^([A-Za-zÀ-ÿ]+)[\s-]*\d/.exec(name);
+  if (prefix) return `name:${prefix[1].toUpperCase()}`;
+  return 'other';
+}
+
+const subCategoryCache = new WeakMap<object, Map<string, string | null>>();
+
+export function trafficSubCategory(
+  line: string,
+  lineLookup?: Map<string, AllLinesLine> | null,
+): string | null {
+  const cacheKey = lineLookup ?? NO_LOOKUP;
+  let cache = subCategoryCache.get(cacheKey);
+  if (!cache) { cache = new Map(); subCategoryCache.set(cacheKey, cache); }
+  if (cache.has(line)) return cache.get(line)!;
+  const sub = computeSubCategory(line, lineLookup);
+  if (!gtfsCodeOf(line) || gtfsLineMode(line) !== null) cache.set(line, sub);
+  return sub;
+}
+
+function computeSubCategory(
+  line: string,
+  lineLookup?: Map<string, AllLinesLine> | null,
+): string | null {
+  const tcl = tclCode(line);
+  if (tcl) {
+    const mode = tclLogoEntry(tcl)?.mode;
+    if (mode && TCL_MODES[mode]) return `mode:${TCL_MODES[mode]}`;
+    if (/^[A-D]$/.test(tcl)) return 'mode:metro';
+    if (/^T\d+$/.test(tcl)) return 'mode:tram';
+    if (/^C\d+$/.test(tcl)) return 'mode:chrono';
+    if (/^F\d+$/.test(tcl)) return 'mode:funi';
+    return 'mode:bus';
+  }
+  if (gtfsCodeOf(line)) {
+    const mode = GTFS_MODES[gtfsLineMode(line) ?? 'BUS'];
+    return mode ? `mode:${mode}` : nameGroup(gtfsShortName(line));
+  }
+  if (getMetroFamily(line)) return null;
+  const short = lineLookup?.get(line.toUpperCase().trim())?.shortName ?? line.replace(/^[A-Z0-9]{3}[:_]/, '');
+  return nameGroup(short);
+}
+
+const NAME_PREFIXES: Record<string, string> = { CIT: 'Citadine', NAV: 'Navette', EXP: 'Express' };
+
+function subLabel(key: string, language: 'fr' | 'en'): string {
+  if (key.startsWith('mode:')) return MODE_LABELS[key.slice(5)]?.[language] ?? key.slice(5);
+  if (key === 'num') return language === 'fr' ? 'Numéros' : 'Numbered';
+  if (key === 'other') return language === 'fr' ? 'Autres' : 'Other';
+  const prefix = key.slice(5);
+  if (NAME_PREFIXES[prefix]) return NAME_PREFIXES[prefix];
+  if (prefix.length <= 2) return language === 'fr' ? `Lignes ${prefix}` : `${prefix} lines`;
+  return prefix.charAt(0) + prefix.slice(1).toLowerCase();
+}
+
+export function subCategoryRank(sub: string | null): number {
+  if (!sub) return 999;
+  if (sub === 'mode:relais') return 900;
+  if (sub.startsWith('mode:')) {
+    const index = MODE_ORDER.indexOf(sub.slice(5));
+    return index === -1 ? 99 : index;
+  }
+  if (sub.startsWith('name:')) return 100;
+  if (sub === 'num') return 200;
+  return 300;
+}
+
+function compareSubs(a: string, b: string): number {
+  return subCategoryRank(a) - subCategoryRank(b) || a.localeCompare(b);
+}
+
+export function trafficSubFilters(
+  category: string,
+  lines: string[],
+  lineLookup: Map<string, AllLinesLine> | null | undefined,
+  language: 'fr' | 'en',
+): Array<{ key: string; label: string }> {
+  if (category === 'all') return [];
+  const present = new Set(
+    lines
+      .filter(line => trafficCategory(line, lineLookup) === category)
+      .map(line => trafficSubCategory(line, lineLookup))
+      .filter((sub): sub is string => sub !== null),
+  );
+  if (present.size < 2) return [];
+  return [...present].sort(compareSubs).map(key => ({ key, label: subLabel(key, language) }));
+}
+
+export function matchesTrafficFilter(
+  line: string,
+  filter: string,
+  sub: string | null,
+  lineLookup: Map<string, AllLinesLine> | null | undefined,
+): boolean {
+  if (filter === 'all') return true;
+  if (trafficCategory(line, lineLookup) !== filter) return false;
+  return sub === null || trafficSubCategory(line, lineLookup) === sub;
+}
+
+export function compareTrafficLines(
+  a: string,
+  b: string,
+  lineLookup: Map<string, AllLinesLine> | null | undefined,
+): number {
+  const ra = categoryRank(trafficCategory(a, lineLookup));
+  const rb = categoryRank(trafficCategory(b, lineLookup));
+  if (ra !== rb) return ra - rb;
+  const sa = subCategoryRank(trafficSubCategory(a, lineLookup));
+  const sb = subCategoryRank(trafficSubCategory(b, lineLookup));
+  if (sa !== sb) return sa - sb;
+  return a.localeCompare(b, undefined, { numeric: true });
 }

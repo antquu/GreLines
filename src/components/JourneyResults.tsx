@@ -1,16 +1,3 @@
-/**
- * Les itinéraires, en cartes.
- *
- * La liste répondait autrefois par une frise : chaque trajet posé sur un axe
- * de temps commun, gradué au quart d'heure, qu'on faisait défiler du doigt.
- * C'était juste, et illisible. On y comparait des largeurs quand on cherchait
- * une réponse, et la réponse tient en quatre lignes : à quoi sert ce trajet,
- * quand il part, par où il passe, combien il dure.
- *
- * Une carte le dit donc dans cet ordre, et rien d'autre. Le détail attend
- * qu'on la touche.
- */
-
 import { LineBadge } from './LineBadge';
 import { FaWalking, FaWheelchair } from 'react-icons/fa';
 import { MdDirectionsBike } from 'react-icons/md';
@@ -58,9 +45,6 @@ export function JourneyResults({
         const fare = journeyFareChip(journey, language);
         const stepFree = isJourneyStepFree(accessibleStops, journey.allLegs);
         const isSelected = sameJourney(selected, journey);
-        /* Une marque se reconnaît à son logo avant de se lire : celui de Voi
-           ou de Citiz tient lieu de titre, et son nom reste dans l'attribut de
-           remplacement pour qui écoute la page. */
         const brand = journeyOperatorBrand(journey, isLight ? 'light' : 'dark');
 
         return (
@@ -84,12 +68,6 @@ export function JourneyResults({
                 />
               ) : (
               <h3
-                /* Taille et graisse en clair : `h1, h2 { … }` et `.text-size-* h3`
-                   sont déclarés hors layer dans index.css et l'emportent sur les
-                   classes utilitaires. */
-                /* Une graisse de titre, pas de manchette. À huit cents, « 1
-                   changement » pesait autant que la question qu'on se pose, et
-                   dix cartes empilées faisaient un mur noir. */
                 style={{
                   fontSize: '26px',
                   lineHeight: 1.15,
@@ -115,13 +93,13 @@ export function JourneyResults({
             </div>
 
             <div className="mt-2">
-              <p className={`text-[15px] leading-snug ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
+              <p className={`text-[0.9375rem] leading-snug ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
                 {fr ? `Départ à ${journey.dep}` : `Leave at ${journey.dep}`}
               </p>
             </div>
             {fare && (
               <div className="mt-0.5">
-                <p className={`text-[15px] leading-snug ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
+                <p className={`text-[0.9375rem] leading-snug ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
                   {fare}
                 </p>
               </div>
@@ -137,7 +115,7 @@ export function JourneyResults({
                 />
               </div>
               <span
-                className={`tabular flex-shrink-0 text-[20px] font-bold leading-none ${
+                className={`tabular flex-shrink-0 text-[1.25rem] font-bold leading-none ${
                   isLight ? 'text-slate-900' : 'text-white'
                 }`}
               >
@@ -151,13 +129,6 @@ export function JourneyResults({
   );
 }
 
-/**
- * Par où passe le trajet, en une rangée.
- *
- * Les pastilles des lignes, dans l'ordre, et la marche entre elles quand elle
- * dure. Une marche d'une minute ne s'écrit pas : elle ne change aucune
- * décision, et elle prendrait la place d'une ligne.
- */
 function JourneyChips({
   journey,
   stops,
@@ -181,7 +152,7 @@ function JourneyChips({
         if (mode === 'WALK') {
           if (minutes < 2) return null;
           return (
-            <span key={`walk-${index}`} className={`flex items-center gap-1 text-[15px] font-semibold ${muted}`}>
+            <span key={`walk-${index}`} className={`flex items-center gap-1 text-[0.9375rem] font-semibold ${muted}`}>
               <FaWalking size={15} />
               {minutes}
             </span>
@@ -190,7 +161,7 @@ function JourneyChips({
 
         if (BIKE_MODES.has(mode)) {
           return (
-            <span key={`bike-${index}`} className={`flex items-center gap-1 text-[15px] font-semibold ${muted}`}>
+            <span key={`bike-${index}`} className={`flex items-center gap-1 text-[0.9375rem] font-semibold ${muted}`}>
               <MdDirectionsBike size={17} />
               {minutes}
             </span>
@@ -204,10 +175,6 @@ function JourneyChips({
           lineLookup,
           stops,
         });
-        /* Un tronçon sans ligne connue — une course en voiture partagée, un
-           taxi — ne se résume par rien : « Trajet 14 » posé entre deux
-           pastilles se lisait comme un numéro de ligne. La durée totale, à
-           droite, dit déjà ce qu'il faut. */
         if (!line) return null;
 
         return (

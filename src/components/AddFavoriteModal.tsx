@@ -77,7 +77,6 @@ function isRoundLine(label: string): boolean {
 
 const getBadgeShapeClass = (isRound: boolean) => (isRound ? 'rounded-full' : 'rounded-2xl');
 
-/** Line badge, styled exactly like the ones in Sidebar's line filter row. */
 function LineBadge({ line, size = 'md' }: { line: MinimalLine; size?: 'sm' | 'md' }) {
   const label = line.shortName || line.id;
   const round = isRoundLine(label);
@@ -182,11 +181,10 @@ export function AddFavoriteModal(props: AddFavoriteModalProps) {
                 <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/20'}`} />
               </div>
 
-              {/* Header */}
               <div className={`flex items-start justify-between gap-3 px-5 pt-4 pb-4 flex-shrink-0 border-b ${isLight ? 'border-slate-200' : 'border-slate-800/80'}`}>
                 <div className="min-w-0 flex-1">
                   <p className={`signal-label ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>{isExisting ? text.edit : text.title}</p>
-                  <h2 className={`mt-1.5 text-[26px] font-extrabold leading-[1.1] tracking-tight ${titleClass}`}>
+                  <h2 className={`mt-1.5 text-[1.625rem] font-extrabold leading-[1.1] tracking-tight ${titleClass}`}>
                     {stop.name}
                   </h2>
                   {stop.city && <p className={`mt-1 text-sm ${mutedClass}`}>{stop.city}</p>}
@@ -202,7 +200,6 @@ export function AddFavoriteModal(props: AddFavoriteModalProps) {
                 </button>
               </div>
 
-              {/* Body */}
               <div className="px-5 pb-4 pt-4 flex-1 overflow-y-auto">
                 {atCap && (
                   <div className={`mb-4 rounded-2xl border p-3 ${isLight ? 'border-amber-200 bg-amber-50' : 'border-amber-700/50 bg-amber-950/50'}`}>
@@ -219,7 +216,6 @@ export function AddFavoriteModal(props: AddFavoriteModalProps) {
                   )}
                 </div>
 
-                {/* Sélecteur à deux positions : « toutes » ou une sélection. */}
                 <div
                   role="tablist"
                   className={`mb-3 grid grid-cols-2 gap-1 rounded-2xl border p-1 ${panelClass}`}
@@ -247,9 +243,6 @@ export function AddFavoriteModal(props: AddFavoriteModalProps) {
                   {mode === 'all' ? text.allHint : text.pickHint}
                 </p>
 
-                {/* Les lignes elles-mêmes sont l'interface : une grille de
-                    plaques aux couleurs officielles, plus rapide à parcourir
-                    qu'une liste et fidèle à ce qu'on lit sur le quai. */}
                 {sortedLines.length === 0 ? (
                   <p className={`py-6 text-center text-sm ${mutedClass}`}>{text.noLines}</p>
                 ) : (
@@ -277,7 +270,7 @@ export function AddFavoriteModal(props: AddFavoriteModalProps) {
                         >
                           <LineBadge line={line} />
                           <span
-                            className={`w-full text-center text-[11px] leading-snug ${mutedClass}`}
+                            className={`w-full text-center text-[0.6875rem] leading-snug ${mutedClass}`}
                             style={{
                               display: '-webkit-box',
                               WebkitLineClamp: 2,
@@ -299,7 +292,6 @@ export function AddFavoriteModal(props: AddFavoriteModalProps) {
                 )}
               </div>
 
-              {/* Footer */}
               <div className={`flex gap-2 px-5 py-4 border-t flex-shrink-0 ${isLight ? 'border-slate-200 bg-white' : 'border-slate-800/80 bg-slate-950/95'}`}>
                 <button
                   onClick={onClose}

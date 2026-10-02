@@ -1,11 +1,13 @@
+import { foreignAsCatalogLine, isForeignLineId } from '../utils/foreignNetworks';
 import { OfflinePanel } from './OfflinePanel';
 import { useIsOffline } from '../hooks/useIsOffline';
-import { XMarkIcon, ExclamationTriangleIcon, FunnelIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { motion } from 'framer-motion';
 import { useCallback, useState } from 'react';
 import { MapSheet } from './MapSheet';
 import { LineBadge } from './LineBadge';
-import { categoryRank, trafficCategory, trafficFilters } from '../utils/trafficFilters';
+import { compareTrafficLines, matchesTrafficFilter, trafficCategory, trafficFilters, trafficSubFilters } from '../utils/trafficFilters';
+import { TrafficFilterBar } from './TrafficFilterBar';
 import { useWheelScroll } from '../hooks/useWheelScroll';
 import { TrafficAlertCard } from './TrafficAlertCard';
 import type { AllLinesLine } from '../services/allLines';
@@ -37,41 +39,27 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, the
   const offline = useIsOffline();
   const text = getTrafficPanelText(language);
   const [filter, setFilter] = useState<FilterType>('all');
-  /* La même barre s'ouvre sur ordinateur, où l'on n'a que la molette. */
+  const [subFilter, setSubFilter] = useState<string | null>(null);
   const filtersRef = useWheelScroll<HTMLDivElement>();
   const isLight = theme === 'light';
 
-  /*
-   * La catégorie d'une ligne : sa famille dans la Métropole, ou son réseau.
-   *
-   * Auparavant, tout ce qui n'entrait pas dans les quatre familles urbaines
-   * était écarté — pas seulement des onglets, mais de la liste entière. Les
-   * perturbations du Grésivaudan, du Pays Voironnais, des Cars Région et du TER
-   * n'apparaissaient nulle part, y compris sous « Tout ».
-   */
   const categoryOf = useCallback(
     (line: string) => trafficCategory(line, lineLookup),
     [lineLookup],
   );
 
   const filteredEntries = Array.from(trafficInfo.entries())
-    .filter(([line]) => filter === 'all' || categoryOf(line) === filter)
-    .sort(([a], [b]) => {
-      const ra = categoryRank(categoryOf(a));
-      const rb = categoryRank(categoryOf(b));
-      if (ra !== rb) return ra - rb;
-      return a.localeCompare(b, undefined, { numeric: true });
-    });
+    .filter(([line]) => matchesTrafficFilter(line, filter, subFilter, lineLookup))
+    .sort(([a], [b]) => compareTrafficLines(a, b, lineLookup));
 
-  /* Un onglet de réseau ne paraît que s'il a des perturbations à montrer. */
   const presentCategories = new Set(Array.from(trafficInfo.keys()).map(categoryOf));
 
   const filters = trafficFilters(presentCategories, language);
+  const subFilters = trafficSubFilters(filter, Array.from(trafficInfo.keys()), lineLookup, language);
 
   return (
     <MapSheet initialSnap={3} isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={100}>
 
-          {/* Header */}
           <div className="flex items-center justify-between px-5 py-3 flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-amber-500 rounded-xl flex items-center justify-center">
@@ -96,27 +84,18 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, the
             </button>
           </div>
 
-          {/* Filter tabs */}
-          <div ref={filtersRef} className="flex gap-2 px-5 pb-3 flex-shrink-0 overflow-x-auto scrollbar-hide">
-            {filters.map(f => (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition ${
-                  filter === f.key
-                    ? 'bg-amber-500 text-white'
-                    : isLight
-                      ? 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200'
-                      : 'bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
-                {f.key === 'all' && <FunnelIcon className="w-3.5 h-3.5" />}
-                {f.label}
-              </button>
-            ))}
-          </div>
+          <TrafficFilterBar
+            filters={filters}
+            active={filter}
+            onSelect={setFilter}
+            subFilters={subFilters}
+            activeSub={subFilter}
+            onSelectSub={setSubFilter}
+            language={language}
+            isLight={isLight}
+            scrollRef={filtersRef}
+          />
 
-          {/* Scrollable content */}
           <div className="overflow-y-auto flex-1 px-5 pb-8">
             {offline ? (
               <OfflinePanel language={language} isLight={isLight} />
@@ -138,7 +117,9 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, the
                     return at - bt;
                   });
                   const normalized = line.toUpperCase().trim().replace(/^SEM[:_]/, '');
-                  const resolvedLine = lineLookup?.get(normalized) || lineLookup?.get(line.toUpperCase().trim());
+                  const resolvedLine = isForeignLineId(line)
+                    ? foreignAsCatalogLine({ id: line })
+                    : lineLookup?.get(normalized) || lineLookup?.get(line.toUpperCase().trim());
 
                   return (
                     <motion.div
@@ -164,10 +145,6 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, the
                           </span>
                         </div>
                       </div>
-                      {/* La même carte que dans la fiche d'un arrêt, d'une
-                          ligne ou d'un trajet. Le regroupement par ligne reste,
-                          lui : c'est ce qui fait de cet écran un répertoire
-                          plutôt qu'une liste. */}
                       <div className="space-y-2 p-3">
                         {sortedDetails.map((detail, index) => (
                           <TrafficAlertCard
@@ -175,9 +152,6 @@ export const TrafficPanelMobile = ({ isOpen, onClose, trafficInfo, language, the
                             detail={detail}
                             language={language}
                             isLight={isLight}
-                            /* Cet écran ne montre que des perturbations : les
-                               replier obligerait à ouvrir une à une des cartes
-                               dont la lecture est le seul objet de la page. */
                             expandable={false}
                           />
                         ))}

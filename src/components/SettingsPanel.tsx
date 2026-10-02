@@ -13,21 +13,29 @@ import {
   ChatBubbleLeftRightIcon,
   UserCircleIcon,
   ArrowRightIcon,
+  MinusIcon,
+  ArrowsPointingInIcon,
+  ArrowsPointingOutIcon,
 } from '@heroicons/react/24/solid';
 import { FaWheelchair } from 'react-icons/fa';
 import { MinimalScreen } from './MinimalScreen';
 import { HelpContactScreen } from './HelpContactScreen';
-import { createContext, useContext, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { playGenie } from '../utils/genie';
+import { appLanguage } from '../utils/appLanguage';
 import type React from 'react';
-import { isSimulatedOffline, setSimulatedOffline } from '../services/networkSimulation';
+import { setSimulatedOffline } from '../services/networkSimulation';
 import { MobileNotificationPrompt } from './MobileNotificationPrompt';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 import { resetAllCaches } from '../utils/resetCaches';
 import {
-  NETWORK_ASSETS,
   NETWORK_TILES,
   OPERATOR_TILES,
+  CITY_NETWORKS,
+  CITY_TILES,
+  LYON_TILE,
+  networkAssetUrl,
   SECONDARY_NETWORKS,
   SHARED_TILES,
   toggleNetworkCodes,
@@ -40,12 +48,6 @@ import {
 } from '../services/tripNotifications';
 
 interface SettingsPanelProps {
-  /**
-   * « inline » rend les réglages à nu — toutes les sections à la suite, sans
-   * feuille, sans onglets ni bouton de fermeture. C'est la forme qu'ils
-   * prennent au bas de l'écran Compte, où ils ne sont pas un écran mais la
-   * seconde moitié de celui qu'on regarde.
-   */
   variant?: 'panel' | 'inline';
   isOpen: boolean;
   settingsState: 'closed' | 'peek' | 'open';
@@ -55,28 +57,12 @@ interface SettingsPanelProps {
   isMobile: boolean;
   language: 'fr' | 'en';
   setLanguage: (l: 'fr' | 'en') => void;
-  
-  /**
-   * Le compte de l'appareil, et ce qu'on en fait.
-   *
-   * Le panneau ne connaît ni la base ni les cartes : il reçoit de quoi afficher
-   * une ligne et un rappel de clic. C'est ce qui lui permet de rester le même
-   * dans les réglages du téléphone, dans l'écran Compte et sur ordinateur.
-   */
+
   accountPseudo?: string | null;
   accountAvatar?: string | null;
   onOpenAccount?: () => void;
-  /** Le theme choisi, « auto » compris — c'est lui que les vignettes montrent. */
   theme?: 'light' | 'dark' | 'blue' | 'auto';
-  /** Le theme reellement applique, une fois « auto » resolu. */
   uiTheme?: 'light' | 'dark';
-  /**
-   * Vrai sur telephone, ou le noir franc n'existe pas.
-   *
-   * Il n'y a alors qu'un sombre — le bleu nuit — et il s'appelle « Sombre ».
-   * La quatrieme vignette disparait : proposer un choix entre deux sombres
-   * dont un seul existe ne ferait qu'embrouiller.
-   */
   compactThemes?: boolean;
   setTheme?: (t: 'light' | 'dark' | 'blue' | 'auto') => void;
   fontSize: 'small' | 'normal' | 'large';
@@ -90,15 +76,9 @@ interface SettingsPanelProps {
   autoSync: boolean;
   setAutoSync: (v: boolean) => void;
   autoLocation: boolean;
-  /** L'indice de qualité de l'air suit la commune au centre de la carte. */
   atmoFollowMap: boolean;
   setAtmoFollowMap: (value: boolean) => void;
   setAutoLocation: (v: boolean) => void;
-  /**
-   * Rouvre le tutoriel « app sur l'écran d'accueil ». Absent (ou non fourni)
-   * quand l'application tourne déjà depuis l'écran d'accueil : l'entrée n'a
-   * alors plus aucun sens.
-   */
   onOpenInstallGuide?: () => void;
   showInstallGuide?: boolean;
   appData: { version: string; credits: Array<{ role: string; name: string; link?: string }> } | null;
@@ -124,27 +104,8 @@ const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) =
   </motion.button>
 );
 
-/**
- * Réglages à l'air libre.
- *
- * Dans le panneau, chaque groupe est une carte posée sur le fond — c'est la
- * convention des écrans de réglages. Au bas de l'écran Compte, la même carte
- * ferait doublon avec celle du portefeuille juste au-dessus : les rangées y
- * vivent donc sans cadre, séparées par un simple filet.
- */
 const BareSettings = createContext(false);
 
-/**
- * L'apparence, pour les petits composants de rangée.
- *
- * `Row`, `Group` et le sélecteur sont définis hors du composant principal et ne
- * voient donc pas son `resolvedTheme`. Ils écrivaient en blanc en dur, ce qui ne
- * se remarquait pas tant que les réglages vivaient sur un fond sombre — mais au
- * bas de l'écran Compte en thème clair, cela donnait du blanc sur du blanc.
- *
- * Un contexte plutôt qu'une prop à faire descendre partout : ces composants sont
- * utilisés des dizaines de fois, et il en aurait manqué une.
- */
 const SettingsLight = createContext(false);
 
 const Row = ({
@@ -174,7 +135,7 @@ const Row = ({
             }`
       }`}
     >
-      <span className={`text-[15px] ${isLight ? 'text-slate-900' : 'text-white'}`}>{label}</span>
+      <span className={`text-[0.9375rem] ${isLight ? 'text-slate-900' : 'text-white'}`}>{label}</span>
       <div className="flex-shrink-0">{children}</div>
     </div>
   );
@@ -198,7 +159,7 @@ const Select = <T extends string>({
         type="button"
         onClick={() => onChange(o.value)}
         whileTap={{ scale: 0.96 }}
-        className={`rounded-lg px-2.5 py-1.5 text-[13px] font-semibold transition ${
+        className={`rounded-lg px-2.5 py-1.5 text-[0.8125rem] font-semibold transition ${
           value === o.value
             ? 'bg-blue-600 text-white shadow-sm'
             : isLight
@@ -255,7 +216,6 @@ const Group = ({
   </div>
   );
 };
-/** Le cadre d'un groupe — une carte dans le panneau, rien du tout à l'air libre. */
 const GroupSurface = ({ children }: { children: React.ReactNode }) => {
   const bare = useContext(BareSettings);
   const isLight = useContext(SettingsLight);
@@ -267,14 +227,6 @@ const GroupSurface = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-/**
- * Une grille de plaques à cocher.
- *
- * Le même dessin sert aux autorités organisatrices, aux opérateurs et aux
- * véhicules partagés : trois colonnes, même rapport 5:3 que le sélecteur de
- * thème, donc même échelle d'un groupe à l'autre. Éteinte, la plaque passe en
- * grisé — on voit qu'elle existe et qu'elle n'est pas retenue.
- */
 function NetworkTiles({
   tiles,
   isActive,
@@ -288,7 +240,7 @@ function NetworkTiles({
 }) {
   const isLight = useContext(SettingsLight);
   return (
-    <div className="grid grid-cols-3 gap-3 px-4 py-4">
+    <div className="grid grid-cols-3 gap-3 px-4 py-4 lg:grid-cols-[repeat(auto-fill,150px)] lg:justify-start">
       {tiles.map(tile => {
         const active = isActive(tile.key);
         return (
@@ -300,7 +252,7 @@ function NetworkTiles({
             className="flex flex-col items-center gap-2"
           >
             <img
-              src={`${NETWORK_ASSETS}/${active ? tile.selectedAsset : tile.asset}.png`}
+              src={networkAssetUrl(active ? tile.selectedAsset : tile.asset)}
               alt={tile.label}
               loading="lazy"
               className={`w-full rounded-lg transition ${active ? '' : 'opacity-50 grayscale'}`}
@@ -312,11 +264,26 @@ function NetworkTiles({
         );
       })}
       {hint && (
-        <p className="col-span-3 pt-1 text-center text-[11px] text-slate-500">{hint}</p>
+        <p className="col-span-full pt-1 text-center text-[0.6875rem] text-slate-500">{hint}</p>
       )}
     </div>
   );
 }
+
+const DATA_SOURCES: Array<{ what: { fr: string; en: string }; who: string }> = [
+  { what: { fr: 'Grenoble et l’Isère', en: 'Grenoble and Isère' }, who: 'Mobilités M (API MTAG)' },
+  { what: { fr: 'Lyon', en: 'Lyon' }, who: 'TCL · SYTRAL Mobilités, data.grandlyon.com' },
+  {
+    what: { fr: 'Autres villes', en: 'Other cities' },
+    who: 'transport.data.gouv.fr (GTFS, GTFS-RT)',
+  },
+  { what: { fr: 'Perturbations de Nancy', en: 'Nancy disruptions' }, who: 'reseau-stan.com' },
+  { what: { fr: 'Trains et cars TER', en: 'TER trains and coaches' }, who: 'SNCF' },
+  { what: { fr: 'Itinéraires hors de Grenoble', en: 'Routes outside Grenoble' }, who: 'Transitous (MOTIS)' },
+  { what: { fr: 'Adresses', en: 'Addresses' }, who: 'Base Adresse Nationale (api-adresse.data.gouv.fr)' },
+  { what: { fr: 'Qualité de l’air', en: 'Air quality' }, who: 'Atmo Auvergne-Rhône-Alpes' },
+  { what: { fr: 'Carte', en: 'Map' }, who: 'MapTiler, OpenStreetMap' },
+];
 
 export function SettingsPanel({
   variant = 'panel',
@@ -356,18 +323,8 @@ export function SettingsPanel({
   panelRef,
 }: SettingsPanelProps) {
   const { settings: perf, setSetting, resetSettings } = usePerfSettings();
-  /** Les conditions et le sort des données, dans leur propre feuille. */
   const [isLegalOpen, setIsLegalOpen] = useState(false);
-  /**
-   * La page ouverte par-dessus l'index, dans l'écran Compte.
-   *
-   * Les réglages y étaient posés à plat : cinq sections l'une sous l'autre,
-   * une trentaine d'interrupteurs à traverser pour changer de thème. C'est
-   * devenu un sommaire — une rangée par section, qui ouvre sa page. On ne lit
-   * plus que ce qu'on est venu chercher.
-   */
   const [openSection, setOpenSection] = useState<string | null>(null);
-  /** L'encart d'aide, refermé pour de bon une fois qu'on l'a lu. */
   const [helpCardClosed, setHelpCardClosed] = useState(() => {
     try {
       return localStorage.getItem('greLines_helpCardClosed') === '1';
@@ -383,7 +340,6 @@ export function SettingsPanel({
   const resolvedTheme = uiTheme ?? (theme === 'light' ? 'light' : 'dark');
   const isLight = resolvedTheme === 'light';
   const dev = text.dev;
-  const [simulatedOffline, setSimulatedOfflineState] = useState(isSimulatedOffline);
   const isFrench = language === 'fr';
   const devAvailable = !isMobile;
 
@@ -411,11 +367,6 @@ export function SettingsPanel({
     setIsNotificationPromptOpen(true);
   };
 
-  /**
-   * Active ou désactive un bloc de réseaux d'un seul geste (le réseau Tag en
-   * compte deux : SEM et sa suite SE2). Une sélection vide laisserait une carte
-   * sans aucun arrêt, donc Tag est toujours conservé en dernier recours.
-   */
   const toggleNetwork = (codes: string[]) => {
     setSetting('networks', toggleNetworkCodes(perf.networks, codes));
   };
@@ -423,9 +374,6 @@ export function SettingsPanel({
   const tabs = [
     { key: 'general', label: text.settings.general, icon: Cog6ToothIcon },
     { key: 'display', label: text.settings.display, icon: PaintBrushIcon },
-    /* L'accessibilité a sa section : elle ne se règle pas comme un thème, et
-       la ranger dans « Affichage » l'aurait rendue introuvable pour qui la
-       cherche par son nom. */
     { key: 'accessibility', label: isFrench ? 'Accessibilité' : 'Accessibility', icon: FaWheelchair },
     { key: 'data', label: text.settings.data, icon: CircleStackIcon },
     ...(devAvailable && perf.devMode
@@ -434,33 +382,12 @@ export function SettingsPanel({
     { key: 'about', label: text.settings.about, icon: InformationCircleIcon },
   ];
 
-  /*
-   * Le contenu des onglets : des éléments, pas des composants.
-   *
-   * Ils étaient déclarés en fonctions (`const GeneralContent = () => …`) puis
-   * rendus en `<GeneralContent />`. Une fonction déclarée dans le corps du
-   * composant change d'identité à chaque rendu : React n'y voyait pas le même
-   * type et démontait tout l'onglet pour le remonter à neuf. Chaque clic sur un
-   * sélecteur rejouait donc l'arrivée de tous les autres, fermait le menu
-   * déroulant qu'on venait d'ouvrir, perdait le focus — et le panneau remontait
-   * en haut.
-   *
-   * En éléments, React reconcilie au lieu de remonter : seul ce qui a changé
-   * change.
-   */
-  /**
-   * Les notifications, sur leur propre page.
-   *
-   * Une seule question — être prévenu pendant un trajet, ou non — mais c'est
-   * celle qu'on vient rouvrir le plus souvent après l'avoir refusée une fois,
-   * et elle se perdait au milieu de la langue et du rafraîchissement.
-   */
   const notificationsContent = (
     <>
           <Group>
             <Row label="Notification" last>
               <span className="hidden">
-                <span className="block text-[15px] font-medium text-white">
+                <span className="block text-[0.9375rem] font-medium text-white">
                   {language === 'fr' ? 'Notification' : 'Notification'}
                 </span>
                 <span className="mt-0.5 block text-xs text-slate-400">
@@ -504,22 +431,8 @@ export function SettingsPanel({
 
   const generalContent = (
     <>
-      {/* Le compte, en tête de section.
-          Avant la langue et le rafraîchissement, parce qu'il ne se règle qu'une
-          fois : ce qu'on fait une seule fois se met devant, ce qu'on ajuste se
-          met après. La ligne change de forme selon qu'il existe — invitation
-          d'un côté, profil de l'autre — mais garde sa place, pour qu'on n'ait pas
-          à la chercher une fois créé. */}
-      {/* Dans l'écran Compte, cette porte est montée en tête de sommaire, en
-          grand : elle n'a plus à figurer ici. Ailleurs — la feuille des
-          réglages du téléphone —, elle reste la première ligne. */}
       {isMobile && variant !== 'inline' && onOpenAccount && (
         <div className="mb-6">
-          {/* Son propre cadre, même à l'air libre.
-              Les autres rangées se passent de bordure dans l'écran Compte, où
-              elles suivent le portefeuille. Celle-ci n'est pas un réglage mais
-              une porte : le cadre arrondi le dit, et la distingue de la liste
-              d'interrupteurs qui suit. */}
           <button
             type="button"
             onClick={onOpenAccount}
@@ -543,7 +456,7 @@ export function SettingsPanel({
                   )}
                 </span>
                 <span
-                  className={`min-w-0 flex-1 truncate text-[15px] font-bold ${
+                  className={`min-w-0 flex-1 truncate text-[0.9375rem] font-bold ${
                     isLight ? 'text-slate-900' : 'text-white'
                   }`}
                 >
@@ -552,7 +465,7 @@ export function SettingsPanel({
               </>
             ) : (
               <span
-                className={`min-w-0 flex-1 text-[15px] ${
+                className={`min-w-0 flex-1 text-[0.9375rem] ${
                   isLight ? 'text-slate-900' : 'text-white'
                 }`}
               >
@@ -592,8 +505,6 @@ export function SettingsPanel({
         <Row label={text.labels.autoLocation}>
           <Toggle value={autoLocation} onChange={() => setAutoLocation(!autoLocation)} />
         </Row>
-        {/* Éteint, le panneau de qualité de l'air retrouve sa recherche : c'est
-            à nouveau l'utilisateur qui désigne la commune. */}
         <Row label={text.labels.atmoFollowMap}>
           <Toggle value={atmoFollowMap} onChange={() => setAtmoFollowMap(!atmoFollowMap)} />
         </Row>
@@ -602,20 +513,15 @@ export function SettingsPanel({
         </Row>
       </Group>
 
-      {/* La feuille des réglages du téléphone garde les notifications dans
-          « Général », là où elles ont toujours été. L'écran Compte, lui, leur
-          donne leur propre page — c'est le même bloc, monté à deux endroits. */}
       {isMobile && variant !== 'inline' && notificationsContent}
 
-      {/* Rien à installer si l'app tourne déjà depuis l'écran d'accueil : dans
-          ce cas `showInstallGuide` est faux et la ligne disparaît. */}
       {showInstallGuide && onOpenInstallGuide && (
         <Group>
           <button
             onClick={onOpenInstallGuide}
                 className="w-full flex items-center justify-between rounded-2xl px-4 py-3 transition hover:bg-slate-700/40"
           >
-            <span className="text-[15px] font-medium text-blue-400 text-left">
+            <span className="text-[0.9375rem] font-medium text-blue-400 text-left">
               {language === 'fr'
                 ? "Comment installer l'app sur l'écran d'accueil"
                 : 'How to install the app on your home screen'}
@@ -625,16 +531,12 @@ export function SettingsPanel({
         </Group>
       )}
 
-      {/* La vitrine : une page à part, hors de l'application. On y va par un
-          vrai lien plutôt que par une navigation interne — c'est un autre
-          site, servi à une autre adresse, et le bouton « précédent » du
-          navigateur doit ramener ici. */}
       <Group>
         <a
           href={language === 'fr' ? '/fr' : '/en'}
           className="flex w-full items-center justify-between rounded-2xl px-4 py-3 transition hover:bg-slate-700/40"
         >
-          <span className="text-left text-[15px] font-medium text-blue-400">
+          <span className="text-left text-[0.9375rem] font-medium text-blue-400">
             {language === 'fr' ? 'Découvrir GreLines' : 'Discover GreLines'}
           </span>
           <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-slate-500" />
@@ -653,7 +555,6 @@ export function SettingsPanel({
                   if (!next) {
                     setSetting('devOverlay', false);
                     setSimulatedOffline(false);
-                    setSimulatedOfflineState(false);
                     if (activeTab === 'dev') setActiveTab('general');
                   }
                 }}
@@ -666,35 +567,21 @@ export function SettingsPanel({
     </>
   );
 
-  /**
-   * Sélecteur de thème illustré : clair ou sombre.
-   *
-   * Le troisième choix, « auto », a disparu — il n'apportait qu'une hésitation
-   * de plus dans une liste où deux vignettes suffisent. Le sombre tient ce
-   * rôle : c'est lui qu'on trouve à la première ouverture, et c'est vers lui
-   * que retombe un réglage « auto » hérité de l'ancienne version.
-   */
   const themePicker = (() => {
     const isFr = language === 'fr';
-    /* « Auto » en premier : c'est le défaut, et le seul des quatre qui n'impose
-       rien. Les autres sont des dérogations à ce que dit l'appareil.
-       « Bleu » est l'ancien sombre, au fond bleu nuit ; « Sombre » est
-       désormais le noir franc. */
     const options: Array<{ value: 'light' | 'dark' | 'blue' | 'auto'; label: string }> = [
       { value: 'auto', label: 'Auto' },
       { value: 'light', label: isFr ? 'Clair' : 'Light' },
       { value: 'dark', label: isFr ? 'Sombre' : 'Dark' },
-      ...(compactThemes
-        ? []
-        : ([{ value: 'blue', label: isFr ? 'Bleu' : 'Blue' }] as const)),
+      { value: 'blue', label: isFr ? 'Bleu' : 'Blue' },
     ];
 
     return (
       <div className="px-4 py-3">
-        <p className="mb-3 text-[15px] text-slate-200">{isFr ? 'Thème' : 'Theme'}</p>
-        <div className={`grid gap-3 ${compactThemes ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-4'}`}>
+        <p className="mb-3 text-[0.9375rem] text-slate-200">{isFr ? 'Thème' : 'Theme'}</p>
+        <div className={`grid gap-3 ${compactThemes ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-[repeat(auto-fill,minmax(130px,160px))] lg:justify-start'}`}>
           {options.map((option) => {
-            const current = compactThemes && theme === 'blue' ? 'dark' : (theme ?? 'auto');
+            const current = theme ?? 'auto';
             const selected = current === option.value;
             return (
               <button
@@ -752,10 +639,6 @@ export function SettingsPanel({
     </>
   );
 
-  /**
-   * Section Développeur : chaque bascule coupe réellement un morceau du rendu
-   * ou des requêtes réseau, elle n'est pas décorative.
-   */
   const devContent = (
     <>
       <Group>
@@ -763,21 +646,6 @@ export function SettingsPanel({
           <Toggle value={perf.devOverlay} onChange={() => setSetting('devOverlay', !perf.devOverlay)} />
         </Row>
       </Group>
-      <p className="mb-6 px-4 text-xs text-slate-500">{dev.overlayHint}</p>
-
-      <Group>
-        <Row label={dev.cutConnection} last>
-          <Toggle
-            value={simulatedOffline}
-            onChange={() => {
-              const next = !simulatedOffline;
-              setSimulatedOffline(next);
-              setSimulatedOfflineState(next);
-            }}
-          />
-        </Row>
-      </Group>
-      <p className="mb-6 px-4 text-xs text-slate-500">{dev.cutConnectionHint}</p>
 
       <Group title={dev.rendering}>
         <Row label={dev.stopLineBadges}>
@@ -823,25 +691,14 @@ export function SettingsPanel({
           onClick={resetSettings}
           className="w-full flex items-center justify-between rounded-2xl px-4 py-3 transition hover:bg-slate-700/40"
         >
-          <span className="text-[15px] font-medium text-blue-400">{dev.reset}</span>
+          <span className="text-[0.9375rem] font-medium text-blue-400">{dev.reset}</span>
           <ChevronRightIcon className="h-4 w-4 text-slate-500" />
         </button>
       </Group>
 
-      <p className="px-4 text-xs text-slate-500">{dev.note}</p>
     </>
   );
 
-  /**
-   * L'accessibilité.
-   *
-   * Un seul interrupteur ici, celui qui change la carte. Il en allume un second
-   * qui ne se montre pas dans cette page : l'accès en fauteuil dans le calcul
-   * d'itinéraire, qui se règle là où l'on règle la vitesse de marche — dans les
-   * options de la recherche, avec le reste de ce qui décide d'un trajet. Un
-   * réglage de trajet posé dans les réglages de l'application se cherche deux
-   * fois : une fois ici, une fois là-bas.
-   */
   const accessibilityContent = (
     <>
       <Group>
@@ -872,36 +729,16 @@ export function SettingsPanel({
         </Row>
       </Group>
 
-      {/* Tout le sélecteur est en plaques désormais : les autorités
-          organisatrices, les opérateurs, les véhicules partagés. Un réseau se
-          reconnaît à sa marque bien avant à son nom, et une liste d'interrupteurs
-          demandait de lire dix libellés pour trouver celui qu'on cherche. */}
-      <Group title={text.networks.title}>
+      <Group title={language === 'fr' ? 'Métropole grenobloise' : 'Grenoble area'}>
         <NetworkTiles
-          tiles={NETWORK_TILES.map(tile => ({ ...tile, key: tile.codes.join('+') }))}
+          tiles={[...NETWORK_TILES, ...OPERATOR_TILES].map(tile => ({ ...tile, key: tile.codes.join('+') }))}
           isActive={key => key.split('+').every(code => perf.networks.includes(code))}
           onToggle={key => toggleNetwork(key.split('+'))}
         />
-      </Group>
-
-      <Group title={text.networks.others}>
-        <NetworkTiles
-          tiles={OPERATOR_TILES.map(tile => ({ ...tile, key: tile.codes.join('+') }))}
-          isActive={key => key.split('+').every(code => perf.networks.includes(code))}
-          onToggle={key => toggleNetwork(key.split('+'))}
-          hint={
-            language === 'fr'
-              ? 'Touchez un réseau pour l’afficher ou le masquer.'
-              : 'Tap a network to show or hide it.'
-          }
-        />
-        {/* Ce qui n'a pas de plaque garde son interrupteur : le funiculaire des
-            Petites Roches n'a pas de logo, et une case vide vaudrait moins
-            qu'une ligne de texte. */}
         {SECONDARY_NETWORKS.map((network, index) => (
           <Row
             key={network.code}
-            label={network.label}
+            label={network.label.replace(" — ", " · ")}
             last={index === SECONDARY_NETWORKS.length - 1}
           >
             <Toggle
@@ -912,8 +749,26 @@ export function SettingsPanel({
         ))}
       </Group>
 
-      {/* Mobilités partagées : elles ne dépendent pas des réseaux de transport,
-          elles s'appliquent immédiatement et ne rechargent pas le catalogue. */}
+      <Group title={language === 'fr' ? 'Autres réseaux' : 'Other networks'}>
+        <NetworkTiles
+          tiles={[LYON_TILE, ...CITY_TILES].map(tile => ({ ...tile, key: tile.codes.join('+') }))}
+          isActive={key => key.split('+').every(code => perf.networks.includes(code))}
+          onToggle={key => toggleNetwork(key.split('+'))}
+        />
+        {CITY_NETWORKS.map((network, index) => (
+          <Row
+            key={network.code}
+            label={network.label.replace(" — ", " · ")}
+            last={index === CITY_NETWORKS.length - 1}
+          >
+            <Toggle
+              value={perf.networks.includes(network.code)}
+              onChange={() => toggleNetwork([network.code])}
+            />
+          </Row>
+        ))}
+      </Group>
+
       <Group title={text.networks.shared}>
         <NetworkTiles
           tiles={SHARED_TILES.map(tile => ({ ...tile, key: tile.setting }))}
@@ -931,7 +786,7 @@ export function SettingsPanel({
           }}
           className="w-full flex items-center justify-between rounded-2xl px-4 py-3 hover:bg-slate-700/40 transition"
         >
-          <span className="text-[15px] text-red-400 font-medium">
+          <span className="text-[0.9375rem] text-red-400 font-medium">
             {text.buttons.clearCache}
           </span>
           <ChevronRightIcon className="w-4 h-4 text-slate-500" />
@@ -954,14 +809,12 @@ export function SettingsPanel({
         </div>
       </div>
 
-      {/* Ce qu'on fait des données se lit avant la version de l'application :
-          c'est la question qu'on vient poser ici, l'autre est une curiosité. */}
       <Group>
         <button
           onClick={() => setIsLegalOpen(true)}
             className="flex w-full items-center justify-between rounded-2xl px-4 py-3.5 transition hover:bg-slate-700/40"
         >
-          <span className={`text-[15px] ${isLight ? 'text-slate-900' : 'text-white'}`}>
+          <span className={`text-[0.9375rem] ${isLight ? 'text-slate-900' : 'text-white'}`}>
             {language === 'fr' ? 'Conditions et données' : 'Terms and data'}
           </span>
           <ChevronRightIcon className="h-4 w-4 text-slate-500" />
@@ -969,15 +822,17 @@ export function SettingsPanel({
       </Group>
 
       <Group>
-        <Row label={text.misc.versionLabel}>
-          <span className="text-[15px] text-slate-400">{appData?.version || '2.0.1'}</span>
+        <Row label={text.misc.versionLabel} last>
+          <span className="text-[0.9375rem] text-slate-400">{appData?.version || '2.0.1'}</span>
         </Row>
-        <Row label={text.misc.dataSourceLabel} last>
-          <span className="text-[15px] text-slate-400">MTAG API</span>
-        </Row>
-        <Row label={text.misc.dataSourceLabel} last>
-          <span className="text-[15px] text-slate-400">SYSTRAL API</span>
-        </Row>
+      </Group>
+
+      <Group title={language === 'fr' ? 'Sources des données' : 'Data sources'}>
+        {DATA_SOURCES.map((source, index) => (
+          <Row key={source.what.fr} label={source.what[language]} last={index === DATA_SOURCES.length - 1}>
+            <span className="text-right text-[0.8125rem] leading-snug text-slate-400">{source.who}</span>
+          </Row>
+        ))}
       </Group>
 
       {appData?.credits && appData.credits.length > 0 && (
@@ -989,29 +844,18 @@ export function SettingsPanel({
                   href={credit.link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[15px] text-blue-400 hover:underline"
+                  className="text-[0.9375rem] text-blue-400 hover:underline"
                 >
                   {credit.name}
                 </a>
               ) : (
-                <span className="text-[15px] text-slate-400">{credit.name}</span>
+                <span className="text-[0.9375rem] text-slate-400">{credit.name}</span>
               )}
             </Row>
           ))}
         </Group>
       )}
 
-      {/*
-        Le remerciement au fournisseur de données, écrit ici et non dans
-        `grelines.json`.
-
-        Il y figurait deux fois, dans une seule chaîne qui portait les deux
-        langues à la suite — « Thanks to… / Merci à… » —, parce que le fichier
-        ne sait pas ce qu'est une traduction. Ce n'est pas un crédit d'équipe
-        qu'on ajoute au fil des arrivées : c'est une mention qui engage, elle se
-        relit et se déploie avec le code, et elle se dit dans la langue de celui
-        qui la lit.
-      */}
       <Group title={isFrench ? 'Données' : 'Data'}>
         <Row
           label={
@@ -1025,29 +869,13 @@ export function SettingsPanel({
             href="https://data.grandlyon.com/portail/fr/accueil"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[15px] text-blue-400 hover:underline"
+            className="text-[0.9375rem] text-blue-400 hover:underline"
           >
             data.grandlyon.com
           </a>
         </Row>
       </Group>
 
-      {/*
-        Les projets voisins.
-
-        Sur téléphone, trois cartes à parts égales : le logotype en haut à
-        gauche, une flèche en bas à droite. C'est le dessin des actions d'un
-        passage, dans la fiche d'un arrêt — un carré de couleur qui mène
-        ailleurs veut dire la même chose d'un bout à l'autre de l'application,
-        et une barre de trois logotypes de la hauteur d'un doigt ne disait pas
-        qu'on pouvait la toucher.
-
-        Pas de titre au-dessus : trois logotypes alignés sous « À propos » se
-        passent d'être annoncés.
-
-        Sur ordinateur, la barre reste : le curseur montre déjà ce qui se
-        touche, et un carré de cent pixels de haut n'y apporterait rien.
-      */}
       {isMobile ? (
         <div className="mb-2 grid grid-cols-3 gap-2">
           {[
@@ -1066,8 +894,6 @@ export function SettingsPanel({
             {
               href: 'https://github.com/antquu/GreLines',
               alt: 'GitHub',
-              /* Le logotype GitHub existe en deux versions : la claire ne se
-                 voit pas sur un fond clair, et inversement. */
               src: isLight ? '/assets/GitHub_LOGO_dark.png' : '/assets/GitHubLOGO.png',
               height: 'h-6',
             },
@@ -1132,8 +958,6 @@ export function SettingsPanel({
               : 'bg-transparent border-slate-700 hover:bg-slate-800'
           }`}
         >
-          {/* Le logotype GitHub existe en deux versions : la claire ne se voit
-              pas sur un fond clair, et inversement. */}
           <img
             src={isLight ? '/assets/GitHub_LOGO_dark.png' : '/assets/GitHubLOGO.png'}
             alt="GitHub"
@@ -1161,17 +985,6 @@ export function SettingsPanel({
 
   const renderTab = () => renderTabByKey(activeTab);
 
-  /*
-   * L'écran Compte : un sommaire, et des pages derrière.
-   *
-   * Les réglages y étaient posés à plat sous le portefeuille — cinq sections,
-   * une trentaine d'interrupteurs à faire défiler pour changer de thème. On y
-   * arrivait par le portefeuille, et l'on repartait sans avoir trouvé.
-   *
-   * C'est une liste de portes maintenant : une rangée par sujet, qui ouvre sa
-   * page. Le portefeuille reste au-dessus, le compte juste après, et le reste
-   * se lit en trois lignes.
-   */
   if (variant === 'inline') {
     const sections: Array<{ key: string; label: string; Icon: typeof BellIcon }> = [
       { key: 'notifications', label: isFrench ? 'Notifications' : 'Notifications', Icon: BellIcon },
@@ -1194,7 +1007,6 @@ export function SettingsPanel({
     const rowSurface = isLight ? 'bg-white' : 'bg-black';
     const rule = isLight ? 'border-slate-200' : 'border-slate-900';
 
-    /** Un groupe de portes, d'un seul tenant, séparées par un trait. */
     const list = (entries: Array<{ key: string; label: string; Icon: typeof BellIcon }>) => (
       <div className={`overflow-hidden rounded-2xl ${rowSurface}`}>
         {entries.map((entry, index) => (
@@ -1207,7 +1019,7 @@ export function SettingsPanel({
             }`}
           >
             <entry.Icon className={`h-6 w-6 flex-shrink-0 ${rowInk}`} />
-            <span className={`min-w-0 flex-1 text-[17px] font-semibold ${rowInk}`}>{entry.label}</span>
+            <span className={`min-w-0 flex-1 text-[1.0625rem] font-semibold ${rowInk}`}>{entry.label}</span>
             <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${rowInk}`} />
           </button>
         ))}
@@ -1221,7 +1033,6 @@ export function SettingsPanel({
       <SettingsLight value={isLight}>
       <BareSettings value>
       <div className="space-y-6">
-        {/* Le compte, en grand : c'est une porte, pas un réglage. */}
         {onOpenAccount && (
           <button
             type="button"
@@ -1232,10 +1043,10 @@ export function SettingsPanel({
               {accountAvatar ? <span aria-hidden>{accountAvatar}</span> : <UserCircleIcon className="h-9 w-9 text-white" />}
             </span>
             <span className="min-w-0 flex-1">
-              <span className={`block truncate text-[19px] font-bold ${rowInk}`}>
+              <span className={`block truncate text-[1.1875rem] font-bold ${rowInk}`}>
                 {accountPseudo ?? (isFrench ? 'Connecter son compte' : 'Connect your account')}
               </span>
-              <span className="block text-[15px] text-slate-500">
+              <span className="block text-[0.9375rem] text-slate-500">
                 {isFrench ? 'Compte' : 'Account'}
               </span>
             </span>
@@ -1243,14 +1054,6 @@ export function SettingsPanel({
           </button>
         )}
 
-        {/*
-          L'encart d'aide.
-
-          Il porte une seule chose : qu'il existe un endroit où signaler ce qui
-          se passe mal, et un numéro à composer. On ne le cherche pas avant d'en
-          avoir besoin — c'est pourquoi il se montre de lui-même, une fois, et
-          se referme pour de bon.
-        */}
         {!helpCardClosed && (
           <div className="relative overflow-hidden rounded-3xl" style={{ backgroundColor: '#1d4ed8' }}>
             <button
@@ -1276,14 +1079,12 @@ export function SettingsPanel({
               <p className="px-5 pr-14 pt-5 text-[1.35rem] font-bold leading-snug" style={{ color: '#ffffff' }}>
                 {isFrench ? 'Aide et contact' : 'Help and contact'}
               </p>
-              <p className="mt-2 px-5 pb-4 pr-10 text-[15px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.8)' }}>
+              <p className="mt-2 px-5 pb-4 pr-10 text-[0.9375rem] leading-relaxed" style={{ color: 'rgba(255,255,255,0.8)' }}>
                 {isFrench
                   ? 'Un incident, un comportement, un objet oublié : à qui s’adresser, et le numéro à composer.'
                   : 'An incident, a behaviour, something left behind: who to talk to, and the number to call.'}
               </p>
 
-              {/* Les mêmes formes que le bandeau du portefeuille : c'est la
-                  langue de l'application pour ce genre d'encart. */}
               <svg viewBox="0 0 320 46" className="block w-full" aria-hidden>
                 <g fill="#ffffff" opacity="0.9">
                   <path d="M4 46a26 26 0 0 0 26-26H17a13 13 0 0 1-13 13z" />
@@ -1304,20 +1105,6 @@ export function SettingsPanel({
         {list(helpSections)}
       </div>
 
-      {/*
-        Chaque section a sa page, qui entre par la droite comme le reste de
-        l'application. Le contenu est celui des onglets : il n'y en a qu'un
-        seul jeu, et il sert aussi à la feuille du téléphone.
-
-        Elles sont montées dans le corps du document, et non ici.
-
-        L'écran Compte glisse latéralement, donc porte une `transform` — et une
-        `transform` fait d'un élément le repère de tous les `fixed` qu'il
-        contient, en même temps qu'elle les enferme dans son plan. Une page
-        posée à l'intérieur restait donc sous la barre d'onglets, quel que soit
-        son `z-index`. Sortie dans le corps du document, elle recouvre l'écran
-        entier — comme la page du compte, qui a toujours été montée là.
-      */}
       {createPortal(
         <>
           <MinimalScreen
@@ -1326,10 +1113,6 @@ export function SettingsPanel({
             isLight={isLight}
             onBack={() => setOpenSection(null)}
           >
-            {/* La marge latérale appartient à la page, pas aux sections :
-                celles-ci servent aussi la feuille du téléphone et le panneau du
-                bureau, qui apportent la leur. Sans elle, les interrupteurs
-                touchaient le bord de l'écran. */}
             <div className="px-4 pb-10">
               {openSection && openSection !== 'help' ? renderTabByKey(openSection) : null}
             </div>
@@ -1345,8 +1128,6 @@ export function SettingsPanel({
         document.body,
       )}
 
-      {/* La feuille des conditions vit à côté des réglages, pas dedans : elle
-          doit pouvoir se poser par-dessus eux, quelle que soit leur forme. */}
       <LegalSheet
         isOpen={isLegalOpen}
         onClose={() => setIsLegalOpen(false)}
@@ -1363,7 +1144,6 @@ export function SettingsPanel({
     return (
       <>
       <MapSheet initialSnap={3} isOpen={isOpen} onClose={handleClose} isLight={isLight} zIndex={100}>
-            {/* Top bar — iOS-style: title centered, close button right */}
             <div className="flex items-center justify-between px-5 pt-2 pb-3 flex-shrink-0">
               <div className="w-9" />
               <h2
@@ -1382,7 +1162,6 @@ export function SettingsPanel({
               </button>
             </div>
 
-            {/* Tab pills under the title — horizontal scroll */}
             <div className="flex gap-2 px-5 pb-4 overflow-x-auto scrollbar-hide flex-shrink-0">
               {tabs.map(tab => (
                 <button
@@ -1401,7 +1180,6 @@ export function SettingsPanel({
               ))}
             </div>
 
-            {/* Scrollable settings groups */}
             <div ref={contentRef} className="overflow-y-auto flex-1 px-3 pb-12">
               {renderTab()}
             </div>
@@ -1429,8 +1207,6 @@ export function SettingsPanel({
           setActiveTab={setActiveTab}
           onClose={handleClose}
           title={text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
-          /* La fenêtre se peint dans le thème appliqué, pas dans le thème
-             choisi : « auto » n'est pas une couleur. */
           theme={resolvedTheme}
         >
           {renderTab()}
@@ -1460,6 +1236,51 @@ interface DesktopFinderWindowProps {
   theme?: 'light' | 'dark';
 }
 
+interface WindowFrame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const WINDOW_MIN_W = 560;
+const WINDOW_MIN_H = 380;
+
+function dockPoint() {
+  return { x: window.innerWidth - 120, y: window.innerHeight - 12 };
+}
+
+function centeredFrame(): WindowFrame {
+  const w = Math.min(760, Math.round(window.innerWidth * 0.9));
+  const h = Math.min(560, Math.round(window.innerHeight * 0.86));
+  return { x: Math.round((window.innerWidth - w) / 2), y: Math.round((window.innerHeight - h) / 2), w, h };
+}
+
+function zoomedFrame(): WindowFrame {
+  return { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
+}
+
+function clampFrame(frame: WindowFrame): WindowFrame {
+  const w = Math.max(WINDOW_MIN_W, Math.min(frame.w, window.innerWidth));
+  const h = Math.max(WINDOW_MIN_H, Math.min(frame.h, window.innerHeight));
+  const x = Math.min(Math.max(frame.x, 80 - w), window.innerWidth - 80);
+  const y = Math.min(Math.max(frame.y, 0), window.innerHeight - 44);
+  return { x, y, w, h };
+}
+
+type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
+const RESIZE_HANDLES: Array<{ edge: ResizeEdge; className: string; cursor: string }> = [
+  { edge: 'n', className: 'left-2 right-2 -top-1 h-2', cursor: 'ns-resize' },
+  { edge: 's', className: 'left-2 right-2 -bottom-1 h-2', cursor: 'ns-resize' },
+  { edge: 'e', className: 'top-2 bottom-2 -right-1 w-2', cursor: 'ew-resize' },
+  { edge: 'w', className: 'top-2 bottom-2 -left-1 w-2', cursor: 'ew-resize' },
+  { edge: 'ne', className: '-top-1 -right-1 h-3 w-3', cursor: 'nesw-resize' },
+  { edge: 'sw', className: '-bottom-1 -left-1 h-3 w-3', cursor: 'nesw-resize' },
+  { edge: 'nw', className: '-top-1 -left-1 h-3 w-3', cursor: 'nwse-resize' },
+  { edge: 'se', className: '-bottom-1 -right-1 h-3 w-3', cursor: 'nwse-resize' },
+];
+
 function DesktopFinderWindow({
   panelRef,
   contentRef,
@@ -1470,100 +1291,176 @@ function DesktopFinderWindow({
   title,
   children,
 }: DesktopFinderWindowProps) {
-  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const dragOriginRef = useRef<{ mouseX: number; mouseY: number; posX: number; posY: number } | null>(null);
+  const language = appLanguage();
+  const [frame, setFrame] = useState<WindowFrame>(centeredFrame);
+  const [restoreFrame, setRestoreFrame] = useState<WindowFrame | null>(null);
+  const [animateFrame, setAnimateFrame] = useState(false);
+  const [minimizing, setMinimizing] = useState(false);
+  const zoomed = restoreFrame !== null;
 
-  /**
-   * Title-bar drag handlers. We attach the listeners to `window` once a drag
-   * starts so the user can briefly move outside the title bar without
-   * dropping the drag, and we always clean them up on `mouseup`.
-   */
-  const onTitleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    e.preventDefault();
-    dragOriginRef.current = {
-      mouseX: e.clientX,
-      mouseY: e.clientY,
-      posX: pos.x,
-      posY: pos.y,
+  useEffect(() => {
+    const onResize = () => setFrame(current => (restoreFrame ? zoomedFrame() : clampFrame(current)));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [restoreFrame]);
+
+  const track = (event: React.MouseEvent, onMove: (dx: number, dy: number) => void, cursor: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAnimateFrame(false);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const previousCursor = document.body.style.cursor;
+    document.body.style.setProperty('cursor', cursor);
+    const move = (ev: MouseEvent) => onMove(ev.clientX - startX, ev.clientY - startY);
+    const up = () => {
+      document.body.style.setProperty('cursor', previousCursor);
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
     };
-    const onMove = (ev: MouseEvent) => {
-      if (!dragOriginRef.current) return;
-      setPos({
-        x: dragOriginRef.current.posX + (ev.clientX - dragOriginRef.current.mouseX),
-        y: dragOriginRef.current.posY + (ev.clientY - dragOriginRef.current.mouseY),
-      });
-    };
-    const onUp = () => {
-      dragOriginRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
   };
+
+  const onTitleMouseDown = (event: React.MouseEvent) => {
+    if ((event.target as HTMLElement).closest('button') || event.button !== 0) return;
+    let start = frame;
+    if (restoreFrame) {
+      const ratio = (event.clientX - frame.x) / frame.w;
+      start = {
+        ...restoreFrame,
+        x: Math.round(event.clientX - restoreFrame.w * ratio),
+        y: Math.max(0, event.clientY - 22),
+      };
+      setRestoreFrame(null);
+      setFrame(start);
+    }
+    track(event, (dx, dy) => setFrame(clampFrame({ ...start, x: start.x + dx, y: start.y + dy })), 'grabbing');
+  };
+
+  const onResizeMouseDown = (edge: ResizeEdge, cursor: string) => (event: React.MouseEvent) => {
+    const start = frame;
+    setRestoreFrame(null);
+    track(event, (dx, dy) => {
+      let { x, y, w, h } = start;
+      if (edge.includes('e')) w = start.w + dx;
+      if (edge.includes('s')) h = start.h + dy;
+      if (edge.includes('w')) {
+        w = Math.max(WINDOW_MIN_W, start.w - dx);
+        x = start.x + (start.w - w);
+      }
+      if (edge.includes('n')) {
+        h = Math.max(WINDOW_MIN_H, start.h - dy);
+        y = Math.max(0, start.y + (start.h - h));
+      }
+      setFrame({
+        x,
+        y,
+        w: Math.max(WINDOW_MIN_W, Math.min(w, window.innerWidth - x)),
+        h: Math.max(WINDOW_MIN_H, Math.min(h, window.innerHeight - y)),
+      });
+    }, cursor);
+  };
+
+  const toggleZoom = () => {
+    setAnimateFrame(true);
+    if (restoreFrame) {
+      setFrame(restoreFrame);
+      setRestoreFrame(null);
+    } else {
+      setRestoreFrame(frame);
+      setFrame(zoomedFrame());
+    }
+  };
+
+  const minimize = () => {
+    const node = panelRef.current;
+    if (!node || minimizing) {
+      if (!node) onClose();
+      return;
+    }
+    const dock = dockPoint();
+    const done = playGenie(node, { x: dock.x, y: dock.y, width: 44 });
+    setMinimizing(true);
+    void done.then(onClose);
+  };
+
+  const lightClass = 'relative flex h-3 w-3 items-center justify-center rounded-full transition hover:brightness-110';
+  const glyphClass = 'h-2 w-2 text-black/60 opacity-0 group-hover/lights:opacity-100';
 
   return (
     <motion.div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-md px-4 py-8 select-none"
+      className={`fixed inset-0 select-none pointer-events-none ${minimizing ? 'z-[49]' : 'z-[60]'}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: -20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: -20 }}
-        transition={{ duration: 0.25, ease: 'easeOut' }}
+        ref={panelRef}
+        className={`pointer-events-auto fixed transition-[border-radius] duration-300 ${zoomed ? 'rounded-none' : 'rounded-2xl shadow-2xl'}`}
+        initial={{ opacity: 0, scale: 0.95, left: frame.x, top: frame.y, width: frame.w, height: frame.h }}
+        animate={
+          minimizing
+            ? { opacity: 0, left: frame.x, top: frame.y, width: frame.w, height: frame.h }
+            : { opacity: 1, scale: 1, left: frame.x, top: frame.y, width: frame.w, height: frame.h }
+        }
+        exit={minimizing ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
+        transition={
+          minimizing
+            ? { duration: 0 }
+            : {
+                opacity: { duration: 0.2 },
+                scale: { duration: 0.2, ease: 'easeOut' },
+                default: animateFrame ? { type: 'spring', stiffness: 380, damping: 36 } : { duration: 0 },
+              }
+        }
+        style={{ transformOrigin: '50% 50%' }}
       >
-        {/* Inner wrapper holds the drag transform so it doesn't fight with
-            framer-motion's entry animation (which animates `transform` on the
-            outer motion.div). Once the entry finishes, this inner transform
-            tracks the user's drag without ever conflicting. */}
         <div
-          ref={panelRef}
-          style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-          className="relative bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl w-[760px] max-w-[90vw] h-[560px] max-h-[86vh] overflow-hidden flex flex-col"
+          className={`flex h-full w-full flex-col overflow-hidden bg-slate-900/95 transition-[border-radius] duration-300 ${
+            zoomed ? 'rounded-none border-0' : 'rounded-2xl border border-slate-700'
+          }`}
         >
-        {/* Title bar — the user can grab it anywhere (including the title
-            text and the decorative yellow/green dots) to drag the window.
-            Only the close button is excluded, via the closest('button') check
-            in onTitleMouseDown. */}
         <div
           onMouseDown={onTitleMouseDown}
-          className="h-11 bg-slate-800/80 border-b border-slate-700 flex items-center justify-between px-3 cursor-grab active:cursor-grabbing flex-shrink-0 relative"
+          onDoubleClick={event => {
+            if (!(event.target as HTMLElement).closest('button')) toggleZoom();
+          }}
+          className="relative flex h-11 flex-shrink-0 cursor-default items-center justify-between border-b border-slate-700 bg-slate-800/80 px-3"
         >
-          {/* Traffic lights — close only (yellow/green decorative).
-              `pointer-events: none` on the decorative ones lets mousedown
-              events pass through to the title bar so the user can grab there
-              too. */}
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={onClose}
-              aria-label="close"
-              className="w-3 h-3 rounded-full bg-[#ff5f57] hover:brightness-110 transition relative group"
-            >
-              <XMarkIcon className="w-2.5 h-2.5 text-black/60 absolute inset-0 m-auto opacity-0 group-hover:opacity-100" />
+          <div className="group/lights flex items-center gap-2">
+            <button type="button" onClick={onClose} aria-label={language === 'en' ? 'Close' : 'Fermer'} className={`${lightClass} bg-[#ff5f57]`}>
+              <XMarkIcon className={glyphClass} />
             </button>
-            <span className="w-3 h-3 rounded-full bg-[#febc2e] pointer-events-none" />
-            <span className="w-3 h-3 rounded-full bg-[#28c840] pointer-events-none" />
+            <button
+              type="button"
+              onClick={minimize}
+              aria-label={language === 'en' ? 'Minimize to the Dock' : 'Placer dans le Dock'}
+              className={`${lightClass} bg-[#febc2e]`}
+            >
+              <MinusIcon className={glyphClass} />
+            </button>
+            <button
+              type="button"
+              onClick={toggleZoom}
+              aria-label={language === 'en' ? (zoomed ? 'Restore size' : 'Full screen') : zoomed ? 'Rétablir la taille' : 'Agrandir'}
+              className={`${lightClass} bg-[#28c840]`}
+            >
+              {zoomed ? <ArrowsPointingInIcon className={glyphClass} /> : <ArrowsPointingOutIcon className={glyphClass} />}
+            </button>
           </div>
 
-          {/* Title — centered, plain text, doesn't intercept clicks. */}
-          <span className="text-xs font-medium text-slate-300 absolute left-1/2 -translate-x-1/2 pointer-events-none">
+          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-xs font-medium text-slate-300">
             {title}
           </span>
 
-          {/* Right spacer to keep title centered */}
           <div className="w-[60px]" />
         </div>
 
-        {/* Body: sidebar + content */}
-        <div className="flex flex-1 min-h-0">
-          {/* Sidebar — Finder-style: translucent, icon + label */}
-          <div className="w-48 bg-slate-800/40 border-r border-slate-700 flex flex-col py-3 flex-shrink-0">
-            <div className="px-3 space-y-0.5 flex-1">
+        <div className="flex min-h-0 flex-1 select-text">
+          <div className="flex w-48 flex-shrink-0 flex-col border-r border-slate-700 bg-slate-800/40 py-3">
+            <div className="flex-1 space-y-0.5 px-3">
               {tabs.map(tab => {
                 const Icon = tab.icon;
                 const active = activeTab === tab.key;
@@ -1571,13 +1468,11 @@ function DesktopFinderWindow({
                   <button
                     key={tab.key}
                     onClick={() => setActiveTab(tab.key)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] rounded-lg transition ${
-                      active
-                        ? 'bg-blue-600 text-white font-medium'
-                        : 'text-slate-300 hover:bg-slate-700/60'
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-[0.8125rem] transition ${
+                      active ? 'bg-blue-600 font-medium text-white' : 'text-slate-300 hover:bg-slate-700/60'
                     }`}
                   >
-                    <Icon className={`w-4 h-4 ${active ? 'text-white' : 'text-slate-400'}`} />
+                    <Icon className={`h-4 w-4 ${active ? 'text-white' : 'text-slate-400'}`} />
                     <span>{tab.label}</span>
                   </button>
                 );
@@ -1585,12 +1480,21 @@ function DesktopFinderWindow({
             </div>
           </div>
 
-          {/* Main content panel */}
-          <div ref={contentRef} className="flex-1 overflow-y-auto p-6 min-w-0">
+          <div ref={contentRef} className="min-w-0 flex-1 overflow-y-auto p-6">
             {children}
           </div>
         </div>
+
         </div>
+
+        {!zoomed && !minimizing && RESIZE_HANDLES.map(handle => (
+          <div
+            key={handle.edge}
+            onMouseDown={onResizeMouseDown(handle.edge, handle.cursor)}
+            className={`absolute z-10 ${handle.className}`}
+            style={{ cursor: handle.cursor }}
+          />
+        ))}
       </motion.div>
     </motion.div>
   );

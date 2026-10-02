@@ -1,16 +1,4 @@
-/**
- * Un itinéraire, déplié.
- *
- * Une colonne, un trait à la couleur de la ligne, et les noms qu'on lira sur
- * les quais. Ce qu'on cherche ici tient en trois questions : où je monte, dans
- * quoi, où je descends. Tout le reste attend qu'on le demande, à commencer par
- * les arrêts intermédiaires, repliés sous leur compte.
- *
- * La fiche précédente disait la même chose, mais tout en même temps : prix,
- * trafic, distances, opérateurs, horaires de chaque arrêt. C'était complet et
- * illisible.
- */
-
+import { formatDurationLabel, formatMinutesCompact } from '../utils/formatDuration';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FaWalking } from 'react-icons/fa';
@@ -24,28 +12,23 @@ import type { AllLinesLine } from '../services/allLines';
 import type { JourneyIntermediateStop, TrafficDetail } from '../types';
 
 const BIKE_MODES = new Set(['BICYCLE', 'BICYCLE_RENT']);
-/** La couleur d'un tronçon dont on ne connaît pas la ligne. */
 const NEUTRAL_COLOR = '#94a3b8';
 
 interface JourneyDetailProps {
   journey: RouteItinerary;
-  /** Ce à quoi sert ce trajet : le titre que portait sa carte. */
   label?: string | null;
   language: 'fr' | 'en';
   stops?: unknown[];
   lineLookup?: Map<string, AllLinesLine> | null;
   theme?: 'light' | 'dark';
-  /** Les avis en cours, par code de ligne. */
   trafficInfo?: Map<string, TrafficDetail[]>;
 }
 
-/** Le code d'une ligne tel que l'info-trafic le publie. */
 function trafficKey(value?: string | null): string | null {
   if (!value) return null;
   return String(value).toUpperCase().replace(/^(?:SEM:|SEM_)/, '').trim() || null;
 }
 
-/** Le nom d'un arrêt, sans la commune qui le précède. */
 function stopName(value: unknown): string {
   return String(value ?? '').replace(/^[^,]+,\s*/, '');
 }
@@ -67,10 +50,7 @@ export function JourneyDetail({
 }: JourneyDetailProps) {
   const fr = language === 'fr';
   const isLight = theme === 'light';
-  /* Les arrêts desservis restent repliés : sur une ligne de vingt arrêts, les
-     déplier d'office repousserait la descente hors de l'écran. */
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  /* L'avis de trafic ouvert, s'il y en a un : titre de la ligne et sa liste. */
   const [openAlert, setOpenAlert] = useState<{ line: string; details: TrafficDetail[] } | null>(null);
 
   const toggle = (index: number) =>
@@ -88,10 +68,7 @@ export function JourneyDetail({
 
   return (
     <div>
-      {/* Ce que dure le trajet, et quand il faut partir. */}
       <h2
-        /* Écrit en clair : `h1, h2 { … }` est déclaré hors layer dans index.css
-           et ramènerait le titre à vingt pixels dans la couleur du thème. */
         style={{
           fontSize: '32px',
           lineHeight: 1.12,
@@ -104,13 +81,13 @@ export function JourneyDetail({
         {label || (fr ? 'Votre trajet' : 'Your journey')}
         <br />
         {fr
-          ? `${journey.dur}, arrivée à ${journey.arr}`
-          : `${journey.dur}, arrive ${journey.arr}`}
+          ? `${formatDurationLabel(journey.dur)}, arrivée à ${journey.arr}`
+          : `${formatDurationLabel(journey.dur)}, arrive ${journey.arr}`}
       </h2>
 
       <div className="mt-5">
         <span
-          className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-[15px] font-semibold ${
+          className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-[0.9375rem] font-semibold ${
             isLight ? 'border-slate-300 text-slate-900' : 'border-white/40 text-white'
           }`}
         >
@@ -123,15 +100,13 @@ export function JourneyDetail({
           const mode = String(leg.mode ?? '').toUpperCase();
           const minutes = Math.round(Number(leg.duration ?? 0) / 60);
 
-          /* La marche ne se pose pas sur le trait : elle est ce qui sépare deux
-             lignes, et se lit comme une parenthèse entre elles. */
           if (mode === 'WALK') {
             if (minutes < 1) return null;
             return (
               <div key={`walk-${index}`} className={`my-5 flex items-center gap-3 rounded-2xl px-4 py-4 ${boxClass}`}>
                 <FaWalking size={20} className={ink} />
-                <span className={`text-[17px] font-semibold ${ink}`}>
-                  {fr ? `Marcher ${minutes} min` : `Walk ${minutes} min`}
+                <span className={`text-[1.0625rem] font-semibold ${ink}`}>
+                  {fr ? `Marcher ${formatMinutesCompact(minutes)}` : `Walk ${formatMinutesCompact(minutes)}`}
                 </span>
               </div>
             );
@@ -141,8 +116,8 @@ export function JourneyDetail({
             return (
               <div key={`bike-${index}`} className={`my-5 flex items-center gap-3 rounded-2xl px-4 py-4 ${boxClass}`}>
                 <MdDirectionsBike size={22} className={ink} />
-                <span className={`text-[17px] font-semibold ${ink}`}>
-                  {fr ? `À vélo, ${minutes} min` : `By bike, ${minutes} min`}
+                <span className={`text-[1.0625rem] font-semibold ${ink}`}>
+                  {fr ? `À vélo, ${formatMinutesCompact(minutes)}` : `By bike, ${formatMinutesCompact(minutes)}`}
                 </span>
               </div>
             );
@@ -170,8 +145,6 @@ export function JourneyDetail({
 
           return (
             <div key={`transit-${index}`} className="flex gap-5">
-              {/* La colonne du trait, à la couleur de la ligne : c'est elle qui
-                  dit qu'on ne descend pas entre les deux pastilles. */}
               <div className="flex w-6 flex-shrink-0 flex-col items-center">
                 <span
                   className="h-6 w-6 flex-shrink-0 rounded-full border-[3px]"
@@ -187,25 +160,20 @@ export function JourneyDetail({
               </div>
 
               <div className="min-w-0 flex-1 pb-1">
-                <p className={`text-[21px] font-bold leading-tight ${ink}`}>
+                <p className={`text-[1.3125rem] font-bold leading-tight ${ink}`}>
                   {stopName((leg.from as Record<string, unknown> | undefined)?.name)}
                 </p>
 
-                {/* Dans quoi l'on monte, et à quelle heure elle part. */}
                 <div className={`mt-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 ${boxClass}`}>
                   <div className="min-w-0 flex-1">
-                    <p className={`text-[17px] font-bold leading-tight ${ink}`}>{lineName}</p>
+                    <p className={`text-[1.0625rem] font-bold leading-tight ${ink}`}>{lineName}</p>
                     <div className="mt-0.5">
-                      <p className={`text-[16px] leading-tight ${isLight ? 'text-slate-600' : 'text-white/75'}`}>
+                      <p className={`text-[1rem] leading-tight ${isLight ? 'text-slate-600' : 'text-white/75'}`}>
                         {clock(leg.startTime)} {headsign}
                       </p>
                     </div>
                   </div>
 
-                  {/* La ligne est perturbée : le triangle se pose dans son
-                      cadre, à droite, et non en tête de fiche. C'est en lisant
-                      « je monte dans le C » qu'il faut l'apprendre, pas avant
-                      d'avoir su de quelle ligne il s'agissait. */}
                   {alerts && alerts.length > 0 && (
                     <button
                       type="button"
@@ -218,7 +186,6 @@ export function JourneyDetail({
                   )}
                 </div>
 
-                {/* Combien d'arrêts, et lesquels si on le demande. */}
                 <button
                   type="button"
                   onClick={() => toggle(index)}
@@ -231,28 +198,15 @@ export function JourneyDetail({
                     ) : (
                       <PlusCircleIcon className="h-7 w-7 flex-shrink-0" />
                     ))}
-                  <span className="text-[17px] font-bold">
+                  <span className="text-[1.0625rem] font-bold">
                     {fr
                       ? `${intermediate.length + 1} arrêt${intermediate.length + 1 > 1 ? 's' : ''}`
                       : `${intermediate.length + 1} stop${intermediate.length + 1 > 1 ? 's' : ''}`}
                   </span>
-                  <span className={`text-[17px] ${muted}`}>{minutes} min</span>
+                  <span className={`text-[1.0625rem] ${muted}`}>{formatMinutesCompact(minutes)}</span>
                 </button>
 
-                {/* Le dépliage passe par une grille : une hauteur automatique ne
-                    s'anime pas, et une hauteur fixe couperait les longues
-                    listes. */}
                 <div
-                  /*
-                   * `-ml-8 pl-8` : le cadre déborde de trente-deux pixels sur sa
-                   * gauche, exactement de quoi couvrir la gouttière et le
-                   * demi-rail, puis rend cette place en marge intérieure.
-                   *
-                   * C'est ce qui permet aux traits de se poser sur le rail. Le
-                   * dépliage se fait par une grille dont la hauteur s'anime, ce
-                   * qui exige `overflow-hidden` : un trait dessiné hors du cadre
-                   * était purement et simplement coupé, et l'on ne voyait rien.
-                   */
                   className={`-ml-8 grid overflow-hidden pl-8 transition-[grid-template-rows,opacity] duration-300 ease-out ${
                     isOpen ? 'mt-5 grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
                   }`}
@@ -262,21 +216,11 @@ export function JourneyDetail({
                     {intermediate.map((stop, stopIndex) => (
                       <li
                         key={`${stop?.stopId ?? stop?.name ?? stopIndex}`}
-                        className={`relative text-[17px] ${ink}`}
+                        className={`relative text-[1.0625rem] ${ink}`}
                       >
-                        {/* Le petit trait sur le rail, en face du nom.
-                            Il est posé depuis la colonne de texte et vient
-                            mordre le trait à sa gauche : les deux colonnes sont
-                            sœurs et non emboîtées, et rien d'autre ne peut les
-                            faire coïncider ligne à ligne. Le décalage vaut la
-                            gouttière (20) plus le demi-rail (12). */}
                         <span
                           className="pointer-events-none absolute"
                           style={{
-                            /* Trente-deux pixels à gauche du nom, soit la
-                               gouttière plus le demi-rail : le trait tombe donc
-                               sur le rail. Le cadre au-dessus lui ménage cette
-                               place, sans quoi il serait coupé. */
                             left: -32,
                             top: '0.55em',
                             width: 12,
@@ -292,7 +236,7 @@ export function JourneyDetail({
                 </div>
 
                 <div className="mt-5">
-                  <p className={`text-[21px] font-bold leading-tight ${ink}`}>
+                  <p className={`text-[1.3125rem] font-bold leading-tight ${ink}`}>
                     {stopName((leg.to as Record<string, unknown> | undefined)?.name)}
                   </p>
                 </div>
@@ -302,10 +246,6 @@ export function JourneyDetail({
         })}
       </div>
 
-      {/* L'avis, en feuille.
-          Portalisée sur le corps du document : la fiche vit dans une page qui
-          se déplace par `transform`, et un ancêtre transformé devient le
-          repère des positions fixes qu'il contient. */}
       {openAlert && createPortal(
         <div className="fixed inset-0 z-[10030] flex flex-col justify-end">
           <div
@@ -322,7 +262,7 @@ export function JourneyDetail({
             aria-label={fr ? `Info trafic ligne ${openAlert.line}` : `Service info line ${openAlert.line}`}
           >
             <div className="flex items-start gap-3">
-              <p className={`min-w-0 flex-1 text-[21px] font-bold leading-tight ${ink}`}>
+              <p className={`min-w-0 flex-1 text-[1.3125rem] font-bold leading-tight ${ink}`}>
                 {fr ? `Info trafic ligne ${openAlert.line}` : `Service info line ${openAlert.line}`}
               </p>
               <button

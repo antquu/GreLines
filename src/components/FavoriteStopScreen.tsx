@@ -1,18 +1,3 @@
-/**
- * Un arrêt favori, en grand.
- *
- * La page ne montre qu'une chose : par où l'on part, et dans combien de temps.
- * Une direction par bloc, séparés d'un trait ; le nom de la direction en gros
- * caractères qui reviennent à la ligne plutôt que de se faire couper — savoir
- * qu'on lit « Veurey Voiroize, La Rive » et non « Veurey Voiroize, Le Pont »
- * est tout l'enjeu ; puis le prochain passage et le suivant, chacun sous son
- * étiquette.
- *
- * Les deux temps ne sont pas côte à côte mais l'un sous l'autre, chacun annoncé
- * par son mot. C'est plus haut, et c'est le but : sur cette page on ne compare
- * pas six lignes d'un coup d'œil, on lit celle qu'on a choisie.
- */
-
 import { ArrowRightIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
 import { MinimalScreen, type MinimalScreenAction } from './MinimalScreen';
@@ -31,18 +16,12 @@ export function FavoriteStopScreen({
   onOpenStop,
   onRemove,
 }: {
-  /** L'arrêt affiché. Absent quand la page est fermée — elle garde sa coquille. */
   detail: FavoriteDetail | undefined;
   isOpen: boolean;
   language: 'fr' | 'en';
   isLight: boolean;
-  /** Catalogue des lignes, qui donne leur famille et donc leur ordre. */
   lineLookup?: Map<string, AllLinesLine> | null;
   onBack: () => void;
-  /**
-   * Ouvre la vraie fiche de l'arrêt, sur la carte. Avec une ligne, la fiche
-   * s'ouvre filtrée sur elle : on a touché une direction précise, pas l'arrêt.
-   */
   onOpenStop: (lineId?: string) => void;
   onRemove: () => void;
 }) {
@@ -81,8 +60,6 @@ export function FavoriteStopScreen({
               index > 0 ? `border-t ${separatorClass}` : ''
             }`}
           >
-            {/* La flèche et le badge tiennent la colonne de gauche : ils disent
-                « départ, ligne 20 » avant même qu'on lise la destination. */}
             <span className="flex flex-shrink-0 items-start gap-1.5 pt-1">
               <span
                 className={`flex h-6 w-8 items-center justify-center rounded-md ${
@@ -104,22 +81,20 @@ export function FavoriteStopScreen({
             </span>
 
             <div className="min-w-0 flex-1">
-              {/* Pas de troncature : la destination passe à la ligne. Deux
-                  directions d'une même ligne se ressemblent par le début. */}
-              <h3 className="text-[22px] font-bold leading-tight">{group.destination}</h3>
+              <h3 className="text-[1.375rem] font-bold leading-tight">{group.destination}</h3>
               {group.theoretical && <div className="mt-1.5"><TheoreticalPill language={language} /></div>}
 
-              <p className={`mt-4 text-[11px] font-bold uppercase tracking-[0.14em] ${mutedClass}`}>
+              <p className={`mt-4 text-[0.6875rem] font-bold uppercase tracking-[0.14em] ${mutedClass}`}>
                 {isFr ? 'Prochain' : 'Next'}
               </p>
-              <p className="tabular text-[34px] font-semibold leading-none">
+              <p className="tabular text-[2.125rem] font-semibold leading-none">
                 {formatWait(group.times[0], language)}
               </p>
 
-              <p className={`mt-3 text-[11px] font-bold uppercase tracking-[0.14em] ${mutedClass}`}>
+              <p className={`mt-3 text-[0.6875rem] font-bold uppercase tracking-[0.14em] ${mutedClass}`}>
                 {isFr ? 'Suivant' : 'Following'}
               </p>
-              <p className="tabular text-[34px] font-semibold leading-none text-slate-500">
+              <p className="tabular text-[2.125rem] font-semibold leading-none text-slate-500">
                 {formatWait(group.times[1], language)}
               </p>
             </div>

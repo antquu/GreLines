@@ -1,4 +1,4 @@
-
+import { tclSolidStyle } from '../utils/tclLogos';
 import { idbGet, idbSet } from './persistentCache';
 import { groupNearbyStopsByName } from './api';
 import type { Departure, Line, Stop, StopDetail } from '../types';
@@ -17,7 +17,7 @@ interface RawLine {
   mode: 'BUS' | 'TRAM' | 'RAIL';
   terminuses: string[];
   stopCount: number;
-  
+
   hasShape: boolean;
   school: boolean;
 }
@@ -32,7 +32,7 @@ interface RawStop {
 }
 
 export interface TclLine extends Line {
-  
+
   stopCount: number;
   hasShape: boolean;
   school: boolean;
@@ -49,19 +49,26 @@ async function fetchResource<T>(query: string, cacheKey: string, ttl: number): P
   const inflight = memory.get(cacheKey);
   if (inflight) return inflight as Promise<T | null>;
 
-  const work = (async (): Promise<T | null> => {
-    const cached = await idbGet<T>(cacheKey, { allowStale: true });
-    if (cached?.value && !cached.stale) return cached.value;
-
+  const download = async (): Promise<T | null> => {
     try {
       const response = await fetch(`${ENDPOINT}?${query}`);
-      if (!response.ok) return cached?.value ?? null;
+      if (!response.ok) return null;
       const payload = (await response.json()) as T;
       void idbSet(cacheKey, payload, ttl);
       return payload;
     } catch {
-      return cached?.value ?? null;
+      return null;
     }
+  };
+
+  const work = (async (): Promise<T | null> => {
+    const cached = await idbGet<T>(cacheKey, { allowStale: true });
+    if (cached?.value && !cached.stale) return cached.value;
+    if (cached?.value) {
+      void download();
+      return cached.value;
+    }
+    return download();
   })();
 
   memory.set(cacheKey, work);
@@ -69,22 +76,9 @@ async function fetchResource<T>(query: string, cacheKey: string, ttl: number): P
   return work;
 }
 
-/**
- * Identifiant d'une ligne TCL dans l'application.
- *
- * Préfixé par le réseau, comme les identifiants MTAG : c'est ce qui permet à la
- * couche fournisseur de reconnaître à qui appartient une ligne sans que
- * l'appelant ait à le préciser.
- */
 export const tclLineId = (code: string) => `${TCL_NETWORK}:${code}`;
 export const tclStopId = (id: string) => `${TCL_NETWORK}:${id}`;
 
-/**
- * Le noir ou le blanc, selon ce qui se lit sur la couleur de la ligne.
- *
- * TCL ne publie pas de couleur de texte. La luminance perçue tranche mieux que
- * la moyenne des composantes : l'œil est bien plus sensible au vert qu'au bleu.
- */
 function readableTextColor(hex: string | null): string {
   if (!hex || hex.length !== 7) return '#ffffff';
   const r = parseInt(hex.slice(1, 3), 16);
@@ -94,7 +88,19 @@ function readableTextColor(hex: string | null): string {
   return luminance > 0.6 ? '#111827' : '#ffffff';
 }
 
-/** Catalogue des lignes, converti au format de l'application. */
+function terminusPair(terminuses: string[]): string | null {
+  const distinct: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of terminuses) {
+    const label = raw.replace(/[.\s]+$/, '').trim();
+    const key = label.toLowerCase();
+    if (!label || seen.has(key)) continue;
+    seen.add(key);
+    distinct.push(label);
+  }
+  return distinct.length >= 2 ? `${distinct[0]} ↔ ${distinct[1]}` : null;
+}
+
 export async function getTclLines(options?: { includeSchool?: boolean }): Promise<TclLine[]> {
   const raw = await fetchResource<RawLine[]>('ressource=lignes', 'tclLines_v2', CATALOG_TTL_MS);
   if (!raw) return [];
@@ -104,30 +110,20 @@ export async function getTclLines(options?: { includeSchool?: boolean }): Promis
   return kept.map(line => ({
     id: tclLineId(line.code),
     routeId: tclLineId(line.code),
-    name: line.terminuses.length >= 2
-      ? `${line.terminuses[0]} ↔ ${line.terminuses[line.terminuses.length - 1]}`
-      : line.code,
+    name: terminusPair(line.terminuses) ?? line.code,
     shortName: line.code,
     type: line.mode,
-    color: line.color ?? undefined,
-    textColor: readableTextColor(line.color),
+    color: tclSolidStyle(tclLineId(line.code))?.backgroundColor ?? line.color ?? undefined,
+    textColor: tclSolidStyle(tclLineId(line.code))?.color ?? readableTextColor(line.color),
     stopCount: line.stopCount,
     hasShape: line.hasShape,
     school: line.school,
   }));
 }
 
-/**
- * Quais rattachés à chaque arrêt affiché, et lignes qu'ils desservent.
- *
- * Un arrêt de l'application est un groupe de quais TCL. Sans ce registre, on
- * saurait dessiner le point mais pas quoi lui demander : les passages se
- * publient par quai, jamais par groupe.
- */
 const stopMembers = new Map<string, string[]>();
 const stopLines = new Map<string, string[]>();
 
-/** Arrêts du réseau, convertis au format de l'application. */
 export async function getTclStops(): Promise<Stop[]> {
   const raw = await fetchResource<RawStop[]>('ressource=arrets', 'tclStops_v1', CATALOG_TTL_MS);
   if (!raw) return [];
@@ -157,30 +153,18 @@ export async function getTclStops(): Promise<Stop[]> {
     stopLines.set(representative, [...lines]);
   }
 
+  void import('./stopAccessibility').then(module =>
+    module.registerTclStopGroups(groups.map(group => group.map(member => member.id))));
+
   return groups.map(group => group[0]);
 }
 
-/** Retire le préfixe réseau : « TCL:2531 » → « 2531 ». */
 const localTclId = (id: string) => (id.startsWith(`${TCL_NETWORK}:`) ? id.slice(4) : id);
 
-/** Vrai si cet identifiant désigne un arrêt ou une ligne du réseau lyonnais. */
 export const isTclId = (id: string) => String(id).startsWith(`${TCL_NETWORK}:`);
 
-/**
- * Lignes desservant un arrêt.
- *
- * Séparé de la fiche complète parce que la carte en a besoin pour ses
- * étiquettes, et qu'elle n'a que faire des horaires : afficher les badges d'un
- * arrêt ne doit pas déclencher une requête de temps réel par arrêt visible.
- */
 let catalogByCode: Map<string, TclLine> | null = null;
 
-/**
- * Catalogue indexé par code, construit une seule fois.
- *
- * Il était reconstruit à chaque ouverture de fiche et à chaque étiquette de la
- * carte — mille entrées réindexées pour lire trois lignes.
- */
 async function linesByCode(): Promise<Map<string, TclLine>> {
   if (catalogByCode) return catalogByCode;
   const catalog = await getTclLines({ includeSchool: true });
@@ -200,12 +184,6 @@ export async function getTclLinesForStop(stopId: string): Promise<Line[]> {
     .filter((line): line is TclLine => Boolean(line));
 }
 
-/**
- * Fiche d'un arrêt : lignes desservies et prochains passages.
- *
- * Les passages sont demandés pour **tous les quais du groupe** en un seul
- * appel — c'est le serveur qui éclate la requête, pas le navigateur.
- */
 export async function getTclStopDetail(stopId: string): Promise<StopDetail | null> {
   if (stopMembers.size === 0) await getTclStops();
 
@@ -214,12 +192,15 @@ export async function getTclStopDetail(stopId: string): Promise<StopDetail | nul
   if (!stop) return null;
 
   const members = stopMembers.get(stopId) ?? [localTclId(stopId)];
+  const passages = fetch(`${ENDPOINT}?ressource=passages&arret=${members.join(',')}`).catch(() => null);
   const byCode = await linesByCode();
-  const served = await getTclLinesForStop(stopId);
+  const { withForeignTraffic } = await import('./foreignTraffic');
+  const served = await withForeignTraffic(await getTclLinesForStop(stopId));
 
   let departures: Departure[] = [];
   try {
-    const raw = await fetch(`${ENDPOINT}?ressource=passages&arret=${members.join(',')}`);
+    const raw = await passages;
+    if (!raw) throw new Error('passages');
     if (raw.ok) {
       const rows = (await raw.json()) as Array<{
         line: string; destination: string; minutes: number; realtime: boolean;
@@ -243,12 +224,6 @@ export async function getTclStopDetail(stopId: string): Promise<StopDetail | nul
   return { ...stop, lines: served, departures, lastUpdate: new Date() };
 }
 
-/**
- * Tracé d'une ligne.
- *
- * Demandé à l'unité : la couche complète des bus fait 26 Mo, une ligne en fait
- * vingt kilo-octets. Le filtre est appliqué par le serveur du Grand Lyon.
- */
 export async function getTclShape(lineCode: string): Promise<TclShape | null> {
   const code = lineCode.startsWith(`${TCL_NETWORK}:`) ? lineCode.slice(4) : lineCode;
   return fetchResource<TclShape>(
@@ -258,14 +233,6 @@ export async function getTclShape(lineCode: string): Promise<TclShape | null> {
   );
 }
 
-/**
- * Tracés au format attendu par la carte.
- *
- * Chaque ligne est demandée à l'unité — vingt kilo-octets contre vingt-six
- * mégaoctets pour la couche entière. Une ligne sans tracé publié est
- * silencieusement absente : `hasShape` du catalogue le disait déjà, et une
- * erreur ici n'apprendrait rien de plus à l'utilisateur.
- */
 export async function getTclLineGeometries(
   lines: Array<{ id: string; shortName?: string }>,
 ): Promise<Array<{ code: string; geojson: GeoJSON.FeatureCollection }>> {
@@ -294,13 +261,6 @@ export async function getTclLineGeometries(
     }));
 }
 
-/**
- * Arrêts desservis par des lignes lyonnaises.
- *
- * C'est ce qui permet à la carte de ne garder que la ligne filtrée et ses
- * arrêts, comme à Grenoble. L'information est déjà là — la desserte de chaque
- * arrêt —, il suffit de la lire à l'envers.
- */
 export async function getTclStopsServedByLines(
   lines: Array<{ id: string; shortName?: string }>,
 ): Promise<Array<{ lat: number; lon: number; name: string }>> {

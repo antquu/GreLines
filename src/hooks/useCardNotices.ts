@@ -1,16 +1,3 @@
-/**
- * « Nouvelle notification sur la carte de … »
- *
- * Les messages du réseau vivent dans le portefeuille, et le portefeuille est un
- * écran qu'on n'ouvre pas tous les jours. Un message qui y attend n'est pas lu.
- * On l'annonce donc à l'ouverture de l'application, par la pastille du haut —
- * la même que pour une adresse copiée : un avis, pas une alerte.
- *
- * Chaque message n'est annoncé qu'une fois. Les identifiants déjà vus sont
- * gardés localement : c'est propre à l'appareil, comme le portefeuille, et il
- * n'y a rien à écrire côté réseau pour cela.
- */
-
 import { useEffect, useState } from 'react';
 import {
   isSupabaseConfigured,
@@ -23,7 +10,6 @@ import {
 
 const STORAGE_KEY = 'greLines_seenNotifications_v1';
 
-/** Au-delà, on oublie les plus anciens : ils ne reviendront jamais. */
 const MAX_REMEMBERED = 200;
 
 function readSeen(): Set<string> {
@@ -46,7 +32,6 @@ function writeSeen(seen: Set<string>): void {
 export interface CardNotice {
   notification: OuraNotification;
   card: OuraCard;
-  /** Le nom du porteur, ou le numéro de la carte à défaut. */
   cardLabel: string;
 }
 
@@ -55,13 +40,6 @@ function labelOf(card: OuraCard): string {
   return name || card.cardCode;
 }
 
-/**
- * Le premier message non annoncé, s'il y en a un.
- *
- * `dismiss` le retire et le marque comme vu : le suivant, s'il y en avait
- * plusieurs, prend sa place à la prochaine vérification plutôt que d'empiler
- * trois pastilles l'une sur l'autre.
- */
 export function useCardNotices(enabled: boolean): {
   notice: CardNotice | null;
   dismiss: () => void;

@@ -1,4 +1,3 @@
-
 import type { RouteLocation } from '../services/api';
 
 export const haversineMeters = (
@@ -7,7 +6,7 @@ export const haversineMeters = (
   lat2: number,
   lon2: number
 ): number => {
-  const R = 6_371_000; 
+  const R = 6_371_000;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -17,30 +16,11 @@ export const haversineMeters = (
   return 2 * R * Math.asin(Math.sqrt(a));
 };
 
-/**
- * Identifiant du point « position courante » dans le planificateur.
- *
- * Il ne désigne pas un lieu du référentiel : ni arrêt, ni adresse géocodée.
- */
 export const CURRENT_POSITION_ID = 'position';
 
-/**
- * Libellé d'un point repéré par ses seules coordonnées.
- *
- * La position courante s'affichait « Ma position » : un texte que le
- * planificateur traitait ensuite comme une adresse à géocoder, sans succès. Les
- * coordonnées, elles, désignent le point sans ambiguïté.
- */
 export const formatCoordinates = (lat: number, lon: number): string =>
   `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 
-/**
- * Point « position courante » du planificateur.
- *
- * Il se nomme, et ne s'écrit pas en coordonnées : « 45.18821, 5.72452 » ne
- * dit rien à personne, là où « Ma position » se lit d'un coup d'œil. Les
- * coordonnées restent dessous — ce sont elles qui calculent le trajet.
- */
 export const currentPositionLocation = (position: { lat: number; lon: number }): RouteLocation => ({
   id: CURRENT_POSITION_ID,
   label: 'Ma position',
@@ -62,20 +42,27 @@ export interface StopWithDistance<T extends { lat: number; lon: number }> {
   meters: number;
 }
 
-/**
- * Sort stops by distance from a reference point and return the closest N.
- */
 export function findClosestStops<T extends { lat: number; lon: number }>(
   stops: T[],
   refLat: number,
   refLon: number,
   limit: number = 6
 ): StopWithDistance<T>[] {
-  return stops
-    .map(stop => ({
-      stop,
-      meters: haversineMeters(refLat, refLon, stop.lat, stop.lon),
-    }))
-    .sort((a, b) => a.meters - b.meters)
-    .slice(0, limit);
+  if (limit <= 0) return [];
+  const best: StopWithDistance<T>[] = [];
+  let worstDegrees = Infinity;
+  for (const stop of stops) {
+    if (best.length >= limit) {
+      const dLat = Math.abs(stop.lat - refLat);
+      if (dLat > worstDegrees) continue;
+    }
+    const meters = haversineMeters(refLat, refLon, stop.lat, stop.lon);
+    if (best.length >= limit && meters >= best[best.length - 1].meters) continue;
+    let index = best.length;
+    while (index > 0 && best[index - 1].meters > meters) index -= 1;
+    best.splice(index, 0, { stop, meters });
+    if (best.length > limit) best.pop();
+    if (best.length >= limit) worstDegrees = best[best.length - 1].meters / 111_000;
+  }
+  return best;
 }

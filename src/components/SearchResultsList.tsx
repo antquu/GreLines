@@ -1,22 +1,3 @@
-/**
- * Ce qu'une recherche rend, en pleine largeur.
- *
- * La liste tenait dans un menu flottant sous le champ, à peine plus large
- * qu'un doigt et haut de la moitié de l'écran. On y lisait un nom d'arrêt sans
- * savoir ce qui s'y arrête, et les lignes n'y paraissaient pas du tout.
- *
- * Ici chaque réponse occupe toute la largeur, séparée de la suivante par un
- * filet, et dit ce qu'elle est :
- *
- *   — une ligne porte un trait vertical à sa couleur, son nom, et l'état de
- *     son service ;
- *   — un arrêt porte son nom, et sous lui les couleurs de ce qui s'y arrête,
- *     qui est ce qu'on vérifie avant de choisir ;
- *   — une adresse porte son nom et sa commune.
- *
- * Le fond reste celui du thème : c'est une liste, pas une fenêtre.
- */
-
 import { useEffect, useState } from 'react';
 import { MapPinIcon } from '@heroicons/react/24/solid';
 import { getCachedStopLines, getStopLines } from '../services/api';
@@ -36,19 +17,11 @@ interface SearchResultsListProps {
   onSelectLine?: (line: AllLinesLine) => void;
 }
 
-/** Le code d'une ligne tel que l'info-trafic le publie. */
 function trafficKey(value?: string | null): string | null {
   if (!value) return null;
   return String(value).toUpperCase().replace(/^(?:SEM:|SEM_)/, '').trim() || null;
 }
 
-/**
- * Les lignes qui desservent les arrêts affichés.
- *
- * Le cache répond tout de suite pour un arrêt déjà consulté ; les autres sont
- * demandés au réseau, et la liste se complète sous les yeux. Aucune attente
- * n'est imposée : un arrêt sans couleurs reste un arrêt qu'on peut choisir.
- */
 function useStopLines(stops: RouteLocation[]): Map<string, Line[]> {
   const [lines, setLines] = useState<Map<string, Line[]>>(new Map());
   const ids = stops.map(stop => stop.id).join('|');
@@ -66,8 +39,6 @@ function useStopLines(stops: RouteLocation[]): Map<string, Line[]> {
     setLines(next);
 
     if (missing.length === 0) return;
-    /* Les demandes partent ensemble : elles sont indépendantes, et les
-       enchaîner aurait fait apparaître les couleurs arrêt après arrêt. */
     void Promise.all(
       missing.map(id =>
         getStopLines(id)
@@ -115,9 +86,6 @@ export function SearchResultsList({
   if (lines.length === 0 && stops.length === 0 && addresses.length === 0) return null;
 
   return (
-    /* Les arrêts passent devant les lignes : le champ demande où l'on va, et
-       une ligne n'est pas une destination. Elle reste proposée, en dessous,
-       pour qui tapait son numéro. */
     <div className="flex flex-col">
       {stops.map(stop => {
         const served = stopLines.get(stop.id) ?? [];
@@ -130,13 +98,10 @@ export function SearchResultsList({
             className={rowClass}
           >
             <span className="min-w-0 flex-1">
-              <span className={`block truncate text-[22px] font-bold leading-tight ${ink}`}>
+              <span className={`block truncate text-[1.375rem] font-bold leading-tight ${ink}`}>
                 {stop.label}
               </span>
               {served.length > 0 ? (
-                /* Les couleurs de ce qui s'y arrête, sans les numéros : à cette
-                   taille un numéro ne se lit pas, tandis qu'une file de
-                   couleurs se reconnaît d'un coup d'œil. */
                 <span className="mt-2 flex flex-wrap items-center gap-1.5">
                   {served.slice(0, 8).map(line => (
                     <span
@@ -151,7 +116,7 @@ export function SearchResultsList({
                   ))}
                 </span>
               ) : (
-                <span className={`mt-0.5 block truncate text-[17px] leading-tight ${muted}`}>
+                <span className={`mt-0.5 block truncate text-[1.0625rem] leading-tight ${muted}`}>
                   {stop.raw?.city || ''}
                 </span>
               )}
@@ -172,19 +137,17 @@ export function SearchResultsList({
             disabled={!onSelectLine}
             className={rowClass}
           >
-            {/* Le trait de la ligne, à sa couleur : c'est à lui qu'on la
-                reconnaît sur un plan, avant d'avoir lu son numéro. */}
             <span
               className="mt-1 h-10 w-1.5 flex-shrink-0 rounded-full"
               style={{ backgroundColor: style.backgroundColor }}
               aria-hidden
             />
             <span className="min-w-0 flex-1">
-              <span className={`block truncate text-[22px] font-bold leading-tight ${ink}`}>
+              <span className={`block truncate text-[1.375rem] font-bold leading-tight ${ink}`}>
                 {fr ? `Ligne ${line.shortName}` : `Line ${line.shortName}`}
               </span>
               <span
-                className={`mt-0.5 block truncate text-[17px] leading-tight ${
+                className={`mt-0.5 block truncate text-[1.0625rem] leading-tight ${
                   alerts && alerts.length > 0 ? 'text-amber-500' : muted
                 }`}
               >
@@ -209,10 +172,10 @@ export function SearchResultsList({
         >
           <MapPinIcon className={`mt-1 h-6 w-6 flex-shrink-0 ${muted}`} />
           <span className="min-w-0 flex-1">
-            <span className={`block truncate text-[22px] font-bold leading-tight ${ink}`}>
+            <span className={`block truncate text-[1.375rem] font-bold leading-tight ${ink}`}>
               {address.raw?.name || address.label}
             </span>
-            <span className={`mt-0.5 block truncate text-[17px] leading-tight ${muted}`}>
+            <span className={`mt-0.5 block truncate text-[1.0625rem] leading-tight ${muted}`}>
               {address.raw?.context || address.label}
             </span>
           </span>

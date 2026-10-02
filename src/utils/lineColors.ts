@@ -1,3 +1,7 @@
+import { tclSolidStyle } from './tclLogos';
+import { gtfsLineStyle } from '../services/gtfsNetwork';
+import { isGtfsNetworkId } from '../services/gtfsNetworkIds';
+
 const BUS_FALLBACK_LINES = new Set([
   '38','39','41','42','44','45','46','47','48','49','50','51','52','53','54','55','56','57','58','59','60','61','63','64','65','66','67','68','69','70','71','72','73','74','75','76','77','78','79','81','83','100','201','202','203','300','301','400','401','500','501','502','503','504','600',
 ]);
@@ -143,7 +147,7 @@ export const resolveLineTextColor = (
   }
 
   const code = normalizeLineId(lineId);
-  if (code && /^C[1-9]$/.test(code)) return '#000000';
+  if (code && /^C[1-9]$/.test(code) && isGrenobleNetworkLine(lineId)) return '#000000';
   const normalizedTextColor = normalizeHexColor(explicitTextColor);
   if (normalizedTextColor) return normalizedTextColor;
   const special = getSpecialLineFallback(lineId);
@@ -161,6 +165,20 @@ export const resolveLineStyle = (
   rawColor?: string | null,
   explicitTextColor?: string | null,
 ) => {
+  const tcl = lineId ? tclSolidStyle(lineId) : null;
+  if (tcl) return tcl;
+  if (lineId && String(lineId).startsWith('EXT:')) {
+    return {
+      backgroundColor: normalizeHexColor(rawColor) ?? '#6B7280',
+      color: normalizeHexColor(explicitTextColor) ?? '#FFFFFF',
+    };
+  }
+  if (lineId && isGtfsNetworkId(lineId)) {
+    return gtfsLineStyle(lineId) ?? {
+      backgroundColor: normalizeHexColor(rawColor) ?? DEFAULT_LINE_BADGE_COLOR,
+      color: normalizeHexColor(explicitTextColor) ?? '#FFFFFF',
+    };
+  }
   return {
     backgroundColor: resolveLineBackgroundColor(rawColor, lineId),
     color: resolveLineTextColor(rawColor, lineId, explicitTextColor),

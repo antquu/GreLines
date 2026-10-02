@@ -1,11 +1,18 @@
+import { cityNear, cityOfNetwork } from './utils/cities';
+import { locateByIp } from './services/ipLocation';
+import { getLocatedCity, setIpArea, setMapArea, setUserArea, subscribeCurrentCity } from './utils/currentArea';
+import { getFakeLocation, subscribeFakeLocation } from './utils/devLocation';
+import { getForeignTraffic } from './services/foreignTraffic';
+import { sortStopPreviewLines } from './utils/lineOrder';
 import { DevConsole } from './components/DevConsole';
+import { NetOverlay } from './components/NetOverlay';
 import { OfflineLaunchScreen } from './components/OfflineLaunchScreen';
 import { IoWifi } from 'react-icons/io5';
 import { useIsOffline, useReconnectCount } from './hooks/useIsOffline';
 import { OfflinePanel } from './components/OfflinePanel';
 ﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy } from 'react';
 import { AnimatePresence, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
-import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, FunnelIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
+import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
 import { useFavoriteLines } from './hooks/useFavoriteLines';
@@ -26,12 +33,13 @@ import { TrafficAlertCard } from './components/TrafficAlertCard';
 import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
 import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
-import { MobileSplash } from './components/MobileSplash';
+import { LaunchScreen } from './components/LaunchScreen';
 import { SidebarMobile } from './components/SidebarMobile';
 import { HomeSheet } from './components/HomeSheet';
 import { AccountScreen } from './components/AccountScreen';
 import { FavoritesScreen } from './components/FavoritesScreen';
-import { Toast } from './components/Toast';
+import { Toast, type ToastMessage } from './components/Toast';
+import { onDevCommand } from './utils/devCommands';
 import { listOuraCards, subscribeToCards, verifyCards, isSupabaseConfigured, type OuraCard } from './services/ouraCard';
 import { awardTrip, type TripAward } from './services/greLinesPoints';
 import { loadAccount, creditAccount, recordTrip, type Account } from './services/account';
@@ -112,16 +120,20 @@ import {
   getLineOverrides,
   subscribeToCmsChanges,
   type CmsPopup,
+  type CmsPopupLine,
   type FooterConfig,
   type TripSurveyLeg,
 } from './services/cms';
 import { isCarpoolStop, isCarpoolLine } from './components/CarpoolStopPanel';
 import { getMcoLines, type McoLine } from './services/mcoLines';
-import { categoryRank, trafficCategory, trafficFilters } from './utils/trafficFilters';
+import { compareTrafficLines, matchesTrafficFilter, trafficCategory, trafficFilters, trafficSubFilters } from './utils/trafficFilters';
+import { TrafficFilterBar } from './components/TrafficFilterBar';
 import { getCachedStopLines, getStopDetail, getStopLines, getStopsByPrefixes, getTrafficLines, getDepartures, refreshStopLines, setActiveNetworks, type RouteLocation, type RouteItinerary } from './services/api';
-import { getTclStopDetail, getTclStops, isTclId, TCL_NETWORK } from './services/tclNetwork';
+import { getTclLines, getTclLinesForStop, getTclStopDetail, getTclStops, isTclId, TCL_NETWORK } from './services/tclNetwork';
+import { getGtfsLines, getGtfsLinesForStop, getGtfsStopDetail, getGtfsStops, GTFS_NETWORKS, isGtfsNetworkId } from './services/gtfsNetwork';
+import { foreignAsCatalogLine, foreignSolidStyle, isForeignLineId } from './utils/foreignNetworks';
 import { searchAddresses, reverseGeocode, type AddressResult } from './services/geocoding';
-import { getLinesGeometryPrecise, getStopsServedByLines, type LineGeometry, type ServedStopPoint } from './services/lineShapes';
+import { getLinesGeometryPrecise, getStopsServedByLines, stopNameKey, type LineGeometry, type ServedStopPoint } from './services/lineShapes';
 import type { Line, SearchHistoryItem, Stop, StopDetail, TrafficDetail } from './types';
 import type { MapRef } from './components/Map';
 import { useStopUrlSync } from './hooks/useStopUrlSync';
@@ -137,97 +149,81 @@ import { haversineMeters, findClosestStops, formatCoordinates, currentPositionLo
 import { clearNavigationSession, loadNavigationSession, saveNavigationSession } from './services/navigationSession';
 import { setSavedPlace, type SavedPlaceKind } from './services/savedPlaces';
 
-/** Ce que la carte est en train de désigner : une extrémité, ou un lieu enregistré. */
 export type MapPickTarget = 'from' | 'to' | SavedPlaceKind;
+
+const SNCF_DUPLICATE_RADIUS_METERS = 3000;
+
+function withoutSncfDuplicates(stops: Stop[]): Stop[] {
+  const tagByName = new Map<string, Stop[]>();
+  for (const stop of stops) {
+    if (!/^(SEM|SE2)[:_]/.test(stop.id)) continue;
+    const key = stopNameKey(stop.name);
+    const list = tagByName.get(key);
+    if (list) list.push(stop);
+    else tagByName.set(key, [stop]);
+  }
+  return stops.filter(stop => {
+    if (!stop.id.startsWith('SNC:')) return true;
+    const twins = tagByName.get(stopNameKey(stop.name));
+    return !twins?.some(twin => haversineMeters(stop.lat, stop.lon, twin.lat, twin.lon) <= SNCF_DUPLICATE_RADIUS_METERS);
+  });
+}
 
 function App() {
   const isOffline = useIsOffline();
-  /* Chaque retour du réseau recharge ce qui vit en direct : Voi, Citiz,
-     infotrafic, qualité de l'air. */
   const reconnects = useReconnectCount();
   const [stops, setStops] = useState<Stop[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSearchHovered, setIsSearchHovered] = useState(false);
   const [selectedStop, setSelectedStop] = useState<StopDetail | null>(null);
-  /*
-   * Les liaisons de covoiturage tracées sur la carte.
-   *
-   * Seulement pour un point M'Covoit ouvert, et seulement celles qu'il dessert :
-   * ce sont de longs axes qui traversent toute la cuvette, et les laisser en
-   * permanence barrerait la carte sans rien apprendre à qui cherche un tram.
-   */
   const [carpoolMapLines, setCarpoolMapLines] = useState<McoLine[]>([]);
   const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
   const [selectedLine, setSelectedLine] = useState<AllLinesLine | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [initialSelectedLines, setInitialSelectedLines] = useState<Set<string>>(new Set());
   const [initialSelectedLineId, setInitialSelectedLineId] = useState<string | null>(null);
-  
+
   const [urlHydrated, setUrlHydrated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [trafficInfo, setTrafficInfo] = useState<Map<string, TrafficDetail[]>>(new Map());
+  const [foreignCatalog, setForeignCatalog] = useState<AllLinesLine[]>([]);
   const [isRouteSidebarOpen, setIsRouteSidebarOpen] = useState(false);
-  /** L'écran Compte : une page pleine, qui met la feuille d'accueil de côté. */
   const [isAccountOpen, setIsAccountOpen] = useState(false);
-  /** L'écran Favoris : une page pleine lui aussi, entre l'accueil et le compte. */
   const [isFavoritesOpen, setIsFavoritesOpen] = useState(false);
-  /** La configuration des trajets favoris, un cran plus loin dans les Favoris. */
   const [isJourneyConfigOpen, setIsJourneyConfigOpen] = useState(false);
-  /**
-   * Le choix d'un nouveau trajet favori : un second planificateur, avec ses
-   * propres extrémités. Il ne partage rien avec celui de l'onglet Itinéraire —
-   * chercher un favori ne doit pas effacer le trajet qu'on avait en cours.
-   */
   const [isJourneyPickerOpen, setIsJourneyPickerOpen] = useState(false);
   const [pickerFrom, setPickerFrom] = useState<RouteLocation | null>(null);
   const [pickerTo, setPickerTo] = useState<RouteLocation | null>(null);
   const [pickerResults, setPickerResults] = useState<RouteItinerary[]>([]);
-  /** Le trajet soumis à la question « voulez-vous l'ajouter ? ». */
   const [pendingJourney, setPendingJourney] = useState<PendingJourney | null>(null);
-  /** Une carte est au premier plan : la barre d'onglets quitte le bas de l'écran. */
   const [isCardFocused, setIsCardFocused] = useState(false);
-  /** L'écran Compte défile : la barre d'onglets se resserre. */
   const [isNavCompact, setIsNavCompact] = useState(false);
 
   const [routeFrom, setRouteFrom] = useState<RouteLocation | null>(null);
   const [routeTo, setRouteTo] = useState<RouteLocation | null>(null);
   const [selectedRouteItinerary, setSelectedRouteItinerary] = useState<RouteItinerary | null>(null);
-  
+
   const [itineraryLineShapes, setItineraryLineShapes] = useState<Map<string, LineGeometry>>(new Map());
   const [routeItineraryOptions, setRouteItineraryOptions] = useState<RouteItinerary[]>([]);
-  
+
   const [autoPickFirstItinerary, setAutoPickFirstItinerary] = useState(false);
   const [sharedRouteExpired, setSharedRouteExpired] = useState(false);
   const [sharedRouteTarget, setSharedRouteTarget] = useState<{ dep?: string; arr?: string; dur?: string } | null>(null);
   const [isTrafficButtonHovered, setIsTrafficButtonHovered] = useState(false);
   const [isTrafficPanelHovered, setIsTrafficPanelHovered] = useState(false);
-  
+
   const [isTrafficPanelPinned, setIsTrafficPanelPinned] = useState(false);
-  
+
   const [isFavBtnHovered, setIsFavBtnHovered] = useState(false);
   const [isFavPanelHovered, setIsFavPanelHovered] = useState(false);
-  
-  /*
-   * Le portefeuille, sur ordinateur.
-   *
-   * Même mécanique de survol que ses voisins — infotrafic, favoris, qualité de
-   * l'air : une pastille qui s'ouvre en carré. À une différence près : la
-   * fenêtre d'ajout d'une carte sort du panneau, et la souris qui va la remplir
-   * quitte donc la zone de survol. Sans épingle, le portefeuille se refermerait
-   * derrière elle et l'on reviendrait sur la carte routière.
-   */
+
   const [walletCards, setWalletCards] = useState<OuraCard[]>([]);
   const [isAtmoBtnHovered, setIsAtmoBtnHovered] = useState(false);
   const [isAtmoPanelHovered, setIsAtmoPanelHovered] = useState(false);
   const [atmoPostalCode] = useState<string>(
     () => localStorage.getItem('greLines_atmoPostalCode') || DEFAULT_ATMO_POSTAL_CODE
   );
-  /**
-   * Commune choisie dans la liste de suggestions. Elle l'emporte sur le code
-   * postal, qui ne sert plus qu'au tout premier chargement et aux sessions
-   * antérieures à la recherche par nom.
-   */
   const [atmoCommune, setAtmoCommune] = useState<Commune | null>(() => {
     try {
       const stored = localStorage.getItem('greLines_atmoCommune');
@@ -238,34 +234,16 @@ function App() {
   });
   const [atmoReport, setAtmoReport] = useState<AtmoReport | null>(null);
   const [atmoLoading, setAtmoLoading] = useState(false);
-  /**
-   * L'indice suit la carte.
-   *
-   * Par défaut, la qualité de l'air affichée est celle de la commune qu'on est
-   * en train de regarder : on déplace la carte sur Voiron, l'indice devient
-   * celui de Voiron. C'est presque toujours ce qu'on veut, et ça évite de
-   * chercher une commune qu'on a déjà sous les yeux.
-   *
-   * Désactivé, on retrouve le choix manuel — et la barre de recherche du
-   * panneau, qui n'a plus lieu d'être tant que la carte décide.
-   */
   const [atmoFollowMap, setAtmoFollowMap] = useState(
     () => localStorage.getItem('greLines_atmoFollowMap') !== 'false',
   );
   useEffect(() => {
     localStorage.setItem('greLines_atmoFollowMap', String(atmoFollowMap));
   }, [atmoFollowMap]);
-  /** Centre de la carte, pour y chercher la commune. */
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number } | null>(null);
-  /**
-   * On ne retient le centre qu'au kilomètre près.
-   *
-   * La carte annonce son centre trois fois par seconde pendant un geste ; le
-   * mémoriser tel quel rendrait l'application entière à chaque image. Au
-   * centième de degré, un déplacement dans la même commune ne produit aucun
-   * rendu — et changer de commune en produit un, ce qui est le but.
-   */
+  const [sharedInView, setSharedInView] = useState(true);
   const handleMapCenterChange = useCallback((lat: number, lon: number) => {
+    setMapArea(lat, lon);
     setMapCenter(current => {
       if (current && Math.abs(current.lat - lat) < 0.01 && Math.abs(current.lon - lon) < 0.01) {
         return current;
@@ -273,13 +251,10 @@ function App() {
       return { lat, lon };
     });
   }, []);
-  
+
   const [desktopTrafficFilter, setDesktopTrafficFilter] = useState<string>('all');
+  const [desktopTrafficSubFilter, setDesktopTrafficSubFilter] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
-  /**
-   * L'écran affiché, écrit dans la barre d'adresse — et relu au chargement,
-   * pour qu'une adresse partagée ouvre bien l'écran qu'elle désigne.
-   */
   const currentScreen = isCardFocused
     ? 'card'
     : isAccountOpen
@@ -291,14 +266,6 @@ function App() {
     : 'home';
   useScreenUrl(currentScreen, isMobile);
 
-  /**
-   * Au chargement, on revient toujours à la carte.
-   *
-   * Les adresses d'écrans servent à s'y retrouver pendant qu'on navigue, pas à
-   * rouvrir l'application là où on l'a laissée : un lien vers « ma carte » ne
-   * doit pas ouvrir le portefeuille de quelqu'un d'autre, et sur ordinateur ces
-   * écrans n'existent même pas.
-   */
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
     if (!screenFromPath(window.location.pathname)) return;
@@ -313,8 +280,19 @@ function App() {
   const [isInstallSheetOpen, setIsInstallSheetOpen] = useState(false);
   const [isMobileNotificationPromptOpen, setIsMobileNotificationPromptOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const { settings: perfSettings } = usePerfSettings();
-  const [currentLocation, setCurrentLocation] = useState<{lat: number, lon: number} | null>(null);
+  const { settings: perfSettings, setSetting: setPerfSetting } = usePerfSettings();
+  const [currentLocation, setCurrentLocationState] = useState<{lat: number, lon: number} | null>(null);
+  const setCurrentLocation = useCallback((value: { lat: number; lon: number } | null) => {
+    if (getFakeLocation()) return;
+    setCurrentLocationState(value);
+  }, []);
+  useEffect(() => subscribeFakeLocation(() => {
+    const fake = getFakeLocation();
+    setCurrentLocationState(fake);
+  }), []);
+  useEffect(() => {
+    if (currentLocation) setUserArea(currentLocation.lat, currentLocation.lon);
+  }, [currentLocation]);
   const [locationWatchId, setLocationWatchId] = useState<number | null>(null);
   const [searchHistoryItems, setSearchHistoryItems] = useState<SearchHistoryItem[]>(() => {
     try {
@@ -359,44 +337,31 @@ function App() {
   });
   const [isTrafficPanelOpenMobile, setIsTrafficPanelOpenMobile] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
-  
+  const [testToast, setTestToast] = useState<ToastMessage | null>(null);
+
   const [isNearbySheetOpen, setIsNearbySheetOpen] = useState(false);
-  
+
   const sheetProgress = useMotionValue(0.15);
-  
+
   const [snapHomeToMiniSignal, setSnapHomeToMiniSignal] = useState(0);
-  
+
   const [openHomeSheetSignal, setOpenHomeSheetSignal] = useState(0);
   const [isLinesExplorerOpen, setIsLinesExplorerOpen] = useState(false);
-  
+
   const geolocButtonBottom = useTransform(sheetProgress, p => {
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
     return `${Math.round(p * vh + 12)}px`;
   });
-  /* Un cran plus haut que le recentrage : 48 px de bouton et 8 px d'écart. */
   const layersButtonBottom = useTransform(sheetProgress, p => {
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
     return `${Math.round(p * vh + 12 + 56)}px`;
   });
   const geolocButtonOpacity = useTransform(sheetProgress, [0, 0.85, 1], [1, 1, 0]);
   const geolocButtonScale = useTransform(sheetProgress, [0, 0.85, 1], [1, 1, 0.85]);
-  /**
-   * Search bar opacity: fades out as sheet opens, becomes invisible when fully open
-   */
   const [sidebarState, setSidebarState] = useState<'closed' | 'peek' | 'open'>('closed');
   const [activeSettingsTab, setActiveSettingsTab] = useState('general');
-  /** Recherche universelle (Maj + Espace), ordinateur uniquement. */
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
-  /** Voitures Citiz et trottinettes Voi superposées à la carte. */
   const [sharedMobility, setSharedMobility] = useState<SharedMobilityData>(EMPTY_SHARED_MOBILITY);
-  /**
-   * Les calques que l'on a choisi de masquer.
-   *
-   * Retenus d'une visite à l'autre : quelqu'un qui ne se déplace jamais en
-   * trottinette n'a pas à les éteindre à chaque ouverture. On ne garde que ce
-   * qui est masqué, si bien qu'un opérateur ajouté plus tard apparaît par
-   * défaut plutôt que de rester invisible sans qu'on comprenne pourquoi.
-   */
   const [hiddenSharedLayers, setHiddenSharedLayers] = useState<Set<SharedOperator>>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('greLines_hiddenSharedLayers') ?? '[]');
@@ -407,13 +372,6 @@ function App() {
   });
   const [isMapLayersOpen, setIsMapLayersOpen] = useState(false);
 
-  /**
-   * Ce qui reste à afficher une fois les calques masqués retirés.
-   *
-   * Le filtrage se fait ici et non au chargement : les données continuent
-   * d'être récupérées, si bien que rallumer un calque est instantané et que le
-   * panneau peut annoncer combien de véhicules il rendrait visibles.
-   */
   const visibleSharedMobility = useMemo<SharedMobilityData>(() => ({
     citiz: hiddenSharedLayers.has('citiz') ? [] : sharedMobility.citiz,
     voi: hiddenSharedLayers.has('voi') ? [] : sharedMobility.voi,
@@ -434,52 +392,25 @@ function App() {
       return next;
     });
   }, []);
-  /** Station de mobilité partagée ouverte dans sa fiche. */
   const [sharedSelection, setSharedSelection] = useState<
     { operator: SharedOperator; points: SharedVehiclePoint[] } | null
   >(null);
-  /** Véhicule déplié dans la fiche : sa pastille est grossie sur la carte. */
   const [highlightedVehicleId, setHighlightedVehicleId] = useState<string | null>(null);
-  /** Fiche horaire ouverte à droite de la fiche d'arrêt. */
   const [timetableTarget, setTimetableTarget] = useState<
     {
       line: { id: string; shortName?: string; color?: string; textColor?: string };
       headsign?: string;
-      /**
-       * L'arrêt à surligner dans la fiche.
-       *
-       * Renseigné quand la fiche est ouverte depuis un arrêt de la sidebar
-       * d'une ligne : c'est celui-là qu'on veut retrouver dans la colonne, et
-       * non l'arrêt sélectionné sur la carte, qui est ailleurs.
-       */
       stopName?: string;
+      stopId?: string;
     } | null
   >(null);
-  /** Plan de ligne (PDF) ouvert en visionneuse plein écran. */
   const [lineMapTarget, setLineMapTarget] = useState<
     { routeId: string; label: string; color?: string; lineId?: string } | null
   >(null);
   const [settingsState, setSettingsState] = useState<'closed' | 'peek' | 'open'>('closed');
   const isSettingsOpen = settingsState !== 'closed';
 
-  /**
-   * Sélection de réseaux réellement chargée.
-   *
-   * Cocher un réseau met à jour les réglages tout de suite (l'interface le
-   * reflète, le choix est enregistré), mais le rechargement du catalogue
-   * n'intervient qu'à la fermeture des réglages : sinon chaque clic renvoyait
-   * l'écran de chargement noir en pleine face, avant de revenir aux réglages.
-   */
   const [appliedNetworks, setAppliedNetworks] = useState(perfSettings.networks);
-  /**
-   * Le catalogue a déjà été chargé une fois.
-   *
-   * Le premier chargement mérite son écran : il n'y a rien à montrer tant qu'il
-   * n'a pas abouti. Les suivants — on vient de décocher un réseau — arrivent
-   * sur une carte déjà remplie, qui reste parfaitement lisible pendant qu'on la
-   * met à jour. Leur renvoyer l'écran noir, c'est reprendre l'application à
-   * quelqu'un qui s'en servait.
-   */
   const hasLoadedCatalogueRef = useRef(false);
   const pendingNetworksKey = perfSettings.networks.join(',');
   if (!isSettingsOpen && pendingNetworksKey !== appliedNetworks.join(',')) {
@@ -490,29 +421,24 @@ function App() {
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
   const [appData, setAppData] = useState<{version: string; credits: Array<{role: string; name: string; link?: string}>} | null>(null);
   const [activePopups, setActivePopups] = useState<CmsPopup[]>([]);
+  const [locatedArea, setLocatedArea] = useState(getLocatedCity);
+  useEffect(() => subscribeCurrentCity(() => setLocatedArea(getLocatedCity())), []);
+  useEffect(() => {
+    let alive = true;
+    void locateByIp().then(area => {
+      if (alive && area) setIpArea(area.lat, area.lon);
+    });
+    return () => { alive = false; };
+  }, []);
+  const locatedPopups = useMemo(() => activePopups.filter(popup => {
+    if (!popup.target_network) return true;
+    if (!locatedArea.city) return false;
+    return cityOfNetwork(popup.target_network)?.id === locatedArea.city.id;
+  }), [activePopups, locatedArea]);
   const [footerConfig, setFooterConfig] = useState<FooterConfig>({ message: null, color: '#fbbf24', showClock: true });
-  /**
-   * Incrémenté à chaque modification faite dans le CRM : force le rechargement
-   * des données qui en dépendent (arrêts et lignes surchargés).
-   */
   const [cmsRevision, setCmsRevision] = useState(0);
-  /** Mode guidage GPS plein écran (mobile), lancé depuis un itinéraire sélectionné. */
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
-  /**
-   * Le bilan du trajet qu'on vient de terminer.
-   *
-   * Il survit à la fermeture du guidage : l'écran de fin monte pendant que le
-   * guidage s'efface dessous, et il faut bien que quelqu'un tienne les points
-   * gagnés le temps de les montrer.
-   */
   const [tripAward, setTripAward] = useState<TripAward | null>(null);
-  /**
-   * Le compte de l'appareil.
-   *
-   * `null` tant qu'on n'en a pas créé : l'application marche entièrement sans, et
-   * c'est voulu — on doit pouvoir prendre un tram sans s'inscrire à quoi que ce
-   * soit. Le compte n'ajoute que la mémoire de ce qu'on a rendu aux autres.
-   */
   const [account, setAccount] = useState<Account | null>(null);
   const [isAccountSetupOpen, setIsAccountSetupOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -521,38 +447,14 @@ function App() {
     void loadAccount().then(setAccount);
   }, []);
 
-  /*
-   * Les cartes du portefeuille, chargées une fois au lancement.
-   *
-   * Elles ne se remplissaient que sur ordinateur, à l'ouverture du portefeuille :
-   * sur mobile elles vivent dans l'écran Compte, avec son propre état. Tout ce
-   * qui les demande ailleurs — la création du compte, le profil, la vignette de
-   * la feuille d'accueil — recevait donc une liste vide.
-   *
-   * On les charge sans attendre : la requête est mise en cache, et trois écrans
-   * les veulent déjà.
-   */
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     void listOuraCards().then(setWalletCards);
   }, []);
-  /**
-   * Contexte de l'enquête qualité : renseigné quand l'usager monte à bord d'un
-   * véhicule pendant le guidage (moment où il est assis et disponible), pas
-   * pendant qu'il marche.
-   */
   const [surveyContext, setSurveyContext] = useState<
     { lineId: string; boardingStop: string | null; boardingTime: string } | null
   >(null);
 
-  /**
-   * Reprise d'un guidage interrompu.
-   *
-   * Uniquement sur téléphone : c'est là qu'on quitte l'application sans le
-   * vouloir, et le guidage n'y est de toute façon proposé que là. La session
-   * porte sa propre péremption, calculée sur la durée du trajet — un trajet fini
-   * depuis longtemps ne se rouvre pas.
-   */
   useEffect(() => {
     if (!isMobile) return;
     const resumed = loadNavigationSession();
@@ -562,22 +464,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /**
-   * La langue de l'application.
-   *
-   * Un choix déjà fait ne se rediscute pas : c'est toujours lui qui l'emporte,
-   * y compris sur la langue du téléphone. Quelqu'un qui a mis GreLines en
-   * français sur un téléphone anglais l'a fait exprès.
-   *
-   * À la toute première visite, en revanche, il n'y a rien à respecter : on
-   * suit alors ce que le navigateur annonce, dans son ordre de préférence.
-   * `navigator.languages` peut valoir `['en-GB', 'fr']` — on prend le premier
-   * des deux qu'on sache parler, pas le premier tout court.
-   *
-   * Ni l'un ni l'autre, et l'on reste en français : les noms d'arrêts, les
-   * messages d'infotrafic et les fiches horaires viennent du réseau, et sont
-   * français quoi qu'il arrive.
-   */
   const [language, setLanguage] = useState<'fr' | 'en'>(() => {
     const saved = localStorage.getItem('greLines_language');
     if (saved === 'en' || saved === 'fr') return saved;
@@ -597,36 +483,76 @@ function App() {
     return 'fr';
   });
 
-  /**
-   * Thème choisi. Il n'y a plus que deux réponses : clair ou sombre.
-   *
-   * Un réglage « auto » enregistré par une version précédente se lit comme
-   * sombre — c'est ce qu'il donnait la plupart du temps, et c'est le thème par
-   * défaut de l'application.
-   */
-  /**
-   * Le thème choisi — pas forcément celui qu'on voit.
-   *
-   * « auto » s'en remet à l'appareil : clair le jour, sombre le soir, si le
-   * système le dit. C'est le défaut, parce que l'application n'a pas d'avis à
-   * imposer sur un réglage que l'utilisateur a déjà pris ailleurs. Ce qui est
-   * réellement appliqué vit dans `effectiveTheme`.
-   */
+  useEffect(() => onDevCommand('notify.test', args => {
+    if (args[0] === 'location') {
+      setLocationError(language === 'fr' ? 'Test : position introuvable' : 'Test: location unavailable');
+      return;
+    }
+    setTestToast({
+      id: `test-${Date.now()}`,
+      text: language === 'fr' ? 'Notification de test' : 'Test notification',
+      detail: language === 'fr' ? 'Sur la carte de test' : 'On the test card',
+    });
+  }), [language]);
+
+  useEffect(() => {
+    const offs = [
+      onDevCommand('show.onboarding', () => setIsOnboardingOpen(true)),
+      onDevCommand('show.notifications', () => setIsMobileNotificationPromptOpen(true)),
+      onDevCommand('show.install', () => setIsInstallSheetOpen(true)),
+      onDevCommand('show.popup', args => {
+        const kind = args[0] === 'promo' ? 'promo' : 'infotraffic';
+        const isFr = language === 'fr';
+        const popup: CmsPopup = {
+          id: `dev-test-${kind}-${Date.now()}`,
+          type: kind,
+          title: kind === 'promo'
+            ? (isFr ? 'Popup de test' : 'Test popup')
+            : (isFr ? 'Info trafic de test' : 'Test traffic info'),
+          message: kind === 'promo'
+            ? (isFr ? 'Une annonce de test, affichée depuis la console.' : 'A test announcement, shown from the console.')
+            : (isFr ? 'Perturbation de test sur le réseau, affichée depuis la console.' : 'Test disruption on the network, shown from the console.'),
+          image_url: null,
+          link_url: null,
+          target_scope: 'global',
+          target_id: null,
+          target_network: null,
+          target_lines: kind === 'promo' ? [] : [
+            { id: 'SEM:A', short: 'A', name: 'Fontaine La Poya ↔ Échirolles Denis Papin', color: '#3376B8', textColor: '#FFFFFF', category: 'tram' },
+            { id: 'SEM:B', short: 'B', name: 'Gares ↔ Oxford', color: '#479A45', textColor: '#FFFFFF', category: 'tram' },
+            { id: 'SEM:C', short: 'C', name: 'Seyssins Le Prisme ↔ Saint-Martin-d’Hères Condillac', color: '#C20078', textColor: '#FFFFFF', category: 'tram' },
+            { id: 'SEM:D', short: 'D', name: 'Étienne Grappe ↔ Les Taillées', color: '#DE9917', textColor: '#FFFFFF', category: 'tram' },
+            { id: 'SEM:E', short: 'E', name: 'Fontanil ↔ Louise Michel', color: '#533786', textColor: '#FFFFFF', category: 'tram' },
+            { id: 'SEM:C1', short: 'C1', name: 'Cité Jean Macé ↔ Meylan Maupertuis', color: '#FFDD00', textColor: '#000000', category: 'chrono' },
+          ],
+          priority: 1000,
+        };
+        setActivePopups(previous => [popup, ...previous]);
+      }),
+      onDevCommand('popup.reset', () => {
+        void getActivePopups().then(setActivePopups);
+      }),
+      onDevCommand('bypass.onboarding', () => {
+        markOnboardingDone();
+        setIsOnboardingOpen(false);
+      }),
+      onDevCommand('bypass.notifications', () => {
+        markMobileNotificationPromptDismissed();
+        setIsMobileNotificationPromptOpen(false);
+      }),
+      onDevCommand('bypass.install', () => setIsInstallSheetOpen(false)),
+      onDevCommand('bypass.popup', () => setActivePopups([])),
+    ];
+    return () => { for (const off of offs) off(); };
+  }, [language]);
+
   const [theme, setTheme] = useState<'light' | 'dark' | 'blue' | 'auto'>(() => {
     const stored = localStorage.getItem('greLines_theme');
     return stored === 'light' || stored === 'dark' || stored === 'blue' ? stored : 'auto';
   });
-  /**
-   * Le thème réellement appliqué, une fois « auto » résolu.
-   *
-   * Sombre au premier rendu quand on est en automatique : l'effet qui interroge
-   * l'appareil s'exécute juste après, avant la peinture, et corrige au besoin.
-   */
   const [effectiveTheme, setEffectiveTheme] = useState<'light' | 'dark'>(() => {
     if (theme === 'light') return 'light';
     if (theme === 'dark' || theme === 'blue') return 'dark';
-    /* « auto » : lu tout de suite, sinon le premier rendu suppose le sombre et
-       les titres blancs restent blancs le temps que l'effet ci-dessous corrige. */
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
   const [fontSize, setFontSize] = useState<'small' | 'normal' | 'large'>(() => {
@@ -644,45 +570,38 @@ function App() {
   const [addressResults, setAddressResults] = useState<AddressResult[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<AddressResult | null>(null);
   const [lineGeometries, setLineGeometries] = useState<LineGeometry[]>([]);
-  /**
-   * When a line filter is active inside the open stop, this holds the lat/lon
-   * positions of every stop served by those lines. The map then matches local
-   * stops by proximity (id formats differ between MTAG endpoints, so we can't
-   * compare ids reliably — we compare positions instead).
-   * Null means "no filter active" → show all stops.
-   */
   const [servedStopPoints, setServedStopPoints] = useState<ServedStopPoint[] | null>(null);
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 250);
 
+  const MAX_STOP_MATCHES = 50;
+  const stopSearchIndex = useMemo(
+    () => stops.map(stop => ({
+      stop,
+      name: stop.name.toLowerCase(),
+      city: stop.city?.toLowerCase() ?? '',
+      id: stop.id.toLowerCase(),
+    })),
+    [stops],
+  );
   const matchedStops = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
-    return stops.filter(stop =>
-      stop.name.toLowerCase().includes(q) ||
-      (stop.city?.toLowerCase().includes(q) ?? false) ||
-      stop.id.toLowerCase().includes(q)
-    );
-  }, [searchQuery, stops]);
+    const starts: Stop[] = [];
+    const contains: Stop[] = [];
+    for (const entry of stopSearchIndex) {
+      if (entry.name.startsWith(q)) starts.push(entry.stop);
+      else if (entry.name.includes(q) || entry.city.includes(q) || entry.id.includes(q)) contains.push(entry.stop);
+      if (starts.length >= MAX_STOP_MATCHES) break;
+    }
+    return [...starts, ...contains].slice(0, MAX_STOP_MATCHES);
+  }, [searchQuery, stopSearchIndex]);
 
   const isSidebarOpen = sidebarState !== 'closed';
 
-  /**
-   * La fiche horaire est ouverte depuis un passage d'un arrêt, ou depuis un
-   * arrêt déplié dans la fiche d'une ligne : elle n'a plus de sens une fois
-   * qu'on a quitté les deux. Ajusté pendant le rendu pour qu'elle disparaisse
-   * dans la même image.
-   */
   if (timetableTarget && !isSidebarOpen && selectedLine === null) {
     setTimetableTarget(null);
   }
 
-  /**
-   * On first paint, redirect bare `/` to `/app` so the canonical home is `/app`.
-   * If the URL already has a stop config (`?T1=...`) or any search params, we
-   * stay put — this preserves shared/bookmarked links like `/?T1=25_SEM:CAB`.
-   * The app opens directly in French by default, with `/app` as the canonical
-   * route.
-   */
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
     const { pathname, search, hash } = window.location;
@@ -711,7 +630,7 @@ function App() {
     }
     if (initialSelectedLines.size > 0) {
       setSelectedLines(new Set(initialSelectedLines));
-      setInitialSelectedLines(new Set()); // consume — only apply once
+      setInitialSelectedLines(new Set());
       return;
     }
     if (selectedStop.lines && selectedStop.lines.length === 1) {
@@ -892,7 +811,8 @@ function App() {
             const resolved = allLinesLookup.get(String(line?.id ?? '').toUpperCase().trim())
           || allLinesLookup.get(matchKey)
           || allLinesLookup.get(line?.shortName?.toUpperCase().trim() || '');
-            const baseColor = resolveLineBackgroundColor(resolved?.color || selectedLine?.color || null, matchKey);
+            const tclColor = line && isForeignLineId(line.id) ? foreignSolidStyle(line)?.backgroundColor : undefined;
+            const baseColor = tclColor ?? resolveLineBackgroundColor(resolved?.color || selectedLine?.color || null, matchKey);
             return {
               ...g,
               geojson: {
@@ -975,7 +895,8 @@ function App() {
         const resolved = allLinesLookup.get(String(line?.id ?? '').toUpperCase().trim())
           || allLinesLookup.get(matchKey)
           || allLinesLookup.get(line?.shortName?.toUpperCase().trim() || '');
-        const baseColor = resolveLineBackgroundColor(resolved?.color || line?.color, matchKey);
+        const tclColor = line && isForeignLineId(line.id) ? foreignSolidStyle(line)?.backgroundColor : undefined;
+        const baseColor = tclColor ?? resolveLineBackgroundColor(resolved?.color || line?.color, matchKey);
         return {
           ...g,
           geojson: {
@@ -1003,15 +924,6 @@ function App() {
     const root = document.documentElement;
     const body = document.body;
 
-    /*
-     * Deux choses à poser, pas une.
-     *
-     * `dark` dit qu'on est dans le sombre — c'est ce que lisent tous les
-     * composants. `theme-blue` dit lequel des deux sombres : celui d'origine,
-     * bleu nuit, ou le noir qui est devenu le sombre par défaut. Les deux
-     * partagent le même `effectiveTheme`, si bien qu'aucun composant n'a à
-     * connaître la différence.
-     */
     const applyMode = (isDark: boolean, isBlue: boolean) => {
       root.classList.toggle('dark', isDark);
       body.classList.toggle('dark', isDark);
@@ -1021,17 +933,7 @@ function App() {
       body.style.colorScheme = isDark ? 'dark' : 'light';
     };
 
-    /*
-     * Sur téléphone, le sombre est le bleu nuit, et lui seul.
-     *
-     * Le noir franc a été dessiné pour un grand écran, où il fait profond. Sur
-     * une dalle de téléphone tenue à bout de bras, il avale les séparations
-     * entre les feuilles et la carte, qui ne se distinguent plus les unes des
-     * autres. Le téléphone n'a donc qu'un sombre — celui d'origine — et il
-     * s'appelle simplement « Sombre » : la distinction n'existe pas là où il
-     * n'y a pas de choix à faire.
-     */
-    const darkIsBlue = isMobile || theme === 'blue';
+    const darkIsBlue = theme === 'blue' || (theme === 'auto' && isMobile);
 
     if (theme !== 'auto') {
       applyMode(theme !== 'light', darkIsBlue);
@@ -1039,14 +941,7 @@ function App() {
       return;
     }
 
-    /*
-     * En automatique, c'est l'appareil qui décide — et il peut changer d'avis
-     * pendant qu'on regarde : un téléphone bascule en sombre au coucher du
-     * soleil. On écoute donc la requête média au lieu de la lire une fois.
-     */
     const query = window.matchMedia('(prefers-color-scheme: dark)');
-    /* En automatique sur ordinateur, le sombre est le noir : le bleu nuit ne
-       s'y obtient qu'en le demandant. Sur téléphone, c'est l'inverse. */
     const sync = () => {
       applyMode(query.matches, darkIsBlue);
       setEffectiveTheme(query.matches ? 'dark' : 'light');
@@ -1072,14 +967,18 @@ function App() {
   }, []);
 
   const isTrafficPanelOpen = isTrafficButtonHovered || isTrafficPanelHovered || isTrafficPanelPinned;
+  const [trafficPanelContentMounted, setTrafficPanelContentMounted] = useState(false);
+  useEffect(() => {
+    if (isTrafficPanelOpen) {
+      setTrafficPanelContentMounted(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setTrafficPanelContentMounted(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [isTrafficPanelOpen]);
   const isFavPanelOpen = isFavBtnHovered || isFavPanelHovered;
   const isAtmoPanelOpen = isAtmoBtnHovered || isAtmoPanelHovered;
 
-  /**
-   * Indice ATMO de la commune retenue. Chargé dès le démarrage, et non au
-   * survol : la couleur du bouton *est* l'information, elle doit être juste
-   * avant qu'on pense à ouvrir la carte.
-   */
   useEffect(() => {
     if (atmoCommune) localStorage.setItem('greLines_atmoCommune', JSON.stringify(atmoCommune));
     else localStorage.setItem('greLines_atmoPostalCode', atmoPostalCode);
@@ -1098,13 +997,6 @@ function App() {
     return () => { active = false; };
   }, [atmoPostalCode, atmoCommune, reconnects]);
 
-  /**
-   * La commune sous le centre de la carte, tant que le suivi est actif.
-   *
-   * Arrondi au centième de degré — le kilomètre — avant d'interroger : un
-   * déplacement de quelques mètres ne change pas de commune, et la requête
-   * inverse n'a pas à suivre le doigt.
-   */
   const mapCenterKey = mapCenter ? `${mapCenter.lat.toFixed(2)},${mapCenter.lon.toFixed(2)}` : null;
   useEffect(() => {
     if (!atmoFollowMap || !mapCenter) return;
@@ -1122,24 +1014,7 @@ function App() {
   const favoriteJourneys = useFavoriteJourneys();
   const journeyHistory = useJourneyHistory();
 
-  /*
-   * Les cartes du portefeuille, sur ordinateur.
-   *
-   * Chargees a la premiere ouverture du panneau seulement : personne n'a besoin
-   * de son titre de transport tant qu'il ne l'a pas demande, et l'appel coute un
-   * aller-retour au reseau par carte. Elles se tiennent ensuite a jour toutes
-   * seules — une carte coupee depuis le panneau d'administration se voit sans
-   * rien recharger.
-   */
   const [walletLoaded, setWalletLoaded] = useState(false);
-  /*
-   * Les cartes se chargent quand même sur ordinateur.
-   *
-   * Le portefeuille n'y paraît plus, mais le compte s'appuie dessus : c'est la
-   * carte qui porte le prénom, le nom et la photo affichés dans le profil. Sans
-   * ce chargement, un compte créé sur téléphone se retrouvait sans visage sur
-   * l'ordinateur, ce qui ressemblait à une perte de données.
-   */
   useEffect(() => {
     if (isMobile || walletLoaded || !isSupabaseConfigured) return;
     let active = true;
@@ -1159,27 +1034,13 @@ function App() {
       void listOuraCards().then(setWalletCards);
     });
   }, [isMobile, walletLoaded]);
-  /** Un message non lu sur l'une des cartes du portefeuille, s'il y en a un. */
   const { notice: cardNotice, dismiss: dismissCardNotice } = useCardNotices(isMobile);
-  /**
-   * Les lignes en perturbation, par leur code court.
-   *
-   * La carte du trafic est déjà indexée ainsi ; on n'en garde que les clés,
-   * qui suffisent aux pastilles d'alerte posées sur les badges des favoris.
-   */
   const disruptedLineCodes = useMemo(() => new Set(trafficInfo.keys()), [trafficInfo]);
   const firstFavoriteLoading = favoritesList.length > 0 && (favoritesDetails[0]?.loading ?? true);
 
-  /* La molette pousse la barre de filtres de côté : sans souris tactile, les
-     derniers onglets restaient hors de vue sans que rien ne le dise. */
   const trafficFiltersRef = useWheelScroll<HTMLDivElement>();
 
   const mapRef = useRef<MapRef>(null);
-  /**
-   * Point en attente d'être désigné sur la carte. Les deux extrémités du
-   * trajet, mais aussi le domicile et le travail : la feuille qui les définit
-   * propose « ouvrir la carte », et c'est le même geste qui répond.
-   */
   const [mapPickTarget, setMapPickTarget] = useState<MapPickTarget | null>(null);
 
   useEffect(() => {
@@ -1213,10 +1074,6 @@ function App() {
     };
   }, [settingsState]);
 
-  /**
-   * Parse a single T<n>= value. Stop ids contain ":" (e.g. "SEM:CHAVANT") so we
-   * split on the *first* "_" only.
-   */
   const parseTValue = (value: string): { lineId: string | null; stopId: string | null } => {
     const idx = value.indexOf('_');
     if (idx === -1) return { lineId: null, stopId: null };
@@ -1260,22 +1117,6 @@ function App() {
     setSharedRouteTarget(null);
   };
 
-  /**
-   * Appui long sur la carte : on pose un point là où le doigt s'est arrêté.
-   *
-   * L'adresse est cherchée à rebours pour nommer l'endroit ; à défaut — plein
-   * champ, zone sans voirie — les coordonnées font l'affaire, elles désignent
-   * le point aussi sûrement qu'un nom de rue.
-   */
-  /**
-   * Nommer un point posé sur la carte.
-   *
-   * Un point se dit par une adresse : « 12 rue Ampère » se reconnaît, là où
-   * « 45.18821, 5.72452 » ne dit rien. On demande donc son adresse à la base
-   * nationale ; à défaut, l'arrêt le plus proche fait l'affaire, et en dernier
-   * recours le point s'annonce simplement comme tel. Les coordonnées, elles,
-   * restent celles du doigt : ce sont elles qui calculent le trajet.
-   */
   const describeMapPoint = useCallback(async (lat: number, lon: number): Promise<AddressResult> => {
     const found = await reverseGeocode(lat, lon);
     if (found) return { ...found, lat, lon };
@@ -1283,7 +1124,7 @@ function App() {
     const [closest] = findClosestStops(stops, lat, lon, 1);
     const id = `map-${lat.toFixed(5)}-${lon.toFixed(5)}`;
     if (closest && closest.meters <= 400) {
-      const label = `Près de ${closest.stop.name}`;
+      const label = `${language === 'en' ? 'Near' : 'Près de'} ${closest.stop.name}`;
       return { id, label, name: label, context: closest.stop.city || '', lat, lon, score: 0 };
     }
 
@@ -1291,13 +1132,6 @@ function App() {
     return { id, label, name: label, context: formatCoordinates(lat, lon), lat, lon, score: 0 };
   }, [stops, language]);
 
-  /**
-   * Les dernières recherches, relues comme des destinations possibles.
-   *
-   * L'historique retient des arrêts et des adresses ; le planificateur, lui,
-   * ne connaît que des points. Un arrêt n'y entre que si on sait encore où il
-   * est — un identifiant sans coordonnées ne mène nulle part.
-   */
   const recentRoutePlaces = useMemo((): RouteLocation[] => (
     searchHistoryItems.flatMap((item): RouteLocation[] => {
       if (item.kind === 'address') {
@@ -1323,7 +1157,6 @@ function App() {
     setSelectedAddress(address);
   }, [mapPickTarget, describeMapPoint]);
 
-  /** « Y aller » depuis la fiche d'un point : il devient la destination. */
   const openRouteToAddress = useCallback((address: AddressResult) => {
     setRouteTo({
       id: address.id,
@@ -1436,11 +1269,6 @@ function App() {
     }
   };
 
-  /**
-   * Venue par une affiche. L'adresse porte la source et l'arrêt : on compte la
-   * visite, on ouvre l'arrêt, puis on nettoie la barre d'adresse — rechargée ou
-   * partagée, la page ne recomptera pas.
-   */
   useEffect(() => {
     if (typeof window === 'undefined' || stops.length === 0) return;
     const visit = readCampaign(window.location.search);
@@ -1477,7 +1305,6 @@ function App() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [stops]);
 
-  /* Les horaires des favoris et des arrêts récents, gardés pour le hors ligne. */
   useEffect(() => { scheduleOfflinePrefetch(); }, []);
 
   useEffect(() => {
@@ -1508,11 +1335,14 @@ function App() {
       try {
         if (!hasLoadedCatalogueRef.current) setIsLoading(true);
         const wantsTcl = appliedNetworks.includes(TCL_NETWORK);
+        const gtfsCodes = GTFS_NETWORKS.map(network => network.code).filter(code => appliedNetworks.includes(code));
+        if (wantsTcl) void getTclLines({ includeSchool: true });
 
-        const [data, overrides, tclStops] = await Promise.all([
+        const [data, overrides, tclStops, gtfsStopLists] = await Promise.all([
           getStopsByPrefixes(appliedNetworks),
           getStopOverrides(),
           wantsTcl ? getTclStops() : Promise.resolve([] as Stop[]),
+          Promise.all(gtfsCodes.map(code => getGtfsStops(code).catch(() => [] as Stop[]))),
         ]);
         if (!active) return;
 
@@ -1532,7 +1362,9 @@ function App() {
               })
               .filter(stop => !(stop as Stop & { hidden?: boolean }).hidden);
 
-        setStops(tclStops.length > 0 ? [...merged, ...tclStops] : merged);
+        const gtfsStops = gtfsStopLists.flat();
+        const deduplicated = withoutSncfDuplicates(merged);
+        setStops(tclStops.length > 0 || gtfsStops.length > 0 ? [...deduplicated, ...tclStops, ...gtfsStops] : deduplicated);
         setError(null);
       } catch (err) {
         if (!active) return;
@@ -1557,21 +1389,6 @@ function App() {
   useEffect(() => { localStorage.setItem('greLines_autoSync', autoSync ? 'true' : 'false'); }, [autoSync]);
   useEffect(() => { localStorage.setItem('greLines_autoLocation', autoLocation ? 'true' : 'false'); }, [autoLocation]);
 
-  /*
-   * Ouverture automatique du tutoriel d'installation.
-   *
-   * Une fois par appareil — et une fois de plus à chaque version du tutoriel,
-   * pour que ceux qui l'ont écarté il y a six mois découvrent les nouvelles
-   * captures et le guide Android. Le numéro de version vit dans `pwa.ts`.
-   *
-   * Le rappel après mise à jour est noté comme vu dès l'ouverture, sans
-   * attendre qu'on l'écarte : c'est une annonce, elle ne se répète pas. Un
-   * tutoriel jamais vu, lui, garde l'ancien comportement et revient tant qu'on
-   * ne l'a pas écarté — quelqu'un qui découvre l'application n'a pas encore eu
-   * l'occasion de dire non.
-   *
-   * Le petit délai laisse la carte s'afficher avant de recouvrir l'écran.
-   */
   useEffect(() => {
     if (!autoOpenInstallGuide) return;
     if (hasSeenInstallGuide()) return;
@@ -1583,19 +1400,6 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [autoOpenInstallGuide]);
 
-  /*
-   * La mise en route, au premier lancement de l'application installée.
-   *
-   * Ce n'était qu'une demande de notifications, seule et sortie de nulle part.
-   * C'est un parcours maintenant — les notifications, la carte, le compte —,
-   * mais le déclenchement n'a pas changé : une seule fois, dans l'application
-   * posée sur l'écran d'accueil, après une seconde le temps que la carte du
-   * réseau se dessine derrière.
-   *
-   * On marque le parcours comme fait à l'ouverture : quelqu'un qui referme
-   * l'application au deuxième écran ne doit pas le retrouver au lancement
-   * suivant. Ce qu'il n'a pas réglé l'attend dans les réglages.
-   */
   useEffect(() => {
     if (!shouldRunOnboarding()) return;
     const timer = window.setTimeout(() => {
@@ -1636,14 +1440,32 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    const codes = GTFS_NETWORKS.map(network => network.code).filter(code => appliedNetworks.includes(code));
+    void Promise.all([
+      appliedNetworks.includes(TCL_NETWORK) ? getTclLines().catch(() => []) : Promise.resolve([]),
+      ...codes.map(code => getGtfsLines(code).catch(() => [])),
+    ]).then(lists => {
+      if (active) setForeignCatalog(lists.flat().map(line => foreignAsCatalogLine(line)));
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedNetworks.join(',')]);
+  const spotlightLines = useMemo(() => [...allLines, ...foreignCatalog], [allLines, foreignCatalog]);
+
+  useEffect(() => {
     const fetchTraffic = async () => {
       try {
-        const data = await getTrafficLines();
-        setTrafficInfo(data);
+        const [data, foreign] = await Promise.all([
+          getTrafficLines(),
+          getForeignTraffic(appliedNetworks).catch(() => new Map<string, TrafficDetail[]>()),
+        ]);
+        setTrafficInfo(foreign.size > 0 ? new Map([...data, ...foreign]) : data);
       } catch (err) {}
     };
     fetchTraffic();
-  }, [reconnects]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reconnects, appliedNetworks.join(',')]);
 
   const handleStopClick = useCallback(async (stop: Stop) => {
     try {
@@ -1653,25 +1475,28 @@ function App() {
         name: stop.name,
         city: stop.city,
       });
-      /*
-       * L'arrêt entre dans les récents.
-       *
-       * Ici et nulle part ailleurs : tous les chemins qui ouvrent un arrêt — la
-       * carte, la recherche, un favori, un lien partagé — passent par cette
-       * fonction. Poser l'enregistrement dans chacun d'eux aurait garanti qu'il
-       * en manque un.
-       */
       rememberStop(stop);
       setSelectedLine(null);
       setLineGeometries([]);
-      setSelectedAddress(null); // opening a stop clears any address marker
+      setSelectedAddress(null);
       const placeholder: StopDetail = { ...stop, lines: [], departures: [], lastUpdate: new Date() };
       setSelectedStop(placeholder);
       mapRef.current?.centerOnStop(stop);
       setSidebarState('peek');
 
+      const showLinesFirst = (lines: Line[]) => {
+        if (lines.length === 0) return;
+        setSelectedStop(prev => (prev && prev.id === stop.id && prev.lines.length === 0 ? { ...prev, lines } : prev));
+      };
       if (isTclId(stop.id)) {
+        void getTclLinesForStop(stop.id).then(showLinesFirst);
         const detail = await getTclStopDetail(stop.id);
+        if (detail) setSelectedStop(detail);
+        return;
+      }
+      if (isGtfsNetworkId(stop.id)) {
+        void getGtfsLinesForStop(stop.id).then(showLinesFirst);
+        const detail = await getGtfsStopDetail(stop.id);
         if (detail) setSelectedStop(detail);
         return;
       }
@@ -1697,30 +1522,16 @@ function App() {
     } catch (err) {}
   }, [pushSearchHistoryItem]);
 
-  /**
-   * Selecting a stop from the search dropdown:
-   *   - blur the desktop input (closes "edit mode")
-   *   - clear the query and close the dropdown
-   *   - load the stop
-   *
-   * Must run on `onMouseDown`/`onPointerDown` so we don't lose the click to the
-   * input's `onBlur`, which would otherwise unmount the dropdown first.
-   */
   const handleSearchResultSelect = useCallback((stop: Stop) => {
     desktopSearchInputRef.current?.blur();
     setSearchQuery('');
     setIsSearchFocused(false);
     setIsSearchHovered(false);
-    setSelectedAddress(null); // a stop pick clears any address marker
+    setSelectedAddress(null);
     handleStopClick(stop);
     mapRef.current?.centerOnStop(stop);
   }, [handleStopClick]);
 
-  /**
-   * Selecting an address from the search dropdown: drop a marker, recentre,
-   * and close the dropdown. We don't open the sidebar — addresses aren't
-   * stops, just points of interest.
-   */
   const handleAddressSelect = useCallback((address: AddressResult) => {
     desktopSearchInputRef.current?.blur();
     setSearchQuery('');
@@ -1737,7 +1548,7 @@ function App() {
       lat: address.lat,
       lon: address.lon,
     });
-    const nearby = findClosestStops(stops, address.lat, address.lon, 8);
+    const nearby = findClosestStops(stops, address.lat, address.lon, 8).filter(entry => entry.meters <= 2000);
     if (nearby.length > 0) {
       const lons = [address.lon, ...nearby.map(entry => entry.stop.lon)];
       const lats = [address.lat, ...nearby.map(entry => entry.stop.lat)];
@@ -1756,14 +1567,6 @@ function App() {
     }
   }, [pushSearchHistoryItem, stops, isMobile]);
 
-  /**
-   * Maj + Espace ouvre (et referme) la recherche universelle. Réservé à
-   * l'ordinateur : sur mobile il n'y a pas de clavier physique, et la barre de
-   * recherche dédiée remplit déjà ce rôle.
-   *
-   * Ctrl + Espace est écarté volontairement : macOS s'en sert pour changer de
-   * source de saisie, le raccourci n'aurait jamais atteint la page.
-   */
   useEffect(() => {
     if (isMobile) return;
 
@@ -1784,12 +1587,6 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isMobile]);
 
-  /**
-   * Mobilités partagées. Les flux GBFS annoncent une durée de vie de cinq
-   * minutes, on s'y tient : rafraîchir plus souvent n'apporterait rien et le
-   * flux Voi pèse près d'un mégaoctet. Aucun appel n'est fait pour un
-   * opérateur désactivé.
-   */
   useEffect(() => {
     if (!perfSettings.citiz && !perfSettings.voi) {
       setSharedMobility(EMPTY_SHARED_MOBILITY);
@@ -1832,7 +1629,7 @@ function App() {
   };
 
   const renderStopLineBadges = (stopId: string) => {
-    const lines = searchStopLines[stopId] || [];
+    const lines = sortStopPreviewLines(searchStopLines[stopId] || []);
     if (lines.length === 0) return null;
     const visible = lines.slice(0, 4);
     const hiddenCount = lines.length - visible.length;
@@ -1843,7 +1640,7 @@ function App() {
         ))}
         {hiddenCount > 0 && (
           <span
-            className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-slate-700 bg-slate-800 px-1.5 text-[10px] font-extrabold text-slate-300"
+            className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-slate-700 bg-slate-800 px-1.5 text-[0.625rem] font-extrabold text-slate-300"
             title={`+${hiddenCount}`}
           >
             +{hiddenCount}
@@ -1855,10 +1652,12 @@ function App() {
 
   const getHistoryItemIcon = (item: SearchHistoryItem) => {
     if (item.kind === 'line') {
-      const line = allLines.find(candidate => candidate.id === item.id) || allLines.find(candidate => candidate.shortName === item.shortName);
+      const line = isForeignLineId(item.id)
+        ? foreignAsCatalogLine(item)
+        : allLines.find(candidate => candidate.id === item.id) || allLines.find(candidate => candidate.shortName === item.shortName);
       if (line) return <LineBadge line={line} size="sm" />;
       return (
-        <div className="w-9 h-9 rounded-2xl bg-slate-700 border border-slate-600 flex items-center justify-center text-[11px] font-extrabold text-white flex-shrink-0">
+        <div className="w-9 h-9 rounded-2xl bg-slate-700 border border-slate-600 flex items-center justify-center text-[0.6875rem] font-extrabold text-white flex-shrink-0">
           {item.shortName}
         </div>
       );
@@ -1876,7 +1675,9 @@ function App() {
 
   const handleHistoryItemSelect = (item: SearchHistoryItem) => {
     if (item.kind === 'line') {
-      const line = allLines.find(candidate => candidate.id === item.id) || allLines.find(candidate => candidate.shortName === item.shortName);
+      const line = isForeignLineId(item.id)
+        ? foreignAsCatalogLine(item)
+        : allLines.find(candidate => candidate.id === item.id) || allLines.find(candidate => candidate.shortName === item.shortName);
       if (line) handleLineSearchSelect(line);
       return;
     }
@@ -1896,6 +1697,11 @@ function App() {
     if (stop) handleSearchResultSelect(stop);
   };
 
+  const popupLineTraffic = useCallback((lineId: string): TrafficDetail[] => {
+    const id = lineId.toUpperCase();
+    return trafficInfo.get(lineId) ?? trafficInfo.get(id) ?? trafficInfo.get(id.replace(/^SEM[:_]/, '')) ?? [];
+  }, [trafficInfo]);
+
   const handleLineSearchSelect = useCallback((line: AllLinesLine) => {
     desktopSearchInputRef.current?.blur();
     setSearchQuery('');
@@ -1906,6 +1712,7 @@ function App() {
     setSelectedLine(line);
     setSelectedLines(new Set());
     setSidebarState('closed');
+    setTimetableTarget(null);
     pushSearchHistoryItem({
       kind: 'line',
       id: line.id,
@@ -1913,6 +1720,14 @@ function App() {
       longName: line.longName,
     });
   }, [pushSearchHistoryItem]);
+
+  const openPopupLine = useCallback((line: CmsPopupLine) => {
+    const target = isForeignLineId(line.id)
+      ? foreignAsCatalogLine({ id: line.id, shortName: line.short, longName: line.name, color: line.color, textColor: line.textColor })
+      : allLines.find(candidate => candidate.id.toUpperCase() === line.id.toUpperCase())
+        ?? allLines.find(candidate => candidate.shortName === line.short);
+    if (target) handleLineSearchSelect(target);
+  }, [allLines, handleLineSearchSelect]);
 
   useEffect(() => {
     if (!initialSelectedLineId || allLines.length === 0 || selectedStop) return;
@@ -1928,6 +1743,11 @@ function App() {
   }, [initialSelectedLineId, allLines, selectedStop, handleLineSearchSelect]);
 
   const handleLocationClick = useCallback(() => {
+    const fake = getFakeLocation();
+    if (fake) {
+      mapRef.current?.centerOnLocation(fake.lat, fake.lon);
+      return;
+    }
     if (!navigator.geolocation) {
       setLocationError('Géolocalisation non disponible sur votre appareil');
       return;
@@ -1975,16 +1795,47 @@ function App() {
     );
   }, [locationWatchId, language]);
 
+  const launchLocatedRef = useRef(false);
+  const networksRef = useRef(perfSettings.networks);
+  networksRef.current = perfSettings.networks;
+  useEffect(() => {
+    if (!isMobile || launchLocatedRef.current || !navigator.geolocation) return;
+    launchLocatedRef.current = true;
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const city = cityNear(coords.latitude, coords.longitude);
+        if (!city?.network) return;
+        if (!networksRef.current.includes(city.network)) {
+          setPerfSetting('networks', [...networksRef.current, city.network]);
+        }
+        setCurrentLocation({ lat: coords.latitude, lon: coords.longitude });
+        let tries = 0;
+        const center = () => {
+          if (mapRef.current) mapRef.current.centerOnLocation(coords.latitude, coords.longitude);
+          else if (tries++ < 20) window.setTimeout(center, 250);
+        };
+        center();
+      },
+      () => {},
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 5 * 60 * 1000 },
+    );
+  }, [isMobile, setPerfSetting]);
+
+  useEffect(() => {
+    if (!selectedAddress) return;
+    const city = cityNear(selectedAddress.lat, selectedAddress.lon);
+    if (city?.network && !networksRef.current.includes(city.network)) {
+      setPerfSetting('networks', [...networksRef.current, city.network]);
+    }
+  }, [selectedAddress, setPerfSetting]);
+
   useEffect(() => {
     if (!autoLocation || !navigator.geolocation || !isMobile) return;
-    
+
     handleLocationClick();
-    
+
   }, [autoLocation, isMobile, handleLocationClick]);
 
-  /**
-   * Auto-clear geolocation error message after 5 seconds
-   */
   useEffect(() => {
     if (locationError) {
       const timer = window.setTimeout(() => setLocationError(null), 3000);
@@ -1999,32 +1850,9 @@ function App() {
     };
   }, [locationWatchId]);
 
-  /**
-   * Mobile-only: at first paint we ask the browser for the user's location
-   * (one-shot, no watch). If granted we (a) center the map, (b) open the
-   * NearbyStopsSheet at its mini snap. If the user declines we still open
-   * the sheet so they can browse manually.
-   *
-   * We wait until stops have loaded before kicking off the request — until
-   * then the splash screen is showing and the map ref isn't ready, so an
-   * early sheet would flash over the loader and `centerOnLocation` would
-   * silently no-op on a null ref.
-   *
-   * `hasOpenedNearbyOnce` makes sure we never re-trigger after the first
-   * permission dance, even if React re-runs the effect.
-   */
   const [hasOpenedNearbyOnce, setHasOpenedNearbyOnce] = useState(false);
   const geolocStartedRef = useRef(false);
 
-  /**
-   * Mobile home sheet behaviour:
-   *  - Opens automatically on first paint once stops are loaded.
-   *  - Stays mounted while the user is browsing. When a stop sidebar /
-   *    settings / traffic panel opens on top, the home sheet stays at its
-   *    mini snap underneath (z-index of new sheets is higher).
-   *  - Re-opens automatically when the user closes those other sheets.
-   * We only flip it OFF when the user explicitly closes it via the X.
-   */
   useEffect(() => {
     if (!isMobile) return;
     if (geolocStartedRef.current) return;
@@ -2037,17 +1865,11 @@ function App() {
     handleLocationClick();
   }, [isMobile, stops.length, selectedStop, handleLocationClick]);
 
-  /**
-   * Re-open the home sheet whenever the user closes a foreground sheet
-   * (stop sidebar / traffic / settings). We only respect the user's explicit
-   * "close" (X button on the home sheet itself) — every other state change
-   * brings it back so they always have a navigation anchor.
-   */
   const [hasUserClosedHome, setHasUserClosedHome] = useState(false);
   useEffect(() => {
     if (!isMobile) return;
     if (hasUserClosedHome) return;
-    if (!hasOpenedNearbyOnce) return; // wait until first auto-open ran
+    if (!hasOpenedNearbyOnce) return;
     if (isNearbySheetOpen) return;
     setIsNearbySheetOpen(true);
   }, [isMobile, hasUserClosedHome, hasOpenedNearbyOnce, isNearbySheetOpen, isSidebarOpen, isSettingsOpen, isTrafficPanelOpenMobile]);
@@ -2187,20 +2009,11 @@ function App() {
   const text = translations[language];
 
   const hidePageControls = false;
-  /**
-   * L'écran de chargement n'appartient qu'au démarrage.
-   *
-   * Une fois l'application affichée, plus rien ne doit la recouvrir : ni un
-   * réseau qu'on décoche, ni un favori qu'on ajoute — deux gestes qui
-   * relançaient un chargement et renvoyaient l'écran noir en pleine face. Ce
-   * qui se recharge ensuite le fait sous la carte, qui reste lisible.
-   */
   const [hasBooted, setHasBooted] = useState(false);
   const isLoadingOverlayVisible = !hasBooted && (isLoading || firstFavoriteLoading);
   useEffect(() => {
     if (!isLoading && !firstFavoriteLoading) setHasBooted(true);
   }, [isLoading, firstFavoriteLoading]);
-  /** Le démarrage est passé : les messages d'accueil peuvent paraître. */
   const popupsReleased = hasBooted;
 
   const normalizeRouteRef = useCallback((value: string | undefined | null): string | null => {
@@ -2220,7 +2033,6 @@ function App() {
     return Array.from(new Set(candidates));
   }, [normalizeRouteRef]);
 
-  /** Codes courts des lignes empruntées par l'itinéraire affiché. */
   const itineraryLineKeys = useMemo(() => {
     const legs = selectedRouteItinerary?.allLegs || [];
     const keys = legs
@@ -2254,11 +2066,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itineraryLineKeysSignature]);
 
-  /**
-   * Ramène un arrêt du planificateur (un quai précis) sur le cluster que
-   * l'application affiche : c'est là que sont posés les marqueurs d'arrêts, donc
-   * là que doivent tomber les pastilles et les coudes du tracé.
-   */
   const resolveCluster = useMemo(() => {
     if (stops.length === 0) return undefined;
 
@@ -2333,24 +2140,6 @@ function App() {
     });
   }, [selectedRouteItinerary, getItineraryLineColor, getRouteCandidates, itineraryLineShapes, resolveCluster]);
 
-  /**
-   * Le tracé de chaque tronçon, indexé par son rang, pour le guidage.
-   *
-   * Il sort du même calcul que celui de la carte — recalé sur les arrêts,
-   * découpé sur la bonne variante de ligne, appuyé sur les géométries de
-   * référence quand il y en a. Le guidage redécodait jusqu'ici la polyligne
-   * brute du routeur de son côté : il annonçait donc les virages d'un chemin
-   * qui n'était pas celui qu'on lui montrait.
-   */
-  /**
-   * Le trajet noté, réduit à ses tronçons en transport.
-   *
-   * La marche est écartée ici, à la source, et non filtrée plus loin : le
-   * premier et le dernier tronçon à pied d'un trajet partent de chez quelqu'un
-   * et y reviennent. Les laisser passer, même un instant, reviendrait à
-   * constituer un registre de domiciles pour mesurer la fréquentation d'une
-   * ligne de bus. De quai à quai suffit — c'est ce qui fait un trajet moyen.
-   */
   const surveyJourney = useMemo((): TripSurveyLeg[] => {
     const legs = selectedRouteItinerary?.allLegs ?? [];
     return legs
@@ -2374,12 +2163,6 @@ function App() {
     return paths;
   }, [journeyGeometry]);
 
-  /**
-   * Arrêts listés par la fiche adresse. La carte les nomme en toutes lettres
-   * quel que soit le zoom : le cadrage les fait souvent tenir sous le seuil
-   * d'affichage des étiquettes, et on lisait une liste de noms à côté de huit
-   * points anonymes.
-   */
   const addressNearbyStopIds = useMemo(() => {
     if (!selectedAddress) return null;
     return findClosestStops(stops, selectedAddress.lat, selectedAddress.lon, 8).map(entry => entry.stop.id);
@@ -2441,8 +2224,9 @@ function App() {
       lineGeometries={lineGeometries}
       carpoolLines={carpoolMapLines}
       onCenterChange={handleMapCenterChange}
+      onSharedInViewChange={setSharedInView}
       pickMode={mapPickTarget}
-      onLongPress={isMobile ? handleMapLongPress : undefined}
+      onLongPress={handleMapLongPress}
       onMapClick={async (lat: number, lon: number) => {
         const addr = await describeMapPoint(lat, lon);
         const location: RouteLocation = {
@@ -2517,7 +2301,8 @@ function App() {
                 setLocationError(null);
               }
             }}
-            className={`fixed left-1/2 top-4 z-[100] -translate-x-1/2 max-w-[min(92vw,420px)] rounded-full px-4 py-2 text-sm font-semibold shadow-2xl ${
+            style={{ top: 'max(calc(var(--gl-safe-top) + 0.5rem), 1rem)' }}
+            className={`fixed left-1/2 z-[1300] -translate-x-1/2 max-w-[min(92vw,420px)] rounded-full px-4 py-2 text-sm font-semibold shadow-2xl ${
               isDarkMode
                 ? 'border border-red-500/40 bg-red-900/95 text-white shadow-red-950/40'
                 : 'border border-red-300 bg-white/95 text-red-900 shadow-red-300/40'
@@ -2536,12 +2321,6 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
-      {/* La carte est montée dès le premier rendu, et l'écran de chargement se
-          superpose par-dessus. Auparavant elle n'apparaissait qu'une fois le
-          catalogue d'arrêts chargé : la requête de style MapTiler ne partait
-          qu'à ce moment-là (mesuré à plus de 10 s), alors qu'elle ne dure que
-          quelques millisecondes. Fond de carte et données MTAG se chargent
-          désormais en parallèle. */}
       <div className="absolute inset-0 z-0">
         {error ? (
           <div className="h-full flex items-center justify-center bg-red-950">
@@ -2552,58 +2331,25 @@ function App() {
         )}
       </div>
 
-      {/* Sur téléphone, la photographie remplace le logo. Elle est montée dès
-          le départ et non quand le chargement traîne : c'est elle qui compte
-          les deux secondes qu'elle doit tenir au minimum. */}
-      {isMobile && !error && (
-        <MobileSplash done={!isLoadingOverlayVisible} language={language} />
+      {!error && (
+        <LaunchScreen done={!isLoadingOverlayVisible} theme={effectiveTheme} isMobile={isMobile} />
       )}
 
-      {/* Ouverture sans réseau : on le dit d'entrée, par-dessus le reste. */}
       <OfflineLaunchScreen language={language} />
 
-      {/* Console développeur : « ² » six fois, en mode développeur. */}
       <DevConsole />
+      <NetOverlay />
 
-      {isLoadingOverlayVisible && !error && !isMobile && (
-        /*
-         * L'écran de chargement, et son logo réellement au milieu.
-         *
-         * Deux corrections, dont la première pèse le plus lourd :
-         *
-         *   * `100dvh` au lieu de `100vh`. Sur téléphone, `vh` vaut la hauteur
-         *     de l'écran *sans* la barre d'adresse : centrer dedans place le
-         *     contenu au milieu d'un cadre plus grand que ce qu'on voit, et
-         *     tout paraît poussé vers le bas. `dvh` suit la hauteur réellement
-         *     visible.
-         *
-         *   * Le fichier lui-même est déséquilibré. Sur une toile de 800 × 400,
-         *     le tracé occupe les lignes 164 à 256 : 164 pixels de vide au
-         *     dessus, 144 en dessous. Son centre tombe donc à 52,5 % de la
-         *     hauteur, et non à 50 %. On remonte l'image de ces 2,5 % pour que
-         *     ce soit l'encre qui soit centrée, et non la boîte qui la contient.
-         */
-        <div
-          className="fixed inset-0 z-[9999] w-screen flex flex-col items-center justify-center bg-black bg-opacity-95"
-          style={{ height: '100dvh' }}
-        >
-          <div className="flex-1 flex items-center justify-center">
-            <img
-              src="/assets/GreLinesLOGO.png"
-              alt="GreLines Loading"
-              className="w-80 h-auto animate-pulse-opacity"
-              style={{ transform: 'translateY(-2.5%)' }}
-            />
-          </div>
-        </div>
+
+      {popupsReleased && (
+        <PopupOverlay
+          popups={locatedPopups}
+          language={language}
+          theme={effectiveTheme}
+          trafficFor={popupLineTraffic}
+          onOpenLine={openPopupLine}
+        />
       )}
-
-      {/* Une fois posée, la couche ne se démonte plus.
-          Elle ne s'affichait qu'après le chargement, ce qui est juste — mais
-          tout retour de l'écran de chargement la démontait, et son remontage
-          rejouait le message qu'on venait de refermer. Un avis qu'on chasse
-          deux fois n'est plus un avis, c'est une porte qui claque. */}
-      {popupsReleased && <PopupOverlay popups={activePopups} language={language} theme={effectiveTheme} />}
 
       <DeferredPanel isOpen={selectedRouteItinerary !== null}>
         {selectedRouteItinerary && (
@@ -2618,30 +2364,13 @@ function App() {
           stops={stops}
           lineLookup={allLinesLookup}
           currentLocation={currentLocation}
-          /* Le guidage suit exactement le tracé que la carte dessine : c'est le
-             même calcul, fait une seule fois. */
           legPaths={navigationLegPaths}
-          /* Les prochains passages du guidage se rafraîchissent au rythme que
-             l'usager a réglé pour les fiches d'arrêt : c'est la même
-             information, il n'y a pas de raison qu'elle vieillisse autrement
-             ici. */
           refreshIntervalMs={parseRefreshInterval(refreshInterval)}
           itineraryOptions={routeItineraryOptions}
           onItinerarySelected={setSelectedRouteItinerary}
-          /*
-           * Arriver crédite le trajet et ouvre l'écran de fin. Le questionnaire
-           * de descente ne se déclenche plus ici : les questions se posent
-           * désormais pendant le trajet, quand on est encore dans le véhicule.
-           */
           onArrived={(contributions) => {
             const award = awardTrip(contributions);
             setTripAward(award);
-            /*
-             * Le compte reçoit le même crédit que l'appareil, quand il existe.
-             * L'addition se fait côté base pour qu'un téléphone et une tablette sur
-             * la même carte ne s'écrasent pas l'un l'autre, et l'on relit ensuite
-             * pour que le profil affiche le total véritable.
-             */
             if (account) {
               const legs = (selectedRouteItinerary?.allLegs ?? [])
                 .filter((leg: any) => leg?.mode && leg.mode !== 'WALK')
@@ -2683,43 +2412,25 @@ function App() {
               }).then(() => loadAccount().then(setAccount));
             }
             clearNavigationSession();
-            /*
-             * Le guidage ne se ferme qu'une fois l'ecran de fin monte.
-             * Le couper tout de suite ferait defiler la carte verte de
-             * l'arrivee vers la carte d'accueil pendant que l'ecran monte : on
-             * verrait passer un troisieme decor sous celui qui arrive. Il reste
-             * donc derriere le temps de l'animation, puis s'efface a l'abri.
-             */
             window.setTimeout(() => setIsNavigationOpen(false), 700);
           }}
           isMobile={isMobile}
-          /* Sans cette ligne, le guidage retombait sur sa valeur par défaut —
-             sombre — et gardait un panneau bleu nuit au bas d'une carte claire. */
           theme={effectiveTheme}
         />
         )}
       </DeferredPanel>
 
-      {/* L'écran de fin de trajet. Le fermer ne laisse rien ouvert derrière :
-          on redescend sur la carte, l'écran « Autour ». */}
       <TripCompleteScreen
         isOpen={tripAward !== null}
         award={tripAward}
-        /* Sans compte, pas de points : les annoncer sans pouvoir les garder
-           serait une promesse en l'air. Le nombre de voyageurs renseignés reste,
-           lui, puisqu'il décrit ce trajet-là et non un cumul. */
         showPoints={account !== null}
         language={language}
         origin={selectedRouteItinerary?.depName}
         destination={selectedRouteItinerary?.arrName}
         account={account}
-        /* La photo de la carte ne sert que si le compte n'a pas d'émoji : c'est
-           déjà son visage, et personne n'a envie d'en choisir un pour rien. */
         photoUrl={
           walletCards.find(entry => entry.cardCode === account?.cardCode)?.photoUrl ?? null
         }
-        /* Les lignes du trajet, avec leur couleur : c'est ce qui distingue deux
-           trajets vers la même destination. */
         lines={(selectedRouteItinerary?.allLegs ?? [])
           .filter((leg: any) => leg?.mode && leg.mode !== 'WALK')
           .map((leg: any) => ({
@@ -2803,7 +2514,7 @@ function App() {
         setAutoLocation={setAutoLocation}
         atmoFollowMap={atmoFollowMap}
         setAtmoFollowMap={setAtmoFollowMap}
-        showInstallGuide={/* mobile uniquement : inutile dans les réglages PC */ isMobile && canOfferInstallGuide}
+        showInstallGuide={ isMobile && canOfferInstallGuide}
         compactThemes={isMobile}
         onOpenInstallGuide={() => {
           setSettingsState('closed');
@@ -2902,10 +2613,6 @@ function App() {
           if (isMobile && selectedRouteItinerary) saveNavigationSession(selectedRouteItinerary);
           setIsNavigationOpen(true);
         }}
-        /* Une ligne trouvée dans la recherche du planificateur : on ferme le
-           planificateur et l'on ouvre la ligne, comme depuis la recherche de
-           la carte. Chercher « A » en tapant une destination veut souvent dire
-           qu'on cherche le tram, pas un arrêt. */
         onOpenLine={line => {
           setIsRouteSidebarOpen(false);
           handleLineSearchSelect(line);
@@ -2939,7 +2646,7 @@ function App() {
                 onClick={() => {
                   handleLocationClick();
                   setIsNearbySheetOpen(true);
-                  setSnapHomeToMiniSignal(0); // don't collapse, let it open
+                  setSnapHomeToMiniSignal(0);
                   setOpenHomeSheetSignal(s => s + 1);
                 }}
                 style={{
@@ -2955,9 +2662,6 @@ function App() {
               <MapPinIcon className="w-5 h-5 text-white" />
             </motion.button>
 
-            {/* Les calques, juste au-dessus. Mêmes conditions d'affichage que
-                le recentrage : ces deux boutons vont ensemble et disparaissent
-                ensemble quand une feuille prend l'écran. */}
             <MapLayersButton
               language={language}
               isOpen={isMapLayersOpen}
@@ -2969,6 +2673,7 @@ function App() {
               bottom={layersButtonBottom}
               opacity={geolocButtonOpacity}
               scale={geolocButtonScale}
+              inView={sharedInView}
             />
             </>
           )}
@@ -3015,10 +2720,9 @@ function App() {
                       className="absolute left-0 top-10 w-96 h-2 pointer-events-auto" />
                     <div onMouseEnter={() => setIsSearchHovered(true)} onMouseLeave={() => setIsSearchHovered(false)}
                       className="absolute left-0 top-12 w-full max-h-72 overflow-auto bg-slate-900/95 border border-gray-700 rounded-2xl shadow-xl">
-                      {/* Stops first — they outrank addresses */}
                       {searchQuery.trim() !== '' && matchedLines.length > 0 && (
                         <>
-                          <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800">
+                          <div className="px-3 py-1.5 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800">
                             {language === 'fr' ? 'Lignes' : 'Lines'}
                           </div>
                           {matchedLines.map(line => (
@@ -3042,7 +2746,7 @@ function App() {
 
                       {searchQuery.trim() !== '' && matchedStops.length > 0 && (
                         <>
-                          <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800">
+                          <div className="px-3 py-1.5 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800">
                             {language === 'fr' ? 'Arrêts' : 'Stops'}
                           </div>
                           {matchedStops.map(stop => (
@@ -3065,10 +2769,9 @@ function App() {
                         </>
                       )}
 
-                      {/* Addresses come after stops */}
                       {searchQuery.trim() !== '' && addressResults.length > 0 && (
                         <>
-                          <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-t border-b border-slate-800">
+                          <div className="px-3 py-1.5 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider border-t border-b border-slate-800">
                             {language === 'fr' ? 'Adresses' : 'Addresses'}
                           </div>
                           {addressResults.map(addr => (
@@ -3088,14 +2791,12 @@ function App() {
                         </>
                       )}
 
-                      {/* No matches at all */}
                       {searchQuery.trim() !== '' && matchedStops.length === 0 && addressResults.length === 0 && (
                         <div className="px-3 py-4 text-center text-xs text-gray-500">
                           {language === 'fr' ? 'Aucun résultat' : 'No results'}
                         </div>
                       )}
 
-                      {/* Recent searches when no query */}
                       {searchQuery.trim() === '' && searchHistory && searchHistoryItems.length > 0 && (
                         searchHistoryItems.map((item, i) => (
                           <button
@@ -3153,10 +2854,6 @@ function App() {
                 </button>
               )}
 
-              {/* ── Favorites panel (desktop) ──────────────────────────
-                  Hover-to-expand panel sitting between the search bar and the
-                  traffic info button. Shows the same favorite cards as the
-                  mobile HomeSheet, with the same per-line live departures. */}
               <div
                 onMouseEnter={() => setIsFavBtnHovered(true)}
                 onMouseLeave={() => setIsFavBtnHovered(false)}
@@ -3170,21 +2867,6 @@ function App() {
                     className={`absolute top-0 left-0 z-50 transition-all duration-300 ease-out ${isFavPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                     style={{ width: '100%', height: '100%' }}
                   >
-                    {/*
-                      Les mêmes rangées que sur téléphone.
-
-                      Le panneau montrait des cartes qui dépliaient les horaires
-                      de chaque ligne, là où l'écran Favoris du téléphone s'en
-                      tient à une rangée par arrêt : les pastilles de ligne, le
-                      nom, un chevron. Deux dessins pour une même liste, et le
-                      plus chargé des deux tenait dans un carré de trois cent
-                      quatre-vingts pixels — on y lisait des heures qu'on n'était
-                      pas venu chercher, et l'on ne voyait plus ses arrêts.
-
-                      Une rangée, deux cibles, comme sur le téléphone : toucher
-                      un badge ouvre l'arrêt filtré sur cette ligne, toucher le
-                      reste l'ouvre en entier.
-                    */}
                     <div className="h-full w-full overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl">
                       <div className="mb-3 flex items-center gap-2">
                         <StarIcon className="w-4 h-4 text-amber-400" />
@@ -3206,7 +2888,6 @@ function App() {
                             const shown = lines.slice(0, 3);
                             const extra = lines.length - shown.length;
 
-                            /** Ouvre l'arrêt, filtré sur une ligne si l'on en a touché une. */
                             const open = (lineId?: string) => {
                               const filter = lineId
                                 ? [lineId]
@@ -3233,9 +2914,6 @@ function App() {
                                 key={favorite.stopId}
                                 className="flex w-full items-center gap-3 rounded-[26px] border border-slate-800 bg-slate-900 px-3.5 py-3 text-left transition hover:bg-slate-800/70"
                               >
-                                {/* Les lignes d'abord : c'est par elles qu'on
-                                    retrouve un arrêt dans une liste, avant même
-                                    d'en lire le nom. */}
                                 <span className="flex flex-shrink-0 items-center gap-1">
                                   {shown.map(line => (
                                     <button
@@ -3268,7 +2946,7 @@ function App() {
                                   className="flex min-w-0 flex-1 items-center gap-3 text-left text-white"
                                 >
                                   <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-[15px] font-semibold">
+                                    <span className="block truncate text-[0.9375rem] font-semibold">
                                       {favorite.stopName}
                                     </span>
                                     {favorite.city && (
@@ -3285,10 +2963,6 @@ function App() {
                         </div>
                       )}
 
-                      {/* ── Lignes favorites ──────────────────────────────
-                          Même rangée que les arrêts, en plus court : la
-                          pastille de la ligne, son nom, un chevron. Un clic
-                          ouvre sa fiche, comme depuis la recherche. */}
                       {favoriteLinesList.length > 0 && (
                         <div className="mt-4">
                           <h3 className="mb-2 text-sm font-semibold text-slate-300">
@@ -3320,7 +2994,7 @@ function App() {
                                   line={{ id: fav.lineId, shortName: fav.shortName, color: fav.color, textColor: fav.textColor }}
                                   size="xs"
                                 />
-                                <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-white">
+                                <span className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold text-white">
                                   {fav.longName}
                                 </span>
                                 <ChevronRightIcon className="h-5 w-5 flex-shrink-0 text-slate-400" />
@@ -3334,25 +3008,7 @@ function App() {
                 </div>
               </div>
 
-              {/*
-                Le portefeuille OùRA ne paraît plus sur ordinateur.
 
-                Ajouter une carte demande de la scanner et de se prendre en
-                photo : deux gestes qui n'ont de sens qu'avec un téléphone en
-                main. Sur un écran de bureau, le panneau ne pouvait que montrer
-                des cartes ajoutées ailleurs, et proposer un parcours qui
-                s'interrompt à la première étape.
-
-                La pastille disparaît donc entièrement, plutôt que d'ouvrir sur
-                une impasse. Les cartes existent toujours, et le téléphone les
-                affiche comme avant.
-              */}
-
-              {/* ── Indice ATMO (desktop) ─────────────────────────────
-                  Même mécanique de survol que les deux panneaux voisins. Replié,
-                  le bouton porte la couleur du niveau du jour et son
-                  pictogramme officiel : la qualité de l'air se lit sans ouvrir
-                  quoi que ce soit. */}
               <div
                 onMouseEnter={() => setIsAtmoBtnHovered(true)}
                 onMouseLeave={() => setIsAtmoBtnHovered(false)}
@@ -3364,7 +3020,7 @@ function App() {
                   }`}
                   style={{
                     backgroundColor: atmoColor(isOffline ? null : atmoReport),
-                    borderColor: isAtmoPanelOpen ? 'transparent' : 'rgba(15,23,42,0.35)',
+                    borderColor: isAtmoPanelOpen ? 'transparent' : 'rgba(var(--gl-ink-rgb), 0.35)',
                   }}
                   title={
                     atmoReport?.current
@@ -3373,8 +3029,6 @@ function App() {
                   }
                 >
                   {!isAtmoPanelOpen && (
-                    /* Sans réseau, l'indice du jour est inconnu : le bouton le
-                       dit avec le même pictogramme que le panneau. */
                     isOffline ? (
                       <IoWifi className="w-5 h-5 text-white" aria-hidden="true" />
                     ) : atmoPicto(atmoReport) ? (
@@ -3406,11 +3060,6 @@ function App() {
                 </div>
               </div>
 
-              {/* ── Traffic info panel (desktop) ───────────────────────
-                  Same look & filter logic as TrafficPanelMobile: filter
-                  tabs (All/Trams/Chrono/Bus), per-line cards with a
-                  category-coloured badge (tram=blue, chrono=orange,
-                  bus=slate), sorted by category then by end-date. */}
               <div onMouseEnter={() => setIsTrafficButtonHovered(true)} onMouseLeave={() => { setIsTrafficButtonHovered(false); setIsTrafficPanelPinned(false); }} className="relative z-50">
                 <div className={`flex items-center justify-center cursor-pointer border transition-all duration-300 ${isTrafficPanelOpen ? 'w-96 h-96 rounded-2xl bg-slate-900/95 border-slate-700' : 'w-10 h-10 rounded-full bg-amber-500 border-amber-600 shadow-lg'}`}>
                   {!isTrafficPanelOpen && <ExclamationTriangleIcon className="w-5 h-5 text-white" />}
@@ -3418,18 +3067,16 @@ function App() {
                     className={`absolute top-0 left-0 z-50 transition-all duration-300 ease-out ${isTrafficPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                     style={{ width: '100%', height: '100%' }}>
                     <div className="h-full w-full flex flex-col rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl overflow-hidden">
-                      {/* Header */}
                       <div className="flex items-center justify-between px-4 py-3 flex-shrink-0">
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 bg-amber-500 rounded-xl flex items-center justify-center">
                             <ExclamationTriangleIcon className="w-4 h-4 text-white" />
                           </div>
                           <h3 className="text-sm font-bold text-white">{text.misc.liveTrafficInfo}</h3>
-                          {!isOffline && trafficInfo.size > 0 && (() => {
+                          {trafficPanelContentMounted && !isOffline && trafficInfo.size > 0 && (() => {
                             const visibleCount = Array.from(trafficInfo.entries())
                               .filter(([line]) =>
-                                desktopTrafficFilter === 'all' ||
-                                trafficCategory(line, allLinesLookup) === desktopTrafficFilter,
+                                matchesTrafficFilter(line, desktopTrafficFilter, desktopTrafficSubFilter, allLinesLookup),
                               ).length;
                             return (
                               <span className="text-xs bg-amber-500 text-white font-bold px-2 py-0.5 rounded-full">
@@ -3440,45 +3087,28 @@ function App() {
                         </div>
                       </div>
 
-                      {/* Filter tabs — Tout / Trams / Chrono / Proximo / Flexo */}
-                      <div ref={trafficFiltersRef} className="flex gap-1.5 px-4 pb-2 flex-shrink-0 overflow-x-auto scrollbar-hide">
-                        {trafficFilters(
-                          new Set(
-                            Array.from(trafficInfo.keys()).map(line =>
-                              trafficCategory(line, allLinesLookup),
-                            ),
-                          ),
+                      {trafficPanelContentMounted && <TrafficFilterBar
+                        filters={trafficFilters(
+                          new Set(Array.from(trafficInfo.keys()).map(line => trafficCategory(line, allLinesLookup))),
                           language,
-                        ).map(f => (
-                          <button
-                            key={f.key}
-                            onClick={() => setDesktopTrafficFilter(f.key)}
-                            className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-                              desktopTrafficFilter === f.key
-                                ? 'bg-amber-500 text-white'
-                                : 'bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700'
-                            }`}
-                          >
-                            {f.key === 'all' && <FunnelIcon className="w-3 h-3" />}
-                            {f.label}
-                          </button>
-                        ))}
-                      </div>
+                        )}
+                        active={desktopTrafficFilter}
+                        onSelect={setDesktopTrafficFilter}
+                        subFilters={trafficSubFilters(desktopTrafficFilter, Array.from(trafficInfo.keys()), allLinesLookup, language)}
+                        activeSub={desktopTrafficSubFilter}
+                        onSelectSub={setDesktopTrafficSubFilter}
+                        language={language}
+                        size="sm"
+                        scrollRef={trafficFiltersRef}
+                      />}
 
-                      {/* Scrollable content */}
                       <div className="overflow-y-auto flex-1 px-4 pb-4">
-                        {isOffline ? <OfflinePanel language={language} /> : (() => {
+                        {!trafficPanelContentMounted ? null : isOffline ? <OfflinePanel language={language} /> : (() => {
                           const filteredEntries = Array.from(trafficInfo.entries())
                             .filter(([line]) =>
-                              desktopTrafficFilter === 'all' ||
-                              trafficCategory(line, allLinesLookup) === desktopTrafficFilter,
+                              matchesTrafficFilter(line, desktopTrafficFilter, desktopTrafficSubFilter, allLinesLookup),
                             )
-                            .sort(([a], [b]) => {
-                              const ra = categoryRank(trafficCategory(a, allLinesLookup));
-                              const rb = categoryRank(trafficCategory(b, allLinesLookup));
-                              if (ra !== rb) return ra - rb;
-                              return a.localeCompare(b, undefined, { numeric: true });
-                            });
+                            .sort(([a], [b]) => compareTrafficLines(a, b, allLinesLookup));
 
                           if (filteredEntries.length === 0) {
                             return (
@@ -3500,7 +3130,7 @@ function App() {
                                   const bt = new Date(b.dateFin).getTime() || 0;
                                   return at - bt;
                                 });
-                                const resolved = allLinesLookup.get(n);
+                                const resolved = isForeignLineId(line) ? foreignAsCatalogLine({ id: line }) : allLinesLookup.get(n);
                                 const badgeLine = resolved ?? {
                                   id: `SEM:${n}`,
                                   shortName: line,
@@ -3514,16 +3144,12 @@ function App() {
                                     <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700">
                                       <div className="flex items-center gap-2">
                                         <LineBadge line={badgeLine} size="sm" />
-                                        <span className="text-[10px] text-slate-400">
+                                        <span className="text-[0.625rem] text-slate-400">
                                           {sortedDetails.length}{' '}
                                           {sortedDetails.length > 1 ? text.misc.incidentPlural : text.misc.incidentSingular}
                                         </span>
                                       </div>
                                     </div>
-                                    {/* La même carte que partout ailleurs : elle
-                                        traduit, retire les balises et se déplie.
-                                        Ce panneau avait son propre dessin, sans
-                                        rien de tout cela. */}
                                     <div className="space-y-2 p-3">
                                       {sortedDetails.map((detail, i) => (
                                         <TrafficAlertCard
@@ -3550,35 +3176,12 @@ function App() {
         </>
       )}
 
-      {/* Mobile-only: home menu sheet. Rendered FIRST among sheets so it
-          sits at the bottom of the DOM stacking order — every other sheet
-          mounted afterwards (stop sidebar / traffic / settings) appears
-          above it visually. Stays open in the background and only closes
-          via the user's explicit X tap. */}
-      {/* Le planificateur ouvert prend l'écran, y compris replié sur la carte
-          où il ne laisse qu'un bandeau : la barre de navigation de l'accueil
-          se rangerait juste dessous, deux barres l'une sur l'autre. L'accueil
-          s'efface donc le temps de l'itinéraire, comme il s'efface pour une
-          fiche d'arrêt, et revient dès que le planificateur se referme — le
-          planificateur porte sa propre sortie, en haut et au glissement. */}
       {isMobile && (
         <HomeSheet
-          /* La fiche d'arrêt ne se pose pas sur l'accueil : elle prend sa
-             place. Les deux feuilles occupent le même bas d'écran et se
-             disputeraient la poignée ; celle de l'arrêt gagne, l'accueil s'en
-             va le temps de la consultation et revient quand on la referme —
-             sur l'onglet « Autour », d'où l'on venait. */
-          /* Une carte au premier plan referme la feuille, et c'est voulu : elle
-             sort par le bas en emportant la barre d'onglets, puis remonte quand
-             on repose la carte. C'est le seul moment où l'écran appartient
-             entièrement à autre chose qu'à la carte du réseau. */
           isOpen={isNearbySheetOpen && !isCardFocused && !(isMobile && isSidebarOpen) && !isRouteSidebarOpen}
           locked={isAccountOpen || isFavoritesOpen || isRouteSidebarOpen}
           lockedScreen={isAccountOpen ? 'account' : isFavoritesOpen ? 'favorites' : isRouteSidebarOpen ? 'route' : undefined}
           layerAbove={isRouteSidebarOpen}
-          /* La liste de résultats vit dans l'en-tête, qui est la poignée de la
-             feuille : tant qu'elle est ouverte, le glissement vertical lui
-             appartient. */
           searchOpen={isSearchFocused}
           onClose={() => {
             setIsNearbySheetOpen(false);
@@ -3636,11 +3239,6 @@ function App() {
             setSnapHomeToMiniSignal(s => s + 1);
             setIsLinesExplorerOpen(true);
           }}
-          /* « Y aller » depuis un lieu à visiter : le monument devient la
-             destination, et l'on se retrouve devant les itinéraires qui y
-             mènent. Le lieu est visé, non son arrêt : le calculateur sait
-             finir à pied, et choisir l'arrêt aurait décidé de la ligne à la
-             place du voyageur. */
           onNavigateToPlace={(place) => {
             setSnapHomeToMiniSignal(s => s + 1);
             openRouteToAddress({
@@ -3678,10 +3276,6 @@ function App() {
         />
       )}
 
-      {/* L'écran Favoris. Il se range du côté d'où il devra revenir : à gauche
-          quand le Compte occupe la page — le Compte est à sa droite dans la
-          barre d'onglets — à droite le reste du temps. C'est cette seule règle
-          qui fait que les écrans glissent toujours dans le bon sens. */}
       {isMobile && (
         <FavoritesScreen
           isOpen={isFavoritesOpen}
@@ -3747,9 +3341,6 @@ function App() {
         />
       )}
 
-      {/* La configuration des trajets favoris et, un cran plus loin encore, le
-          choix d'un nouveau trajet. Les deux pages entrent par la droite : on
-          s'enfonce dans les favoris, on ne change pas d'onglet. */}
       {isMobile && (
         <>
           <JourneyConfigScreen
@@ -3834,8 +3425,6 @@ function App() {
         </>
       )}
 
-      {/* L'écran Compte. Il porte sa propre barre d'onglets — la même, mais
-          posée sur une page : ici, rien ne se tire. */}
       {isMobile && (
         <AccountScreen
           isOpen={isAccountOpen}
@@ -3960,6 +3549,10 @@ function App() {
           onPlanRouteFromStop={openRouteFromStop}
           onOpenTimetable={setTimetableTarget}
           onOpenLine={line => {
+            if (isForeignLineId(line.id)) {
+              handleLineSearchSelect(foreignAsCatalogLine(line));
+              return;
+            }
             const resolved = allLinesLookup.get(line.id.toUpperCase().trim())
               ?? allLinesLookup.get((line.shortName || line.id).toUpperCase().trim());
             if (resolved) handleLineSearchSelect(resolved);
@@ -3988,9 +3581,10 @@ function App() {
               textColor: selectedLine.textColor,
             },
             stopName: options?.stopName,
+            stopId: options?.stopId,
           });
         }}
-        onOpenLineMap={() => {
+        onOpenLineMap={selectedLine && isForeignLineId(selectedLine.id) ? undefined : () => {
           if (!selectedLine) return;
           setLineMapTarget({
             routeId: toTimetableRouteId(selectedLine.shortName || selectedLine.id),
@@ -4025,6 +3619,10 @@ function App() {
           onPlanRouteFromStop={openRouteFromStop}
           onOpenTimetable={setTimetableTarget}
           onOpenLine={line => {
+            if (isForeignLineId(line.id)) {
+              handleLineSearchSelect(foreignAsCatalogLine(line));
+              return;
+            }
             const resolved = allLinesLookup.get(line.id.toUpperCase().trim())
               ?? allLinesLookup.get((line.shortName || line.id).toUpperCase().trim());
             if (resolved) handleLineSearchSelect(resolved);
@@ -4032,7 +3630,6 @@ function App() {
         />
       )}
 
-      {/* Address sidebar — opens automatically when an address is picked */}
       <DeferredPanel isOpen={selectedAddress !== null && !isSidebarOpen}>
       <AddressSidebar
         address={selectedAddress}
@@ -4050,7 +3647,6 @@ function App() {
       />
       </DeferredPanel>
 
-      {/* Bottom bar with clock and signal — desktop only */}
       {!hidePageControls && !isMobile && (
         <ClockSignal
           closedLabel={text.misc.networkClosed}
@@ -4061,7 +3657,6 @@ function App() {
         />
       )}
 
-      {/* Recherche universelle — ordinateur uniquement (Ctrl + Espace) */}
       {!isMobile && (
         <DeferredPanel isOpen={isSpotlightOpen}>
           <Spotlight
@@ -4070,7 +3665,7 @@ function App() {
             onPlanRoute={() => setIsRouteSidebarOpen(true)}
             language={language}
             stops={stops}
-            lines={allLines}
+            lines={spotlightLines}
             trafficInfo={trafficInfo}
             onSelectStop={stop => {
               setSelectedAddress(null);
@@ -4093,19 +3688,17 @@ function App() {
       {import.meta.env.PROD && <Analytics />}
       {import.meta.env.PROD && <SpeedInsights />}
 
-      {/* Fiche horaire d'une ligne, à droite de la fiche d'arrêt */}
       <DeferredPanel isOpen={timetableTarget !== null}>
         <TimetableSidebar
           isOpen={timetableTarget !== null}
           onClose={() => setTimetableTarget(null)}
           line={timetableTarget?.line ?? null}
           preferredHeadsign={timetableTarget?.headsign ?? null}
-          /* L'arrêt d'où l'on vient l'emporte sur celui de la carte : ouvrir
-             la fiche depuis un arrêt de la ligne doit surligner celui-là. */
           highlightStopName={timetableTarget?.stopName ?? selectedStop?.name ?? null}
+          stopId={timetableTarget?.stopId ?? selectedStop?.id ?? null}
           isMobile={isMobile}
           language={language}
-          onOpenLineMap={() => {
+          onOpenLineMap={timetableTarget && isForeignLineId(timetableTarget.line.id) ? undefined : () => {
             if (!timetableTarget) return;
             const line = timetableTarget.line;
             setLineMapTarget({
@@ -4118,7 +3711,6 @@ function App() {
         />
       </DeferredPanel>
 
-      {/* Plan de ligne en PDF, lu sur place */}
       <DeferredPanel isOpen={lineMapTarget !== null}>
         <LineMapViewer
           isOpen={lineMapTarget !== null}
@@ -4132,7 +3724,6 @@ function App() {
         />
       </DeferredPanel>
 
-      {/* Fiche des véhicules partagés (Citiz / Voi) */}
       <DeferredPanel isOpen={sharedSelection !== null}>
         {sharedSelection && (
           <SharedMobilitySidebar
@@ -4166,11 +3757,6 @@ function App() {
         )}
       </DeferredPanel>
 
-      {/* Overlay de performance — mode développeur, ordinateur uniquement */}
-      {/* Un message reçu sur une carte du portefeuille. On l'annonce là où l'on
-          annonce tout le reste — la pastille du haut — parce qu'il attendrait
-          sinon dans un écran qu'on n'ouvre pas tous les jours. La toucher mène
-          au portefeuille, où il se lit. */}
       <Toast
         message={
           cardNotice
@@ -4191,6 +3777,11 @@ function App() {
           setIsFavoritesOpen(false);
           setIsAccountOpen(true);
         }}
+      />
+      <Toast
+        message={testToast}
+        isLight={effectiveTheme === 'light'}
+        onDismiss={() => setTestToast(null)}
       />
 
       {!isMobile && <DevOverlay />}

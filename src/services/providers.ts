@@ -1,18 +1,19 @@
+import gtfsNetworks from '../data/gtfsNetworks.json';
 
-export type ProviderId = 'mtag' | 'tcl';
+export type ProviderId = 'mtag' | 'tcl' | 'gtfs';
 
 export interface TransitProvider {
   id: ProviderId;
   label: string;
-  
+
   owns(value: string): boolean;
-  
+
   networkOf(value: string): string | null;
-  
+
   localCode(value: string): string;
 }
 
-const FOREIGN_NETWORK_CODES = new Set(['TCL']);
+const FOREIGN_NETWORK_CODES = new Set(['TCL', ...(gtfsNetworks as Array<{ code: string }>).map(network => network.code)]);
 
 const MTAG: TransitProvider = {
   id: 'mtag',
@@ -44,7 +45,7 @@ const TCL: TransitProvider = {
 
   owns(value) {
     const raw = String(value);
-    
+
     return raw.startsWith('ActIV:') || raw.startsWith('TCL:');
   },
 
@@ -57,12 +58,37 @@ const TCL: TransitProvider = {
     if (!TCL.owns(raw)) return raw;
     if (raw.startsWith('TCL:')) return raw.slice(4);
     const fields = raw.split(':');
-    
+
     return fields[TCL_CODE_FIELD] || raw;
   },
 };
 
-export const PROVIDERS: TransitProvider[] = [MTAG, TCL];
+const GTFS_CODES = new Set((gtfsNetworks as Array<{ code: string }>).map(network => network.code));
+const gtfsCodeOf = (value: string) => {
+  const raw = String(value);
+  const at = raw.indexOf(':');
+  return at > 0 && GTFS_CODES.has(raw.slice(0, at)) ? raw.slice(0, at) : null;
+};
+
+const GTFS: TransitProvider = {
+  id: 'gtfs',
+  label: 'Réseaux GTFS',
+
+  owns(value) {
+    return gtfsCodeOf(value) !== null;
+  },
+
+  networkOf(value) {
+    return gtfsCodeOf(value);
+  },
+
+  localCode(value) {
+    const code = gtfsCodeOf(value);
+    return code ? String(value).slice(code.length + 1) : String(value);
+  },
+};
+
+export const PROVIDERS: TransitProvider[] = [MTAG, TCL, GTFS];
 
 export function providerOf(value: string): TransitProvider | null {
   for (const provider of PROVIDERS) {
@@ -80,5 +106,7 @@ export function localCode(value: string): string {
 }
 
 export function providerOfNetwork(networkCode: string): ProviderId {
-  return networkCode === 'TCL' ? 'tcl' : 'mtag';
+  if (networkCode === 'TCL') return 'tcl';
+  if ((gtfsNetworks as Array<{ code: string }>).some(network => network.code === networkCode)) return 'gtfs';
+  return 'mtag';
 }

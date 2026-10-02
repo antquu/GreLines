@@ -2,22 +2,6 @@ import type { Departure } from '../types';
 import { idbGet, idbSet } from './persistentCache';
 import { isSimulatedOffline } from './networkSimulation';
 
-/**
- * Les horaires théoriques gardés sur l'appareil, arrêt par arrêt.
- *
- * Sans réseau, le temps réel ne rend rien et la fiche d'un arrêt restait vide.
- * Le réseau publie pourtant la journée entière d'un arrêt en une seule
- * réponse : on la garde, et hors connexion on en tire les prochains passages
- * à partir de l'heure qu'il est.
- *
- * On ne garde pas une journée par date, mais une par sorte de jour : semaine,
- * samedi, dimanche. Une fiche de mardi dit à peu près ce que fera jeudi ; c'est
- * ce qui permet de rester utile des semaines sans avoir rien rechargé. Ces
- * heures sont une estimation, et l'interface les marque comme telles.
- *
- * Ce qui est gardé est réduit au strict nécessaire : une ligne, une
- * destination, une liste d'heures. La réponse brute pèse dix fois plus.
- */
 
 export interface SchedulePattern {
   lineId: string;
@@ -26,14 +10,11 @@ export interface SchedulePattern {
   lineShortName: string;
   destination: string;
   type: Departure['type'];
-  /** Secondes depuis minuit du jour de service. Peut dépasser 24 h. */
   times: number[];
 }
 
 export interface DaySchedule {
-  /** La date réellement chargée, au format `YYYYMMDD`. */
   date: string;
-  /** Assemblée ligne par ligne : il peut manquer des lignes d'autres réseaux. */
   partial?: boolean;
   patterns: SchedulePattern[];
 }
@@ -41,8 +22,6 @@ export interface DaySchedule {
 export type DayKind = 'wd' | 'sat' | 'sun';
 
 const KEY_PREFIX = 'offsched_v1_';
-/* Un mois et demi : assez pour survivre à des vacances sans réseau, pas au
-   changement d'horaires de la rentrée suivante. */
 const SCHEDULE_TTL_MS = 45 * 24 * 60 * 60 * 1000;
 
 const memory = new Map<string, DaySchedule | null>();
@@ -61,7 +40,6 @@ export function toScheduleDate(date: Date): string {
   return `${year}${month}${day}`;
 }
 
-/** Minuit du jour donné, décalé de `offset` jours. */
 export function midnight(from: Date = new Date(), offset = 0): Date {
   const date = new Date(from);
   date.setHours(0, 0, 0, 0);
@@ -73,7 +51,6 @@ function keyOf(clusterId: string, kind: DayKind): string {
   return `${KEY_PREFIX}${clusterId}_${kind}`;
 }
 
-/** La journée gardée pour ce genre de jour, exacte ou non. */
 export async function readDaySchedule(clusterId: string, date: Date): Promise<DaySchedule | null> {
   const key = keyOf(clusterId, dayKindOf(date));
   if (memory.has(key)) return memory.get(key) ?? null;
@@ -93,15 +70,6 @@ export async function saveDaySchedule(clusterId: string, schedule: DaySchedule):
   await idbSet(key, schedule, SCHEDULE_TTL_MS);
 }
 
-/**
- * Remplace, dans la journée gardée d'un arrêt, les passages d'une seule ligne.
- *
- * Le téléchargement du réseau avance ligne par ligne : chaque fiche horaire
- * touche une quarantaine d'arrêts, et chacun reçoit sa part sans perdre celle
- * des autres lignes. La journée est marquée partielle : les lignes d'autres
- * réseaux qui s'y arrêtent n'y sont pas, et l'arrêt se complètera de lui-même
- * à sa prochaine ouverture en ligne.
- */
 export async function mergeLineSchedule(
   clusterId: string,
   day: Date,
@@ -121,12 +89,6 @@ export async function mergeLineSchedule(
   await idbSet(key, merged, SCHEDULE_TTL_MS);
 }
 
-/**
- * Les passages d'une journée gardée, posés sur un jour donné.
- *
- * `from` et `until` bornent la fenêtre, en millisecondes. Au plus
- * `perPattern` passages par ligne et destination.
- */
 export function scheduleDepartures(
   entries: Array<{ schedule: DaySchedule; day: Date }>,
   options: { from: number; until: number; perPattern: number },
@@ -174,11 +136,6 @@ export function scheduleDepartures(
   return result;
 }
 
-/**
- * Vrai quand le navigateur se sait sans réseau, ou que le mode développeur
- * simule la coupure. Un faux « en ligne » reste possible : les requêtes qui
- * échouent sont traitées comme une coupure.
- */
 export function isOffline(): boolean {
   if (isSimulatedOffline()) return true;
   return typeof navigator !== 'undefined' && navigator.onLine === false;

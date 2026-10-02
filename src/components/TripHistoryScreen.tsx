@@ -4,13 +4,6 @@ import { MinimalScreen } from './MinimalScreen';
 import { isRoundLine } from './LineBadge';
 import type { AccountTrip } from '../services/account';
 
-/**
- * Noir ou blanc sur un aplat de ligne.
- *
- * Le réseau va du bleu nuit au jaune : écrire en blanc par défaut rendrait le
- * bloc illisible sur les lignes claires. La luminance perçue pondère le vert plus
- * que le rouge, et le bleu à peine — l'œil n'y est pas également sensible.
- */
 function readableOn(background: string): string {
   const hex = background.replace('#', '');
   if (hex.length !== 6) return '#ffffff';
@@ -20,14 +13,6 @@ function readableOn(background: string): string {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? '#0f172a' : '#ffffff';
 }
 
-/**
- * Un trajet de l'historique, redessiné.
- *
- * Le tracé vient de l'enregistrement, pas d'un nouveau calcul : un itinéraire
- * recalculé six mois plus tard ne suit pas forcément le même chemin — les lignes
- * sont déviées, les arrêts déplacés. L'historique doit montrer le trajet qu'on a
- * fait, pas celui qu'on ferait aujourd'hui.
- */
 
 const DARK_MAP_STYLE_URL =
   'https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl';
@@ -59,13 +44,6 @@ export function TripHistoryScreen({
 
   const path = trip?.path ?? [];
 
-  /**
-   * Le cadrage, calculé du tracé.
-   *
-   * On ne peut pas se contenter d'un centre et d'un zoom fixes : un trajet de
-   * deux arrêts et une traversée de l'agglomération ne se regardent pas de la
-   * même hauteur. Les bornes du tracé donnent les deux.
-   */
   const view = useMemo(() => {
     if (path.length === 0) return { longitude: 5.7245, latitude: 45.1885, zoom: 12 };
     let minLon = path[0][0];
@@ -159,15 +137,10 @@ export function TripHistoryScreen({
             )}
           </div>
 
-          {/* La timeline du trajet, comme celle d'un itinéraire qu'on vient de
-              choisir : rail à la couleur de la ligne, badge dans la forme du
-              réseau, deux quais et leurs heures. L'historique doit se lire comme
-              le trajet se lisait, sinon on ne reconnaît pas ce qu'on a fait. */}
           {trip.legs.length > 0 && (
             <div className="mt-4">
               {trip.legs.map((leg, index) => (
                 <div key={index}>
-                  {/* Les points gris de la correspondance, entre deux véhicules. */}
                   {index > 0 && (
                     <div className="flex items-center gap-3 py-2 pl-3">
                       <span className="flex w-7 flex-col items-center gap-1.5">
@@ -207,7 +180,6 @@ export function TripHistoryScreen({
                     </div>
 
                     <div className="mt-3 flex gap-3">
-                      {/* Le rail, avec ses deux quais posés dedans. */}
                       <div className="flex w-7 flex-col items-center justify-between self-stretch rounded-full bg-black/20 py-1.5">
                         <span className="h-3 w-3 rounded-full bg-current" />
                         <span className="h-3 w-3 rounded-full bg-current" />

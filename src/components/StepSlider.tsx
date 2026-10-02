@@ -1,19 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
 const TRACK_HEIGHT = 36;
-/** Épaisseurs aux deux bouts. Le cône va de l'une à l'autre. */
 const CAP_LEFT = 10;
 const CAP_RIGHT = 34;
 
-/**
- * Le cône, dessiné avec ses deux bouts ronds.
- *
- * Un `clip-path` en polygone donnait la bonne silhouette mais des extrémités
- * coupées à la serpe. Les demi-cercles ne se font proprement qu'en SVG, et
- * seulement à l'échelle réelle : dessiner dans un repère normalisé puis étirer
- * transformerait les cercles en ellipses, d'autant plus visibles que l'écran est
- * large. On mesure donc la largeur avant de tracer.
- */
 function conePath(width: number): string {
   const cy = TRACK_HEIGHT / 2;
   const r1 = CAP_LEFT / 2;
@@ -30,19 +20,6 @@ function conePath(width: number): string {
   ].join(' ');
 }
 
-/**
- * Un curseur à crans, avec une pastille qu'on traîne.
- *
- * Une suite de boutons aurait suffi à choisir parmi cinq valeurs, mais un
- * réglage d'allure se pense comme un continuum : on veut *plus* ou *moins*
- * vite, pas « l'option numéro trois ». La piste se remplit à mesure, la pastille
- * suit le doigt, et les crans restent visibles pour qu'on sache où l'on peut
- * s'arrêter.
- *
- * Le glissement lit la position du doigt sur la largeur de la piste plutôt que
- * de compter les déplacements : on peut donc sauter d'un bout à l'autre d'un
- * seul geste, et poser le doigt directement sur le cran voulu.
- */
 export function StepSlider({
   count,
   value,
@@ -53,7 +30,6 @@ export function StepSlider({
 }: {
   count: number;
   value: number;
-  /** Ce qui s'affiche dans la pastille, et qui change avec la valeur. */
   emoji: string;
   color?: string;
   onChange: (value: number) => void;
@@ -109,15 +85,6 @@ export function StepSlider({
       }}
       className="relative h-11 cursor-pointer touch-none select-none"
     >
-      {/* La piste s'évase de gauche à droite.
-          Une bande d'épaisseur constante ne dit rien : elle demande de lire
-          l'étiquette pour savoir de quel côté est « plus ». Le cône porte le
-          sens du réglage dans sa forme — plus large veut dire plus vite, et
-          l'on comprend le curseur avant de l'avoir lu.
-
-          Le remplissage réutilise exactement le même tracé, découpé à la
-          position courante : deux cônes distincts ne se superposeraient jamais
-          au pixel près, et la bordure du remplissage dépasserait de la piste. */}
       {width > 0 && (
         <svg
           className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2"
@@ -135,7 +102,6 @@ export function StepSlider({
         </svg>
       )}
 
-      {/* Les crans grossissent avec la piste. */}
       <div className="absolute inset-x-4 top-1/2 flex -translate-y-1/2 items-center justify-between">
         {Array.from({ length: count }).map((_, i) => {
           const size = 6 + (i / Math.max(1, count - 1)) * 6;
@@ -154,8 +120,6 @@ export function StepSlider({
         })}
       </div>
 
-      {/* La pastille grandit elle aussi, et porte l'émoji du cran choisi — c'est
-          ce qui rend le réglage lisible sans lire l'étiquette. */}
       <div
         className="pointer-events-none absolute top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-[0_2px_10px_rgba(0,0,0,0.35)] transition-all duration-150"
         style={{

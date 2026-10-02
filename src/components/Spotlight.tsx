@@ -9,7 +9,9 @@ import {
   HomeIcon,
 } from '@heroicons/react/24/solid';
 import type { AllLinesLine } from '../services/allLines';
-import type { Stop, TrafficDetail } from '../types';
+import type { Line, Stop, TrafficDetail } from '../types';
+import { foreignAsCatalogLine, foreignLineCity, isForeignLineId } from '../utils/foreignNetworks';
+import { sortStopPreviewLines } from '../utils/lineOrder';
 import type { AddressResult } from '../services/geocoding';
 import { searchAddresses } from '../services/geocoding';
 import { LineBadge } from './LineBadge';
@@ -68,7 +70,7 @@ export function Spotlight({
   const isFr = language === 'fr';
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
-  
+
   const [addressHit, setAddressHit] = useState<{ query: string; results: AddressResult[] }>({
     query: '',
     results: [],
@@ -157,40 +159,49 @@ export function Spotlight({
     },
   ], [isFr, onOpenSettings, onOpenTraffic, onPlanRoute, onOpenNearby]);
 
+  const lineIndex = useMemo(
+    () => lines.map(line => ({ line, short: normalize(line.shortName), long: normalize(line.longName) })),
+    [lines],
+  );
+  const stopIndex = useMemo(
+    () => stops.map(stop => ({ stop, name: normalize(stop.name), city: normalize(stop.city || '') })),
+    [stops],
+  );
+
   const results = useMemo<SpotlightResult[]>(() => {
     const q = normalize(query);
 
     if (!q) return actions;
 
-    const matchedLines: SpotlightResult[] = lines
-      .filter(line => {
-        const short = normalize(line.shortName);
-        return short === q || short.startsWith(q) || normalize(line.longName).includes(q);
-      })
-      
+    const matchedLines: SpotlightResult[] = lineIndex
+      .filter(entry => entry.short.startsWith(q) || entry.long.includes(q))
       .sort((a, b) => {
-        const aExact = normalize(a.shortName) === q ? 0 : 1;
-        const bExact = normalize(b.shortName) === q ? 0 : 1;
-        return aExact - bExact || a.shortName.localeCompare(b.shortName, 'fr', { numeric: true });
+        const aExact = a.short === q ? 0 : 1;
+        const bExact = b.short === q ? 0 : 1;
+        return aExact - bExact || a.line.shortName.localeCompare(b.line.shortName, 'fr', { numeric: true });
       })
       .slice(0, MAX_PER_GROUP)
-      .map(line => ({
+      .map(({ line }) => ({
         kind: 'line' as const,
         id: `line-${line.id}`,
         title: `${isFr ? 'Ligne' : 'Line'} ${line.shortName}`,
-        subtitle: line.longName,
+        subtitle: foreignLineCity(line.id) ? `${line.longName} · ${foreignLineCity(line.id)}` : line.longName,
         line,
       }));
 
-    const matchedStops: SpotlightResult[] = stops
-      .filter(stop => normalize(stop.name).includes(q) || normalize(stop.city || '').includes(q))
-      .sort((a, b) => {
-        const aStarts = normalize(a.name).startsWith(q) ? 0 : 1;
-        const bStarts = normalize(b.name).startsWith(q) ? 0 : 1;
-        return aStarts - bStarts || a.name.localeCompare(b.name, 'fr');
-      })
+    const startHits: typeof stopIndex = [];
+    const containHits: typeof stopIndex = [];
+    for (const entry of stopIndex) {
+      if (entry.name.startsWith(q)) startHits.push(entry);
+      else if (containHits.length < MAX_PER_GROUP && (entry.name.includes(q) || entry.city.includes(q))) containHits.push(entry);
+    }
+    const byName = (a: { stop: Stop }, b: { stop: Stop }) => a.stop.name.localeCompare(b.stop.name, 'fr');
+    const stopHits = startHits.length >= MAX_PER_GROUP
+      ? startHits.sort(byName)
+      : [...startHits.sort(byName), ...containHits.sort(byName)];
+    const matchedStops: SpotlightResult[] = stopHits
       .slice(0, MAX_PER_GROUP)
-      .map(stop => ({
+      .map(({ stop }) => ({
         kind: 'stop' as const,
         id: `stop-${stop.id}`,
         title: stop.name,
@@ -198,16 +209,20 @@ export function Spotlight({
         stop,
       }));
 
+    const trafficLabel = (lineName: string) => {
+      if (!isForeignLineId(lineName)) return `${isFr ? 'Ligne' : 'Line'} ${lineName}`;
+      return `${isFr ? 'Ligne' : 'Line'} ${foreignAsCatalogLine({ id: lineName }).shortName} (${foreignLineCity(lineName)})`;
+    };
     const matchedTraffic: SpotlightResult[] = Array.from(trafficInfo.entries())
       .filter(([lineName, details]) =>
-        normalize(lineName).includes(q) ||
+        normalize(trafficLabel(lineName)).includes(q) ||
         details.some(detail => normalize(detail.titre).includes(q)))
       .slice(0, MAX_PER_GROUP)
       .map(([lineName, details]) => ({
         kind: 'traffic' as const,
         id: `traffic-${lineName}`,
-        title: details[0]?.titre || lineName,
-        subtitle: `${isFr ? 'Infotrafic' : 'Traffic'} · ${lineName}`,
+        title: details[0]?.titre || trafficLabel(lineName),
+        subtitle: `${isFr ? 'Infotrafic' : 'Traffic'} · ${trafficLabel(lineName)}`,
         lineName,
       }));
 
@@ -229,7 +244,23 @@ export function Spotlight({
       ...matchedAddresses,
       ...matchedActions,
     ];
-  }, [query, lines, stops, trafficInfo, addresses, actions, isFr]);
+  }, [query, lineIndex, stopIndex, trafficInfo, addresses, actions, isFr]);
+
+  const [stopLines, setStopLines] = useState<Record<string, Line[]>>({});
+  useEffect(() => {
+    const missing = results
+      .filter((result): result is Extract<SpotlightResult, { kind: 'stop' }> => result.kind === 'stop')
+      .map(result => result.stop.id)
+      .filter(id => !(id in stopLines));
+    if (missing.length === 0) return;
+    let active = true;
+    void import('../services/api').then(({ getStopLines }) =>
+      Promise.all(missing.map(id => getStopLines(id).then(lines => [id, lines] as const).catch(() => [id, [] as Line[]] as const))))
+      .then(entries => {
+        if (active) setStopLines(previous => ({ ...previous, ...Object.fromEntries(entries) }));
+      });
+    return () => { active = false; };
+  }, [results, stopLines]);
 
   const [lastQuery, setLastQuery] = useState(query);
   if (query !== lastQuery) {
@@ -307,11 +338,11 @@ export function Spotlight({
                 onChange={event => setQuery(event.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={isFr ? 'Rechercher sur GreLines...' : 'Search GreLines...'}
-                className="w-full bg-transparent text-[17px] text-white outline-none placeholder:text-slate-500"
+                className="w-full bg-transparent text-[1.0625rem] text-white outline-none placeholder:text-slate-500"
                 spellCheck={false}
                 autoComplete="off"
               />
-              <kbd className="hidden flex-shrink-0 rounded border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 sm:block">
+              <kbd className="hidden flex-shrink-0 rounded border border-slate-700 px-1.5 py-0.5 text-[0.625rem] font-medium text-slate-500 sm:block">
                 esc
               </kbd>
             </div>
@@ -332,15 +363,18 @@ export function Spotlight({
                       index === safeIndex ? 'bg-blue-600/25' : 'hover:bg-slate-800/60'
                     }`}
                   >
-                    <ResultIcon result={result} />
+                    <ResultIcon result={result} lines={lines} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-medium text-white">
+                      <span className="block truncate text-[0.875rem] font-medium text-white">
                         {result.title}
                       </span>
-                      <span className="block truncate text-[12px] text-slate-400">
+                      <span className="block truncate text-[0.75rem] text-slate-400">
                         {result.subtitle}
                       </span>
                     </span>
+                    {result.kind === 'stop' && stopLines[result.stop.id]?.length ? (
+                      <StopLineBadges lines={stopLines[result.stop.id]} />
+                    ) : null}
                   </button>
                 ))
               )}
@@ -352,8 +386,35 @@ export function Spotlight({
   );
 }
 
-/** Pastille de gauche : badge officiel pour une ligne, icône sinon. */
-function ResultIcon({ result }: { result: SpotlightResult }) {
+function StopLineBadges({ lines }: { lines: Line[] }) {
+  const sorted = sortStopPreviewLines(lines);
+  const shown = sorted.slice(0, 4);
+  const hidden = sorted.length - shown.length;
+  return (
+    <span className="flex flex-shrink-0 items-center gap-1">
+      {shown.map(line => <LineBadge key={line.id} line={line} size="xs" />)}
+      {hidden > 0 && (
+        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-slate-700 bg-slate-800 px-1.5 text-[0.625rem] font-extrabold text-slate-300">
+          +{hidden}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ResultIcon({ result, lines }: { result: SpotlightResult; lines: AllLinesLine[] }) {
+  if (result.kind === 'traffic') {
+    const line = isForeignLineId(result.lineName)
+      ? foreignAsCatalogLine({ id: result.lineName })
+      : lines.find(candidate => candidate.shortName.toUpperCase() === result.lineName.toUpperCase());
+    if (line) {
+      return (
+        <span className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center">
+          <LineBadge line={{ id: line.id, shortName: line.shortName, color: line.color, textColor: line.textColor, hasTraffic: true }} size="xs" />
+        </span>
+      );
+    }
+  }
   if (result.kind === 'line') {
     return (
       <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center">

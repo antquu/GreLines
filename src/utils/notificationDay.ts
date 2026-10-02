@@ -1,9 +1,3 @@
-/**
- * Le jour d'une notification, dit comme on le dirait.
- *
- * Le nom du jour tant qu'il est dans la semaine écoulée — « jeudi » se situe
- * sans effort —, la date au-delà, où le nom ne veut plus rien dire.
- */
 export function formatNotificationDay(value: string, language: 'fr' | 'en'): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';

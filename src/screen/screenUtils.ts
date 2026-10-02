@@ -17,7 +17,7 @@ export interface ScreenLineGroup {
   color?: string;
   textColor?: string;
   hasTraffic?: boolean;
-  
+
   mode: string;
   directions: ScreenDirection[];
 }
@@ -44,7 +44,7 @@ function compareLines(a: ScreenLineGroup, b: ScreenLineGroup): number {
 }
 
 export function groupDeparturesForScreen(detail: StopDetail): ScreenLineGroup[] {
-  
+
   const lineByRef = new Map<string, Line>();
   for (const line of detail.lines ?? []) {
     lineByRef.set(line.id, line);
@@ -79,7 +79,7 @@ export function groupDeparturesForScreen(detail: StopDetail): ScreenLineGroup[] 
       direction = { destination, departures: [] };
       group.directions.push(direction);
     }
-    
+
     const alreadyListed = direction.departures.some(d => d.departureTime === departure.departureTime);
     if (!alreadyListed && direction.departures.length < TIMES_PER_DIRECTION) {
       direction.departures.push(departure);
@@ -88,7 +88,7 @@ export function groupDeparturesForScreen(detail: StopDetail): ScreenLineGroup[] 
 
   const result = Array.from(groups.values());
   for (const group of result) {
-    
+
     group.directions.sort(
       (a, b) => (a.departures[0]?.departureTime ?? Infinity) - (b.departures[0]?.departureTime ?? Infinity),
     );
@@ -106,11 +106,11 @@ export function departureClockTime(minutes: number, now: Date = new Date()): str
 export const CLOCK_TIME_THRESHOLD_MIN = 60;
 
 export interface DepartureDisplay {
-  
+
   value: string;
-  
+
   isArrival: boolean;
-  
+
   isClockTime: boolean;
 }
 
@@ -136,21 +136,8 @@ export function buildScreenUrl(stopId: string, layout: ScreenLayout): string {
   return layout === 'rows' ? `${path}?vue=${ROWS_QUERY_VALUE}` : path;
 }
 
-/** Racine de l'affichage écran. Tout ce qui suit est l'identifiant d'arrêt. */
 export const SCREEN_BASE = '/app/screen';
 
-/**
- * Extrait l'identifiant d'arrêt de l'URL.
- *
- *   /app/screen            → null (page de choix)
- *   /app/screen/           → null
- *   /app/screen/SEM:CHAVANT → "SEM:CHAVANT"
- *   /app/screen/Sem%3ACHAVANT → "SEM:CHAVANT"
- *
- * Le code réseau est remis en majuscules : les URL saisies à la main sur un
- * téléviseur arrivent rarement dans la bonne casse, alors que l'API, elle, ne
- * connaît que « SEM: » ou « TCL: ».
- */
 export function parseScreenStopId(pathname: string): string | null {
   if (!pathname.startsWith(SCREEN_BASE)) return null;
   const rest = pathname.slice(SCREEN_BASE.length).replace(/^\/+/, '').replace(/\/+$/, '');

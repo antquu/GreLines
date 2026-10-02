@@ -98,7 +98,7 @@ export function useFavoriteDetails(favorites: Favorite[], enabled: boolean = tru
       cancelled = true;
       clearInterval(interval);
     };
-    
+
   }, [enabled, favorites.map(f => `${f.stopId}:${f.lines === 'all' ? 'all' : f.lines.join(',')}`).join('|')]);
 
   return details;

@@ -1,4 +1,5 @@
 import { memo, useState } from 'react';
+import { appLanguage } from '../utils/appLanguage';
 import { FaWalking } from 'react-icons/fa';
 import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
@@ -24,6 +25,7 @@ const formatDuration = (minutes: number): string => {
 
 export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLookup, getLineDisruptions }: JourneyTimelineProps) => {
   const [expandedLegs, setExpandedLegs] = useState<Set<number>>(new Set());
+  const isEn = appLanguage() === 'en';
 
   const toggleLeg = (index: number) => {
     setExpandedLegs(current => {
@@ -105,7 +107,7 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
               <p className="font-semibold text-sm text-white leading-tight">
                 {leg.from?.name?.replace(/^[^,]+,\s*/, '')}
               </p>
-              <p className="text-[12.5px] text-slate-400">
+              <p className="text-[0.7812rem] text-slate-400">
                 {leg.startTime ? new Date(leg.startTime).toLocaleTimeString('fr-FR', {
                   hour: '2-digit',
                   minute: '2-digit',
@@ -121,7 +123,7 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
         : [];
       const stopCount = intermediateStops.length + 1;
       const isExpanded = expandedLegs.has(i);
-      const summary = `${formatDuration(durationMin)} · ${stopCount} arrêt${stopCount > 1 ? 's' : ''}`;
+      const summary = `${formatDuration(durationMin)} · ${stopCount} ${isEn ? 'stop' : 'arrêt'}${stopCount > 1 ? 's' : ''}`;
       items.push(
         <div
           key={`transit-bar-${i}`}
@@ -137,7 +139,7 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
                 type="button"
                 onClick={() => toggleLeg(i)}
                 aria-expanded={isExpanded}
-                className="flex items-center gap-1.5 text-[12.5px] text-slate-400 transition hover:text-slate-200"
+                className="flex items-center gap-1.5 text-[0.7812rem] text-slate-400 transition hover:text-slate-200"
               >
                 <span>{summary}</span>
                 <ChevronDownIcon
@@ -145,12 +147,9 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
                 />
               </button>
             ) : (
-              <p className="text-[12.5px] text-slate-400">{summary}</p>
+              <p className="text-[0.7812rem] text-slate-400">{summary}</p>
             )}
 
-            {/* Dépliement animé par la grille (`height: auto` ne s'anime pas) ;
-                le trait de la ligne porte déjà les arrêts, inutile d'ajouter un
-                filet à côté. */}
             <div
               className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
                 isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
@@ -163,10 +162,10 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
                     key={`${stop?.stopId ?? stop?.name ?? stopIndex}-${stopIndex}`}
                     className={`flex items-baseline justify-between gap-3 ${stopIndex === 0 ? 'pt-2' : ''}`}
                   >
-                    <span className="truncate text-[12.5px] text-slate-400">
+                    <span className="truncate text-[0.7812rem] text-slate-400">
                       {String(stop?.name ?? '').replace(/^[^,]+,\s*/, '')}
                     </span>
-                    <span className="flex-shrink-0 text-[11px] text-slate-500">
+                    <span className="flex-shrink-0 text-[0.6875rem] text-slate-500">
                       {formatClock(stop?.arrival ?? stop?.departure)}
                     </span>
                   </li>
@@ -198,7 +197,7 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
             <p className="font-semibold text-sm text-white leading-tight">
               {leg.to?.name?.replace(/^[^,]+,\s*/, '')}
             </p>
-            <p className="text-[12.5px] text-slate-400">
+            <p className="text-[0.7812rem] text-slate-400">
               {leg.endTime ? new Date(leg.endTime).toLocaleTimeString('fr-FR', {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -210,16 +209,6 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
 
       if (nextIsTransit) {
         items.push(
-          /*
-           * La correspondance, dessinée comme une ligne.
-           *
-           * Deux lignes qui se suivent laissaient un simple vide : rien ne
-           * disait qu'on descend d'un véhicule pour en prendre un autre. Le
-           * pavé gris occupe désormais la colonne des badges, au même gabarit
-           * qu'eux mais plus bas — c'est une étape du trajet, pas une ligne de
-           * plus. Et il touche les deux badges qu'il sépare : collé, il les
-           * relie ; espacé, il les couperait.
-           */
           <div key={`transfer-gap-${i}`} className="flex gap-3 items-stretch">
             <div className="flex w-8 flex-shrink-0 justify-center">
               <div
@@ -247,11 +236,11 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
             <FaWalking className="w-5 h-5 text-slate-400 flex-shrink-0" />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-semibold text-slate-300">À pied</p>
-            <p className="text-[12.5px] text-slate-400">
+            <p className="text-sm font-semibold text-slate-300">{isEn ? 'Walk' : 'À pied'}</p>
+            <p className="text-[0.7812rem] text-slate-400">
               {leg.from?.name?.replace(/^[^,]+,\s*/, '')} → {leg.to?.name?.replace(/^[^,]+,\s*/, '')}
             </p>
-            <p className="text-[12.5px] text-slate-500 mt-1">
+            <p className="text-[0.7812rem] text-slate-500 mt-1">
               {formatDuration(durationMin)}
             </p>
           </div>

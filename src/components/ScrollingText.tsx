@@ -1,17 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 
-/**
- * Un texte trop long qui se lit en entier, à la manière d'un écran de quai.
- *
- * Il ne tourne pas en boucle comme le bandeau du bas : il part du début, glisse
- * jusqu'à ce que la fin soit visible, s'y arrête quelques secondes, puis
- * revient d'un coup au début et recommence. On lit ainsi le début, puis la
- * fin, sans jamais voir le texte couper au milieu d'une reprise.
- *
- * Un texte qui tient dans sa place ne bouge pas. Mouvement réduit demandé :
- * le texte reste immobile, tronqué.
- */
-
 const SPEED_PX_PER_SEC = 35;
 const START_PAUSE_MS = 1500;
 const END_PAUSE_MS = 2500;

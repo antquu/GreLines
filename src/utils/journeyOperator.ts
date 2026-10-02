@@ -1,25 +1,10 @@
-/**
- * Identité visuelle des options qui ne sont pas du transport en commun :
- * véhicules partagés et VTC.
- *
- * Ces itinéraires n'ont pas de ligne à afficher — c'est la marque qui les
- * identifie d'un coup d'œil dans la liste des résultats.
- */
-
 import type { RouteItinerary } from '../services/api';
 import { SHARED_OPERATOR_COLORS, SHARED_OPERATOR_LABELS } from '../services/sharedMobility';
 
 export interface JourneyOperatorBrand {
   name: string;
-  /** Logo adapté au thème : un logo sombre disparaît sur fond sombre. */
   logo: string;
   color: string;
-  /**
-   * Pastille de la frise : le rectangle qui, pour une ligne, porte son numéro.
-   * Sa couleur ne suit pas le thème mais la marque — c'est elle qu'on
-   * reconnaît — et le logo est donc choisi pour contraster avec elle, pas avec
-   * le fond de la page.
-   */
   chipColor: string;
   chipLogo: string;
 }
@@ -60,12 +45,6 @@ export function journeyOperatorBrand(
           : '/assets/voi.png',
       color: SHARED_OPERATOR_COLORS[operator],
       chipColor: SHARED_OPERATOR_COLORS[operator],
-      /*
-       * La pastille est peinte à la couleur de l'opérateur, donc le logotype
-       * qu'on y pose doit être blanc — celui de Voi est rose, et sur une
-       * pastille rose il disparaissait purement et simplement. Citiz suivait
-       * déjà cette règle ; Voi l'a rejointe.
-       */
       chipLogo:
         operator === 'citiz' ? '/assets/citiz_white.png' : '/assets/voi_white.png',
     };

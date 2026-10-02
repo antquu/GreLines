@@ -1,25 +1,7 @@
-/**
- * Les passages d'un arrêt favori, regroupés par ligne et par direction.
- *
- * L'API rend une liste plate de départs ; ce qu'on lit, ce sont des couples
- * « ligne + destination », chacun avec son prochain passage et le suivant. Deux
- * suffisent : celui qu'on attrape, et celui qu'on prendra si on le manque. Le
- * troisième ne change plus la décision.
- */
-
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import type { AllLinesLine, LineFamily } from '../services/allLines';
 import { getCachedStopLines } from '../services/api';
 
-/**
- * L'ordre dans lequel on lit les lignes d'un arrêt.
- *
- * Le tram d'abord — c'est lui qu'on cherche, il passe souvent et il ne dévie
- * pas —, puis les Chrono, les Proximo, les Flexo, et le reste ensuite. C'est
- * l'ordre du réseau lui-même, du plus structurant au plus occasionnel, et c'est
- * celui dans lequel un voyageur cherche : on ne parcourt pas dix lignes pour
- * trouver le A.
- */
 const FAMILY_RANK: Record<LineFamily, number> = {
   tram: 0,
   chrono: 1,
@@ -46,7 +28,6 @@ export interface DepartureGroup {
   textColor?: string | null;
   destination: string;
   times: number[];
-  /** Le premier passage vient de la fiche horaire, pas du temps réel. */
   theoretical?: boolean;
 }
 
@@ -91,7 +72,6 @@ export function groupFavoriteDepartures(
   });
 }
 
-/** Une ligne d'arrêt, réduite à ce qu'il faut pour dessiner son badge. */
 export interface StopLine {
   lineId: string;
   shortName: string;
@@ -99,14 +79,6 @@ export interface StopLine {
   textColor?: string | null;
 }
 
-/**
- * Les lignes qui desservent l'arrêt, une seule fois chacune, dans l'ordre.
- *
- * Elles viennent de la fiche de l'arrêt et non de ses départs : une ligne
- * dessert un arrêt même quand elle n'y passe plus de la nuit. Les déduire des
- * passages faisait disparaître les badges au moment où l'on en avait le plus
- * besoin — le soir, quand on vérifie s'il reste quelque chose.
- */
 export function favoriteStopLines(
   detail: FavoriteDetail | undefined,
   lineLookup?: Map<string, AllLinesLine> | null,
@@ -143,12 +115,6 @@ export function favoriteStopLines(
   });
 }
 
-/**
- * Minutes d'ici à une heure « HH:MM » d'aujourd'hui, ou `null` si illisible.
- *
- * Un départ passé de plus d'une heure est celui de demain à la même heure ;
- * passé de peu, c'est bien celui d'aujourd'hui, qu'on vient de rater.
- */
 export function minutesUntilClock(clock: string): number | null {
   const match = /^(\d{1,2})[:h](\d{2})$/.exec(clock.trim());
   if (!match) return null;
@@ -158,12 +124,6 @@ export function minutesUntilClock(clock: string): number | null {
   return minutes < -60 ? minutes + 24 * 60 : minutes;
 }
 
-/**
- * Un temps d'attente, écrit en toutes lettres courtes.
- *
- * « ARR » plutôt que « 0 min » : à zéro minute le véhicule est à quai, et c'est
- * une information différente — on court, on n'attend plus.
- */
 export function formatWait(minutes: number | undefined, language: 'fr' | 'en'): string {
   if (minutes == null) return '–';
   if (minutes < 0) return '–';

@@ -1,23 +1,3 @@
-/**
- * Définir son domicile ou son travail.
- *
- * Deux points qu'on saisit une fois pour toutes : ils méritent leur propre
- * écran plutôt qu'un détour par le champ d'arrivée. La feuille s'ouvre en
- * grand — on vient y chercher une adresse, pas jeter un œil — avec une barre
- * de recherche et, pour ce qui ne se dit pas par une adresse, un renvoi vers
- * la carte : on pointe, et le point choisi devient le lieu.
- *
- * Ce qui s'affiche est toujours un nom ; les coordonnées, elles, restent
- * dessous, invisibles, puisque ce sont elles qui calculent les trajets.
- *
- * La feuille est dessinée à la main plutôt qu'empruntée à `react-modal-sheet` :
- * cette bibliothèque ne rend son conteneur visible qu'au terme d'une animation
- * pilotée en JavaScript, et il suffit que celle-ci n'aille pas au bout — une
- * ouverture juste après une fermeture, un écran qui ne compose plus — pour que
- * la feuille reste invisible et ne se rouvre plus jamais. Ici le glissement est
- * une transition CSS : l'état d'arrivée est déclaré, donc atteint.
- */
-
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapPinIcon, StopCircleIcon, XMarkIcon, HomeIcon, BriefcaseIcon, MapIcon } from '@heroicons/react/24/solid';
 import { searchAddresses } from '../services/geocoding';
@@ -27,7 +7,6 @@ import type { SavedPlaceKind } from '../services/savedPlaces';
 import type { Stop } from '../types';
 
 interface SavedPlaceSheetProps {
-  /** Lieu à définir. Il reste renseigné feuille fermée, le temps qu'elle descende. */
   kind: SavedPlaceKind;
   isOpen: boolean;
   stops: Stop[];
@@ -35,16 +14,9 @@ interface SavedPlaceSheetProps {
   theme?: 'light' | 'dark';
   onClose: () => void;
   onSelect: (kind: SavedPlaceKind, location: RouteLocation) => void;
-  /** Ouvre la carte en plein écran pour y désigner le lieu. */
   onPickOnMap: (kind: SavedPlaceKind) => void;
 }
 
-/**
- * Le contenu de la feuille, monté à la demande.
- *
- * Il est remonté à chaque lieu — la clé du parent s'en charge — si bien que la
- * recherche repart vierge d'un lieu à l'autre, sans effet de remise à zéro.
- */
 function SavedPlaceSearch({ kind, stops, language, theme = 'dark', isOpen, onClose, onSelect, onPickOnMap }: SavedPlaceSheetProps) {
   const isFr = language === 'fr';
   const isLight = theme === 'light';
@@ -67,7 +39,6 @@ function SavedPlaceSearch({ kind, stops, language, theme = 'dark', isOpen, onClo
     close: isFr ? 'Fermer' : 'Close',
   };
 
-  /* Le clavier s'ouvre avec la feuille : on vient y écrire une adresse. */
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
@@ -92,10 +63,6 @@ function SavedPlaceSearch({ kind, stops, language, theme = 'dark', isOpen, onClo
     return () => { active = false; };
   }, [debouncedQuery]);
 
-  /**
-   * Une recherche trop courte n'affiche rien — sans qu'il faille vider la
-   * liste : ce qui compte est ce qu'on montre, pas ce qu'on garde.
-   */
   const addresses = query.trim().length < 3 ? [] : results;
 
   const stopMatches = useMemo(() => {
@@ -167,7 +134,7 @@ function SavedPlaceSearch({ kind, stops, language, theme = 'dark', isOpen, onClo
 
               {stopMatches.length > 0 && (
                 <>
-                  <div className="px-1 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  <div className="px-1 pb-2 pt-1 text-[0.625rem] font-semibold uppercase tracking-wider text-slate-500">
                     {text.stops}
                   </div>
                   <div className={`mb-3 overflow-hidden rounded-2xl border ${surface}`}>
@@ -192,7 +159,7 @@ function SavedPlaceSearch({ kind, stops, language, theme = 'dark', isOpen, onClo
 
               {addresses.length > 0 && (
                 <>
-                  <div className="px-1 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  <div className="px-1 pb-2 pt-1 text-[0.625rem] font-semibold uppercase tracking-wider text-slate-500">
                     {text.addresses}
                   </div>
                   <div className={`overflow-hidden rounded-2xl border ${surface}`}>
@@ -232,7 +199,6 @@ export function SavedPlaceSheet(props: SavedPlaceSheetProps) {
   const { kind, isOpen, theme = 'dark', onClose } = props;
   const isLight = theme === 'light';
 
-  /** Elle se referme aussi en la tirant vers le bas, comme toute feuille. */
   const dragStartRef = useRef<number | null>(null);
   const dragYRef = useRef(0);
   const [dragY, setDragY] = useState(0);
@@ -282,7 +248,6 @@ export function SavedPlaceSheet(props: SavedPlaceSheetProps) {
         <div className="flex justify-center pb-1 pt-3">
           <div className={`h-1.5 w-12 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/20'}`} />
         </div>
-        {/* La clé remet la recherche à zéro d'un lieu à l'autre. */}
         <SavedPlaceSearch {...props} key={kind} />
       </div>
     </>

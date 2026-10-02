@@ -1,17 +1,3 @@
-/**
- * Une page légale.
- *
- * Le même vocabulaire visuel que la page d'accueil — la marque, les mêmes
- * couleurs, la même bascule de thème — mais rien du discours commercial : ni
- * bandeau, ni bouton d'appel, ni logotypes qui défilent. On vient ici pour lire,
- * souvent parce qu'on cherche une réponse précise, parfois parce qu'on se
- * méfie. La page doit se laisser parcourir, pas séduire.
- *
- * D'où le sommaire tenu à gauche : un document légal se consulte au chapitre,
- * et faire défiler à l'aveugle pour retrouver « combien de temps » est
- * exactement ce qui donne l'impression qu'on cache quelque chose.
- */
-
 import { useEffect, useMemo, useState } from 'react';
 import './landing.css';
 import { LEGAL, LEGAL_ORDER, type LegalSlug } from './legalContent';
@@ -29,24 +15,19 @@ function systemTheme(): Theme {
 
 export function LegalPage({ lang, slug }: { lang: Lang; slug: LegalSlug }) {
   const doc = LEGAL[lang][slug];
-  /*
-   * Le thème, tenu comme sur la page d'accueil : « auto » suit le système, les
-   * deux autres l'emportent et sont retenus.
-   */
   const [choice, setChoice] = useState<'auto' | Theme>(() => {
     try {
       const stored = localStorage.getItem(THEME_KEY);
       if (stored === 'light' || stored === 'dark' || stored === 'auto') return stored;
-    } catch { /* navigation privée */ }
+    } catch { }
     return 'auto';
   });
   const theme: Theme = choice === 'auto' ? systemTheme() : choice;
   const chooseTheme = (next: 'auto' | Theme) => {
     setChoice(next);
-    try { localStorage.setItem(THEME_KEY, next); } catch { /* ignoré */ }
+    try { localStorage.setItem(THEME_KEY, next); } catch { }
   };
 
-  /** La section en cours de lecture, mise en avant dans le sommaire. */
   const [active, setActive] = useState<string>(doc.sections[0]?.id ?? '');
 
   const isFr = lang === 'fr';
@@ -56,13 +37,6 @@ export function LegalPage({ lang, slug }: { lang: Lang; slug: LegalSlug }) {
     document.title = `${doc.title} \\ GreLines`;
   }, [lang, doc.title]);
 
-  /*
-   * Le repère de lecture.
-   *
-   * L'observateur ne sert qu'à souligner le titre courant : si le navigateur ne
-   * le fournit pas, le sommaire reste un sommaire, avec tous ses liens, et rien
-   * n'est perdu.
-   */
   useEffect(() => {
     if (typeof IntersectionObserver !== 'function') return;
     const observer = new IntersectionObserver(
@@ -89,15 +63,9 @@ export function LegalPage({ lang, slug }: { lang: Lang; slug: LegalSlug }) {
   return (
     <div className="landing" data-theme={theme}>
       <div className="landing-surface">
-        {/* La barre complète, la même que sur l'accueil : une page légale
-            n'est pas une impasse, on la lit puis on veut voir le produit. */}
         <LandingHeader lang={lang} theme={theme} />
 
         <main className="mx-auto max-w-6xl px-6 pb-24 pt-16">
-          {/* L'en-tête du document : centré et seul, comme une page de garde.
-              Un texte juridique commence par dire ce qu'il est, avant de dire
-              quoi que ce soit d'autre. La date n'est pas une mention de plus :
-              c'est ce qui dit si le texte a suivi le produit. */}
           <div className="flex flex-col items-center pb-14 text-center">
             <p className="landing-eyebrow">{isFr ? 'Mentions légales' : 'Legal'}</p>
             <h1 className="landing-title mt-5">{doc.title}</h1>
@@ -109,9 +77,6 @@ export function LegalPage({ lang, slug }: { lang: Lang; slug: LegalSlug }) {
           </div>
 
           <div className="grid gap-12 lg:grid-cols-[16rem_1fr]">
-            {/* Le sommaire. Collé en haut sur grand écran, replié au-dessus du
-                texte sur téléphone — où une colonne de plus n'aurait pas de
-                place, et où le pouce fait le même travail en glissant. */}
             <nav className="hidden lg:block">
               <div className="sticky top-24 rounded-xl border border-[var(--line)] bg-[var(--bg-alt)] p-5">
                 <p className="mb-4 text-sm font-semibold">{isFr ? 'Sur cette page' : 'On this page'}</p>
@@ -151,8 +116,6 @@ export function LegalPage({ lang, slug }: { lang: Lang; slug: LegalSlug }) {
                 </section>
               ))}
 
-              {/* Les autres documents, en bas : on arrive souvent sur l'un en
-                  cherchant l'autre. */}
               <div className="border-t border-[var(--line)] pt-10">
                 <p className="landing-eyebrow pb-4">
                   {isFr ? 'Les autres documents' : 'The other documents'}

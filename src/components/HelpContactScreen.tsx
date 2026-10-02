@@ -1,38 +1,42 @@
-/**
- * Aide et contact.
- *
- * Une page d'aiguillage, et rien d'autre : GreLines ne prend pas de
- * signalement, ne garde pas d'objet trouvé et ne répond pas au téléphone. Ce
- * qu'elle peut faire, c'est mener au bon endroit sans faire chercher — et le
- * faire vite, parce qu'on ouvre cette page quand quelque chose ne va pas.
- *
- * L'ordre suit l'urgence. Ce qui touche à la sécurité d'abord, avec le numéro
- * qu'on compose sans réfléchir ; les objets perdus ensuite ; l'application
- * elle-même en dernier — un bug d'affichage attendra.
- *
- * Les coordonnées sont celles du réseau, relevées sur ses pages officielles :
- * Allo TAG au 04 38 70 38 70 (du lundi au samedi, 8 h – 18 h 30), les objets
- * trouvés sur tag.franceobjetstrouves.fr, et le formulaire de M réso. Elles
- * sont écrites en clair ici, et nulle part ailleurs : si le réseau en change,
- * c'est ce fichier qu'on modifie.
- */
-
 import {
   ArrowTopRightOnSquareIcon,
   ChatBubbleLeftRightIcon,
   ExclamationTriangleIcon,
   PhoneIcon,
 } from '@heroicons/react/24/solid';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { MinimalScreen } from './MinimalScreen';
 import { openExternal } from '../utils/openExternal';
+import { getCurrentCity, subscribeCurrentCity } from '../utils/currentArea';
 
-/**
- * Composer un numéro, écrire un courriel.
- *
- * Un lien synthétique plutôt que `window.location` : le système reprend la
- * main — l'application ne navigue pas, elle passe le relais au téléphone ou au
- * client de messagerie, et l'on revient sur la page qu'on avait sous les yeux.
- */
+interface NetworkContact {
+  name: string;
+  url: string | null;
+  phone: string | null;
+}
+
+let contactsPromise: Promise<Record<string, NetworkContact[]>> | null = null;
+function loadNetworkContacts(): Promise<Record<string, NetworkContact[]>> {
+  contactsPromise ??= fetch('/data/networks/index.json')
+    .then(response => (response.ok ? response.json() : {}))
+    .then((index: Record<string, { contacts?: NetworkContact[] }>) =>
+      Object.fromEntries(Object.entries(index).map(([code, entry]) => [code, entry.contacts ?? []])))
+    .catch(() => ({}));
+  return contactsPromise;
+}
+
+function phoneForDisplay(raw: string): string {
+  const digits = raw.replace(/[^\d+]/g, '').replace(/^\+33(0)?/, '0').replace(/^0033/, '0');
+  return /^0\d{9}$/.test(digits) ? digits.replace(/(\d{2})(?=\d)/g, '$1 ') : raw;
+}
+function phoneForDialing(raw: string): string {
+  const digits = raw.replace(/[^\d+]/g, '').replace(/^\+33\(?0\)?/, '+33');
+  return /^0\d{9}$/.test(digits) ? `+33${digits.slice(1)}` : digits;
+}
+const hostOf = (url: string) => {
+  try { return new URL(url).host.replace(/^www\./, ''); } catch { return url; }
+};
+
 function handOff(target: string): void {
   const link = document.createElement('a');
   link.href = target;
@@ -42,7 +46,6 @@ function handOff(target: string): void {
   link.remove();
 }
 
-/** Le numéro du réseau, tel qu'on le compose. */
 const ALLO_TAG_TEL = '+33438703870';
 const ALLO_TAG_LABEL = '04 38 70 38 70';
 const LOST_PROPERTY_URL = 'https://tag.franceobjetstrouves.fr';
@@ -61,17 +64,25 @@ export function HelpContactScreen({
   onBack: () => void;
 }) {
   const isFr = language === 'fr';
+  const city = useSyncExternalStore(subscribeCurrentCity, getCurrentCity, () => null);
+  const networkCode = city?.network ?? null;
+  const [contacts, setContacts] = useState<Record<string, NetworkContact[]> | null>(null);
+  useEffect(() => {
+    if (!networkCode || !isOpen) return;
+    let active = true;
+    void loadNetworkContacts().then(value => { if (active) setContacts(value); });
+    return () => { active = false; };
+  }, [networkCode, isOpen]);
+  const networkContacts = networkCode ? contacts?.[networkCode] ?? [] : [];
 
   const surface = isLight ? 'bg-white border-slate-200' : 'bg-black border-slate-900';
   const ink = isLight ? 'text-slate-900' : 'text-white';
   const muted = isLight ? 'text-slate-500' : 'text-slate-400';
 
-  /** Un titre de section : ce dont on parle, en clair. */
   const heading = (label: string) => (
-    <h3 className={`mb-3 mt-8 px-1 text-[19px] font-bold leading-tight ${ink}`}>{label}</h3>
+    <h3 className={`mb-3 mt-8 px-1 text-[1.1875rem] font-bold leading-tight ${ink}`}>{label}</h3>
   );
 
-  /** Une rangée : ce qu'elle fait à gauche, où elle mène à droite. */
   const row = (
     label: string,
     Icon: typeof PhoneIcon,
@@ -84,7 +95,7 @@ export function HelpContactScreen({
       className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-4 text-left transition active:scale-[0.99] ${surface}`}
     >
       <span className="min-w-0 flex-1">
-        <span className={`block text-[15px] font-semibold ${ink}`}>{label}</span>
+        <span className={`block text-[0.9375rem] font-semibold ${ink}`}>{label}</span>
         {detail && <span className={`mt-0.5 block text-xs ${muted}`}>{detail}</span>}
       </span>
       <Icon className={`h-5 w-5 flex-shrink-0 ${muted}`} />
@@ -100,12 +111,6 @@ export function HelpContactScreen({
     >
       <div className="px-4 pb-10">
         {heading(isFr ? 'Signaler un incident ou un comportement' : 'Report an incident or behaviour')}
-        {/*
-          Le 112 avant tout le reste, et écrit assez gros pour être lu de
-          travers. Une page d'aide ouverte dans un tram à onze heures du soir
-          n'a qu'une chose à dire d'abord, et ce n'est pas un numéro de service
-          client.
-        */}
         <div
           className={`mb-3 flex items-start gap-3 rounded-2xl border px-4 py-4 ${
             isLight ? 'border-rose-200 bg-rose-50' : 'border-rose-500/30 bg-rose-950/40'
@@ -121,36 +126,73 @@ export function HelpContactScreen({
           </p>
         </div>
 
+        {networkCode ? (
+          <>
+            {networkContacts.length > 0 ? (
+              <div className="space-y-2">
+                {networkContacts.map(contact => (
+                  <div key={contact.name} className="space-y-2">
+                    {contact.phone && row(
+                      isFr ? `Appeler ${contact.name}` : `Call ${contact.name}`,
+                      PhoneIcon,
+                      () => handOff(`tel:${phoneForDialing(contact.phone!)}`),
+                      phoneForDisplay(contact.phone),
+                    )}
+                    {contact.url && row(
+                      isFr ? `Site de ${contact.name}` : `${contact.name} website`,
+                      ArrowTopRightOnSquareIcon,
+                      () => openExternal(contact.url!),
+                      isFr
+                        ? `${hostOf(contact.url)} · contact, réclamations, objets trouvés`
+                        : `${hostOf(contact.url)} · contact, complaints, lost property`,
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={`rounded-2xl border px-4 py-4 text-sm leading-relaxed ${surface} ${muted}`}>
+                {contacts === null
+                  ? (isFr ? 'Chargement des coordonnées du réseau…' : 'Loading the network’s contact details…')
+                  : (isFr
+                    ? 'Ce réseau ne publie pas ses coordonnées dans ses données ouvertes. Cherchez son site officiel.'
+                    : 'This network does not publish its contact details in its open data. Look up its official website.')}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
         <div className="space-y-2">
-          {row(
-            isFr ? 'Appeler Allo TAG' : 'Call Allo TAG',
-            PhoneIcon,
-            () => handOff(`tel:${ALLO_TAG_TEL}`),
-            isFr
-              ? `${ALLO_TAG_LABEL} · du lundi au samedi, 8 h – 18 h 30`
-              : `${ALLO_TAG_LABEL} · Monday to Saturday, 8 am – 6.30 pm`,
-          )}
-          {row(
-            isFr ? 'Écrire au réseau' : 'Write to the network',
-            ArrowTopRightOnSquareIcon,
-            () => openExternal(NETWORK_CONTACT_URL),
-            isFr
-              ? 'Formulaire de M réso : incident, réclamation, question sur un titre.'
-              : 'M réso form: incidents, complaints, questions about a ticket.',
-          )}
-        </div>
+            {row(
+              isFr ? 'Appeler Allo TAG' : 'Call Allo TAG',
+              PhoneIcon,
+              () => handOff(`tel:${ALLO_TAG_TEL}`),
+              isFr
+                ? `${ALLO_TAG_LABEL} · du lundi au samedi, 8 h – 18 h 30`
+                : `${ALLO_TAG_LABEL} · Monday to Saturday, 8 am – 6.30 pm`,
+            )}
+            {row(
+              isFr ? 'Écrire au réseau' : 'Write to the network',
+              ArrowTopRightOnSquareIcon,
+              () => openExternal(NETWORK_CONTACT_URL),
+              isFr
+                ? 'Formulaire de M réso : incident, réclamation, question sur un titre.'
+                : 'M réso form: incidents, complaints, questions about a ticket.',
+            )}
+          </div>
 
-        {heading(isFr ? 'Objets trouvés' : 'Lost property')}
-        <div className="space-y-2">
-          {row(
-            isFr ? 'Déclarer ou retrouver un objet' : 'Report or find an item',
-            ArrowTopRightOnSquareIcon,
-            () => openExternal(LOST_PROPERTY_URL),
-            isFr
-              ? 'Ce qui est oublié dans un tram ou un bus part chez France Objets Trouvés.'
-              : 'Anything left on a tram or bus goes to France Objets Trouvés.',
-          )}
-        </div>
+          {heading(isFr ? 'Objets trouvés' : 'Lost property')}
+          <div className="space-y-2">
+            {row(
+              isFr ? 'Déclarer ou retrouver un objet' : 'Report or find an item',
+              ArrowTopRightOnSquareIcon,
+              () => openExternal(LOST_PROPERTY_URL),
+              isFr
+                ? 'Ce qui est oublié dans un tram ou un bus part chez France Objets Trouvés.'
+                : 'Anything left on a tram or bus goes to France Objets Trouvés.',
+            )}
+          </div>
+          </>
+        )}
 
         {heading(isFr ? 'L’application' : 'The app')}
         <div className="space-y-2">

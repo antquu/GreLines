@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { MapSheet } from './MapSheet';
 import { PaperAirplaneIcon, XMarkIcon } from '@heroicons/react/24/solid';
+import { FaWalking, FaWheelchair } from 'react-icons/fa';
 import type { Stop } from '../types';
 import type { AddressResult } from '../services/geocoding';
 import { findClosestStops, formatDistance } from '../utils/geo';
@@ -8,6 +9,9 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Line } from '../types';
 import { getStopLines } from '../services/api';
 import { LineBadge } from './LineBadge';
+import { sortStopPreviewLines } from '../utils/lineOrder';
+import { useAccessibleStops } from '../hooks/useAccessibleStops';
+import { isStopAccessible } from '../services/stopAccessibility';
 
 interface AddressSidebarProps {
   address: AddressResult | null;
@@ -17,18 +21,22 @@ interface AddressSidebarProps {
   onStopClick: (stop: Stop) => void;
   isMobile: boolean;
   language: 'fr' | 'en';
-  /** Ouvre le planificateur avec ce point pour destination. */
   onOpenItinerary?: () => void;
 }
 
 const WALK_METRES_PER_MINUTE = 75;
+const MAX_WALK_METERS = 2000;
 
 const walkMinutes = (meters: number): number => Math.max(1, Math.ceil(meters / WALK_METRES_PER_MINUTE));
 
 const getText = (language: 'fr' | 'en') => ({
-  eyebrow: language === 'fr' ? 'Adresse' : 'Address',
-  onFoot: language === 'fr' ? 'À pied depuis ce point' : 'On foot from here',
-  minute: language === 'fr' ? 'min' : 'min',
+  title: language === 'fr' ? 'Adresse' : 'Address',
+  subtitle: language === 'fr' ? 'Les arrêts les plus proches, à pied' : 'The nearest stops, on foot',
+  tag: language === 'fr' ? 'Adresse' : 'Address',
+  onFoot: language === 'fr' ? 'Arrêts à pied' : 'Stops on foot',
+  closest: language === 'fr' ? 'Le plus proche' : 'Closest',
+  accessible: language === 'fr' ? 'Arrêt accessible en fauteuil' : 'Wheelchair-accessible stop',
+  minute: 'min',
   stopsCount: (n: number) =>
     language === 'fr' ? `${n} arrêt${n > 1 ? 's' : ''}` : `${n} stop${n > 1 ? 's' : ''}`,
   noStops:
@@ -39,23 +47,20 @@ const getText = (language: 'fr' | 'en') => ({
   goThere: language === 'fr' ? 'Y aller' : 'Go there',
 });
 
-/** Au-delà, les pastilles chassent le nom de l'arrêt hors de la carte. */
-const MAX_BADGES = 4;
+const MAX_BADGES = 5;
 
-/**
- * Une carte de l'échelle de marche.
- *
- * Chaque arrêt est une carte autonome : le rail vertical qui les enfilait
- * suggérait un parcours d'un arrêt à l'autre, alors qu'il s'agit de huit
- * destinations concurrentes depuis le même point. La barre sous le nom reste,
- * elle : sa longueur encode la distance, et on compare d'un coup d'œil sans
- * lire les chiffres.
- */
-const WalkRow = ({
+function displayName(stop: Stop): string {
+  const city = stop.city?.trim();
+  if (!city || !stop.name.toLowerCase().startsWith(city.toLowerCase())) return stop.name;
+  const rest = stop.name.slice(city.length).replace(/^[\s,-]+/, '').trim();
+  return rest.length > 0 ? rest : stop.name;
+}
+
+const WalkCard = ({
   stop,
   meters,
-  ratio,
   isFirst,
+  accessible,
   lines,
   onClick,
   language,
@@ -64,66 +69,78 @@ const WalkRow = ({
 }: {
   stop: Stop;
   meters: number;
-  ratio: number;
   isFirst: boolean;
+  accessible: boolean;
   lines: Line[];
   onClick: () => void;
   language: 'fr' | 'en';
   text: ReturnType<typeof getText>;
   delay: number;
 }) => {
-  const visible = lines.slice(0, MAX_BADGES);
-  const overflow = lines.length - visible.length;
+  const sorted = sortStopPreviewLines(lines);
+  const visible = sorted.slice(0, MAX_BADGES);
+  const overflow = sorted.length - visible.length;
 
   return (
     <motion.button
+      type="button"
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.22, ease: 'easeOut' }}
       onClick={onClick}
-      className="group flex w-full items-stretch gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 px-3.5 py-3 text-left transition hover:border-slate-700 hover:bg-slate-800/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+      className={`w-full rounded-[22px] bg-black px-5 py-4 text-left transition active:scale-[0.99] ${
+        isFirst ? 'ring-2 ring-blue-500' : 'ring-1 ring-white/10 hover:ring-white/20'
+      }`}
     >
-      <span className="min-w-0 flex-1">
-        <span className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[15px] font-semibold text-white">{stop.name}</span>
-            {stop.city && <span className="mt-0.5 block truncate text-xs text-slate-400">{stop.city}</span>}
-          </span>
-
-          <span className="flex flex-shrink-0 flex-col items-end">
-            <span className="tabular text-[17px] font-bold leading-none text-white">
-              {walkMinutes(meters)}
-              <span className="ml-1 text-[11px] font-medium text-slate-400">{text.minute}</span>
-            </span>
-            <span className="tabular mt-1 text-[11px] text-slate-500">
-              {formatDistance(meters, language)}
-            </span>
-          </span>
-        </span>
-
-        {/* Lignes desservies, comme sur l'étiquette d'un arrêt sur la carte :
-            les quatre premières, puis le compte de celles qui restent. */}
-        {visible.length > 0 && (
-          <span className="mt-2 flex flex-wrap items-center gap-1">
-            {visible.map(line => (
-              <LineBadge key={line.routeId || line.id} line={line} size="xs" />
-            ))}
-            {overflow > 0 && (
-              <span className="tabular flex h-6 items-center rounded-md bg-slate-800 px-1.5 text-[10px] font-bold text-slate-300">
-                +{overflow}
-              </span>
-            )}
+      <div className="flex items-start gap-3">
+        <h3
+          style={{
+            fontSize: '20px',
+            lineHeight: 1.2,
+            fontWeight: 600,
+            letterSpacing: '-0.01em',
+            color: '#ffffff',
+            margin: 0,
+            flex: '1 1 auto',
+            minWidth: 0,
+          }}
+          className="truncate"
+        >
+          {displayName(stop)}
+        </h3>
+        {accessible && (
+          <span
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-600"
+            title={text.accessible}
+          >
+            <FaWheelchair size={14} style={{ color: '#ffffff' }} />
           </span>
         )}
+      </div>
 
-        {/* Barre proportionnelle : longueur = distance relative au plus éloigné. */}
-        <span className="mt-2.5 block h-px w-full bg-slate-800">
-          <span
-            className={`block h-px ${isFirst ? 'bg-blue-400' : 'bg-slate-600'}`}
-            style={{ width: `${Math.max(4, ratio * 100)}%` }}
-          />
+      <p className="mt-1 truncate text-[0.875rem] leading-snug text-white/60">
+        {isFirst && <span className="font-semibold text-blue-400">{text.closest} · </span>}
+        {formatDistance(meters, language)}
+        {stop.city ? ` · ${stop.city}` : ''}
+      </p>
+
+      <div className="mt-3.5 flex items-end gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {visible.map(line => (
+            <LineBadge key={line.routeId || line.id} line={line} size="xs" />
+          ))}
+          {overflow > 0 && (
+            <span className="tabular flex h-6 items-center rounded-full bg-white/10 px-2 text-[0.625rem] font-bold text-white/70">
+              +{overflow}
+            </span>
+          )}
+        </div>
+        <span className="flex flex-shrink-0 items-center gap-1.5 text-white">
+          <FaWalking size={15} className="text-white/60" aria-hidden="true" />
+          <span className="tabular text-[1.25rem] font-bold leading-none">{walkMinutes(meters)}</span>
+          <span className="text-[0.8125rem] font-medium text-white/60">{text.minute}</span>
         </span>
-      </span>
+      </div>
     </motion.button>
   );
 };
@@ -139,20 +156,13 @@ export const AddressSidebar = ({
   onOpenItinerary,
 }: AddressSidebarProps) => {
   const text = getText(language);
+  const accessibleStops = useAccessibleStops();
 
   const nearbyStops = useMemo(() => {
     if (!address) return [];
-    return findClosestStops(stops, address.lat, address.lon, 8);
+    return findClosestStops(stops, address.lat, address.lon, 8).filter(entry => entry.meters <= MAX_WALK_METERS);
   }, [address, stops]);
 
-  const maxMeters = nearbyStops.length > 0 ? nearbyStops[nearbyStops.length - 1].meters : 1;
-
-  /**
-   * Lignes desservies par chaque arrêt proposé, chargées à l'ouverture. Le
-   * service les met en cache : rouvrir la même adresse n'entraîne aucune
-   * requête. L'affichage n'attend pas — les pastilles apparaissent au fil des
-   * réponses.
-   */
   const [linesByStop, setLinesByStop] = useState<Record<string, Line[]>>({});
   useEffect(() => {
     if (!isOpen || nearbyStops.length === 0) return;
@@ -163,7 +173,7 @@ export const AddressSidebar = ({
         .then(lines => {
           if (!cancelled) setLinesByStop(prev => ({ ...prev, [stop.id]: lines }));
         })
-        .catch(() => { /* silencieux : la carte s'affiche sans pastille */ });
+        .catch(() => { });
     }
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,11 +185,8 @@ export const AddressSidebar = ({
     <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="signal-label text-slate-500">{text.eyebrow}</p>
-          <h2 className="mt-1.5 text-[26px] font-extrabold leading-[1.1] tracking-tight" style={{ color: '#ffffff' }}>
-            {address.name}
-          </h2>
-          {address.context && <p className="mt-1 text-sm text-slate-400">{address.context}</p>}
+          <p className="text-sm font-bold text-white">{text.title}</p>
+          <p className="mt-0.5 text-xs text-slate-400">{text.subtitle}</p>
         </div>
         <button
           onClick={onClose}
@@ -190,20 +197,26 @@ export const AddressSidebar = ({
         </button>
       </div>
 
-      {/* Depuis un point posé sur la carte, la question suivante est presque
-          toujours « comment j'y vais ? » : le trajet part d'ici. */}
+      <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[1.0625rem] font-semibold text-white">{address.name}</p>
+          {address.context && <p className="mt-0.5 truncate text-xs text-slate-400">{address.context}</p>}
+        </div>
+        <span className="signal-label flex-shrink-0 text-slate-500">{text.tag}</span>
+      </div>
+
       {onOpenItinerary && (
         <button
           type="button"
           onClick={onOpenItinerary}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-blue-500 active:bg-blue-700"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-blue-500 active:bg-blue-700"
         >
           <PaperAirplaneIcon className="h-4 w-4" />
           {text.goThere}
         </button>
       )}
 
-      <div className="mt-7 flex items-baseline justify-between border-b border-slate-800 pb-2">
+      <div className="mt-7 flex items-baseline justify-between pb-3">
         <p className="signal-label text-slate-400">{text.onFoot}</p>
         <p className="tabular text-xs text-slate-500">{text.stopsCount(nearbyStops.length)}</p>
       </div>
@@ -211,14 +224,14 @@ export const AddressSidebar = ({
       {nearbyStops.length === 0 ? (
         <p className="py-8 text-sm leading-relaxed text-slate-500">{text.noStops}</p>
       ) : (
-        <div className="mt-3 space-y-2.5">
+        <div className="flex flex-col gap-3">
           {nearbyStops.map(({ stop, meters }, index) => (
-            <WalkRow
+            <WalkCard
               key={stop.id}
               stop={stop}
               meters={meters}
-              ratio={maxMeters > 0 ? meters / maxMeters : 0}
               isFirst={index === 0}
+              accessible={isStopAccessible(accessibleStops, stop)}
               lines={linesByStop[stop.id] ?? []}
               onClick={() => onStopClick(stop)}
               language={language}

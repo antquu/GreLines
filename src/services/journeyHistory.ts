@@ -1,31 +1,14 @@
-/**
- * Les trajets qu'on a faits.
- *
- * Un favori se choisit ; un historique se constate. Chaque fois qu'on ouvre la
- * fiche d'un itinéraire dans le planificateur, le couple départ-arrivée se
- * range ici — c'est le geste qui dit « celui-là, je le prends », et c'est de
- * cette liste qu'on tire ses favoris plutôt que de tout ressaisir.
- *
- * Un trajet refait ne s'empile pas : il remonte en tête et son compteur avance.
- * Ce qui intéresse, c'est « où je vais souvent », pas « combien de fois j'ai
- * touché l'écran ».
- */
-
 import type { RouteLocation } from './api';
 
 const STORAGE_KEY = 'greLines_journeyHistory_v1';
 
-/** Vingt trajets : au-delà, ce n'est plus un historique mais une archive. */
 const MAX_ENTRIES = 20;
 
 export interface JourneyHistoryEntry {
-  /** Même clé que les favoris : les deux bouts, au mètre près. */
   id: string;
   from: RouteLocation;
   to: RouteLocation;
-  /** Les lignes empruntées la dernière fois — « C1 », « A »… */
   lines: string[];
-  /** Durée annoncée la dernière fois, telle quelle : « 24 min ». */
   duration?: string;
   lastAt: number;
   count: number;
@@ -71,18 +54,10 @@ function write(entries: JourneyHistoryEntry[]): void {
   }
 }
 
-/** Du plus récent au plus ancien — l'ordre dans lequel on les relit. */
 export function getJourneyHistory(): JourneyHistoryEntry[] {
   return read().sort((a, b) => b.lastAt - a.lastAt);
 }
 
-/**
- * Note un trajet consulté.
- *
- * La position courante n'y entre pas : « Ma position » d'hier n'est pas celle
- * d'aujourd'hui, et un historique qui pointe vers un endroit où l'on n'est plus
- * ne sert à rien.
- */
 export function recordJourney(
   from: RouteLocation,
   to: RouteLocation,

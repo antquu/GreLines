@@ -1,20 +1,3 @@
-/**
- * Les pages légales de GreLines.
- *
- * Elles vivent à part du reste de la page d'accueil : ce ne sont pas des
- * arguments, ce sont des engagements, et on les relit sans toucher au discours
- * commercial.
- *
- * Les adresses sont en anglais dans les deux langues — `/fr/legals/privacy-policy`
- * comme `/en/legals/privacy-policy`. Un lien vers une politique de
- * confidentialité se colle dans un courriel, dans un ticket, dans un formulaire
- * de magasin d'applications, et il vaut mieux qu'il désigne le même document
- * quelle que soit la langue de celui qui l'a copié. Seul le contenu change.
- *
- * Ce texte décrit ce que l'application fait réellement, et rien de plus. Il n'a
- * pas été relu par un juriste : c'est une base honnête, pas un avis juridique.
- */
-
 export type LegalSlug =
   | 'privacy-policy'
   | 'terms-of-service'
@@ -23,23 +6,19 @@ export type LegalSlug =
   | 'license';
 
 export interface LegalSection {
-  /** L'ancre, en anglais elle aussi, pour que les liens profonds survivent. */
   id: string;
   heading: string;
-  /** Un paragraphe par entrée. Une entrée qui commence par « - » fait une liste. */
   body: string[];
 }
 
 export interface LegalDocument {
   slug: LegalSlug;
   title: string;
-  /** Sous le titre : à quoi sert ce document, en une phrase. */
   lede: string;
   updated: string;
   sections: LegalSection[];
 }
 
-/** L'ordre dans lequel les documents se suivent, en pied de page comme ailleurs. */
 export const LEGAL_ORDER: LegalSlug[] = [
   'privacy-policy',
   'gdpr',
@@ -48,7 +27,6 @@ export const LEGAL_ORDER: LegalSlug[] = [
   'license',
 ];
 
-/** L'adresse du dépôt, citée par la licence. Une seule ligne à changer. */
 export const REPO_URL = 'https://github.com/antquu/GreLines';
 
 const UPDATED_FR = '23 août 2026';
@@ -719,7 +697,6 @@ const EN: Record<LegalSlug, LegalDocument> = {
 
 export const LEGAL: Record<'fr' | 'en', Record<LegalSlug, LegalDocument>> = { fr: FR, en: EN };
 
-/** Vrai si l'adresse désigne un document que nous publions. */
 export function isLegalSlug(value: string): value is LegalSlug {
   return (LEGAL_ORDER as string[]).includes(value);
 }

@@ -7,10 +7,12 @@ import { idbGet, idbSet } from '../services/persistentCache';
 interface LineMapViewerProps {
   isOpen: boolean;
   onClose: () => void;
-  
+
   routeId: string | null;
+  pdfSource?: string | null;
+  title?: string;
   lineId?: string | null;
-  
+
   lineLabel?: string;
   lineColor?: string;
   isMobile: boolean;
@@ -32,10 +34,18 @@ const MAX_ZOOM = 5;
 const ZOOM_STEP = 1.6;
 const PAGE_GAP = 16;
 
+function safeDecode(value: string): string {
+  try {
+    return decodeURI(value);
+  } catch {
+    return value;
+  }
+}
+
 type PlanPage = {
-  
+
   blob: Blob;
-  
+
   width: number;
   height: number;
 };
@@ -108,7 +118,7 @@ async function rasterize(doc: PdfDocument, targetWidth: number): Promise<PlanPag
     await page.render({ canvas, canvasContext: context, viewport, intent: 'print' }).promise;
 
     const blob = await canvasToBlob(canvas);
-    
+
     canvas.width = 0;
     canvas.height = 0;
     page.cleanup();
@@ -125,6 +135,8 @@ export function LineMapViewer({
   lineLabel,
   lineColor = '#3b82f6',
   lineId = null,
+  pdfSource = null,
+  title,
   isMobile,
   language,
 }: LineMapViewerProps) {
@@ -136,18 +148,18 @@ export function LineMapViewer({
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  
+
   const view = useRef({ x: 0, y: 0, zoom: 1 });
-  
+
   const fit = useRef(1);
-  
+
   const natural = useRef({ width: 0, height: 0 });
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ distance: number; zoom: number; mid: { x: number; y: number } } | null>(null);
   const labelFrame = useRef(0);
 
   useEffect(() => {
-    if (!isOpen || !routeId) return;
+    if (!isOpen || (!routeId && !pdfSource)) return;
     let active = true;
     const controller = new AbortController();
     const created: string[] = [];
@@ -155,11 +167,13 @@ export function LineMapViewer({
     setStatus('loading');
     setPageUrls([]);
     setPdfUrl(null);
-    
+
     natural.current = { width: 0, height: 0 };
 
-    const bytesKey = `linePlan_v1_${routeId}`;
-    const rasterKey = `linePlanRaster_v1_${routeId}_${RASTER_WIDTH}`;
+    const sourceKey = pdfSource ? `url_${pdfSource}` : routeId;
+    const bytesKey = `linePlan_v1_${sourceKey}`;
+    const rasterKey = `linePlanRaster_v1_${sourceKey}_${RASTER_WIDTH}`;
+    const sourceUrl = pdfSource ? encodeURI(safeDecode(pdfSource)) : `${PLAN_ENDPOINT}?route=${encodeURIComponent(routeId ?? '')}`;
 
     const publish = async (pages: PlanPage[]) => {
       if (!active || pages.length === 0) return false;
@@ -185,9 +199,13 @@ export function LineMapViewer({
       const cached = await idbGet<ArrayBuffer>(bytesKey);
       if (cached?.value) return cached.value;
 
-      const response = await fetch(`${PLAN_ENDPOINT}?route=${encodeURIComponent(routeId)}`, {
-        signal: controller.signal,
-      });
+      let response: Response;
+      try {
+        response = await fetch(sourceUrl, { signal: controller.signal });
+      } catch (error) {
+        if (!pdfSource || controller.signal.aborted) throw error;
+        response = await fetch(`/api/pdf?url=${encodeURIComponent(sourceUrl)}`, { signal: controller.signal });
+      }
       if (!response.ok) throw new Error(String(response.status));
       const buffer = await response.arrayBuffer();
       void idbSet(bytesKey, buffer, PLAN_TTL_MS);
@@ -238,9 +256,8 @@ export function LineMapViewer({
       setPageUrls([]);
       setPdfUrl(null);
     };
-  }, [isOpen, routeId]);
+  }, [isOpen, routeId, pdfSource]);
 
-  /* ------------------------------------------------------------ transformation */
 
   const applyTransform = useCallback(() => {
     const element = contentRef.current;
@@ -284,7 +301,6 @@ export function LineMapViewer({
     applyTransform();
   }, [applyTransform]);
 
-  /** Zoome autour d'un point de la fenêtre, qui reste donc immobile. */
   const zoomAt = useCallback(
     (nextZoom: number, cx: number, cy: number) => {
       const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
@@ -339,7 +355,6 @@ export function LineMapViewer({
     return () => observer.disconnect();
   }, [fitToViewport]);
 
-  /* -------------------------------------------------------------------- gestes */
 
   const localPoint = (event: { clientX: number; clientY: number }) => {
     const rect = viewportRef.current?.getBoundingClientRect();
@@ -426,15 +441,14 @@ export function LineMapViewer({
           transition={{ duration: 0.18 }}
           className="fixed inset-0 z-[10005] flex flex-col bg-slate-950"
         >
-          {/* Bandeau : identité de la ligne à gauche, commandes à droite.
-              La marge du haut suit l'encoche : sans elle, le bouton fermer
-              se glisse sous la safe area et devient impossible à toucher. */}
           <div
             className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-4 py-3"
-            style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
+            style={{ paddingTop: 'calc(var(--gl-safe-top) + 0.75rem)' }}
           >
             <div className="flex min-w-0 items-center gap-3">
-              {lineId || routeId || lineLabel ? (
+              {title ? (
+                <div className="h-[3px] w-8 flex-shrink-0 rounded-full" style={{ backgroundColor: lineColor }} />
+              ) : lineId || routeId || lineLabel ? (
                 <LineBadge
                   line={{ id: lineId ?? routeId ?? '', shortName: (lineLabel ?? '').replace(/^(Ligne|Line)\s+/i, ''), color: lineColor, textColor: undefined, routeId: lineId ?? routeId ?? undefined }}
                   size="sm"
@@ -443,8 +457,8 @@ export function LineMapViewer({
                 <div className="h-[3px] w-8 flex-shrink-0 rounded-full" style={{ backgroundColor: lineColor }} />
               )}
               <div className="min-w-0">
-                {lineLabel && (
-                  <p className="truncate text-[15px] font-bold text-white">{lineLabel}</p>
+                {(title ?? lineLabel) && (
+                  <p className="truncate text-[0.9375rem] font-bold text-white">{title ?? lineLabel}</p>
                 )}
               </div>
             </div>
@@ -474,7 +488,7 @@ export function LineMapViewer({
               {pdfUrl && (
                 <a
                   href={pdfUrl}
-                  download={`plan-${routeId?.replace(':', '-') ?? 'ligne'}.pdf`}
+                  download={pdfSource ? safeDecode(pdfSource.split('/').pop() ?? 'plan.pdf') : `plan-${routeId?.replace(':', '-') ?? 'ligne'}.pdf`}
                   aria-label={text.download}
                   className="hidden h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition hover:bg-slate-800 sm:flex"
                 >
@@ -536,7 +550,7 @@ export function LineMapViewer({
             )}
 
             {isMobile && status === 'ready' && (
-              <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-slate-900/90 px-3 py-1.5 text-[11px] text-slate-300">
+              <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-slate-900/90 px-3 py-1.5 text-[0.6875rem] text-slate-300">
                 {text.hint}
               </p>
             )}

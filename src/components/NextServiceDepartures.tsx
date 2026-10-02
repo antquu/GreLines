@@ -3,23 +3,12 @@ import { motion } from 'framer-motion';
 import type { Departure, Line } from '../types';
 import { getNextServiceDayDepartures, type NextServiceDepartures as NextService } from '../services/api';
 import { DepartureLineBadge } from './DepartureLineBadge';
+import { ScrollingText } from './ScrollingText';
+import { TheoreticalPill } from './TheoreticalPill';
 import { TransportModeIcon } from './TransportModeIcon';
 import { resolveLineStyle, isGrenobleNetworkLine } from '../utils/lineColors';
 import { normalizeMode } from '../utils/transportMode';
 
-/**
- * Les premiers passages du lendemain matin, quand la journée est finie.
- *
- * Le soir, passé le dernier bus, le temps réel ne rend plus rien et la fiche
- * n'affichait qu'« Aucun départ disponible » — une phrase juste, qui ne répond
- * pas à la seule question qu'on se pose à cette heure-là : à quelle heure ça
- * reprend. On va donc chercher les horaires théoriques du prochain jour de
- * service, dont les premiers départs tombent vers cinq heures.
- *
- * Les heures sont absolues, jamais un décompte : « 5:12 » se lit d'un coup
- * d'oeil là où « dans 7h04 » demande une soustraction, et un décompte affiché
- * le soir aurait de toute façon vieilli avant qu'on s'en serve.
- */
 
 const isRoundLine = (lineId: string): boolean => {
   const raw = lineId.toUpperCase().trim();
@@ -29,7 +18,6 @@ const isRoundLine = (lineId: string): boolean => {
   return !!match && parseInt(match[1], 10) >= 1 && parseInt(match[1], 10) <= 14;
 };
 
-/** Le nom du mode, accordé au pictogramme qui l'accompagne. */
 function modeLabel(departure: Departure, isFr: boolean): string {
   const mode = normalizeMode(departure.type);
   if (mode === 'METRO') return isFr ? 'Métro' : 'Metro';
@@ -38,10 +26,19 @@ function modeLabel(departure: Departure, isFr: boolean): string {
   return 'Bus';
 }
 
-/** L'heure d'un passage à venir, en absolu. */
 function clockOf(departure: Departure): string {
   const at = new Date(departure.at ?? Date.now() + departure.departureTime * 60000);
   return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+}
+
+function dayOf(departure: Departure, isFr: boolean): string | null {
+  const at = new Date(departure.at ?? Date.now() + departure.departureTime * 60000);
+  const midnight = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((midnight(at) - midnight(new Date())) / 86400000);
+  if (days <= 0) return null;
+  if (days === 1) return isFr ? 'Demain' : 'Tomorrow';
+  const name = at.toLocaleDateString(isFr ? 'fr-FR' : 'en-GB', { weekday: 'long' });
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 export function NextServiceDepartures({
@@ -55,13 +52,9 @@ export function NextServiceDepartures({
   lines: Line[];
   selectedLines: Set<string>;
   language: 'fr' | 'en';
-  /** Ce qu'on affichait avant : le repli du repli, si le réseau ne publie rien. */
   emptyLabel: string;
 }) {
   const isFr = language === 'fr';
-  /* La réponse porte l'arrêt qu'elle concerne : c'est ce qui distingue
-     « en cours de chargement » de « rien à annoncer » quand on passe d'un
-     arrêt à l'autre, sans avoir à remettre un état à zéro au montage. */
   const [loaded, setLoaded] = useState<{ stopId: string; value: NextService | null } | null>(null);
 
   useEffect(() => {
@@ -94,20 +87,8 @@ export function NextServiceDepartures({
     return <p className="text-sm text-slate-500 py-6 text-center">{emptyLabel}</p>;
   }
 
-  /* Avant quatre heures du matin, la reprise est celle du jour même : la
-     phrase ne peut pas parler de demain. */
-  const heading = state.tomorrow
-    ? (isFr ? "Plus de passage aujourd'hui. Reprise demain matin :" : 'No more departures today. Service resumes tomorrow morning:')
-    : (isFr ? 'Reprise du service ce matin :' : 'Service resumes this morning:');
-
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2 pb-1">
-        <p className="text-sm text-slate-400">{heading}</p>
-        <span className="shrink-0 whitespace-nowrap rounded-full bg-amber-300/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-amber-300">
-          {isFr ? 'Théorique' : 'Scheduled'}
-        </span>
-      </div>
 
       {shown.map((departure, index) => {
         const line = lines.find(
@@ -117,6 +98,7 @@ export function NextServiceDepartures({
             candidate.shortName === departure.lineId,
         );
         const routeRef = line?.routeId || departure.routeId || departure.lineId;
+        const day = dayOf(departure, isFr);
         const style = line
           ? resolveLineStyle(routeRef, line.color, line.textColor)
           : resolveLineStyle(routeRef);
@@ -138,14 +120,22 @@ export function NextServiceDepartures({
                 sizeClass="w-10 h-10 text-sm"
               />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <div className="min-w-0 flex-1">
+                    <ScrollingText text={departure.destination} className="text-sm font-semibold text-white" />
+                  </div>
+                  <TheoreticalPill language={language} />
+                </div>
                 <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                   <TransportModeIcon mode={departure.type} className="w-3 h-3" />
                   {modeLabel(departure, isFr)}
                 </p>
               </div>
             </div>
-            <p className="text-lg font-bold text-white tabular flex-shrink-0 ml-2">{clockOf(departure)}</p>
+            <div className="ml-2 flex flex-shrink-0 flex-col items-end">
+              {day && <span className="text-[0.6875rem] font-semibold leading-tight text-slate-400">{day}</span>}
+              <p className="text-lg font-bold leading-tight text-white tabular">{clockOf(departure)}</p>
+            </div>
           </motion.div>
         );
       })}

@@ -1,26 +1,3 @@
-/**
- * Mettre GreLines sur l'écran d'accueil.
- *
- * Deux tutoriels, un par famille d'appareils, et l'appareil décide seul lequel
- * s'affiche. Il n'y a rien à choisir : quelqu'un qui tient un iPhone n'a pas à
- * se demander s'il est « Apple » ou « Android » avant de pouvoir lire la
- * première étape, et un onglet qui ne servira jamais à ce téléphone-là ne fait
- * qu'occuper la place.
- *
- * La capture prend le haut de la feuille, le texte et les boutons restent en
- * bas : d'une étape à l'autre, seule l'image change, et l'on n'a pas à
- * rattraper des yeux un bouton qui a bougé parce que la capture précédente
- * était plus haute.
- *
- * Les captures viennent de `/assets/tuto`. Elles sont toutes dessinées sur une
- * toile deux fois plus large que haute, mais ce qu'elles montrent n'occupe pas
- * la même part de cette toile : la barre d'adresse est un ruban très large et
- * très plat, le menu de Safari une colonne plus haute que large. Affichées
- * toutes au même format, les unes déborderaient et les autres seraient perdues
- * au milieu du vide. Chacune porte donc la mesure de sa zone utile, et c'est
- * elle qu'on cadre — voir `INK` plus bas.
- */
-
 import { motion } from 'framer-motion';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -29,9 +6,7 @@ import { isAndroidDevice } from '../utils/pwa';
 
 interface InstallAppSheetProps {
   isOpen: boolean;
-  /** Fermeture « Passer » : l'utilisateur ne reverra plus la feuille au lancement. */
   onDismiss: () => void;
-  /** Fermeture simple (croix / backdrop), sans marquer comme vu définitivement. */
   onClose: () => void;
   language: 'fr' | 'en';
   theme?: 'light' | 'dark';
@@ -39,43 +14,21 @@ interface InstallAppSheetProps {
 
 type Platform = 'apple' | 'android';
 
-/**
- * La zone utile d'une capture, en fractions de la toile.
- *
- * Mesurée sur le canal alpha de chaque fichier : c'est la boîte englobante de
- * ce qui n'est pas transparent. Les versions française et anglaise d'une même
- * étape tombent à deux millièmes près, une seule mesure suffit donc pour les
- * deux langues.
- *
- * `ratio` en découle : largeur sur hauteur de cette zone une fois la toile
- * 2:1 prise en compte. Il va de 5,6 pour la barre d'adresse — un ruban — à
- * 0,64 pour le menu de Chrome, plus haut que large.
- */
 interface InkBox {
-  /** Bords gauche et droit, en fraction de la largeur de la toile. */
   x0: number;
   x1: number;
-  /** Bords haut et bas, en fraction de la hauteur de la toile. */
   y0: number;
   y1: number;
 }
 
 const ink = (x0: number, x1: number, y0: number, y1: number): InkBox => ({ x0, x1, y0, y1 });
 
-/** Le nom du fichier, sans la langue, et la zone utile qui va avec. */
 interface Step {
-  /** Le fichier : `/assets/tuto/{platform}/{file}_{FR|EN}.png`. */
   file: string;
   box: InkBox;
 }
 
 const STEPS: Record<Platform, Step[]> = {
-  /*
-   * L'ordre suit la manœuvre, pas la numérotation des fichiers : `apple4`
-   * (« Ajouter à l'écran d'accueil », dans la liste de partage) vient avant
-   * `apple3` (la fenêtre de confirmation), alors que les noms disent
-   * l'inverse. On suit ce que fait la main, pas ce que dit le nom de fichier.
-   */
   apple: [
     { file: 'apple1', box: ink(0.05, 0.95, 0.297, 0.7) },
     { file: 'apple2', box: ink(0.325, 0.675, 0.048, 0.969) },
@@ -141,20 +94,6 @@ const getInstallText = (language: 'fr' | 'en') => {
   };
 };
 
-/**
- * Une capture, cadrée sur ce qu'elle montre.
- *
- * L'image est agrandie jusqu'à ce que sa zone utile occupe toute la largeur du
- * cadre, puis décalée pour que le coin haut-gauche de cette zone tombe dans le
- * coin du cadre. Le vide transparent passe derrière les bords. Le cadre prend
- * la forme de la zone utile, si bien qu'un ruban reste un ruban et qu'une
- * colonne reste une colonne.
- *
- * La capture vit dans la place que lui laissent l'en-tête et le bloc du bas :
- * elle ne la pousse jamais. `100%` de largeur et `100%` de hauteur sont donc
- * tous deux des plafonds, et c'est le plus contraignant des deux qui décide —
- * la largeur pour un ruban, la hauteur pour une colonne.
- */
 function TutorialShot({
   src,
   box,
@@ -164,22 +103,12 @@ function TutorialShot({
   src: string;
   box: InkBox;
   alt: string;
-  /** La place laissée par l'en-tête et le bloc du bas, en pixels. */
   area: { width: number; height: number };
 }) {
   const width = box.x1 - box.x0;
   const height = box.y1 - box.y0;
   const ratio = (width * 2) / height;
 
-  /*
-   * La plus grande taille qui tienne dans la place disponible.
-   *
-   * Calculée ici et non en CSS : `max-height` et `aspect-ratio` ne se
-   * combinent pas — le navigateur applique le plafond de hauteur sans réduire
-   * la largeur, et l'image se retrouve rognée au lieu d'être réduite. Un
-   * `min()` sur deux mesures connues fait ce que l'on veut, et le
-   * redimensionnement de la fenêtre le refait.
-   */
   const shotWidth = Math.max(0, Math.min(area.width, area.height * ratio));
 
   return (
@@ -201,32 +130,10 @@ function TutorialShot({
   );
 }
 
-/** Le rembourrage horizontal de la colonne, `px-5`, des deux côtés. */
 const SIDE_PADDING = 40;
 
-/**
- * La place qui reste à la capture, en pixels.
- *
- * Mesurée, et non déduite du CSS, parce que la colonne du tutoriel ne peut pas
- * s'étirer toute seule : `react-modal-sheet` la pose dans un conteneur de
- * hauteur automatique, où ni `h-full` ni `flex-1` ne trouvent de hauteur à
- * remplir. Sans mesure, la zone de l'image se réduit à son propre contenu —
- * c'est-à-dire à rien, puisque c'est elle qui doit dimensionner l'image — et
- * le bloc du bas remonte au milieu de la feuille.
- *
- * On prend donc la hauteur du conteneur défilant de la feuille, on retranche
- * l'en-tête et le bloc du bas, et le reste est pour la capture. Le tout est
- * refait quand la feuille change de cran, quand le téléphone pivote, et quand
- * le texte d'une étape prend une ligne de plus.
- */
 function useShotArea(
   isOpen: boolean,
-  /*
-   * La colonne arrive par un état et non par une `ref` : `react-modal-sheet`
-   * ne monte son contenu qu'une fois la feuille ouverte, donc après le passage
-   * de `isOpen` à vrai. Un effet qui n'écouterait que `isOpen` chercherait un
-   * nœud qui n'existe pas encore, et ne repasserait jamais.
-   */
   column: HTMLDivElement | null,
   refs: {
     header: React.RefObject<HTMLDivElement | null>;
@@ -255,14 +162,6 @@ function useShotArea(
     };
     measure();
 
-    /*
-     * La feuille monte en s'animant : à l'instant où l'on mesure pour la
-     * première fois, elle n'a pas encore sa hauteur définitive, et le
-     * `ResizeObserver` posé sur un conteneur que `react-modal-sheet` remplace
-     * pendant l'ouverture ne rattrape pas toujours le coup. On remesure donc à
-     * chaque image pendant le temps de l'animation, puis on s'arrête : mesurer
-     * indéfiniment pour une feuille qui ne bouge plus ne sert à rien.
-     */
     let frame = 0;
     const deadline = performance.now() + 900;
     const tick = () => {
@@ -293,31 +192,10 @@ export const InstallAppSheet = ({
 }: InstallAppSheetProps) => {
   const text = getInstallText(language);
 
-  /**
-   * L'appareil décide, et lui seul.
-   *
-   * Android reconnu, tutoriel Chrome ; tout le reste, tutoriel Safari — c'est
-   * celui qui vaut pour iPhone et iPad, et sur un ordinateur, où la question ne
-   * se pose pas vraiment, c'est celui qui sert le plus souvent à montrer la
-   * manœuvre à quelqu'un. Rien n'est modifiable en cours de route : il n'y a
-   * qu'un tutoriel utile par appareil.
-   */
-  /*
-   * L'appareil choisit, mais son avis n'est pas sans appel.
-   *
-   * La détection se trompe : « Site pour ordinateur » coché dans Chrome, un
-   * navigateur qui déguise sa signature, quelqu'un qui montre la manœuvre sur
-   * le téléphone d'un autre. Sans les onglets, une erreur de détection
-   * enfermait dans le mauvais tutoriel. Une ligne discrète, tout en bas,
-   * permet d'en changer — ce n'est pas un choix qu'on impose à l'arrivée,
-   * seulement une porte de sortie pour les cas où l'on s'est trompé.
-   */
   const [platform, setPlatform] = useState<Platform>(() =>
     isAndroidDevice() ? 'android' : 'apple',
   );
   const [slide, setSlide] = useState(0);
-  /* Sortir en fondu plutôt que d'un coup : voir le même mécanisme dans le
-     parcours de mise en route. */
   const [leaving, setLeaving] = useState(false);
   const [direction, setDirection] = useState(1);
 
@@ -336,7 +214,6 @@ export const InstallAppSheet = ({
 
   const isLastSlide = slide === total - 1;
 
-  /** Sortir : le fondu d'abord, le démontage ensuite. */
   const leave = (done: () => void) => {
     setLeaving(true);
     window.setTimeout(done, 300);
@@ -367,17 +244,6 @@ export const InstallAppSheet = ({
 
   if (!isOpen || typeof document === 'undefined') return null;
 
-  /*
-   * Un écran, pas une feuille.
-   *
-   * Le tutoriel vivait dans une feuille qui montait du bas, à moitié posée sur
-   * la carte : on lisait « touchez les trois points » avec, sous les yeux, une
-   * application dont ce n'était plus le moment. L'écran entier, en noir, ne
-   * laisse rien d'autre à regarder que la manœuvre à faire.
-   *
-   * Toujours noir, quel que soit le thème : ce sont des captures d'écran de
-   * navigateur qu'on regarde, et elles se détachent sur du noir.
-   */
   return createPortal(
     <div
       className={`fixed inset-0 z-[10040] flex flex-col bg-black text-white transition-opacity duration-300 ${
@@ -387,7 +253,7 @@ export const InstallAppSheet = ({
       <div
         ref={headerRef}
         className="flex flex-shrink-0 items-start justify-between gap-3 px-6 pb-4"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+        style={{ paddingTop: 'calc(var(--gl-safe-top) + 1rem)' }}
       >
         <h3
           style={{
@@ -411,7 +277,6 @@ export const InstallAppSheet = ({
         </button>
       </div>
 
-      {/* La capture, au milieu, dans toute la place qui reste. */}
       <div
         ref={setColumnNode}
         className="flex min-h-0 flex-1 items-center justify-center px-6"
@@ -429,8 +294,6 @@ export const InstallAppSheet = ({
         </div>
       </div>
 
-      {/* Ce qu'il faut lire, et ce qu'il faut toucher. Ancré en bas, immobile
-          d'une étape à l'autre quelle que soit la hauteur de la capture. */}
       <div
         ref={footerRef}
         className="flex-shrink-0 px-6 pt-5"
@@ -439,11 +302,8 @@ export const InstallAppSheet = ({
         <p className="text-sm font-semibold text-white/45">
           {text.stepLabel(slide + 1, total)}
         </p>
-        {/* Une hauteur minimale réservée au texte, calée sur l'étape la plus
-            longue : sans elle les boutons remontent d'un cran d'une étape à
-            l'autre, et l'on vise un bouton qui a bougé. */}
         <div className="mt-2 min-h-[5rem]">
-          <p className="text-[17px] leading-relaxed text-white/85">
+          <p className="text-[1.0625rem] leading-relaxed text-white/85">
             {text.slides[platform][slide]}
           </p>
         </div>
@@ -470,7 +330,7 @@ export const InstallAppSheet = ({
             <button
               type="button"
               onClick={handlePrevious}
-              className="rounded-2xl bg-white/10 px-5 py-4 text-[15px] font-bold text-white transition active:scale-[0.98]"
+              className="rounded-2xl bg-white/10 px-5 py-4 text-[0.9375rem] font-bold text-white transition active:scale-[0.98]"
             >
               {language === 'fr' ? 'Retour' : 'Back'}
             </button>
@@ -479,7 +339,7 @@ export const InstallAppSheet = ({
             type="button"
             whileTap={{ scale: 0.98 }}
             onClick={handleNext}
-            className="flex-1 rounded-2xl bg-blue-600 px-4 py-4 text-[15px] font-bold text-white transition"
+            className="flex-1 rounded-2xl bg-blue-600 px-4 py-4 text-[0.9375rem] font-bold text-white transition"
           >
             {isLastSlide ? text.done : text.next}
           </motion.button>
@@ -493,14 +353,14 @@ export const InstallAppSheet = ({
               setPlatform(platform === 'apple' ? 'android' : 'apple');
               setSlide(0);
             }}
-            className="text-[14px] font-semibold text-blue-400 transition-opacity active:opacity-60"
+            className="text-[0.875rem] font-semibold text-blue-400 transition-opacity active:opacity-60"
           >
             {text.otherPlatform(platform)}
           </button>
           <button
             type="button"
             onClick={() => leave(onDismiss)}
-            className="py-1 text-[13px] font-normal text-white/45 transition active:text-white/80"
+            className="py-1 text-[0.8125rem] font-normal text-white/45 transition active:text-white/80"
           >
             {text.skip}
           </button>

@@ -1,20 +1,7 @@
-/**
- * Les conditions, et ce qu'on fait des données.
- *
- * Un écran de conditions n'est lu que par ceux qui le cherchent, et ceux-là le
- * cherchent pour une raison précise : savoir ce qui part de leur téléphone. Le
- * texte est donc écrit pour être compris — des phrases, pas des articles
- * numérotés —, et il commence par ce qui inquiète plutôt que par ce qui
- * protège.
- *
- * Deux sections seulement : ce que l'application fait de vos données, et ce
- * qu'elle vous doit. La seconde est courte : elle est gratuite et sans compte,
- * l'essentiel s'y résume à ne rien promettre qu'on ne tienne.
- */
-
-import { useState } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/solid';
-import { MapSheet } from './MapSheet';
+import { useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowUpRightIcon, DocumentTextIcon, ShieldCheckIcon, XMarkIcon } from '@heroicons/react/24/solid';
+import { MapSheet, MapSheetBottomSpacer } from './MapSheet';
 import { openExternal } from '../utils/openExternal';
 
 interface LegalSheetProps {
@@ -46,7 +33,7 @@ const getContent = (language: 'fr' | 'en'): { tabs: [string, string]; data: Sect
         {
           title: 'What leaves the device',
           paragraphs: [
-            'Requests for timetables, routes, disruptions and air quality go to the transport operators’ own APIs. They see the request — a stop, two coordinates — as any browser visiting their service would.',
+            'Requests for timetables, routes, disruptions and air quality go to the transport operators’ own APIs. They see the request (a stop, two coordinates) as any browser visiting their service would.',
             'Map tiles are served by MapTiler, addresses by the French national address base. Anonymous audience measurement is provided by Vercel, without cookies.',
             'Your location, when you allow it, never leaves the device: it is used to draw the map and sort nearby stops.',
           ],
@@ -54,7 +41,7 @@ const getContent = (language: 'fr' | 'en'): { tabs: [string, string]; data: Sect
         {
           title: 'Transport cards',
           paragraphs: [
-            'A card added to the wallet is the only case where something is stored on a server. The number, the holder’s name and photo are kept in our database, attached to a random device identifier — not to you.',
+            'A card added to the wallet is the only case where something is stored on a server. The number, the holder’s name and photo are kept in our database, attached to a random device identifier, not to you.',
             'The photo is there so an inspector can match the card to its holder. Removing a card from this device unlinks it; the holder record remains so the same number can be found again from another device.',
           ],
         },
@@ -75,7 +62,7 @@ const getContent = (language: 'fr' | 'en'): { tabs: [string, string]; data: Sect
         },
       ],
       sources: [
-        { label: 'Mobilités M — open data', url: 'https://data.mobilites-m.fr/' },
+        { label: 'Mobilités M, open data', url: 'https://data.mobilites-m.fr/' },
         { label: 'ATMO Auvergne-Rhône-Alpes', url: 'https://www.atmo-auvergnerhonealpes.fr/' },
         { label: 'Base Adresse Nationale', url: 'https://adresse.data.gouv.fr/' },
         { label: 'MapTiler', url: 'https://www.maptiler.com/copyright/' },
@@ -97,7 +84,7 @@ const getContent = (language: 'fr' | 'en'): { tabs: [string, string]; data: Sect
       {
         title: 'Ce qui quitte l’appareil',
         paragraphs: [
-          'Les demandes d’horaires, d’itinéraires, de perturbations et de qualité de l’air partent vers les interfaces des exploitants eux-mêmes. Ils voient la requête — un arrêt, deux coordonnées — comme n’importe quel navigateur consultant leur service.',
+          'Les demandes d’horaires, d’itinéraires, de perturbations et de qualité de l’air partent vers les interfaces des exploitants eux-mêmes. Ils voient la requête (un arrêt, deux coordonnées) comme n’importe quel navigateur consultant leur service.',
           'Le fond de carte est servi par MapTiler, les adresses par la Base Adresse Nationale. La mesure d’audience, anonyme et sans cookie, est assurée par Vercel.',
           'Votre position, quand vous l’autorisez, ne quitte jamais l’appareil : elle sert à centrer la carte et à trier les arrêts autour de vous.',
         ],
@@ -105,7 +92,7 @@ const getContent = (language: 'fr' | 'en'): { tabs: [string, string]; data: Sect
       {
         title: 'Les cartes de transport',
         paragraphs: [
-          'Une carte ajoutée au portefeuille est le seul cas où quelque chose est conservé sur un serveur. Le numéro, le nom du porteur et sa photo sont gardés dans notre base, rattachés à un identifiant d’appareil tiré au sort — pas à vous.',
+          'Une carte ajoutée au portefeuille est le seul cas où quelque chose est conservé sur un serveur. Le numéro, le nom du porteur et sa photo sont gardés dans notre base, rattachés à un identifiant d’appareil tiré au sort, pas à vous.',
           'La photo est là pour qu’un contrôleur puisse rapprocher la carte de son porteur. Retirer une carte de cet appareil la détache ; la fiche du porteur reste, afin de retrouver le même numéro depuis un autre téléphone.',
         ],
       },
@@ -126,7 +113,7 @@ const getContent = (language: 'fr' | 'en'): { tabs: [string, string]; data: Sect
       },
     ],
     sources: [
-      { label: 'Mobilités M — données ouvertes', url: 'https://data.mobilites-m.fr/' },
+      { label: 'Mobilités M, données ouvertes', url: 'https://data.mobilites-m.fr/' },
       { label: 'ATMO Auvergne-Rhône-Alpes', url: 'https://www.atmo-auvergnerhonealpes.fr/' },
       { label: 'Base Adresse Nationale', url: 'https://adresse.data.gouv.fr/' },
       { label: 'MapTiler', url: 'https://www.maptiler.com/copyright/' },
@@ -134,126 +121,194 @@ const getContent = (language: 'fr' | 'en'): { tabs: [string, string]; data: Sect
   };
 };
 
+const TABS = ['data', 'terms'] as const;
+type Tab = (typeof TABS)[number];
+
+const slideVariants = {
+  enter: (direction: number) => ({ x: `${direction * 100}%`, opacity: 0.4 }),
+  center: { x: '0%', opacity: 1 },
+  exit: (direction: number) => ({ x: `${direction * -100}%`, opacity: 0.4 }),
+};
+
 export function LegalSheet({ isOpen, onClose, language, theme = 'dark', isMobile }: LegalSheetProps) {
   const isLight = theme === 'light';
+  const isFr = language === 'fr';
   const content = getContent(language);
-  const [tab, setTab] = useState<'data' | 'terms'>('data');
+  const [tab, setTab] = useState<Tab>('data');
+  const [direction, setDirection] = useState(1);
+  const scrollerRef = useRef<HTMLDivElement>(null);
 
-  const sections = tab === 'data' ? content.data : content.terms;
-  const strong = isLight ? 'text-slate-900' : 'text-white';
-  const muted = isLight ? 'text-slate-600' : 'text-slate-400';
+  const changeTab = (next: Tab) => {
+    if (next === tab) return;
+    setDirection(TABS.indexOf(next) > TABS.indexOf(tab) ? 1 : -1);
+    setTab(next);
+    scrollerRef.current?.scrollTo({ top: 0 });
+  };
 
-  const body = (
-    <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-10">
-      {/* Deux onglets, pas deux écrans : les conditions et le sort des données
-          se lisent d'affilée, et l'on passe de l'un à l'autre sans se demander
-          où l'on était. */}
-      <div
-        className={`mb-5 inline-flex gap-1 rounded-2xl p-1 ${
-          isLight ? 'bg-slate-200/70' : 'bg-white/5'
-        }`}
-      >
-        {(['data', 'terms'] as const).map((key, index) => (
+  const ink = isLight ? '#000000' : '#ffffff';
+  const soft = isLight ? '#525252' : '#a3a3a3';
+  const faint = '#737373';
+  const tint = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)';
+  const surface = isLight ? '#ffffff' : '#0b0b0b';
+  const Icon = tab === 'data' ? ShieldCheckIcon : DocumentTextIcon;
+
+  const head = (
+    <div className={`px-6 ${isMobile ? 'pt-4' : 'pt-7'}`}>
+      <Icon className="h-12 w-12" style={{ color: ink }} aria-hidden="true" />
+      <p role="heading" aria-level={2} className="pt-6 text-[1.625rem] font-medium leading-[1.15]" style={{ color: ink }}>
+        {isFr ? 'Conditions et données' : 'Terms and data'}
+      </p>
+
+      <div className="mt-5 inline-flex gap-1 rounded-full p-1" style={{ backgroundColor: tint }}>
+        {TABS.map((key, index) => (
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
-            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
-              tab === key
-                ? 'bg-blue-600 text-white'
-                : isLight
-                ? 'text-slate-600'
-                : 'text-slate-400'
-            }`}
+            onClick={() => changeTab(key)}
+            className="relative rounded-full px-4 py-2 text-[0.875rem] font-semibold transition-colors"
+            style={{ color: tab === key ? (isLight ? '#ffffff' : '#000000') : soft }}
           >
-            {content.tabs[index]}
+            {tab === key && (
+              <motion.span
+                layoutId="legal-tab-pill"
+                className="absolute inset-0 rounded-full"
+                style={{ backgroundColor: ink }}
+                transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+              />
+            )}
+            <span className="relative">{content.tabs[index]}</span>
           </button>
         ))}
       </div>
+    </div>
+  );
 
-      {sections.map(section => (
-        <section key={section.title} className="mb-7">
-          <h3 className={`mb-2 text-[17px] font-bold leading-tight ${strong}`}>{section.title}</h3>
+  const page = (key: Tab) => (
+    <div className="px-6 pb-2">
+      {(key === 'data' ? content.data : content.terms).map(section => (
+        <section key={section.title} className="pt-7">
+          <p className="text-[1.1875rem] font-medium leading-tight" style={{ color: ink }}>{section.title}</p>
           {section.paragraphs.map((paragraph, index) => (
-            <p key={index} className={`mb-2 text-[0.95rem] leading-relaxed ${muted}`}>
+            <p key={index} className="pt-2 text-[1rem] leading-snug" style={{ color: soft }}>
               {paragraph}
             </p>
           ))}
         </section>
       ))}
 
-      {tab === 'data' && (
-        <section className="mb-7">
-          <h3 className={`mb-3 text-[17px] font-bold leading-tight ${strong}`}>
-            {language === 'fr' ? 'Les sources' : 'Sources'}
-          </h3>
-          <div className="space-y-2">
-            {content.sources.map(source => (
+      {key === 'data' && (
+        <section className="pt-7">
+          <p className="text-[1.1875rem] font-medium leading-tight" style={{ color: ink }}>
+            {isFr ? 'Les sources' : 'Sources'}
+          </p>
+          <div className="mt-3 overflow-hidden rounded-2xl" style={{ backgroundColor: tint }}>
+            {content.sources.map((source, index) => (
               <button
                 key={source.url}
                 type="button"
                 onClick={() => openExternal(source.url)}
-                className={`flex w-full items-center rounded-2xl px-4 py-3 text-left text-sm font-semibold transition active:scale-[0.99] ${
-                  isLight ? 'bg-blue-500/10 text-blue-700' : 'bg-blue-500/15 text-blue-300'
-                }`}
+                className="flex w-full items-center justify-between px-4 py-3.5 text-left text-[0.9375rem] font-medium transition active:opacity-70"
+                style={{
+                  color: ink,
+                  borderTop: index === 0 ? undefined : `1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+                }}
               >
                 {source.label}
+                <ArrowUpRightIcon className="h-4 w-4 flex-shrink-0" style={{ color: faint }} aria-hidden="true" />
               </button>
             ))}
           </div>
         </section>
       )}
-
-      <p className={`text-xs ${muted}`}>{content.updated}</p>
     </div>
   );
 
-  const header = (
-    <div className="flex flex-shrink-0 items-center justify-between px-5 pb-2 pt-1">
-      <h2 className={`text-[22px] font-extrabold leading-none ${strong}`}>
-        {language === 'fr' ? 'Conditions et données' : 'Terms and data'}
-      </h2>
+  const pages = (
+    <div className="relative overflow-x-hidden">
+      <AnimatePresence initial={false} mode="popLayout" custom={direction}>
+        <motion.div
+          key={tab}
+          custom={direction}
+          variants={slideVariants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{ type: 'tween', duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
+        >
+          {page(tab)}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+
+  const foot = (
+    <div className={`px-6 ${isMobile ? 'pt-6' : 'pb-6 pt-4'}`}>
       <button
         type="button"
         onClick={onClose}
-        aria-label={language === 'fr' ? 'Fermer' : 'Close'}
-        className={`flex h-9 w-9 items-center justify-center rounded-full transition active:scale-90 ${
-          isLight ? 'bg-slate-200/70 text-slate-700' : 'bg-white/10 text-white'
-        }`}
+        className="w-full rounded-2xl py-4 text-[1.0625rem] font-semibold transition active:scale-[0.98]"
+        style={isLight ? { backgroundColor: '#000000', color: '#ffffff' } : { backgroundColor: '#ffffff', color: '#000000' }}
       >
-        <XMarkIcon className="h-5 w-5" />
+        {isFr ? 'Compris' : 'Got it'}
       </button>
+      <p className="pt-3 text-center text-[0.8125rem]" style={{ color: faint }}>{content.updated}</p>
     </div>
   );
 
   if (isMobile) {
     return (
-      <MapSheet isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={200} initialSnap={3}>
-        {header}
-        {body}
+      <MapSheet isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={1000} initialSnap={3}>
+        <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          {head}
+          {pages}
+          {foot}
+          <MapSheetBottomSpacer />
+        </div>
       </MapSheet>
     );
   }
 
   return (
-    <>
-      <div
-        className={`fixed inset-0 z-[10001] bg-black/60 transition-opacity duration-200 ${
-          isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
-        }`}
-        onClick={onClose}
-        aria-hidden
-      />
-      <div
-        className={`fixed left-1/2 top-1/2 z-[10002] flex max-h-[80vh] w-[min(38rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border pt-4 shadow-2xl transition-all duration-200 ${
-          isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
-        } ${isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950'}`}
-        style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
-        aria-hidden={!isOpen}
-      >
-        {header}
-        {body}
-      </div>
-    </>
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="legal"
+          className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0.4, ease: 'easeOut' } }}
+          onClick={onClose}
+        >
+          <motion.div
+            className={`relative flex h-[min(85vh,640px)] w-full max-w-md flex-col overflow-hidden rounded-3xl border shadow-2xl ${isLight ? 'border-slate-200' : 'border-white/10'}`}
+            style={{ backgroundColor: surface }}
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, transition: { duration: 0.4, ease: 'easeOut' } }}
+            onClick={event => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex-shrink-0">{head}</div>
+            <div
+              ref={scrollerRef}
+              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+              style={{ maskImage: 'linear-gradient(to bottom, transparent, black 16px, black calc(100% - 16px), transparent)' }}
+            >
+              {pages}
+            </div>
+            <div className="flex-shrink-0">{foot}</div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute right-3 top-3 rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50"
+              aria-label={isFr ? 'Fermer' : 'Close'}
+            >
+              <XMarkIcon className="h-4 w-4" />
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

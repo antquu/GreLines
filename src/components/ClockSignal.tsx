@@ -33,7 +33,7 @@ function ScrollingMessage({ message, color }: { message: string; color: string }
       if (containerWidth === 0 || textWidth === 0) return;
 
       setOverflows(textWidth > containerWidth);
-      
+
       const scrollDistance = textWidth + 48;
       setDurationSec(Math.max(6, scrollDistance / MARQUEE_SPEED_PX_PER_SEC));
     };
@@ -73,7 +73,7 @@ function ScrollingMessage({ message, color }: { message: string; color: string }
           </div>
         </div>
       ) : (
-        <div className="flex h-full items-center">
+        <div className="flex h-full items-center justify-center">
           <span className="whitespace-nowrap text-sm font-bold" style={{ color }}>
             {text}
           </span>
@@ -104,13 +104,9 @@ export function ClockSignal({
   language = 'fr',
 }: {
   closedLabel: string;
-  /** Message custom géré depuis le CRM (infotraffic/promo) — remplace le bloc horloge/fermé tant qu'il est actif. */
   overrideMessage?: string | null;
-  /** Couleur du texte du message custom, configurée depuis le CRM. */
   overrideColor?: string;
-  /** Affichage de l'horloge quand aucun message custom n'est actif. */
   showClock?: boolean;
-  /** La langue de lecture : le message du CRM est écrit en français. */
   language?: 'fr' | 'en';
 }) {
   const { settings } = usePerfSettings();
@@ -126,9 +122,6 @@ export function ClockSignal({
   const networkClosed = isNetworkClosed(now);
   const rawMessage =
     overrideMessage && !settings.hideFooterTicker ? normalizeFooterMessage(overrideMessage) : null;
-  /* Le message du bandeau est saisi en français depuis le CRM. Traduit une
-     fois, il est ensuite relu gratuitement par tout le monde ; tant qu'il ne
-     l'est pas, le français défile. */
   const translated = useTranslated(rawMessage, language);
   const displayMessage = rawMessage ? translated : null;
 

@@ -1,20 +1,3 @@
-/**
- * Les avis de trajet, poussés sur l'écran verrouillé.
- *
- * Le guidage ne sert à rien s'il faut le regarder. On sort le téléphone pour
- * savoir s'il faut partir, on le range, on le ressort trois minutes plus tard : le
- * seul moment où l'écran mérite d'être allumé est celui où quelque chose change.
- * Ces avis remplacent la surveillance par une interruption — partez, votre bus
- * arrive, prenez la correspondance, vous êtes arrivé.
- *
- * Ce sont des notifications *locales* : l'application les affiche elle-même
- * pendant qu'elle tourne. Elles ne demandent aucun serveur. Les vraies
- * notifications poussées, celles qui arrivent application fermée, exigent un
- * service d'envoi avec ses clés VAPID — ce qui n'existe pas encore ici, et
- * prétendre l'avoir en donnant des avis qui ne partiront jamais serait pire que
- * de ne rien annoncer.
- */
-
 const ENABLED_KEY = 'greLines_tripNotifications';
 
 export function notificationsEnabled(): boolean {
@@ -32,18 +15,11 @@ export function setNotificationsEnabled(value: boolean): void {
   }
 }
 
-/** L'autorisation du navigateur, telle qu'elle est à cet instant. */
 export function notificationPermission(): NotificationPermission | 'unsupported' {
   if (typeof Notification === 'undefined') return 'unsupported';
   return Notification.permission;
 }
 
-/**
- * Demande l'autorisation, si elle n'a pas déjà été donnée ou refusée.
- *
- * À n'appeler que depuis un geste de l'usager : les navigateurs rejettent — et
- * iOS mémorise le refus — une demande qui surgit au chargement.
- */
 export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof Notification === 'undefined') return false;
   if (Notification.permission === 'granted') return true;
@@ -55,12 +31,6 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
-/**
- * Les moments d'un trajet qui méritent une interruption.
- *
- * Un par étape franchie, pas un de plus. Une notification par arrêt aurait fait
- * du téléphone une sonnerie continue, et l'on aurait coupé l'ensemble.
- */
 export type TripMoment =
   | { kind: 'leave' }
   | { kind: 'boarding'; line: string; stop?: string | null }
@@ -118,26 +88,10 @@ function wording(moment: TripMoment, isFr: boolean): { title: string; body?: str
   }
 }
 
-/**
- * Affiche un avis, si tout le permet.
- *
- * On passe par le service worker quand il est là : sur Android et sur iOS en
- * mode autonome, une notification créée directement depuis la page est refusée.
- * `new Notification()` ne sert que de repli sur ordinateur.
- */
 export async function notifyTripMoment(moment: TripMoment, language: 'fr' | 'en'): Promise<void> {
   if (!notificationsEnabled()) return;
 
   const { title, body } = wording(moment, language === 'fr');
-  /*
-   * La voix suit le même chemin que la notification : un seul endroit décide de
-   * ce qui s'annonce, et les deux ne peuvent pas se contredire.
-   *
-   * Sauf pour les questions. Dire « une question sur ce trajet » puis laisser
-   * l'usager lire l'écran serait une annonce pour rien : c'est le questionnaire
-   * lui-même qui prononce la question, et il la connaît. Faire les deux ici
-   * couperait la vraie phrase au profit de son annonce.
-   */
   if (moment.kind !== 'question') {
     const spoken = title.replace(/^[^\p{L}\p{N}]+/u, '');
     speak(body ? `${spoken}. ${body}` : spoken, language);
@@ -164,23 +118,9 @@ export async function notifyTripMoment(moment: TripMoment, language: 'fr' | 'en'
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/*  La voix                                                                   */
-/* -------------------------------------------------------------------------- */
 
 const VOICE_KEY = 'greLines_tripVoice';
 
-/**
- * Dire les consignes à haute voix.
- *
- * Une notification demande de regarder l'écran ; une phrase dite ne demande rien.
- * C'est la différence entre chercher son téléphone dans un couloir de
- * correspondance et l'entendre annoncer la ligne à prendre, ce qui est
- * exactement le moment où l'on a les mains prises.
- *
- * Coupé par défaut : une application qui se met à parler sans prévenir, dans un
- * tram, se fait couper le son puis désinstaller.
- */
 export function voiceEnabled(): boolean {
   try {
     return localStorage.getItem(VOICE_KEY) === 'on';
@@ -200,13 +140,6 @@ export function voiceSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
-/**
- * Prononce une phrase, en coupant celle d'avant.
- *
- * `cancel()` d'abord : les annonces se remplacent au lieu de s'empiler. Arriver à
- * un arrêt pendant que la précédente parle encore donnerait deux voix
- * superposées, et c'est la nouvelle qui compte.
- */
 export function speak(text: string, language: 'fr' | 'en'): void {
   if (!voiceEnabled() || !voiceSupported() || !text) return;
   try {

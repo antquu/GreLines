@@ -1,4 +1,3 @@
-
 import { idbGet, idbSet } from './persistentCache';
 
 const GBFS_BASE = 'https://data.mobilites-m.fr/api/gbfs';
@@ -10,19 +9,19 @@ export type SharedOperator = 'citiz' | 'voi';
 export interface SharedVehicle {
   id: string;
   operator: SharedOperator;
-  
+
   formFactor: string;
-  
+
   model?: string;
-  
+
   batteryPercent?: number;
-  
+
   batteryEstimated?: boolean;
-  
+
   rangeMeters?: number;
-  
+
   propulsion?: string;
-  
+
   rentalUrl?: string;
 }
 
@@ -31,9 +30,9 @@ export interface SharedVehiclePoint {
   operator: SharedOperator;
   lat: number;
   lon: number;
-  
+
   name?: string;
-  
+
   address?: string;
   vehicles: SharedVehicle[];
 }
@@ -45,13 +44,11 @@ export interface SharedMobilityData {
 
 export const EMPTY_SHARED_MOBILITY: SharedMobilityData = { citiz: [], voi: [] };
 
-/** Couleur d'identification de chaque opérateur, reprise de la carte. */
 export const SHARED_OPERATOR_COLORS: Record<SharedOperator, string> = {
   citiz: '#2563eb',
   voi: '#ec4899',
 };
 
-/** Nom commercial de l'opérateur. */
 export const SHARED_OPERATOR_LABELS: Record<SharedOperator, string> = {
   citiz: 'Citiz',
   voi: 'Voi',
@@ -116,7 +113,7 @@ interface GbfsStation {
   lat?: number;
   lon?: number;
   name?: GbfsText;
-  
+
   address?: string;
 }
 
@@ -128,7 +125,7 @@ interface GbfsVehicle {
   is_disabled?: boolean;
   is_reserved?: boolean;
   station_id?: string;
-  
+
   home_station_id?: string;
   vehicle_type_id?: string;
   current_range_meters?: number;
@@ -149,7 +146,7 @@ interface GbfsVehicleType {
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T | null> {
   try {
     const response = await fetch(url, { signal });
-    
+
     if (!response.ok || response.status === 204) return null;
     return (await response.json()) as T;
   } catch {
@@ -181,23 +178,6 @@ async function fetchVehicleTypes(
   return map;
 }
 
-/**
- * Compose la fiche d'un véhicule.
- *
- * Le pourcentage de batterie est repris tel quel quand l'opérateur le publie
- * (Citiz), sinon déduit de l'autonomie restante rapportée au maximum du modèle
- * (Voi) — et alors marqué comme estimé, pour ne pas afficher un chiffre inventé
- * comme une donnée constructeur.
- */
-/**
- * Bascule un lien de location vers l'application de l'opérateur.
- *
- * Voi publie une adresse `https:
- * qui passe par une page web avant d'atteindre l'application. On ouvre
- * directement l'application, sans chemin ni paramètre — ceux du lien d'origine
- * ne servaient qu'au suivi de campagne du redirecteur, et l'application
- * s'ouvre de toute façon sur la carte.
- */
 function toAppLink(url: string | undefined): string | undefined {
   if (!url) return undefined;
   if (/^https?:\/\/lqfa\.adj\.st(?:\/|$)/.test(url)) {
@@ -316,10 +296,6 @@ async function fetchVoi(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
   return points;
 }
 
-/**
- * Charge les opérateurs demandés. Un opérateur non demandé n'est pas appelé du
- * tout : le flux Voi pèse environ 1 Mo.
- */
 export async function fetchSharedMobility(
   options: { citiz: boolean; voi: boolean; signal?: AbortSignal },
 ): Promise<SharedMobilityData> {
@@ -330,15 +306,6 @@ export async function fetchSharedMobility(
   return { citiz, voi };
 }
 
-/**
- * Charge un opérateur en passant par IndexedDB.
- *
- * Les positions ne valent que quelques minutes, mais le trajet vaut la peine
- * d'être évité au rechargement de page : le flux Voi pèse près d'un mégaoctet
- * et son traitement (filtrage puis fusion des tas) prend deux cents
- * millisecondes. On sert donc l'instantané tant qu'il est frais, et on ne
- * repart en réseau qu'après.
- */
 async function loadOperator(
   operator: SharedOperator,
   signal?: AbortSignal,
@@ -353,12 +320,6 @@ async function loadOperator(
   return points;
 }
 
-/**
- * Repères de distance pour rendre une autonomie parlante.
- *
- * Des trajets grenoblois réels plutôt que des unités abstraites : « 68 km »
- * ne dit rien, « quatre fois la montée de la Bastille » se visualise.
- */
 const RANGE_LANDMARKS: Array<{ meters: number; fr: string; en: string }> = [
   { meters: 1_800,   fr: 'la montée à la Bastille', en: 'the climb to the Bastille' },
   { meters: 5_400,   fr: 'la traversée de Grenoble', en: 'a crossing of Grenoble' },
@@ -367,12 +328,6 @@ const RANGE_LANDMARKS: Array<{ meters: number; fr: string; en: string }> = [
   { meters: 110_000, fr: 'un Grenoble–Lyon', en: 'a Grenoble–Lyon run' },
 ];
 
-/**
- * Traduit une autonomie en nombre de fois un repère local.
- *
- * On retient le repère le plus long qui tient au moins une fois et demie :
- * « 1,2 fois » n'apprend rien, « 5 fois » se retient.
- */
 export function rangeComparison(rangeMeters: number, language: 'fr' | 'en'): string | null {
   if (!Number.isFinite(rangeMeters) || rangeMeters <= 0) return null;
   const fr = language === 'fr';
@@ -392,7 +347,6 @@ export function rangeComparison(rangeMeters: number, language: 'fr' | 'en'): str
     : `Enough for ${times} times ${label}.`;
 }
 
-/** Libellé lisible d'un type de véhicule. */
 export function formFactorLabel(formFactor: string, language: 'fr' | 'en'): string {
   const fr = language === 'fr';
   switch (formFactor) {
@@ -405,4 +359,68 @@ export function formFactorLabel(formFactor: string, language: 'fr' | 'en'): stri
     case 'moped':   return fr ? 'Scooter' : 'Moped';
     default:        return fr ? 'Véhicule' : 'Vehicle';
   }
+}
+
+
+export type VoiZoneKind = 'no-ride' | 'no-parking' | 'parking' | 'limit';
+
+const CITY_SCALE_DEGREES = 0.1;
+const SURROUNDING_SCALE_DEGREES = 0.25;
+
+function spanDegrees(geometry: GeoJSON.Geometry): number {
+  let minLon = Infinity; let maxLon = -Infinity; let minLat = Infinity; let maxLat = -Infinity;
+  const visit = (value: unknown): void => {
+    if (!Array.isArray(value)) return;
+    if (typeof value[0] === 'number' && typeof value[1] === 'number') {
+      minLon = Math.min(minLon, value[0]); maxLon = Math.max(maxLon, value[0]);
+      minLat = Math.min(minLat, value[1]); maxLat = Math.max(maxLat, value[1]);
+      return;
+    }
+    for (const item of value) visit(item);
+  };
+  visit((geometry as { coordinates?: unknown }).coordinates);
+  return Math.max(maxLon - minLon, maxLat - minLat);
+}
+
+interface GbfsZoneRule {
+  ride_allowed?: boolean;
+  ride_through_allowed?: boolean;
+  maximum_speed_kph?: number;
+  station_parking?: boolean;
+}
+
+const VOI_ZONES_TTL_MS = 60 * 60 * 1000;
+let voiZones: { at: number; value: Promise<GeoJSON.FeatureCollection | null> } | null = null;
+
+function zoneKind(rules: GbfsZoneRule[]): VoiZoneKind | null {
+  const rule = rules[0];
+  if (!rule) return null;
+  if (rule.ride_allowed === false && rule.ride_through_allowed === false) return 'no-ride';
+  if (rule.ride_allowed === false) return 'no-parking';
+  if (rule.station_parking) return 'parking';
+  return null;
+}
+
+export function getVoiZones(): Promise<GeoJSON.FeatureCollection | null> {
+  if (voiZones && Date.now() - voiZones.at < VOI_ZONES_TTL_MS) return voiZones.value;
+  const value = fetchJson<{ data?: { geofencing_zones?: GeoJSON.FeatureCollection } }>(`${GBFS_BASE}/voi_grenoble/geofencing_zones`)
+    .then(payload => {
+      const collection = payload?.data?.geofencing_zones;
+      if (!collection?.features) return null;
+      const features = collection.features.flatMap(feature => {
+        const rules = ((feature.properties as { rules?: GbfsZoneRule[] } | null)?.rules) ?? [];
+        let kind = zoneKind(rules);
+        const span = feature.geometry ? spanDegrees(feature.geometry) : 0;
+        if ((kind === 'no-ride' || kind === 'no-parking') && span > SURROUNDING_SCALE_DEGREES) return [];
+        if (kind === 'parking' && span > CITY_SCALE_DEGREES) kind = 'limit';
+        return kind ? [{ ...feature, properties: { kind, speed: rules[0]?.maximum_speed_kph ?? null } }] : [];
+      });
+      return { type: 'FeatureCollection' as const, features };
+    })
+    .then(result => {
+      if (!result) voiZones = null;
+      return result;
+    });
+  voiZones = { at: Date.now(), value };
+  return value;
 }

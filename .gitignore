@@ -34,3 +34,10 @@ dist-ssr
 
 # Confidential data
 # public/grelines.json
+
+# Fiches horaires TCL, refaites à chaque build (scripts/tcl-timetables.mjs)
+public/data/tcl-fiches/
+public/data/tcl-accessibility.json
+
+# Réseaux GTFS (Nancy, Saint-Étienne…), refaits à chaque build (scripts/gtfs-networks.mjs)
+public/data/networks/

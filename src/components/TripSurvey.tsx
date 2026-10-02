@@ -19,7 +19,7 @@ function setSurveyConsent(value: Exclude<Consent, null>) {
   try {
     localStorage.setItem(CONSENT_KEY, value);
   } catch {
-    
+
   }
 }
 
@@ -27,37 +27,20 @@ interface TripSurveyProps {
   isOpen: boolean;
   onClose: () => void;
   lineId: string;
-  
+
   boardingStop?: string | null;
-  
+
   boardingTime?: string | null;
-  /**
-   * Le voyage en cours, tronçons en transport seulement.
-   *
-   * Il part avec l'avis pour qu'on sache, plus tard, quel trajet était noté —
-   * pas seulement quelle ligne. La marche en est exclue en amont, dans l'appelant.
-   */
   journey?: TripSurveyLeg[];
   language: 'fr' | 'en';
 }
 
-/**
- * Trois paliers plutôt que cinq étoiles.
- *
- * On répond debout, dans un véhicule qui bouge : « 3 sur 5 » demande un arbitrage
- * que personne ne fait honnêtement dans ces conditions. Mauvais / Moyen / Bien
- * se choisit d'un pouce, et l'émoji dit lequel avant même qu'on lise.
- *
- * La valeur envoyée reste sur l'échelle de 1 à 5 (1, 3, 5) : le questionnaire
- * change, pas l'historique déjà collecté côté exploitant.
- */
 const TIERS = [
   { value: 1, tone: 'bad' as const, label: (isFr: boolean) => (isFr ? 'Mauvais' : 'Poor') },
   { value: 3, tone: 'mid' as const, label: (isFr: boolean) => (isFr ? 'Moyen' : 'Okay') },
   { value: 5, tone: 'good' as const, label: (isFr: boolean) => (isFr ? 'Bien' : 'Good') },
 ];
 
-/** Un émoji par question et par palier : le même mot ne pèse pas pareil selon le sujet. */
 const QUESTIONS = (isFr: boolean) => [
   {
     key: 'cleanliness' as const,
@@ -116,11 +99,6 @@ function TierRow({
   );
 }
 
-/**
- * Enquête qualité proposée à la fin d'un trajet guidé. Recueil strictement
- * anonyme et soumis à consentement explicite (RGPD) : aucune donnée
- * identifiante, aucune position, refus possible et mémorisé.
- */
 export function TripSurvey({
   isOpen,
   onClose,
@@ -136,17 +114,7 @@ export function TripSurvey({
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
-  /**
-   * Une question à la fois, qui glisse pour laisser la place à la suivante.
-   *
-   * Le formulaire posait ses trois questions d'un bloc, avec un bouton
-   * « Envoyer » au bas : c'est un questionnaire, et un questionnaire se remet à
-   * plus tard. Une seule question, trois pastilles, la suivante qui arrive dès
-   * qu'on a touché — cela se répond au feu rouge sans y penser, et l'on a
-   * terminé avant d'avoir décidé de commencer.
-   */
   const [stepIndex, setStepIndex] = useState(0);
-  /** +1 : on avance, la carte vient de la droite. -1 : on revient. */
   const [direction, setDirection] = useState(1);
 
   useEffect(() => {
@@ -174,13 +142,6 @@ export function TripSurvey({
     onClose();
   };
 
-  /*
-   * Les valeurs sont passées explicitement plutôt que lues dans l'état.
-   *
-   * La dernière pastille touchée enchaîne aussitôt sur l'envoi ; à cet instant
-   * `setAnswers` n'a pas encore été appliqué, et l'on posterait un avis amputé
-   * de la réponse qu'on vient tout juste de recevoir.
-   */
   const handleSubmit = async (
     finalAnswers: Record<string, number> = answers,
     finalComment: string = comment
@@ -207,7 +168,6 @@ export function TripSurvey({
   };
 
   const questions = QUESTIONS(isFr);
-  /** Les trois questions, puis le mot libre : quatre cartes qui défilent. */
   const stepCount = questions.length + 1;
   const isCommentStep = stepIndex >= questions.length;
 
@@ -283,8 +243,6 @@ export function TripSurvey({
                   <h2 className="truncate text-lg font-bold" style={{ color: '#ffffff' }}>
                     {isFr ? 'Votre trajet' : 'Your trip'} · {lineId}
                   </h2>
-                  {/* La progression remplace le compteur : trois traits, on voit
-                      qu'il en reste deux sans avoir à lire « 1 sur 3 ». */}
                   <div className="mt-2 flex gap-1.5" aria-hidden="true">
                     {Array.from({ length: stepCount }).map((_, i) => (
                       <span
@@ -305,9 +263,6 @@ export function TripSurvey({
                 </button>
               </div>
 
-              {/* Une carte à l'écran, la suivante en attente hors cadre. La
-                  hauteur est fixée pour que le panneau ne saute pas entre deux
-                  questions de longueur différente. */}
               <div className="relative overflow-hidden" style={{ minHeight: 132 }}>
                 <AnimatePresence initial={false} mode="popLayout">
                   <motion.div
@@ -347,8 +302,6 @@ export function TripSurvey({
                 </AnimatePresence>
               </div>
 
-              {/* Retour et Ignorer, en retrait : répondre se fait en touchant une
-                  pastille, pas en visant un bouton de validation. */}
               <div className="mt-4 flex items-center gap-2">
                 {stepIndex > 0 && (
                   <button

@@ -1,13 +1,5 @@
 import { IoWifi } from 'react-icons/io5';
 
-/**
- * Ce qu'affiche un panneau qui vit du réseau quand il n'y en a pas.
- *
- * Les vélos et trottinettes, les voitures partagées, la qualité de l'air,
- * l'infotrafic : rien de tout ça ne se garde d'avance, ça change à la minute.
- * Plutôt qu'une liste vide ou une erreur, le panneau le dit comme le fait
- * celui du covoiturage : un grand pictogramme gris, une phrase.
- */
 export function OfflinePanel({
   language,
   isLight = false,
@@ -15,7 +7,6 @@ export function OfflinePanel({
 }: {
   language: 'fr' | 'en';
   isLight?: boolean;
-  /** Ce qui manque, en une phrase. Par défaut, une formule générale. */
   detail?: string;
 }) {
   const isFr = language === 'fr';

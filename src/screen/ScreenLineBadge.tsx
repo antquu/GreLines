@@ -37,7 +37,7 @@ export function ScreenLineBadge({
         <img src="/assets/bus_relais.svg" alt="Bus relais" className="h-full w-full object-contain" />
         <span
           className={`absolute bottom-0 right-0 flex items-center justify-center rounded-full border border-white/75 font-extrabold leading-none ${
-            isSmall ? 'h-4 w-4 text-[9px]' : 'h-5 w-5 text-[11px] 2xl:h-6 2xl:w-6 2xl:text-sm'
+            isSmall ? 'h-4 w-4 text-[0.5625rem]' : 'h-5 w-5 text-[0.6875rem] 2xl:h-6 2xl:w-6 2xl:text-sm'
           }`}
           style={overlayStyle}
         >

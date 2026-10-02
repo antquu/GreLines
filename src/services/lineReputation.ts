@@ -1,43 +1,14 @@
-/**
- * Ce que les voyageurs pensent d'une ligne, ramené à deux chiffres.
- *
- * Les enquêtes qualité dormaient dans la base : elles servaient à l'exploitant,
- * jamais à celui qui monte. Or c'est en montant qu'on aimerait savoir si la
- * ligne tient ses horaires — et c'est en le voyant affiché qu'on comprend à
- * quoi sert d'avoir répondu la fois d'avant.
- *
- * Deux chiffres seulement, parce qu'ils se lisent d'un coup d'œil sur un quai :
- * une note générale, et la part de trajets jugés à l'heure.
- */
-
 import { supabase, isSupabaseConfigured } from './supabase';
 
 export interface LineReputation {
-  /** Note moyenne sur 5, tous critères confondus. */
   rating: number | null;
-  /** Part des trajets déclarés à l'heure, en pourcentage. */
   onTimeRate: number | null;
-  /**
-   * Affluence ressentie, de 1 (bondé) à 5 (des places assises).
-   *
-   * C'est la seule mesure d'affluence honnête dont dispose l'application : le
-   * réseau n'expose aucun taux de charge par véhicule. Elle vaut pour la ligne
-   * et son heure moyenne, pas pour le passage qu'on attend.
-   */
   crowding: number | null;
-  /** Sur combien d'avis. Un chiffre sans son assise ne veut rien dire. */
   sampleSize: number;
 }
 
-/**
- * En dessous, on n'affiche rien.
- *
- * Trois avis font une anecdote, pas une réputation — et une ligne étiquetée
- * « 2,0 ★ » sur trois réponses d'un mauvais jour est une injustice qui se voit.
- */
 const MIN_SAMPLE = 5;
 
-/** Les avis récents pèsent le vrai ; ceux d'il y a un an décrivent un autre réseau. */
 const WINDOW_DAYS = 90;
 
 const cache = new Map<string, { value: LineReputation | null; at: number }>();

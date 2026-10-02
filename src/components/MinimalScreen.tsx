@@ -1,27 +1,9 @@
-/**
- * La page minimaliste d'un favori.
- *
- * C'est le coquillage commun de l'arrêt favori et du trajet favori : un
- * chevron et un titre en haut, du contenu qui défile, et rien d'autre — pas de
- * barre d'onglets, pas de carte, pas d'action en évidence. On y vient pour lire
- * deux chiffres, on en repart aussitôt.
- *
- * Les actions ne sont pas absentes, elles sont rangées : un bouton à trois
- * points, posé en bas à droite, à portée du pouce et hors du chemin du regard.
- * Retirer un favori ou le renommer n'arrive qu'une fois — ce n'est pas ce qui
- * mérite la place du contenu.
- *
- * Elle entre par la droite, comme tout ce qui s'enfonce d'un cran dans les
- * favoris.
- */
-
 import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronLeftIcon, EllipsisVerticalIcon } from '@heroicons/react/24/solid';
 
 export interface MinimalScreenAction {
   label: string;
   onSelect: () => void;
-  /** Retrait, suppression : l'action se teinte de rouge. */
   destructive?: boolean;
 }
 
@@ -38,14 +20,6 @@ export function MinimalScreen({
   title: string;
   isLight: boolean;
   actions?: MinimalScreenAction[];
-  /**
-   * Réserver de la place sous le contenu.
-   *
-   * Vraie par défaut : le bouton à trois points flotte en bas à droite, et sans
-   * cette réserve il recouvrirait la dernière ligne. Une page qui pose son
-   * propre bouton en bas d'écran la met à faux — la réserve borne alors son
-   * `sticky`, qui s'arrête cent douze pixels trop haut.
-   */
   bottomInset?: boolean;
   onBack: () => void;
   children: ReactNode;
@@ -64,12 +38,9 @@ export function MinimalScreen({
       style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
       aria-hidden={!isOpen}
     >
-      {/* Le chevron est collé au titre, pas relégué dans un coin : les deux
-          forment une seule phrase, « retour depuis Sassenage » — et centrés l'un
-          sur l'autre, pour que cette phrase tienne sur une ligne. */}
       <header
         className="flex flex-shrink-0 items-center gap-1 px-4 pb-5"
-        style={{ paddingTop: 'max(calc(env(safe-area-inset-top) + 4px), 1rem)' }}
+        style={{ paddingTop: 'max(calc(var(--gl-safe-top) + 4px), 1rem)' }}
       >
         <button
           type="button"
@@ -81,14 +52,15 @@ export function MinimalScreen({
         >
           <ChevronLeftIcon className="h-6 w-6" />
         </button>
-        <h2 className="min-w-0 flex-1 text-[26px] font-bold leading-tight">{title}</h2>
+        <h2
+          className="min-w-0 flex-1 font-bold"
+          style={{ fontSize: '26px', lineHeight: 1.2, margin: 0, color: 'inherit' }}
+        >
+          {title}
+        </h2>
       </header>
 
       <div
-        /* `overflow-x-hidden` : le contenu qui entre par la droite déborde le
-           temps de son glissement, et un conteneur qui défile verticalement
-           défile aussi horizontalement dès qu'on lui en donne l'occasion. On
-           se retrouvait alors à pouvoir pousser la page de côté. */
         className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${bottomInset ? 'pb-28' : ''}`}
       >
         {children}
@@ -96,8 +68,6 @@ export function MinimalScreen({
 
       {actions.length > 0 && (
         <>
-          {/* Le voile ne noircit rien : il n'est là que pour recevoir le doigt
-              qui referme le menu, n'importe où sur la page. */}
           {menuOpen && (
             <button
               type="button"

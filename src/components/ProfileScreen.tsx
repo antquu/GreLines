@@ -11,24 +11,11 @@ const PROFILE_ORBIT_MS = 110000;
 const PROFILE_ORBIT_SIZE = 28;
 const PROFILE_ORBIT_RADIUS = 72;
 
-/**
- * Le profil : ce qu'on a rendu aux autres, et la carte qui le porte.
- *
- * Trois nombres, et l'historique qui les explique. Ni classement, ni niveau, ni
- * série à ne pas rompre : la contribution se constate, elle ne se dispute pas.
- */
 
-/**
- * La taille du chiffre, décroissante avec sa longueur.
- *
- * Un compteur de trajets finit par passer à quatre chiffres, et « 10 673 » écrit
- * en 44 px pousse l'étiquette hors de la tuile. Trois paliers suffisent : au-delà
- * de six caractères, personne ne lit le nombre d'un coup d'œil de toute façon.
- */
 function numberSize(value: string): string {
-  if (value.length >= 7) return 'text-[26px]';
-  if (value.length >= 5) return 'text-[32px]';
-  return 'text-[40px]';
+  if (value.length >= 7) return 'text-[1.625rem]';
+  if (value.length >= 5) return 'text-[2rem]';
+  return 'text-[2.5rem]';
 }
 
 function monthAndYear(value: string | null, isFr: boolean): string {
@@ -48,7 +35,6 @@ export function ProfileScreen({
 }: {
   isOpen: boolean;
   account: Account | null;
-  /** La carte qui porte le compte, si elle est encore dans le portefeuille. */
   card?: OuraCard | null;
   language: 'fr' | 'en';
   isLight: boolean;
@@ -60,23 +46,6 @@ export function ProfileScreen({
   const muted = isLight ? 'text-slate-500' : 'text-slate-400';
   const tile = isLight ? 'bg-slate-200/70' : 'bg-slate-800';
 
-  /**
-   * Les visages qui tournent autour du portrait.
-   *
-   * Un par voyageur aidé, jusqu'à huit — au-delà, la couronne devient une
-   * guirlande et l'on ne distingue plus rien.
-   *
-   * Ce sont des visages anonymes, et ce n'est pas un raccourci : l'application
-   * compte **combien** de voyageurs on a aidés, jamais **lesquels**. Ce que l'on
-   * rend aux autres — un signalement d'affluence, une réponse à une question sur
-   * une ligne — part sans numéro de carte, et c'est ce qui permet de le donner
-   * sans y réfléchir. Afficher ici de vrais profils demanderait de rattacher
-   * chaque contribution à son bénéficiaire, donc de renoncer à cet anonymat.
-   *
-   * Le tirage est fixe pour un compte donné : il dépend du numéro de carte, si
-   * bien que la couronne reste la même d'une visite à l'autre au lieu de
-   * changer de têtes à chaque ouverture.
-   */
   const helpedFaces = useMemo(() => {
     const helped = Math.max(account?.travellersHelped ?? 0, 0);
     const count = Math.min(helped, 8);
@@ -118,8 +87,6 @@ export function ProfileScreen({
   return (
     <>
       <MinimalScreen isOpen={isOpen} title="" isLight={isLight} onBack={onBack}>
-        {/* Les chiffres du compte viennent du serveur : sans réseau, le
-            pictogramme de la connexion plutôt que des zéros trompeurs. */}
         {offline ? (
           <OfflinePanel
             language={language}
@@ -131,8 +98,6 @@ export function ProfileScreen({
         ) : (
         <>
         <div className="flex flex-col items-center px-4 pt-2">
-          {/* L'avatar en grand : c'est le seul élément qu'on a choisi soi-même, il
-              mérite la place. */}
            <div className="relative flex h-44 w-44 items-center justify-center">
              <motion.div
                className="absolute inset-0"
@@ -167,7 +132,7 @@ export function ProfileScreen({
                </AnimatePresence>
              </motion.div>
            <div
-             className={`relative z-10 flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-4 text-[52px] ${
+             className={`relative z-10 flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-4 text-[3.25rem] ${
               isLight ? 'border-slate-300 bg-white' : 'border-slate-700 bg-white'
             }`}
           >
@@ -183,27 +148,18 @@ export function ProfileScreen({
            </div>
            </div>
 
-          {/* Le nom d'état civil au-dessus du pseudonyme : il vient de la carte
-              et dit à qui appartient le compte, tandis que le pseudonyme dit
-              sous quel nom on se montre. Le plus petit passe devant, comme une
-              mention posée au-dessus du titre. */}
-          {/* Mêmes précautions : les marges sont portées par des div, sinon la
-              règle `p { margin: 0 }` d'index.css les efface. */}
           <div className="mt-5 text-center">
             <p className={`text-sm font-medium ${muted}`}>
               {[account?.firstName, account?.lastName].filter(Boolean).join(' ')}
             </p>
           </div>
           <div className="mt-1.5 text-center">
-            <p className={`text-[26px] font-extrabold leading-none ${ink}`}>
+            <p className={`text-[1.625rem] font-extrabold leading-none ${ink}`}>
               {account?.pseudo ?? ''}
             </p>
           </div>
         </div>
 
-        {/* Émoji puis étiquette sur deux lignes à gauche, le nombre à droite sur
-            toute la hauteur : c'est lui qu'on vient lire, l'étiquette ne fait que
-            dire de quoi il parle. */}
         <div className="mt-6 space-y-3 px-4">
           {stats.map((stat) => (
             <div
@@ -214,9 +170,6 @@ export function ProfileScreen({
                 <p className="text-xl leading-none" aria-hidden>
                   {stat.emoji}
                 </p>
-                {/* L'écart est porté par une div : `p { margin: 0 }` est déclaré
-                    hors layer dans index.css et annule tout `mt-*` posé sur un
-                    paragraphe — l'émoji et son étiquette restaient collés. */}
                 <div className="mt-3">
                   <p
                     className={`text-sm leading-snug ${
@@ -238,9 +191,6 @@ export function ProfileScreen({
           ))}
         </div>
 
-        {/* La carte, de dos. Le recto est une image de marque ; le verso porte le
-            nom, la photo et le numéro — c'est celui-là qui dit à qui appartient le
-            compte. */}
         {card && (
           <div className="mt-8 px-4">
             <p className={`mb-3 px-1 text-sm font-bold ${ink}`}>

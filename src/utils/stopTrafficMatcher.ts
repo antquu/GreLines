@@ -38,11 +38,6 @@ function textMentionsStopName(text: string, stopName: string): boolean {
   return tokens.every(token => normalizedText.includes(` ${token} `));
 }
 
-/**
- * Parse the `listeLigne` field of a TrafficDetail.
- * Format observed: lines separated by "_" with optional "SEM:" prefix.
- * Example: "SEM:A_SEM:B_SEM:C5" → ["A", "B", "C5"]
- */
 function parseTrafficLineCodes(listeLigne: string | undefined | null): string[] {
   if (!listeLigne) return [];
   return String(listeLigne)
@@ -57,25 +52,10 @@ function parseTrafficLineCodes(listeLigne: string | undefined | null): string[] 
 }
 
 export interface StopTrafficAlert {
-  /** The matching traffic detail, deduplicated */
   detail: TrafficDetail;
-  /** The intersection between the alert's lines and the stop's lines */
   matchedLines: Line[];
 }
 
-/**
- * Find all traffic alerts that concern this stop.
- *
- * Double check:
- *   1. The stop name (normalized) appears in the alert description or title
- *   2. At least one line from the alert's listeLigne is served by this stop
- *
- * Both conditions must be true. The returned alerts include only the lines
- * that actually intersect (so the UI can show relevant badges).
- *
- * Each detail is deduplicated by (titre + description + dateFin) so that
- * the same disruption coming from multiple lines isn't shown N times.
- */
 export function getStopTrafficAlerts(
   stop: Pick<Stop, 'name'>,
   stopLines: Line[],
@@ -90,19 +70,6 @@ export function getStopTrafficAlerts(
     if (short) stopLineIdsByCode.set(short, line);
   }
 
-  /*
-   * Une perturbation, une carte.
-   *
-   * Le réseau publie le même événement autant de fois qu'il touche de lignes :
-   * même titre, même texte, même date de fin, seul le `listeLigne` change. La
-   * clé de déduplication le contenait, si bien que sept copies d'une même
-   * déviation devenaient sept cartes identiques à l'écran — on lisait sept fois
-   * la même phrase pour n'apprendre qu'une chose, la liste des lignes touchées.
-   *
-   * On regroupe donc sur le contenu seul, et l'on réunit les lignes de toutes
-   * les copies : la liste des lignes redevient ce qu'elle est, un attribut de
-   * la perturbation, et non le motif qui la multiplie.
-   */
   const byContent = new Map<string, { detail: TrafficDetail; codes: Set<string> }>();
   for (const line of stopLines) {
     if (!line.trafficDetails) continue;
@@ -133,17 +100,6 @@ export function getStopTrafficAlerts(
   return alerts;
 }
 
-/**
- * Restreint les perturbations aux lignes retenues par le filtre de la fiche.
- *
- * Filtrer un arrêt sur une ligne, c'est dire « je ne prends que celle-là » : les
- * déviations des huit autres n'ont alors plus rien à faire au-dessus des
- * départs. Les badges se réduisent eux aussi aux lignes retenues — une carte qui
- * en montrerait sept alors qu'on n'en regarde qu'une redirait le désordre qu'on
- * vient d'écarter.
- *
- * Sans filtre, rien ne change : tout l'arrêt est concerné.
- */
 export function filterAlertsBySelectedLines(
   alerts: StopTrafficAlert[],
   selectedLineIds: Set<string>,

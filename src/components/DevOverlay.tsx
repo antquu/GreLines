@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePerfSettings } from '../hooks/usePerfSettings';
+import { appLanguage } from '../utils/appLanguage';
 
 const JANK_FRAME_MS = 50;
 
@@ -33,6 +34,7 @@ const EMPTY_STATS: Stats = {
 
 export function DevOverlay() {
   const { settings } = usePerfSettings();
+  const en = appLanguage() === 'en';
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [history, setHistory] = useState<number[]>([]);
   const longTasksRef = useRef(0);
@@ -48,7 +50,7 @@ export function DevOverlay() {
   useEffect(() => {
     if (!enabled) return;
     if (position !== null) return;
-    const width = 224; 
+    const width = 224;
     const x = Math.max(12, window.innerWidth - width - 12);
     setPosition({ x, y: 12 });
   }, [enabled, position]);
@@ -138,7 +140,7 @@ export function DevOverlay() {
 
   useEffect(() => {
     if (!enabled || typeof PerformanceObserver === 'undefined') return;
-    
+
     longTasksRef.current = 0;
     let observer: PerformanceObserver | null = null;
     try {
@@ -147,7 +149,7 @@ export function DevOverlay() {
       });
       observer.observe({ entryTypes: ['longtask'] });
     } catch {
-      
+
     }
     return () => observer?.disconnect();
   }, [enabled]);
@@ -218,14 +220,14 @@ export function DevOverlay() {
   return (
     <div
       ref={overlayRef}
-      className="fixed z-[10001] w-56 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-slate-200 shadow-lg backdrop-blur-sm"
+      className="fixed z-[10001] w-56 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-2.5 font-mono text-[0.6875rem] leading-relaxed text-slate-200 shadow-lg backdrop-blur-sm"
       aria-hidden="true"
       style={{ left: position.x, top: position.y, pointerEvents: 'none' }}
     >
       <div className="mb-2 flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-slate-400"> </span>
+        <span className="text-[0.625rem] uppercase tracking-wider text-slate-400"> </span>
         <span className="text-lg font-bold" style={{ color: fpsColor }}>
-          {stats.fps} <span className="text-[10px] font-normal text-slate-400">fps</span>
+          {stats.fps} <span className="text-[0.625rem] font-normal text-slate-400">fps</span>
         </span>
       </div>
 
@@ -244,18 +246,16 @@ export function DevOverlay() {
         ))}
       </div>
 
-      <Line label="image la pire" value={`${stats.worstFrameMs} ms`} warn={stats.worstFrameMs > JANK_FRAME_MS} />
-      <Line label="saccades /s" value={String(stats.jankPerSec)} warn={stats.jankPerSec > 0} />
-      <Line label="tâches longues" value={String(stats.longTasks)} warn={stats.longTasks > 0} />
+      <Line label={en ? 'worst frame' : 'image la pire'} value={`${stats.worstFrameMs} ms`} warn={stats.worstFrameMs > JANK_FRAME_MS} />
+      <Line label={en ? 'jank /s' : 'saccades /s'} value={String(stats.jankPerSec)} warn={stats.jankPerSec > 0} />
+      <Line label={en ? 'long tasks' : 'tâches longues'} value={String(stats.longTasks)} warn={stats.longTasks > 0} />
       {stats.memoryMb !== null && (
-        <Line label="mémoire JS" value={`${stats.memoryMb} / ${stats.memoryLimitMb} Mo`} />
+        <Line label={en ? 'JS memory' : 'mémoire JS'} value={`${stats.memoryMb} / ${stats.memoryLimitMb} ${en ? 'MB' : 'Mo'}`} />
       )}
-      {/* Les arrêts sont dessinés par le GPU : ce compteur ne suit que les
-          marqueurs HTML restants (étiquettes, position, itinéraire). */}
-      <Line label="marqueurs DOM" value={String(stats.markers)} warn={stats.markers > 120} />
-      <Line label="nœuds DOM" value={String(stats.domNodes)} warn={stats.domNodes > 5000} />
-      <Line label="requêtes" value={String(stats.requests)} />
-      <Line label="transféré" value={`${stats.transferredKb} ko`} />
+      <Line label={en ? 'DOM markers' : 'marqueurs DOM'} value={String(stats.markers)} warn={stats.markers > 120} />
+      <Line label={en ? 'DOM nodes' : 'nœuds DOM'} value={String(stats.domNodes)} warn={stats.domNodes > 5000} />
+      <Line label={en ? 'requests' : 'requêtes'} value={String(stats.requests)} />
+      <Line label={en ? 'transferred' : 'transféré'} value={`${stats.transferredKb} ${en ? 'KB' : 'ko'}`} />
     </div>
   );
 }

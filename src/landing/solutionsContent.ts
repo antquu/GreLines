@@ -1,33 +1,3 @@
-/**
- * Les six solutions, chacune avec sa page.
- *
- * Le menu « Solutions » de l'en-tête menait jusqu'ici à des ancres de la page
- * d'accueil, ou droit dans l'application. C'était court : quelqu'un qui clique
- * sur « Messages aux porteurs » veut lire ce que c'est, pas atterrir au milieu
- * d'une page qui parle d'autre chose. Chaque entrée a maintenant une adresse,
- * une page, et de quoi décider.
- *
- * Toutes les pages ont la même charpente, et c'est voulu. Six pages qui se
- * ressemblent se comparent ; six pages qui inventent chacune leur plan
- * obligent à réapprendre où regarder à chaque fois. La charpente :
- *
- *   une affirmation et un visuel        hero
- *   trois raisons, en une ligne         points
- *   quatre chiffres                     stats
- *   trois étapes, en images             steps
- *   quatre capacités, en images         features
- *   une bande large                     band
- *   trois détails                       gallery
- *   un appel                            final
- *
- * Soit douze emplacements d'images par solution, tous facultatifs : tant qu'un
- * fichier manque, son cadre disparaît et le texte se referme dessus. La page se
- * tient debout vide, et s'enrichit à mesure qu'on la remplit.
- *
- * Les identifiants d'adresse sont les mêmes en français et en anglais. Un lien
- * partagé reste donc valable quand son destinataire lit dans l'autre langue.
- */
-
 import type { Lang } from './content';
 
 export interface SolutionStep {
@@ -36,67 +6,46 @@ export interface SolutionStep {
 }
 
 export interface SolutionCopy {
-  /** Le segment d'adresse : `/fr/solutions/<slug>`. */
   slug: string;
-  /** Le nom court, pour le menu et le fil d'Ariane. */
   name: string;
 
   eyebrow: string;
   title: string;
   lead: string;
-  /**
-   * Le visuel de tête, en chemin sous `/assets/homepage/`.
-   *
-   * Facultatif : sans lui, on cherche `solutions/<slug>/hero.png`. Le champ
-   * existe parce que les montages déjà dessinés vivent dans `photos/`, avec
-   * ceux de la page d'accueil, et qu'il vaut mieux pointer un fichier là où il
-   * est que le recopier ailleurs pour satisfaire une convention.
-   */
   hero?: string;
-  /** Ce que montre le visuel de tête, pour ceux qui ne le voient pas. */
   heroAlt: string;
   primary: { label: string; href: string };
   secondary: { label: string; href: string };
 
-  /** Trois raisons, chacune ouverte par sa proposition en pleine encre. */
   points: { lead: string; rest: string }[];
   stats: { value: string; label: string }[];
 
   stepsTitle: string;
   stepsLead: string;
-  /** Trois étapes, images `step-1` à `step-3`. */
   steps: SolutionStep[];
 
   featuresTitle: string;
   featuresLead: string;
-  /** Quatre capacités, images `feature-1` à `feature-4`. */
   features: SolutionStep[];
 
   bandTitle: string;
   bandBody: string;
-  /** Ce que montre la bande large, image `wide`. */
   bandAlt: string;
 
   galleryTitle: string;
-  /** Trois détails, images `detail-1` à `detail-3`. */
   gallery: SolutionStep[];
 
   finalTitle: string;
   finalBody: string;
 }
 
-/** Les intitulés communs à toutes les pages de solution. */
 export interface SolutionsChrome {
   eyebrow: string;
-  /** Le titre de la liste, quand aucune solution n'est nommée. */
   indexTitle: string;
   indexLead: string;
-  /** Le lien de retour, en fil d'Ariane. */
   home: string;
-  /** Le titre du bloc qui renvoie vers les autres solutions. */
   othersTitle: string;
   othersLead: string;
-  /** Le lien de la documentation, au pied de page. */
   docs: string;
   docsNote: string;
 }
@@ -126,9 +75,6 @@ export const CHROME: Record<Lang, SolutionsChrome> = {
   },
 };
 
-/* -------------------------------------------------------------------------
- * Français.
- * ---------------------------------------------------------------------- */
 
 const FR: SolutionCopy[] = [
   {
@@ -615,9 +561,6 @@ const FR: SolutionCopy[] = [
   },
 ];
 
-/* -------------------------------------------------------------------------
- * English.
- * ---------------------------------------------------------------------- */
 
 const EN: SolutionCopy[] = [
   {
@@ -1106,7 +1049,6 @@ const EN: SolutionCopy[] = [
 
 export const SOLUTIONS: Record<Lang, SolutionCopy[]> = { fr: FR, en: EN };
 
-/** Une solution par son segment d'adresse, ou rien si le segment est inventé. */
 export function findSolution(lang: Lang, slug: string | undefined): SolutionCopy | undefined {
   if (!slug) return undefined;
   return SOLUTIONS[lang].find(item => item.slug === slug);

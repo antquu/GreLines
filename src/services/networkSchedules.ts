@@ -11,30 +11,11 @@ import {
   type SchedulePattern,
 } from './offlineSchedule';
 
-/**
- * Tout le réseau, gardé sur l'appareil, petit à petit.
- *
- * À chaque ouverture, en tâche de fond, on télécharge la fiche horaire de
- * chaque ligne : les trams d'abord, puis les Chrono, les Proximo et les Flexo.
- * Une fiche couvre toute la journée d'une ligne, dans les deux sens, en une
- * seule requête : une cinquantaine de lignes, trois sortes de jour, environ
- * cent cinquante requêtes pour le réseau entier. C'est bien moins que d'aller
- * chercher les arrêts un par un.
- *
- * Aujourd'hui passe avant le reste : la journée en cours est celle dont on a
- * besoin si le réseau tombe dans l'heure. Le samedi et le dimanche suivent.
- *
- * Une fiche téléchargée vaut une semaine. Le travail reprend là où il s'était
- * arrêté si l'application est fermée en chemin, et s'interrompt dès que le
- * réseau manque.
- */
 
 const ENDPOINT = 'https://data.mobilites-m.fr/api/ficheHoraires/json';
 const REGISTRY_KEY = 'greLines_offlineLines_v4';
 const FRESH_FOR_MS = 7 * 24 * 60 * 60 * 1000;
-/* Une pause entre deux lignes : le téléchargement ne doit jamais se sentir. */
 const PAUSE_MS = 400;
-/* Assez de courses pour couvrir toute une journée, même d'un tram. */
 const TRIPS_PER_DIRECTION = 400;
 
 const FAMILY_ORDER: LineFamily[] = ['tram', 'chrono', 'proximo', 'flexo'];
@@ -61,13 +42,11 @@ function writeRegistry(registry: Registry): void {
   try {
     localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
   } catch {
-    /* Plein ou refusé : on retéléchargera, rien de plus. */
   }
 }
 
 const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
-/** Un jour de chaque sorte dans la semaine qui vient, aujourd'hui en tête. */
 function upcomingDayKinds(): Date[] {
   const days: Date[] = [];
   const kinds = new Set<DayKind>();
@@ -81,22 +60,10 @@ function upcomingDayKinds(): Date[] {
   return days;
 }
 
-/**
- * Le nom du terminus, écrit comme le temps réel l'écrit : « Fontaine, La
- * Poya », commune comprise. C'est à ce nom que les deux se reconnaissent.
- */
 function stationName(stop: RawStop): string {
   return stop.stopName || stop.name || stop.parentStation?.name || '';
 }
 
-/**
- * Découpe la fiche d'une ligne en passages par arrêt.
- *
- * La destination se lit course par course : c'est le dernier arrêt où elle a
- * une heure. Une course qui s'arrête à mi-parcours annonce ainsi son vrai
- * terminus, comme le fait le temps réel, et les deux se reconnaissent. Le
- * terminus lui-même n'est pas un départ et n'est pas gardé.
- */
 function splitByStop(line: AllLinesLine, payload: Record<string, { arrets?: RawStop[] }>): Map<string, SchedulePattern[]> {
   const lineId = line.id.split(':')[1] || line.shortName;
   const type = line.family === 'tram' ? 'TRAM' : 'BUS';
@@ -150,10 +117,6 @@ function splitByStop(line: AllLinesLine, payload: Record<string, { arrets?: RawS
 }
 
 async function downloadLine(line: AllLinesLine, day: Date): Promise<boolean> {
-  /* Quatre heures du matin : après la dernière course de la veille, avant la
-     première du jour. La fiche rend alors toute la journée, dans les deux
-     sens. À trois heures, elle prenait la dernière course de nuit pour modèle
-     et ne rendait qu'elle. */
   const start = new Date(day);
   start.setHours(4, 0, 0, 0);
   const params = new URLSearchParams({
@@ -166,8 +129,6 @@ async function downloadLine(line: AllLinesLine, day: Date): Promise<boolean> {
     if (response.status === 204) return true;
     if (!response.ok) return false;
     const payload = await response.json();
-    /* La même fiche sert deux fois : découpée par arrêt pour les passages, et
-       entière pour la fiche horaire de la ligne. */
     await saveOfflineTimetable(line.id, day, payload);
     const byStop = splitByStop(line, payload);
     const lineId = line.id.split(':')[1] || line.shortName;
@@ -182,10 +143,6 @@ async function downloadLine(line: AllLinesLine, day: Date): Promise<boolean> {
 
 let started = false;
 
-/**
- * Lance le téléchargement, une fois par session. Il s'arrête de lui-même
- * quand le réseau manque, et reprend à l'ouverture suivante.
- */
 export function startNetworkScheduleDownload(): void {
   if (started) return;
   started = true;
@@ -211,9 +168,6 @@ export function startNetworkScheduleDownload(): void {
         }
         await sleep(PAUSE_MS);
 
-        /* Le tracé et la liste des arrêts de la ligne, une fois par semaine :
-           c'est ce que montre la fiche d'une ligne, hors connexion comme en
-           ligne. */
         const shapeKey = `${line.id}_shape`;
         if (Date.now() - (readRegistry()[shapeKey] ?? 0) >= FRESH_FOR_MS && !isOffline()) {
           if (await prefetchLineForOffline(line.shortName)) {
@@ -226,25 +180,11 @@ export function startNetworkScheduleDownload(): void {
   })();
 }
 
-/**
- * Vrai quand des horaires sont déjà gardés sur cet appareil : c'est ce qui
- * décide si l'app a de quoi servir hors connexion.
- *
- * On regarde ce qui est réellement rangé, pas le registre des téléchargements.
- * Le registre change de nom à chaque révision du format, et les arrêts
- * ouverts se gardent aussi sans lui : l'écran annonçait « aucun horaire »
- * alors que la fiche d'un arrêt montrait bien ses passages.
- */
 export async function hasOfflineSchedules(): Promise<boolean> {
   if (Object.keys(readRegistry()).length > 0) return true;
   return (await idbCountPrefix('offsched_v1_')) > 0;
 }
 
-/**
- * Oublie ce qui a été téléchargé et recommence tout, du tram au Flexo. Pour
- * la console développeur : les fiches déjà gardées restent en place jusqu'à
- * être remplacées.
- */
 export function restartNetworkScheduleDownload(): void {
   writeRegistry({});
   started = false;
