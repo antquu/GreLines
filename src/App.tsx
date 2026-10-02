@@ -1,5 +1,5 @@
 import { cityNear, cityOfNetwork } from './utils/cities';
-import { IS_NANCY } from './site';
+import { GUIDANCE_ENABLED, IS_NANCY } from './site';
 import { locateByIp } from './services/ipLocation';
 import { getLocatedCity, setIpArea, setMapArea, setUserArea, subscribeCurrentCity } from './utils/currentArea';
 import { getFakeLocation, subscribeFakeLocation } from './utils/devLocation';
@@ -477,7 +477,7 @@ function App() {
   >(null);
 
   useEffect(() => {
-    if (!isMobile) return;
+    if (!isMobile || !GUIDANCE_ENABLED) return;
     const resumed = loadNavigationSession();
     if (!resumed) return;
     setSelectedRouteItinerary(resumed);
@@ -2631,10 +2631,10 @@ function App() {
             setAutoPickFirstItinerary(false);
           }
         }}
-        onStartNavigation={() => {
+        onStartNavigation={GUIDANCE_ENABLED ? () => {
           if (isMobile && selectedRouteItinerary) saveNavigationSession(selectedRouteItinerary);
           setIsNavigationOpen(true);
-        }}
+        } : undefined}
         onOpenLine={line => {
           setIsRouteSidebarOpen(false);
           handleLineSearchSelect(line);
