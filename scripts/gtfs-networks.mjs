@@ -12,6 +12,8 @@ const NETWORKS = process.env.VITE_SITE === 'nancy'
 
 const MERGE_RADIUS_M = 250;
 
+const NETWORK_RADIUS_M = 150_000;
+
 const round = value => Math.round(value * 1e5) / 1e5;
 
 const distanceM = (a, b) => {
@@ -97,9 +99,23 @@ async function buildNetwork(config, today) {
   const newStation = stop => ({ ...stop, members: [], names: new Set(), lines: new Set(), yes: false, no: false });
   for (const stop of stops.values()) if (stop.type === '1') stations.set(stop.id, newStation(stop));
 
+  const center = { lat: config.center[0], lon: config.center[1] };
+  const isMisplaced = stop =>
+    !Number.isFinite(stop.lat) || !Number.isFinite(stop.lon) || distanceM(center, stop) > NETWORK_RADIUS_M;
+  const misplaced = [];
+
   const loose = new Map();
   for (const stop of stops.values()) {
     if (stop.type !== '0' && stop.type !== '') continue;
+    if (isMisplaced(stop) && !isMisplaced(stations.get(stop.parent) ?? stop)) {
+      stationOf.set(stop.id, stations.get(stop.parent));
+      stations.get(stop.parent).members.push(stop.id);
+      continue;
+    }
+    if (isMisplaced(stop)) {
+      misplaced.push(stop);
+      continue;
+    }
     let station = stations.get(stop.parent);
     if (!station) {
       const key = nameKey(stop.name);
@@ -116,6 +132,15 @@ async function buildNetwork(config, today) {
     station.names.add(stop.name);
     if (stop.wheelchair === '1') station.yes = true;
     if (stop.wheelchair === '2') station.no = true;
+    stationOf.set(stop.id, station);
+  }
+
+  for (const stop of misplaced) {
+    const siblings = loose.get(nameKey(stop.name)) ?? [];
+    const station = siblings.reduce((best, candidate) => (!best || candidate.members.length > best.members.length ? candidate : best), null);
+    if (!station) continue;
+    station.members.push(stop.id);
+    station.names.add(stop.name);
     stationOf.set(stop.id, station);
   }
 

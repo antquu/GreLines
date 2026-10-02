@@ -146,7 +146,7 @@ export async function getGtfsStops(code: string): Promise<Stop[]> {
 
 export function gtfsStopMembers(stopId: string): string[] {
   const config = gtfsNetworkOf(stopId);
-  const stop = stopById.get(String(stopId));
+  const stop = stopById.get(String(stopId)) ?? stationOfPlatform.get(String(stopId));
   return config && stop ? stop.members.map(member => prefixed(config.code, member)) : [];
 }
 
@@ -154,7 +154,7 @@ export async function getGtfsLinesForStop(stopId: string): Promise<Line[]> {
   const config = gtfsNetworkOf(stopId);
   if (!config) return [];
   await loadNetwork(config.code);
-  const stop = stopById.get(String(stopId));
+  const stop = stopById.get(String(stopId)) ?? stationOfPlatform.get(String(stopId));
   if (!stop) return [];
   return stop.lines
     .map(id => lineById.get(prefixed(config.code, id)))
@@ -198,7 +198,7 @@ export async function getGtfsStopDetail(stopId: string): Promise<StopDetail | nu
   if (!config) return null;
   const code = config.code;
   const network = await loadNetwork(code);
-  const stop = stopById.get(String(stopId));
+  const stop = stopById.get(String(stopId)) ?? stationOfPlatform.get(String(stopId));
   if (!network || !stop) return null;
 
   const { withForeignTraffic } = await import('./foreignTraffic');
@@ -376,6 +376,6 @@ export async function gtfsStationNames(stopId: string): Promise<Set<string>> {
   const config = gtfsNetworkOf(stopId);
   if (!config) return new Set();
   await loadNetwork(config.code);
-  const stop = stopById.get(String(stopId));
+  const stop = stopById.get(String(stopId)) ?? stationOfPlatform.get(String(stopId));
   return new Set(stop ? stop.names.concat(stop.name) : []);
 }
