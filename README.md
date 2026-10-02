@@ -2,43 +2,38 @@
 
 [![Note de maj](.screenshots/update_note.png)](https://grelines.fr/fr/newsroom)
 
-* **Version** : `3.7.0`
+* **Version** : `3.17.8`
 * **Principales nouveautés** :
 
-  * Vitrine publique sur `/fr` et `/en`
-  * Documentation complète sur `/fr/docs`, en trois étages
-  * Pages de solutions sur `/fr/solutions/<nom>`
-  * Salle de presse sur `/fr/newsroom`
-  * Page de licence sur `/fr/legals/license`
-  * Passage de la GPL v3 à l'AGPL v3, avec conditions d'attribution
-  * Section « Dernières actualités » en page d'accueil
-  * En-tête réduit à la pastille, sans le nom écrit à côté
-  * Historique des arrêts limité à quatre entrées sur mobile
-  * Résultats d'itinéraire remis à zéro à la fermeture de la feuille
+  * 27 réseaux en Auvergne-Rhône-Alpes : TCL à Lyon, STAS, T2C, Sibra, Synchro Bus et les autres
+  * GreLines Nancy sur `nancy.grelines.fr`, construit depuis le même code (`VITE_SITE=nancy`)
+  * API publique sur `api.grelines.fr`, avec clés et documentation sur `/fr/docs/api`
+  * Temps réel GTFS-RT pour les réseaux qui le publient
+  * Mobilités partagées : Citiz, Voi et vélOstan’lib, avec un bouton de calques par ville
+  * Carte OùRA dans le portefeuille, avec acceptation des conditions
+  * Compte, historique des trajets et trajets favoris
+  * Popups Infotrafic ciblées par réseau et par ligne
+  * Import automatique des annonces M réso en popups
+  * Page `/trafic` bilingue, avec visionneuse des plans de déviation
+  * Fenêtre de réglages façon macOS sur ordinateur
+  * Explorateur de lignes et lieux à visiter
+  * Mode hors ligne et carte gardée sur l’appareil
+  * Parcours de bienvenue et guide d’installation sur l’écran d’accueil
+  * Taille du texte réglable
+  * Signalement d’affluence, enquêtes qualité et avis sur les lignes
+  * Traduction automatique des perturbations
   * Carte MapLibre
   * Arrêts en temps réel
-  * TCL
   * Lignes et itinéraires
   * Navigation
-  * Reprise de l'étape active après actualisation de la page
-  * Détection de la correspondance et du véhicule par géolocalisation
-  * Recentrage manuel animé sans recentrage permanent à l'arrêt
-  * Marqueur de position transformé en avatar bus ou tram avec fondu
   * Recherche d’adresses
   * Favoris
   * Trafic
   * Qualité de l’air
-  * Mobilités partagées
   * Horaires
+  * Écrans voyageurs
   * Interface mobile complète
   * Mode clair/sombre
-  * Contrastes et boutons corrigés pour le mode clair
-  * Préférences de marche et de vitesse conservées localement
-  * Réglages de compte et notifications réservés au mobile
-  * Écrans voyageurs
-  * Géolocalisation
-  * Sondage trajet
-  * Cache et optimisation
 
 [![Pile technologique](.screenshots/technologie.png)](https://grelines.fr/fr/docs/deploy)
 
@@ -209,6 +204,9 @@ conservées localement.
 * Panneau dédié aux informations de circulation
 * Affichage des données de qualité de l'air
 * Intégration des informations ATMO
+* Popups Infotrafic et promo, ciblées par réseau, par ville et par ligne
+* Annonces M réso importées automatiquement, supprimables depuis GreLines Management
+* Page `/trafic` en français et en anglais, avec les plans de déviation en PDF
 
 ### TCL
 
@@ -217,12 +215,24 @@ conservées localement.
 * Intégration dans l'interface principale
 * Adaptation du panneau aux interfaces mobiles
 
+### Réseaux régionaux
+
+* STAS, T2C, Sibra, Synchro Bus, Rubis, Ondéa, TAC, L’va, STAR, STAR’T, Maelis,
+  Mobivie, Montélibus, Mobilité en Velay et Trans’Cab
+* Prochains passages calculés depuis les fiches horaires, corrigés en temps réel
+  quand le réseau publie un flux GTFS-RT
+* Réseaux à activer ou masquer depuis les réglages
+* GreLines Nancy : le réseau Stan, vélOstan’lib et Citiz Grand Est, sur
+  `nancy.grelines.fr`
+
 ### Mobilités partagées
 
 * Affichage des services de mobilité partagée
 * Informations sur les services disponibles
 * Affichage des tarifs lorsque les données sont disponibles
 * Panneau dédié aux mobilités partagées
+* Citiz, Voi et stations vélOstan’lib, toujours chargés
+* Bouton de calques limité aux opérateurs de la ville affichée
 
 ### Horaires et écrans voyageurs
 
@@ -241,6 +251,14 @@ conservées localement.
 * Salle de presse et communiqués
 * Pages légales, licence comprise
 * Thème clair et sombre partagé avec l'application
+
+### API publique
+
+* Arrêts, lignes, prochains passages et perturbations des 27 réseaux
+* Réponses en JSON, en anglais, avec des codes d’erreur stables
+* Clés créées et révoquées par un super administrateur dans GreLines Management
+* Modifications d’arrêts et de lignes reprises en moins d’une minute
+* Documentation sur `/fr/docs/api` et `/en/docs/api`
 
 ### Design responsive
 

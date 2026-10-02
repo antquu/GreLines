@@ -827,6 +827,201 @@ translations`,
     },
 
     {
+      id: 'api',
+      title: "API",
+      note: "Les arrêts, lignes, passages et perturbations de 27 réseaux, à appeler depuis votre propre code.",
+      entries: [
+        {
+          id: 'presentation',
+          icon: 'plug',
+          title: "Présentation",
+          note: "Ce que l'API donne, et à qui elle s'adresse.",
+          body: [
+            {
+              kind: 'p',
+              text: "L'API GreLines sert les mêmes données que l'application : arrêts, lignes, prochains passages et perturbations, pour 27 réseaux d'Auvergne-Rhône-Alpes et Stan à Nancy. Elle est en lecture seule et répond en JSON, en anglais.",
+            },
+            { kind: 'code', lang: 'txt', text: 'https://api.grelines.fr/v1' },
+            {
+              kind: 'p',
+              text: "Les corrections faites par l'équipe (nom ou position d'un arrêt, couleur d'une ligne, ligne masquée) s'y retrouvent en moins d'une minute.",
+            },
+          ],
+        },
+        {
+          id: 'cle',
+          icon: 'key',
+          title: "Clé et limites",
+          note: "Une clé par projet, envoyée avec chaque requête.",
+          body: [
+            {
+              kind: 'p',
+              text: "Chaque requête demande une clé, qui commence par gl_. Elle se demande par e-mail en décrivant le projet. Envoyez-la dans l'en-tête x-api-key :",
+            },
+            { kind: 'code', lang: 'bash', text: `curl https://api.grelines.fr/v1/stops/SEM:VH \\
+  -H "x-api-key: gl_votre_cle"` },
+            {
+              kind: 'p',
+              text: "Pour un essai dans le navigateur, ?key=gl_votre_cle à la fin de l'adresse fonctionne aussi. À éviter en production : l'adresse finit dans les journaux.",
+            },
+            {
+              kind: 'note',
+              text: "Chaque clé a un nombre de requêtes par minute, 60 par défaut. Les en-têtes x-ratelimit-limit et x-ratelimit-remaining indiquent où vous en êtes ; au-delà, l'API répond 429.",
+            },
+          ],
+        },
+        {
+          id: 'reseaux',
+          icon: 'network',
+          title: "Codes des réseaux",
+          note: "Chaque réseau a un code, repris au début de chaque identifiant.",
+          body: [
+            {
+              kind: 'p',
+              text: "Les identifiants d'arrêts et de lignes commencent par le code du réseau : SEM:VH, TCL:30103, STAS:32FZ58. Le paramètre network filtre un ou plusieurs réseaux, séparés par des virgules : ?network=TCL,STAS. Sans lui, la recherche porte sur tous.",
+            },
+            {
+              kind: 'list',
+              items: [
+                { name: 'SEM, SE2, TPV, GSV', note: "M réso : métropole de Grenoble, Pays Voironnais, Grésivaudan." },
+                { name: 'C38, SNC', note: "Cars Région Isère, TER." },
+                { name: 'TRA, MCO, BUL, FUN', note: "Transaltitude, M'Covoit, Bulles, funiculaire des Petites Roches." },
+                { name: 'TCL', note: 'Lyon.' },
+                { name: 'STAS, T2C, SIBRA, SYNCHRO', note: "Saint-Étienne, Clermont-Ferrand, Annecy, Chambéry." },
+                { name: 'RUBIS, ONDEA, TACM, LVA, STARR, START', note: "Bourg-en-Bresse, Aix-les-Bains, Annemasse, Vienne, Roanne, Thonon-les-Bains." },
+                { name: 'MAELIS, MOBIVIE, MONTELIBUS, VELAY, TRANSCAB', note: "Montluçon, Vichy, Montélimar, Le Puy-en-Velay, Aurillac." },
+                { name: 'STAN', note: 'Nancy.' },
+              ],
+            },
+            { kind: 'code', lang: 'txt', text: 'GET /v1/networks' },
+          ],
+        },
+        {
+          id: 'arrets',
+          icon: 'search',
+          title: "Arrêts",
+          note: "Chercher un arrêt, le trouver autour d'un point, voir ses lignes.",
+          body: [
+            { kind: 'code', lang: 'txt', text: 'GET /v1/stops\nGET /v1/stops/{id}' },
+            {
+              kind: 'list',
+              items: [
+                { name: 'network', note: "Un ou plusieurs codes de réseau." },
+                { name: 'search', note: "Nom de l'arrêt ou de la ville, sans tenir compte des accents." },
+                { name: 'line', note: "Les arrêts d’une ligne : TCL:A, SEM:C1." },
+                { name: 'lat, lon, radius', note: "Les arrêts autour d’un point, rayon en mètres (500 par défaut, 5 000 au plus), triés par distance." },
+                { name: 'limit', note: "Nombre de résultats, 500 au plus." },
+              ],
+            },
+            { kind: 'code', lang: 'json', text: `{
+  "id": "SEM:VH",
+  "name": "Victor Hugo",
+  "city": "Grenoble",
+  "network": "SEM",
+  "position": { "lat": 45.18937, "lon": 5.72472 },
+  "lines": [
+    { "id": "SEM:A", "code": "A", "name": "Fontaine La Poya / Le Pont-de-Claix L'Étoile", "color": "#3376B8" },
+    { "id": "SEM:B", "code": "B", "name": "Grenoble Cité Internationale / Gières Plaine des Sports", "color": "#479A45" }
+  ]
+}` },
+          ],
+        },
+        {
+          id: 'passages',
+          icon: 'activity',
+          title: "Prochains passages",
+          note: "Les départs des trois prochaines heures, en direct quand le réseau le permet.",
+          body: [
+            { kind: 'code', lang: 'txt', text: 'GET /v1/stops/{id}/departures?limit=10' },
+            {
+              kind: 'p',
+              text: "realtime vaut true quand l'heure vient du suivi des véhicules, false quand elle vient de la fiche horaire. M réso, TCL, Stan, STAS, T2C et la plupart des réseaux ont du temps réel.",
+            },
+            { kind: 'code', lang: 'json', text: `{
+  "stop": { "id": "SEM:VH", "name": "Victor Hugo" },
+  "departures": [
+    {
+      "line": { "id": "SEM:C8", "code": "C8", "name": "Grenoble Gares / Gières Université", "color": "#F8C304" },
+      "destination": "Gières, Université",
+      "time": "2026-10-02T16:57:00.000Z",
+      "inMinutes": 3,
+      "realtime": true
+    }
+  ]
+}` },
+          ],
+        },
+        {
+          id: 'lignes',
+          icon: 'route',
+          title: "Lignes",
+          note: "La liste des lignes, et les arrêts de chacune.",
+          body: [
+            { kind: 'code', lang: 'txt', text: 'GET /v1/lines?network=TCL\nGET /v1/lines/{id}' },
+            {
+              kind: 'p',
+              text: "Une ligne s'appelle par RÉSEAU:code, par exemple /v1/lines/TCL:A ou /v1/lines/STAS:T1. Pour M réso, le code seul suffit : /v1/lines/C1.",
+            },
+          ],
+        },
+        {
+          id: 'perturbations',
+          icon: 'alert',
+          title: "Perturbations",
+          note: "Travaux, déviations, arrêts déplacés, et les annonces de l'équipe.",
+          body: [
+            { kind: 'code', lang: 'txt', text: 'GET /v1/disruptions?network=SEM&line=C1' },
+            {
+              kind: 'p',
+              text: "source vaut operator pour un avis publié par le réseau, grelines pour une annonce Infotrafic écrite par l'équipe GreLines.",
+            },
+            { kind: 'code', lang: 'json', text: `{
+  "count": 1,
+  "disruptions": [
+    {
+      "id": "SEM_3899289987191612257_60",
+      "source": "operator",
+      "title": "Travaux Pont de La Monta, Saint-Égrève",
+      "message": "La ligne 60 est déviée entre Collège Barnave et Bellevue.",
+      "start": "2026-09-28T05:00:00",
+      "end": "2026-10-04T03:00:00",
+      "lines": [{ "id": "SEM:60", "code": "60", "name": "…", "color": "#…" }]
+    }
+  ]
+}` },
+          ],
+        },
+        {
+          id: 'erreurs',
+          icon: 'shield',
+          title: "Erreurs",
+          note: "Un code stable à tester, un message lisible.",
+          body: [
+            { kind: 'code', lang: 'json', text: `{
+  "error": {
+    "code": "invalid_key",
+    "message": "Invalid or revoked API key."
+  }
+}` },
+            {
+              kind: 'list',
+              items: [
+                { name: '400 unknown_network', note: "Un code de réseau inconnu dans network." },
+                { name: '401 missing_key, invalid_key', note: "Clé absente, mal recopiée ou révoquée." },
+                { name: '404 stop_not_found, line_not_found, not_found', note: "Identifiant ou adresse inconnus." },
+                { name: '429 rate_limited', note: "Trop de requêtes en une minute. L’en-tête retry-after dit combien de secondes attendre." },
+                { name: '502 upstream_unavailable', note: "La source du réseau ne répond pas. Réessayez plus tard." },
+              ],
+            },
+            {
+              kind: 'note',
+              text: "Les données viennent de Mobilités M, Grand Lyon, transport.data.gouv.fr et des réseaux eux-mêmes, sous Licence Ouverte ou ODbL. Mentionnez « Données : GreLines et exploitants » dans votre projet.",
+            },
+          ],
+        },
+      ],
+    },
+    {
       id: 'reference',
       title: 'Retours et référence',
       note: "Signaler une erreur, vérifier l'état du service, nous écrire.",
@@ -1674,6 +1869,201 @@ translations`,
       ],
     },
 
+    {
+      id: 'api',
+      title: "API",
+      note: "Stops, lines, departures and disruptions for 27 networks, from your own code.",
+      entries: [
+        {
+          id: 'presentation',
+          icon: 'plug',
+          title: "Overview",
+          note: "What the API returns, and who it is for.",
+          body: [
+            {
+              kind: 'p',
+              text: "The GreLines API serves the same data as the app: stops, lines, upcoming departures and disruptions, for 27 networks across Auvergne-Rhône-Alpes plus Stan in Nancy. It is read-only and answers in JSON.",
+            },
+            { kind: 'code', lang: 'txt', text: 'https://api.grelines.fr/v1' },
+            {
+              kind: 'p',
+              text: "Corrections made by the team (a stop's name or position, a line's color, a hidden line) show up within a minute.",
+            },
+          ],
+        },
+        {
+          id: 'cle',
+          icon: 'key',
+          title: "Keys and limits",
+          note: "One key per project, sent with every request.",
+          body: [
+            {
+              kind: 'p',
+              text: "Every request needs a key starting with gl_. Ask for one by email, with a word about your project. Send it in the x-api-key header:",
+            },
+            { kind: 'code', lang: 'bash', text: `curl https://api.grelines.fr/v1/stops/SEM:VH \\
+  -H "x-api-key: gl_your_key"` },
+            {
+              kind: 'p',
+              text: "For a quick test in a browser, ?key=gl_your_key at the end of the URL works too. Avoid it in production: URLs end up in logs.",
+            },
+            {
+              kind: 'note',
+              text: "Each key has a per-minute quota, 60 by default. The x-ratelimit-limit and x-ratelimit-remaining headers tell you where you stand; past it, the API answers 429.",
+            },
+          ],
+        },
+        {
+          id: 'reseaux',
+          icon: 'network',
+          title: "Network codes",
+          note: "Each network has a code, used at the start of every ID.",
+          body: [
+            {
+              kind: 'p',
+              text: "Stop and line IDs start with the network code: SEM:VH, TCL:30103, STAS:32FZ58. The network parameter filters one or more networks, comma-separated: ?network=TCL,STAS. Without it, every network is searched.",
+            },
+            {
+              kind: 'list',
+              items: [
+                { name: 'SEM, SE2, TPV, GSV', note: "M réso: Grenoble, Pays Voironnais, Grésivaudan." },
+                { name: 'C38, SNC', note: "Cars Région Isère, TER." },
+                { name: 'TRA, MCO, BUL, FUN', note: "Transaltitude, M'Covoit, Bulles, Petites Roches funicular." },
+                { name: 'TCL', note: 'Lyon.' },
+                { name: 'STAS, T2C, SIBRA, SYNCHRO', note: "Saint-Étienne, Clermont-Ferrand, Annecy, Chambéry." },
+                { name: 'RUBIS, ONDEA, TACM, LVA, STARR, START', note: "Bourg-en-Bresse, Aix-les-Bains, Annemasse, Vienne, Roanne, Thonon-les-Bains." },
+                { name: 'MAELIS, MOBIVIE, MONTELIBUS, VELAY, TRANSCAB', note: "Montluçon, Vichy, Montélimar, Le Puy-en-Velay, Aurillac." },
+                { name: 'STAN', note: 'Nancy.' },
+              ],
+            },
+            { kind: 'code', lang: 'txt', text: 'GET /v1/networks' },
+          ],
+        },
+        {
+          id: 'arrets',
+          icon: 'search',
+          title: "Stops",
+          note: "Find a stop by name or around a point, and see its lines.",
+          body: [
+            { kind: 'code', lang: 'txt', text: 'GET /v1/stops\nGET /v1/stops/{id}' },
+            {
+              kind: 'list',
+              items: [
+                { name: 'network', note: "One or more network codes." },
+                { name: 'search', note: "Stop or city name, accents ignored." },
+                { name: 'line', note: "Stops served by a line: TCL:A, SEM:C1." },
+                { name: 'lat, lon, radius', note: "Stops around a point, radius in meters (500 by default, 5,000 max), sorted by distance." },
+                { name: 'limit', note: "Number of results, 500 max." },
+              ],
+            },
+            { kind: 'code', lang: 'json', text: `{
+  "id": "SEM:VH",
+  "name": "Victor Hugo",
+  "city": "Grenoble",
+  "network": "SEM",
+  "position": { "lat": 45.18937, "lon": 5.72472 },
+  "lines": [
+    { "id": "SEM:A", "code": "A", "name": "Fontaine La Poya / Le Pont-de-Claix L'Étoile", "color": "#3376B8" },
+    { "id": "SEM:B", "code": "B", "name": "Grenoble Cité Internationale / Gières Plaine des Sports", "color": "#479A45" }
+  ]
+}` },
+          ],
+        },
+        {
+          id: 'passages',
+          icon: 'activity',
+          title: "Departures",
+          note: "Departures for the next three hours, live when the network allows it.",
+          body: [
+            { kind: 'code', lang: 'txt', text: 'GET /v1/stops/{id}/departures?limit=10' },
+            {
+              kind: 'p',
+              text: "realtime is true when the time comes from vehicle tracking, false when it comes from the timetable. M réso, TCL, Stan, STAS, T2C and most networks provide live data.",
+            },
+            { kind: 'code', lang: 'json', text: `{
+  "stop": { "id": "SEM:VH", "name": "Victor Hugo" },
+  "departures": [
+    {
+      "line": { "id": "SEM:C8", "code": "C8", "name": "Grenoble Gares / Gières Université", "color": "#F8C304" },
+      "destination": "Gières, Université",
+      "time": "2026-10-02T16:57:00.000Z",
+      "inMinutes": 3,
+      "realtime": true
+    }
+  ]
+}` },
+          ],
+        },
+        {
+          id: 'lignes',
+          icon: 'route',
+          title: "Lines",
+          note: "Every line, and the stops along each one.",
+          body: [
+            { kind: 'code', lang: 'txt', text: 'GET /v1/lines?network=TCL\nGET /v1/lines/{id}' },
+            {
+              kind: 'p',
+              text: "A line is addressed as NETWORK:code, e.g. /v1/lines/TCL:A or /v1/lines/STAS:T1. For M réso, the code alone works: /v1/lines/C1.",
+            },
+          ],
+        },
+        {
+          id: 'perturbations',
+          icon: 'alert',
+          title: "Disruptions",
+          note: "Works, detours, moved stops, and the team's announcements.",
+          body: [
+            { kind: 'code', lang: 'txt', text: 'GET /v1/disruptions?network=SEM&line=C1' },
+            {
+              kind: 'p',
+              text: "source is operator for a notice published by the network, grelines for a traffic announcement written by the GreLines team.",
+            },
+            { kind: 'code', lang: 'json', text: `{
+  "count": 1,
+  "disruptions": [
+    {
+      "id": "SEM_3899289987191612257_60",
+      "source": "operator",
+      "title": "Travaux Pont de La Monta, Saint-Égrève",
+      "message": "La ligne 60 est déviée entre Collège Barnave et Bellevue.",
+      "start": "2026-09-28T05:00:00",
+      "end": "2026-10-04T03:00:00",
+      "lines": [{ "id": "SEM:60", "code": "60", "name": "…", "color": "#…" }]
+    }
+  ]
+}` },
+          ],
+        },
+        {
+          id: 'erreurs',
+          icon: 'shield',
+          title: "Errors",
+          note: "A stable code to check, a readable message.",
+          body: [
+            { kind: 'code', lang: 'json', text: `{
+  "error": {
+    "code": "invalid_key",
+    "message": "Invalid or revoked API key."
+  }
+}` },
+            {
+              kind: 'list',
+              items: [
+                { name: '400 unknown_network', note: "An unknown code in network." },
+                { name: '401 missing_key, invalid_key', note: "Missing, mistyped or revoked key." },
+                { name: '404 stop_not_found, line_not_found, not_found', note: "Unknown ID or endpoint." },
+                { name: '429 rate_limited', note: "Too many requests in a minute. The retry-after header says how many seconds to wait." },
+                { name: '502 upstream_unavailable', note: "The network data source is not responding. Retry later." },
+              ],
+            },
+            {
+              kind: 'note',
+              text: "Data comes from Mobilités M, Grand Lyon, transport.data.gouv.fr and the networks themselves, under the Licence Ouverte or ODbL. Please credit “Data: GreLines and transit operators” in your project.",
+            },
+          ],
+        },
+      ],
+    },
     {
       id: 'reference',
       title: 'Feedback and reference',
