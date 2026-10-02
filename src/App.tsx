@@ -33,6 +33,7 @@ import { TrafficPanelMobile } from './components/TrafficPanelMobile';
 import { TrafficAlertCard } from './components/TrafficAlertCard';
 import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
+import { NancyAreaPrompt } from './components/NancyAreaPrompt';
 import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
 import { LaunchScreen } from './components/LaunchScreen';
 import { SidebarMobile } from './components/SidebarMobile';
@@ -2357,6 +2358,15 @@ function App() {
           theme={effectiveTheme}
           trafficFor={popupLineTraffic}
           onOpenLine={openPopupLine}
+        />
+      )}
+
+      {IS_NANCY && !isLoadingOverlayVisible && (
+        <NancyAreaPrompt
+          position={currentLocation}
+          isMobile={isMobile}
+          language={language}
+          theme={effectiveTheme}
         />
       )}
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePerfSettings, type PerfSettings } from '../hooks/usePerfSettings';
 import { emitDevCommand } from '../utils/devCommands';
+import { IS_NANCY } from '../site';
 import { clearOptedOutPopups } from '../utils/optedOutPopups';
 import { isSimulatedOffline, setSimulatedOffline } from '../services/networkSimulation';
 import { isOffline } from '../services/offlineSchedule';
@@ -116,6 +117,14 @@ const COMMANDS: ConsoleCommand[] = [
   showOnMobile('show.onboarding', 'Replay the first-launch onboarding (mobile view only)'),
   showOnMobile('show.notifications', 'Show the "turn on notifications" prompt (mobile view only)'),
   showOnMobile('show.install', 'Show the "add to home screen" guide (mobile view only)'),
+  ...(IS_NANCY ? [{
+    name: 'show.outside',
+    description: 'Show the "not in Nancy" prompt, even after "Stay on GreLines Nancy"',
+    run: () => {
+      emitDevCommand('show.outside');
+      return 'Outside-area prompt shown.';
+    },
+  }] : []),
   {
     name: 'show.popup',
     usage: '[infotraffic|promo]',
