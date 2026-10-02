@@ -117,7 +117,6 @@ Pour toute question concernant le projet, sa licence ou son utilisation :
 **GitHub :** [@antquu](https://github.com/antquu)
 **Email :** [ant.adam468@gmail.com](mailto:ant.adam468@gmail.com)
 
-![Bannière warning](https://image.noelshack.com/fichiers/2026/33/2/1786482267-warning.png)
 ---
 
 ## Fonctionnalités en détail
