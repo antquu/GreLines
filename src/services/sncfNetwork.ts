@@ -4,6 +4,7 @@ import { haversineMeters } from '../utils/geo';
 import { idbGet, idbSet } from './persistentCache';
 import { rerLine } from '../utils/rer';
 import { appLanguage } from '../utils/appLanguage';
+import { IS_NANCY } from '../site';
 
 export interface SncfLineEntry {
   id: string;
@@ -152,8 +153,10 @@ export async function sncfStopsOfLine(lineId: string): Promise<Stop[]> {
 
 const NAME_MATCH_RADIUS_METERS = 2500;
 
+const GENERIC_WORDS = new Set(['gare', 'sncf', 'station', 'routiere']);
+
 const significantWords = (name: string) =>
-  name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z]+/).filter(word => word.length >= 4);
+  name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z]+/).filter(word => word.length >= 4 && !GENERIC_WORDS.has(word));
 
 export function sameStationName(stopName: string, stationName: string): boolean {
   const wanted = significantWords(stopName);
@@ -390,4 +393,11 @@ export async function sncfStationsLinkedTo<T extends { id: string }>(anchors: T[
   const linksOf = new Map(data.stations.map(station => [sncfStopId(station.uic), station.links ?? []]));
   const wanted = new Set(anchors.flatMap(anchor => linksOf.get(anchor.id) ?? []));
   return candidates.filter(candidate => (linksOf.get(candidate.id) ?? []).some(link => wanted.has(link)));
+}
+
+export async function withTrainsNearby(detail: StopDetail | null): Promise<StopDetail | null> {
+  if (!detail || IS_NANCY) return detail;
+  const { getActiveNetworks } = await import('./api');
+  if (!getActiveNetworks().includes('SNC')) return detail;
+  return withNearbySncf(detail).catch(() => detail);
 }

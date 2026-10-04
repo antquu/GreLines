@@ -194,6 +194,11 @@ function loadRealtime(config: GtfsNetworkConfig): Promise<RealtimeTrip[]> {
 }
 
 export async function getGtfsStopDetail(stopId: string): Promise<StopDetail | null> {
+  const { withTrainsNearby } = await import('./sncfNetwork');
+  return withTrainsNearby(await loadGtfsStopDetail(stopId));
+}
+
+async function loadGtfsStopDetail(stopId: string): Promise<StopDetail | null> {
   const config = gtfsNetworkOf(stopId);
   if (!config) return null;
   const code = config.code;

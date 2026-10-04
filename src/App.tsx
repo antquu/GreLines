@@ -159,10 +159,9 @@ export type MapPickTarget = 'from' | 'to' | SavedPlaceKind;
 const SNCF_MERGE_RADIUS_METERS = 250;
 const SHARED_CITY_RADIUS_METERS = 12_000;
 
-function withoutSncfDuplicates(stops: Stop[], stations: Stop[]): Stop[] {
-  const tagStops = stops.filter(stop => /^(SEM|SE2)[:_]/.test(stop.id));
+function withoutSncfDuplicates(stops: Stop[], stations: Stop[], neighbours: Stop[] = stops): Stop[] {
   const kept = stations.filter(station =>
-    !tagStops.some(stop =>
+    !neighbours.some(stop =>
       Math.abs(stop.lat - station.lat) < 0.03 &&
       Math.abs(stop.lon - station.lon) < 0.04 &&
       isMergedStation(station, stop, SNCF_MERGE_RADIUS_METERS)));
@@ -171,6 +170,7 @@ function withoutSncfDuplicates(stops: Stop[], stations: Stop[]): Stop[] {
 
 const MAP_PADDING_MAX_RATIO = 0.62;
 const MAP_PIN_MAGNET_PX = 28;
+const STOP_TAP_GUARD_MS = 700;
 const MAP_PIN_COLOR = '#c026d3';
 const MAP_PIN_MIN_MOVE_METERS = 30;
 const SNCF_ZONE_RADIUS_METERS = 2500;
@@ -276,6 +276,7 @@ function App() {
   const [mapPin, setMapPin] = useState<{ lat: number; lon: number } | null>(null);
   const [mapPanSignal, setMapPanSignal] = useState(0);
   const [stopSheetCloseSignal, setStopSheetCloseSignal] = useState(0);
+  const stopOpenedAtRef = useRef(0);
   const placeMapPin = useCallback((lat: number, lon: number) => {
     setMapPin(current =>
       current && haversineMeters(current.lat, current.lon, lat, lon) < MAP_PIN_MIN_MOVE_METERS ? current : { lat, lon },
@@ -1483,7 +1484,7 @@ function App() {
         const linkedStations = await sncfStationsLinkedTo(anchorStations, allStations);
         const anchorIds = new Set(anchorStations.map(station => station.id));
         const shownStations = [...anchorStations, ...linkedStations.filter(station => !anchorIds.has(station.id))];
-        const deduplicated = withoutSncfDuplicates(merged, shownStations);
+        const deduplicated = withoutSncfDuplicates(merged, shownStations, [...merged, ...editedTclStops, ...gtfsStops]);
         setStops(editedTclStops.length > 0 || gtfsStops.length > 0 ? [...deduplicated, ...editedTclStops, ...gtfsStops] : deduplicated);
         setError(null);
       } catch (err) {
@@ -1588,6 +1589,7 @@ function App() {
   }, [reconnects, appliedNetworks.join(',')]);
 
   const handleStopClick = useCallback(async (stop: Stop) => {
+    stopOpenedAtRef.current = Date.now();
     try {
       pushSearchHistoryItem({
         kind: 'stop',
@@ -2360,7 +2362,7 @@ function App() {
       onLongPress={handleMapLongPress}
       onMapClick={async (lat: number, lon: number) => {
         if (!mapPickTarget) {
-          if (isMobile && isSidebarOpen && !lab.open) setStopSheetCloseSignal(signal => signal + 1);
+          if (isMobile && isSidebarOpen && !lab.open && Date.now() - stopOpenedAtRef.current > STOP_TAP_GUARD_MS) setStopSheetCloseSignal(signal => signal + 1);
           return;
         }
         const addr = await describeMapPoint(lat, lon);
