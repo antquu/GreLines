@@ -105,6 +105,7 @@ export interface RouteItinerary {
   routePath: Array<[number, number]>;
   rawDep?: string;
   rawArr?: string;
+  tight?: boolean;
   shared?: SharedJourneyInfo;
   uber?: UberJourneyInfo;
   taxi?: TaxiJourneyInfo;
@@ -158,15 +159,17 @@ async function buildOtpParams(
     walkSpeed?: number;
     mode?: string;
     wheelchair?: boolean;
+    numItineraries?: number;
   },
 ): Promise<URLSearchParams> {
   const queryTime = new Date();
+  const localDate = `${queryTime.getFullYear()}-${String(queryTime.getMonth() + 1).padStart(2, '0')}-${String(queryTime.getDate()).padStart(2, '0')}`;
   const params = new URLSearchParams({
     fromPlace: `${fromLatitude},${fromLongitude}`,
     toPlace: `${toLatitude},${toLongitude}`,
     arriveBy: options?.arriveBy ? 'true' : 'false',
     time: options?.time || queryTime.toTimeString().slice(0, 5),
-    date: options?.date || queryTime.toISOString().slice(0, 10),
+    date: options?.date || localDate,
     routerId: 'default',
     optimize: 'QUICK',
     walkReluctance: String(options?.walkReluctance ?? 5),
@@ -178,7 +181,7 @@ async function buildOtpParams(
     walkBoardCost: '300',
     bannedAgencies: 'MCO:MC,SNC:SNC',
     walkSpeed: String(options?.walkSpeed ?? 1.4),
-    numItineraries: '4',
+    numItineraries: String(options?.numItineraries ?? 4),
     wheelchair: options?.wheelchair ? 'true' : 'false',
   });
   return params;
@@ -246,20 +249,33 @@ export async function planItineraries(options: {
   walkSpeed?: number;
   mode?: string;
   wheelchair?: boolean;
+  departNow?: boolean;
 }): Promise<RouteItinerary[]> {
+  const departNow = options.departNow ?? (!options.time && !options.arriveBy);
+  if (departNow) {
+    const earlier = new Date(Date.now() - LOOKBACK_MS);
+    const pad = (value: number) => String(value).padStart(2, '0');
+    options = {
+      ...options,
+      arriveBy: false,
+      date: `${earlier.getFullYear()}-${pad(earlier.getMonth() + 1)}-${pad(earlier.getDate())}`,
+      time: `${pad(earlier.getHours())}:${pad(earlier.getMinutes())}`,
+    };
+  }
+  const catchable = (found: RouteItinerary[]) => (departNow ? keepCatchable(found, Date.now()) : found);
   if (
     !isInGrenobleArea(options.fromLatitude, options.fromLongitude) ||
     !isInGrenobleArea(options.toLatitude, options.toLongitude)
   ) {
     try {
       const itineraries = await applySncfToItineraries(await planTransitousOtp(options));
-      return itineraries.map(it => {
+      return catchable(itineraries.map(it => {
         const parsed = parseOtpItinerary(it, options.fromName, options.toName);
         parsed.bikeTransit =
           it.legs.some(leg => leg.mode === 'BICYCLE') &&
           it.legs.some(leg => leg.mode !== 'BICYCLE' && leg.mode !== 'WALK');
         return parsed;
-      });
+      }));
     } catch {
       return [];
     }
@@ -288,6 +304,7 @@ export async function planItineraries(options: {
       walkSpeed: options.walkSpeed,
       mode: options.mode,
       wheelchair: options.wheelchair,
+      numItineraries: departNow ? 6 : 4,
     },
   );
 
@@ -304,10 +321,49 @@ export async function planItineraries(options: {
         legs.some(leg => leg?.mode && leg.mode !== 'BICYCLE' && leg.mode !== 'WALK');
       return parsed;
     });
-    return withLiveTrains(local, await trainCandidates);
+    return catchable(withLiveTrains(local, await trainCandidates));
   } catch (error) {
-    return await trainCandidates;
+    return catchable(await trainCandidates);
   }
+}
+
+const LOOKBACK_MS = 5 * 60_000;
+const BRISK_WALK_RATIO = 0.75;
+const MISSED_GRACE_MS = 30_000;
+
+const clockOf = (at: number) => new Date(at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+function keepCatchable(itineraries: RouteItinerary[], now: number): RouteItinerary[] {
+  const kept: RouteItinerary[] = [];
+  for (const itinerary of itineraries) {
+    const legs: any[] = itinerary.allLegs ?? [];
+    const start = Number(legs[0]?.startTime);
+    if (!Number.isFinite(start) || start >= now) {
+      kept.push(itinerary);
+      continue;
+    }
+    const boardIndex = legs.findIndex(leg => leg?.mode && leg.mode !== 'WALK');
+    const leadIn = boardIndex < 0 ? legs : legs.slice(0, boardIndex);
+    if (boardIndex <= 0 || leadIn.some(leg => leg?.mode !== 'WALK')) {
+      if (start >= now - MISSED_GRACE_MS) kept.push(itinerary);
+      continue;
+    }
+    const board = Number(legs[boardIndex].startTime);
+    const walkMs = leadIn.reduce((sum, leg) => sum + Number(leg.endTime) - Number(leg.startTime), 0);
+    if (!Number.isFinite(board) || board - now < walkMs * BRISK_WALK_RATIO) continue;
+    const end = Number(legs[legs.length - 1]?.endTime);
+    const first = { ...legs[0], startTime: now, duration: Math.max(0, (Number(legs[0].endTime) - now) / 1000) };
+    const allLegs = [first, ...legs.slice(1)];
+    const minutes = Number.isFinite(end) ? Math.round((end - now) / 60_000) : null;
+    kept.push({
+      ...itinerary,
+      allLegs,
+      dep: clockOf(now),
+      dur: minutes !== null ? `${minutes} min` : itinerary.dur,
+      tight: true,
+    });
+  }
+  return kept;
 }
 
 const TRAIN_RELEVANT_METERS = 6000;
@@ -1167,6 +1223,7 @@ function trimDaySchedule(data: any, date: string): DaySchedule {
       patterns.set(key, pattern);
     }
     for (const t of times) {
+      if (endsHere(patternGroup.pattern, t)) continue;
       const seconds = t?.scheduledDeparture;
       if (typeof seconds === 'number') pattern.times.push(seconds);
     }
@@ -1432,6 +1489,13 @@ export async function getStopPointDepartures(
   }
 }
 
+const sameStopName = (a: unknown, b: unknown) =>
+  typeof a === 'string' && typeof b === 'string' && a.trim().toLowerCase() === b.trim().toLowerCase();
+
+function endsHere(pattern: any, time: any): boolean {
+  return String(time?.pickupType ?? '') === '1' || sameStopName(pattern?.lastStopName, time?.stopName);
+}
+
 function readPattern(pattern: any): {
   lineId: string;
   routeId?: string;
@@ -1485,6 +1549,7 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
         const { lineId, destination } = meta;
 
         for (const t of times) {
+          if (endsHere(pattern, t)) continue;
           const serviceDay = t.serviceDay ?? 0;
           const scheduled = t.scheduledDeparture ?? 0;
           const realtime = t.realtimeDeparture ?? scheduled;

@@ -3,7 +3,9 @@ import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
 import { isOffline } from '../services/offlineSchedule';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, StopCircleIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
+import { PlaceIcon } from './PlaceIcon';
+import { TbBusStop } from 'react-icons/tb';
 import { ArrowUpOnSquareIcon } from '@heroicons/react/24/outline';
 import { JourneyDetail } from './JourneyDetail';
 import { MapSheet, NAVBAR_LIFT_PX, NAVBAR_SNAP_PX, SHEET_PADDING } from './MapSheet';
@@ -932,6 +934,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         arriveBy: scheduleMode === 'arrive',
         date: queryDate,
         time: queryTime,
+        departNow: scheduleIsNow && scheduleMode !== 'arrive',
         walkReluctance,
         walkSpeed,
         wheelchair: wheelchairRouting,
@@ -950,6 +953,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         arriveBy: scheduleMode === 'arrive',
         date: queryDate,
         time: queryTime,
+        departNow: scheduleIsNow && scheduleMode !== 'arrive',
         mode: 'BICYCLE,TRANSIT',
         wheelchair: wheelchairRouting,
       })
@@ -1165,7 +1169,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                 }}
                 className={rowClass}
               >
-                <StopCircleIcon className="h-4 w-4 flex-shrink-0 text-blue-400" />
+                <TbBusStop className="h-4 w-4 flex-shrink-0 text-blue-400" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-gray-100">{suggestion.label}</div>
                   <div className="truncate text-xs text-gray-400">{suggestion.raw?.city || text.unknownCity}</div>
@@ -1190,7 +1194,11 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                 }}
                 className={rowClass}
               >
-                <MapPinIcon className="h-4 w-4 flex-shrink-0 text-amber-400" />
+                <PlaceIcon
+                  category={(suggestion.raw as { category?: string } | undefined)?.category}
+                  className="h-4 w-4 flex-shrink-0"
+                  fallback={<MapPinIcon className="h-4 w-4 flex-shrink-0 text-amber-400" />}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-gray-100">{suggestion.raw?.name || suggestion.label}</div>
                   <div className="truncate text-xs text-gray-400">{suggestion.raw?.context || suggestion.label}</div>
@@ -1787,7 +1795,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
 
   const renderMobileActionRow = (
     key: string,
-    Icon: typeof MapPinIcon,
+    Icon: React.ComponentType<{ className?: string }>,
     label: string,
     detail: string | undefined,
     onPress: () => void,
@@ -2018,7 +2026,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                 </h3>
                 {recentPlaces.slice(0, 5).map(place => renderMobileActionRow(
                   `recent-${place.kind}-${place.id}`,
-                  place.kind === 'stop' ? StopCircleIcon : ClockIcon,
+                  place.kind === 'stop' ? TbBusStop : ClockIcon,
                   place.label,
                   place.raw?.context || place.raw?.city || undefined,
                   () => handleSelectTo(place),

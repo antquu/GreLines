@@ -81,13 +81,23 @@ async function loadFiche(lineId: string, day: Date): Promise<Timetable | null> {
   const index = Math.round((day.getTime() - first.getTime()) / 86400000);
   if (index < 0 || index >= fiche.days) return null;
   const bit = 1 << index;
+  if (network === 'SNC') return trainDirections(lineId, fiche, bit);
 
   const directions: TimetableDirection[] = fiche.directions
     .map((direction, i) => {
       const trips = direction.trips.filter(trip => trip.d & bit);
+      const ends = trips.map(trip => {
+        const last = trip.t.reduce<number>((found, time, s) => (typeof time === 'number' ? s : found), -1);
+        return direction.stops[last]?.name ?? '';
+      });
+      const counts = new Map<string, number>();
+      for (const end of ends) if (end) counts.set(end, (counts.get(end) ?? 0) + 1);
+      const several = counts.size > 1;
+      const main = several ? [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0] : null;
       return {
         key: `${i}-${direction.headsign}`,
-        headsign: direction.headsign || direction.stops.at(-1)?.name || '',
+        headsign: main ?? (direction.headsign || direction.stops.at(-1)?.name || ''),
+        ...(several ? { trips: ends.map(destination => ({ destination })), destinations: [...counts.keys()] } : {}),
         stops: direction.stops
           .map((stop, s) => ({
             id: `${network}:${stop.id}`,
@@ -100,6 +110,103 @@ async function loadFiche(lineId: string, day: Date): Promise<Timetable | null> {
     })
     .filter(direction => direction.tripCount > 0);
   return directions.length > 0 ? { routeId: lineId, directions } : null;
+}
+
+type TrainCall = { id: string; name: string; at: number };
+type TrainRun = { calls: TrainCall[]; label: string };
+
+function trainDirections(lineId: string, fiche: Fiche, bit: number): Timetable | null {
+  const seen = new Set<string>();
+  const runs: TrainRun[] = [];
+  for (const direction of fiche.directions) {
+    for (const trip of direction.trips) {
+      if (!(trip.d & bit)) continue;
+      const calls = direction.stops
+        .flatMap((stop, s) => {
+          const at = trip.t[s];
+          return typeof at === 'number' ? [{ id: stop.id, name: stop.name, at }] : [];
+        })
+        .sort((a, b) => a.at - b.at);
+      if (calls.length < 2) continue;
+      const key = `${trip.i ?? ''}|${calls.map(call => `${call.id}@${call.at}`).join(',')}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      runs.push({ calls, label: trip.i ?? '' });
+    }
+  }
+  if (runs.length === 0) return null;
+
+  const axis = runs.reduce((best, run) => (run.calls.length > best.calls.length ? run : best)).calls.map(call => call.id);
+  const axisPosition = new Map(axis.map((id, position) => [id, position]));
+  const forward: TrainRun[] = [];
+  const backward: TrainRun[] = [];
+  for (const run of runs) {
+    const known = run.calls.filter(call => axisPosition.has(call.id)).map(call => axisPosition.get(call.id)!);
+    let isForward = true;
+    if (known.length >= 2) {
+      isForward = known[known.length - 1] > known[0];
+    } else if (known.length === 1) {
+      const early = known[0] < (axis.length - 1) / 2;
+      isForward = axisPosition.has(run.calls[0].id) ? early : !early;
+    }
+    (isForward ? forward : backward).push(run);
+  }
+
+  const directions = [trainDirection(forward, '0'), trainDirection(backward, '1')]
+    .filter((direction): direction is TimetableDirection => direction !== null);
+  return directions.length > 0 ? { routeId: lineId, directions } : null;
+}
+
+function trainDirection(runs: TrainRun[], key: string): TimetableDirection | null {
+  if (runs.length === 0) return null;
+  const longest = runs.reduce((best, run) => (run.calls.length > best.calls.length ? run : best));
+  const progress = new Map(longest.calls.map(call => [call.id, call.at - longest.calls[0].at]));
+
+  for (let pass = 0; pass < 4; pass += 1) {
+    const samples = new Map<string, number[]>();
+    for (const run of runs) {
+      const anchor = run.calls.find(call => progress.has(call.id));
+      if (!anchor) continue;
+      const offset = progress.get(anchor.id)! - anchor.at;
+      for (const call of run.calls) {
+        if (progress.has(call.id)) continue;
+        samples.set(call.id, [...(samples.get(call.id) ?? []), call.at + offset]);
+      }
+    }
+    if (samples.size === 0) break;
+    for (const [id, values] of samples) progress.set(id, values.reduce((sum, value) => sum + value, 0) / values.length);
+  }
+  for (const run of runs) {
+    for (const call of run.calls) if (!progress.has(call.id)) progress.set(call.id, call.at - run.calls[0].at);
+  }
+
+  const names = new Map(runs.flatMap(run => run.calls.map(call => [call.id, call.name] as const)));
+  const order = [...progress.keys()].sort((a, b) => progress.get(a)! - progress.get(b)!);
+  const startOf = (run: TrainRun) => run.calls[0].at - progress.get(run.calls[0].id)!;
+  const sorted = [...runs].sort((a, b) => startOf(a) - startOf(b));
+
+  const counts = new Map<string, number>();
+  for (const run of sorted) {
+    const destination = run.calls[run.calls.length - 1].name;
+    counts.set(destination, (counts.get(destination) ?? 0) + 1);
+  }
+  const headsign = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+
+  return {
+    key: `${key}-${headsign}`,
+    headsign,
+    stops: order.map(id => ({
+      id: `SNC:${id}`,
+      name: names.get(id) ?? '',
+      times: sorted.map(run => {
+        const call = run.calls.find(item => item.id === id);
+        return call ? call.at * 60 : null;
+      }),
+    })),
+    tripCount: sorted.length,
+    trips: sorted.map(run => ({ destination: run.calls[run.calls.length - 1].name, label: run.label || undefined })),
+    destinations: [...counts.keys()],
+  };
 }
 
 async function load(code: string, stop: string, day: Date, stopName?: string): Promise<Timetable | null> {

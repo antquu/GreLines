@@ -13,7 +13,7 @@ import {
 
 
 const ENDPOINT = 'https://data.mobilites-m.fr/api/ficheHoraires/json';
-const REGISTRY_KEY = 'greLines_offlineLines_v4';
+const REGISTRY_KEY = 'greLines_offlineLines_v5';
 const FRESH_FOR_MS = 7 * 24 * 60 * 60 * 1000;
 const PAUSE_MS = 400;
 const TRIPS_PER_DIRECTION = 400;
@@ -182,7 +182,7 @@ export function startNetworkScheduleDownload(): void {
 
 export async function hasOfflineSchedules(): Promise<boolean> {
   if (Object.keys(readRegistry()).length > 0) return true;
-  return (await idbCountPrefix('offsched_v1_')) > 0;
+  return (await idbCountPrefix('offsched_v2_')) > 0;
 }
 
 export function restartNetworkScheduleDownload(): void {

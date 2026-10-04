@@ -16,7 +16,7 @@ import type { LineGeometry, ServedStopPoint } from '../services/lineShapes';
 import { stopIsNearAny, snapStopToLines } from '../services/lineShapes';
 import { getCachedStopLines, getStopLines } from '../services/api';
 import { getGtfsLinesForStopSync } from '../services/gtfsNetwork';
-import { isSncfStopId, sncfLinesNear } from '../services/sncfNetwork';
+import { isSncfStopId, sncfDisruptedLinesNear, sncfLinesNear } from '../services/sncfNetwork';
 import { consumeLocationPick } from '../utils/devLocation';
 import { resolveLineBackgroundColor } from '../utils/lineColors';
 import type { JourneyBadge } from '../utils/journeyGeometry';
@@ -58,6 +58,7 @@ interface MapProps {
   routeEnd?: RouteMapPoint | null;
 
   alwaysLabelledStopIds?: string[] | null;
+  disruptedLineIds?: Set<string>;
 
   routeLine?: GeoJSON.FeatureCollection | null;
 
@@ -410,7 +411,7 @@ const animateFeatureCollectionProgress = (
 };
 
 const MapComponentBase = (
-  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, onUserPan, onMoveSettled, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
+  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, disruptedLineIds, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, onUserPan, onMoveSettled, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
   ref: ForwardedRef<MapRef>
 ) => {
   const { settings: perf } = usePerfSettings();
@@ -649,7 +650,12 @@ const MapComponentBase = (
       .filter((stop): stop is Stop => Boolean(stop));
     if (targets.length === 0) return;
     targets.forEach(stop => sncfCheckedRef.current.add(stop.id));
-    void Promise.all(targets.map(async stop => [stop.id, await sncfLinesNear(stop).catch(() => [] as Line[])] as const))
+    void Promise.all(targets.map(async stop => {
+      const lines = await sncfLinesNear(stop).catch(() => [] as Line[]);
+      if (lines.length === 0) return [stop.id, lines] as const;
+      const disrupted = await sncfDisruptedLinesNear(stop).catch(() => new Set<string>());
+      return [stop.id, lines.map(line => (disrupted.has(line.id) ? { ...line, hasTraffic: true } : line))] as const;
+    }))
       .then(results => {
         const found = results.filter(([, lines]) => lines.length > 0);
         if (found.length === 0) return;
@@ -675,7 +681,11 @@ const MapComponentBase = (
     return (
       <span className="inline-flex items-center gap-1">
         {visible.map(line => (
-          <LineBadge key={line.id} line={line} size={perf.accessibility ? 'sm' : 'xs'} />
+          <LineBadge
+            key={line.id}
+            line={!line.hasTraffic && disruptedLineIds?.has(line.id) ? { ...line, hasTraffic: true } : line}
+            size={perf.accessibility ? 'sm' : 'xs'}
+          />
         ))}
         {hiddenCount > 0 && (
           <span
@@ -687,7 +697,7 @@ const MapComponentBase = (
         )}
       </span>
     );
-  }, [stopLinesById, perf.stopLineBadges, perf.accessibility]);
+  }, [stopLinesById, perf.stopLineBadges, perf.accessibility, disruptedLineIds]);
 
   useEffect(() => {
     return () => {

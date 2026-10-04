@@ -319,10 +319,11 @@ export function JourneyTimelineList({
               >
                 <div className="relative h-full" style={gridStyle}>
                   <span
-                    className="absolute top-0 whitespace-nowrap text-sm font-bold text-emerald-400"
+                    className={`absolute top-0 whitespace-nowrap text-sm font-bold ${journey.tight ? 'text-amber-400' : 'text-emerald-400'}`}
                     style={{ left: barLeft }}
+                    title={journey.tight ? (language === 'fr' ? 'Il faut presser le pas pour l’avoir' : 'Walk briskly to catch it') : undefined}
                   >
-                    {departure}
+                    {departure}{journey.tight ? (language === 'fr' ? ' · Serré' : ' · Tight') : ''}
                   </span>
                   <span
                     className={`absolute top-0 whitespace-nowrap text-sm font-extrabold ${

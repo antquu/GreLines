@@ -666,6 +666,9 @@ export const Sidebar = ({
                 const departureStyle: any = departureLine ? resolveLineStyle(departureRef, departureLine.color, departureLine.textColor) : resolveLineStyle(departureRef) as any;
                 const secondStyle: any = secondLine ? resolveLineStyle(secondRef, secondLine.color, secondLine.textColor) : resolveLineStyle(secondRef) as any;
                 const hasTrafficAlert = !!(departureLine?.hasTraffic && departureLine?.trafficDetails?.length);
+                  const trafficDetail = hasTrafficAlert
+                    ? (departure.train ? departureLine?.trafficDetails?.find(detail => detail.titre.includes(departure.train!)) : departureLine?.trafficDetails?.[0])
+                    : undefined;
                 const secondHasTraffic = !!(secondLine?.hasTraffic && secondLine?.trafficDetails?.length);
                 const isLastRun = isLastDeparture(
                   timetables.get(departure.lineShortName || departure.lineId) ?? null,
@@ -674,8 +677,6 @@ export const Sidebar = ({
                 );
                 const cardMotion = groupMotion.get(itemKey);
                 const cardKey = cardMotion?.renderKey ?? itemKey;
-
-                if (second) {
                   return (
                     <DepartureCard key={cardKey} index={index} firstPaint={firstPaint} filtering={filtering}
                       className="border border-slate-700 rounded-2xl overflow-hidden bg-slate-800">
@@ -694,7 +695,7 @@ export const Sidebar = ({
                         />
                             <div className="min-w-0 flex-1">
                               {(departure.theoretical || departure.train) ? (
-  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={departure} language={language} /></div>
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-initial"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={departure} language={language} /></div>
 ) : <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>}
                               {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                               <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
@@ -716,7 +717,9 @@ export const Sidebar = ({
 
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: isExpanded ? 'auto' : 0, opacity: isExpanded ? 1 : 0 }} transition={{ duration: 0.25 }} className="overflow-hidden border-t border-slate-700">
                         <div className={`${compactMode ? 'p-3' : 'p-4'} bg-slate-800/60 space-y-3`}>
-                          <p className="pb-3 text-sm font-semibold text-slate-300">{text.nextDeparture}</p>
+                          {second && (
+<>
+<p className="pb-3 text-sm font-semibold text-slate-300">{text.nextDeparture}</p>
                           <div className="flex items-center gap-3">
                             <DepartureLineBadge
                               routeRef={secondRef}
@@ -728,7 +731,7 @@ export const Sidebar = ({
                             />
                             <div className="min-w-0 flex-1">
                               {(second.theoretical || second.train) ? (
-  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={second.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={second} language={language} /></div>
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-initial"><ScrollingText text={second.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={second} language={language} /></div>
 ) : <p className="truncate text-sm font-semibold text-white">{second.destination}</p>}
                               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
                                 <TransportModeIcon mode={second.type} className="w-3 h-3" />
@@ -748,9 +751,11 @@ export const Sidebar = ({
                               </div>
                             )}
                           </div>
-                          {hasTrafficAlert && departureLine?.trafficDetails?.[0] && (
+</>
+)}
+                          {trafficDetail && departureLine && (
                             <TrafficAlertCard
-                              detail={departureLine.trafficDetails[0]}
+                              detail={trafficDetail}
                               language={language}
                               heading={`${text.disruptedTraffic} ${departureLine.shortName || departureLine.id}`}
                             />
@@ -783,69 +788,6 @@ export const Sidebar = ({
                       </motion.div>
                     </DepartureCard>
                   );
-                }
-
-                if (isTram) {
-                  return (
-                    <DepartureCard key={cardKey} index={index} firstPaint={firstPaint} filtering={filtering}
-                      className="flex items-center justify-between p-3 rounded-2xl bg-slate-800 border border-slate-700 hover:bg-slate-750 transition">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <DepartureLineBadge
-                          routeRef={departureRef}
-                          label={departure.lineShortName || departure.lineId}
-                          style={departureStyle}
-                          round={departureIsSem && isRoundLine(departure.lineId)}
-                          sizeClass="w-10 h-10 text-sm"
-                          hasTraffic={hasTrafficAlert}
-                        />
-                        <div className="min-w-0 flex-1">
-                          {(departure.theoretical || departure.train) ? (
-  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={departure} language={language} /></div>
-) : <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>}
-                          {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
-                          <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                            <TransportModeIcon mode={departure.type} className="w-3 h-3" />{modeLabel(normalizeMode(departure.type), text)}{departure.realtime && <RealtimeWifi size={13} className="text-green-400" label={text.live} />}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right flex-shrink-0 ml-2">
-                        <MotionTime className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`} value={renderDepartureTime(displayTime)} valueKey={displayTime} change={cardMotion?.change ?? null} />
-                        {!compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
-                      </div>
-                    </DepartureCard>
-                  );
-                }
-
-                return (
-                  <DepartureCard key={cardKey} index={index} firstPaint={firstPaint} filtering={filtering}
-                    className="flex items-center justify-between p-3 rounded-2xl border border-slate-700 bg-slate-800 transition hover:bg-slate-750">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <DepartureLineBadge
-                          routeRef={departureRef}
-                          label={departure.lineShortName || departure.lineId}
-                          style={departureStyle}
-                          round={departureIsSem && isRoundLine(departure.lineId)}
-                          sizeClass="w-10 h-10 text-sm"
-                          hasTraffic={hasTrafficAlert}
-                        />
-                      <div className="min-w-0 flex-1">
-                        {(departure.theoretical || departure.train) ? (
-  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={departure} language={language} /></div>
-) : <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>}
-                        {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
-                        <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                          <TransportModeIcon mode={departure.type} className="w-3 h-3" />
-                          {modeLabel(normalizeMode(departure.type), text)}
-                          {departure.realtime && <RealtimeWifi size={13} className="text-green-400" label={text.live} />}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0 ml-2">
-                      <MotionTime className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`} value={renderDepartureTime(displayTime)} valueKey={displayTime} change={cardMotion?.change ?? null} />
-                      {second && <p className="text-xs text-slate-500">{renderDepartureTime(getDepartureDisplay(second, language))}</p>}
-                    </div>
-                  </DepartureCard>
-                );
               })}</DepartureList>) : currentStopDetail.lastUpdate ? (
                 <NextServiceDepartures
                   stopId={currentStopDetail.id}

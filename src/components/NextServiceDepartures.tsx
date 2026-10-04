@@ -121,7 +121,7 @@ export function NextServiceDepartures({
               />
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-initial">
                     <ScrollingText text={departure.destination} className="text-sm font-semibold text-white" />
                   </div>
                   <DepartureTags departure={departure} language={language} />

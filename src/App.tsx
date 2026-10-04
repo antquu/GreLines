@@ -13,7 +13,9 @@ import { useIsOffline, useReconnectCount } from './hooks/useIsOffline';
 import { OfflinePanel } from './components/OfflinePanel';
 ﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useSyncExternalStore, lazy } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
-import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
+import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StarIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
+import { PlaceIcon } from './components/PlaceIcon';
+import { TbBusStop } from 'react-icons/tb';
 import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
 import { useFavoriteLines } from './hooks/useFavoriteLines';
@@ -35,7 +37,7 @@ import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
 import { NancyAreaPrompt } from './components/NancyAreaPrompt';
 import { UnservedAreaPrompt } from './components/UnservedAreaPrompt';
-import { getSncfLines, getSncfStopDetail, getSncfStops, isMergedStation, isSncfStopId, sncfStationsLinkedTo, withNearbySncf } from './services/sncfNetwork';
+import { getSncfLines, getSncfStopDetail, getSncfStops, isMergedStation, isSncfStopId, sncfLinesNear, sncfStationsLinkedTo, withNearbySncf } from './services/sncfNetwork';
 import { DepartureLabOverlay } from './components/DepartureLabOverlay';
 import { closeLab, getLabState, openLab, setLabSelectedLines, subscribeLab } from './dev/departureLab';
 import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
@@ -137,7 +139,7 @@ import { getCachedStopLines, getStopDetail, getStopLines, getStopsByPrefixes, ge
 import { getTclLines, getTclLinesForStop, getTclStopDetail, getTclStops, isTclId, TCL_NETWORK } from './services/tclNetwork';
 import { getGtfsLines, getGtfsLinesForStop, getGtfsStopDetail, getGtfsStops, gtfsStopMembers, GTFS_NETWORKS, isGtfsNetworkId } from './services/gtfsNetwork';
 import { foreignAsCatalogLine, foreignSolidStyle, isForeignLineId } from './utils/foreignNetworks';
-import { searchAddresses, reverseGeocode, type AddressResult } from './services/geocoding';
+import { searchAddresses, reverseGeocode, setSearchFocus, distanceFromFocusKm, type AddressResult } from './services/geocoding';
 import { getLinesGeometryPrecise, getStopsServedByLines, type LineGeometry, type ServedStopPoint } from './services/lineShapes';
 import type { Line, SearchHistoryItem, Stop, StopDetail, TrafficDetail } from './types';
 import type { MapRef } from './components/Map';
@@ -157,6 +159,15 @@ import { setSavedPlace, type SavedPlaceKind } from './services/savedPlaces';
 export type MapPickTarget = 'from' | 'to' | SavedPlaceKind;
 
 const SNCF_MERGE_RADIUS_METERS = 250;
+
+const isSncfStopLine = (line: Line) => line.id.startsWith('SNC:');
+
+function mergeLines(base: Line[], extra: Line[]): Line[] {
+  const ids = new Set(base.map(line => line.id));
+  return [...base, ...extra.filter(line => !ids.has(line.id))];
+}
+
+const keepTrainLines = (lines: Line[], previous: Line[] | undefined) => mergeLines(lines, (previous ?? []).filter(isSncfStopLine));
 const SHARED_CITY_RADIUS_METERS = 12_000;
 
 function withoutSncfDuplicates(stops: Stop[], stations: Stop[], neighbours: Stop[] = stops): Stop[] {
@@ -286,6 +297,7 @@ function App() {
   const handleMapCenterChange = useCallback((lat: number, lon: number) => {
     if (exploringMapRef.current) placeMapPin(lat, lon);
     setMapArea(lat, lon);
+    setSearchFocus(lat, lon);
     setMapCenter(current => {
       if (current && Math.abs(current.lat - lat) < 0.01 && Math.abs(current.lon - lon) < 0.01) {
         return current;
@@ -372,6 +384,7 @@ function App() {
             context: typeof item.context === 'string' ? item.context : undefined,
             lat: item.lat,
             lon: item.lon,
+            category: typeof item.category === 'string' ? item.category : undefined,
           };
         }
         return null;
@@ -688,15 +701,19 @@ function App() {
   const matchedStops = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
-    const starts: Stop[] = [];
-    const contains: Stop[] = [];
+    const hits: Array<{ stop: Stop; tier: number; km: number }> = [];
     for (const entry of stopSearchIndex) {
-      if (entry.name.startsWith(q)) starts.push(entry.stop);
-      else if (entry.name.includes(q) || entry.city.includes(q) || entry.id.includes(q)) contains.push(entry.stop);
-      if (starts.length >= MAX_STOP_MATCHES) break;
+      const tier = entry.name === q ? 0
+        : entry.name.startsWith(q) ? 1
+          : entry.name.includes(q) || entry.city.includes(q) || entry.id.includes(q) ? 2
+            : -1;
+      if (tier >= 0) hits.push({ stop: entry.stop, tier, km: distanceFromFocusKm(entry.stop.lat, entry.stop.lon) });
     }
-    return [...starts, ...contains].slice(0, MAX_STOP_MATCHES);
-  }, [searchQuery, stopSearchIndex]);
+    return hits
+      .sort((a, b) => a.tier - b.tier || a.km - b.km)
+      .slice(0, MAX_STOP_MATCHES)
+      .map(hit => hit.stop);
+  }, [searchQuery, stopSearchIndex, mapCenter]);
 
   const isSidebarOpen = sidebarState !== 'closed';
 
@@ -1237,6 +1254,16 @@ function App() {
     setSharedRouteTarget(null);
   };
 
+  const closeOtherPanels = () => {
+    setTimetableTarget(null);
+    resetRoutePlanner();
+    setSharedSelection(null);
+    setHighlightedVehicleId(null);
+    setIsTrafficPanelPinned(false);
+    setIsLinesExplorerOpen(false);
+    setSettingsState('closed');
+  };
+
   const describeMapPoint = useCallback(async (lat: number, lon: number): Promise<AddressResult> => {
     const found = await reverseGeocode(lat, lon);
     if (found) return { ...found, lat, lon };
@@ -1621,18 +1648,26 @@ function App() {
 
       const showLinesFirst = (lines: Line[]) => {
         if (lines.length === 0) return;
-        setSelectedStop(prev => (prev && prev.id === stop.id && prev.lines.length === 0 ? { ...prev, lines } : prev));
+        setSelectedStop(prev => (prev && prev.id === stop.id && prev.lines.every(line => isSncfStopLine(line))
+          ? { ...prev, lines: mergeLines(lines, prev.lines) }
+          : prev));
       };
+      if (!IS_NANCY && !isSncfStopId(stop.id)) {
+        void sncfLinesNear(stop).then(trains => {
+          if (trains.length === 0) return;
+          setSelectedStop(prev => (prev && prev.id === stop.id ? { ...prev, lines: mergeLines(prev.lines, trains) } : prev));
+        }).catch(() => {});
+      }
       if (isTclId(stop.id)) {
         void getTclLinesForStop(stop.id).then(showLinesFirst);
         const detail = await getTclStopDetail(stop.id);
-        if (detail) setSelectedStop(detail);
+        if (detail) setSelectedStop(prev => (prev?.id === detail.id ? { ...detail, lines: keepTrainLines(detail.lines, prev.lines) } : detail));
         return;
       }
       if (isGtfsNetworkId(stop.id)) {
         void getGtfsLinesForStop(stop.id).then(showLinesFirst);
         const detail = await getGtfsStopDetail(stop.id);
-        if (detail) setSelectedStop(detail);
+        if (detail) setSelectedStop(prev => (prev?.id === detail.id ? { ...detail, lines: keepTrainLines(detail.lines, prev.lines) } : detail));
         return;
       }
       if (isSncfStopId(stop.id)) {
@@ -1650,11 +1685,11 @@ function App() {
       ]);
       const lines = linesResult.status === 'fulfilled' ? linesResult.value : cachedLines || [];
       const departures = departuresResult.status === 'fulfilled' ? departuresResult.value : [];
-      setSelectedStop(prev => prev ? { ...prev, lines, departures, lastUpdate: new Date() } : { ...placeholder, lines, departures, lastUpdate: new Date() });
+      setSelectedStop(prev => prev ? { ...prev, lines: keepTrainLines(lines, prev.id === stop.id ? prev.lines : []), departures, lastUpdate: new Date() } : { ...placeholder, lines, departures, lastUpdate: new Date() });
       void withNearbySncf({ ...placeholder, lines, departures, lastUpdate: new Date() }).then(withTrains => {
         if (withTrains.departures.length === departures.length && withTrains.lines.length === lines.length) return;
         setSelectedStop(prev => (prev && prev.id === stop.id
-          ? { ...prev, lines: withTrains.lines, departures: withTrains.departures }
+          ? { ...prev, lines: mergeLines(withTrains.lines, prev.lines), departures: withTrains.departures }
           : prev));
       });
       if (cachedLines) {
@@ -1693,6 +1728,7 @@ function App() {
       context: address.context,
       lat: address.lat,
       lon: address.lon,
+      category: address.category,
     });
     const nearby = findClosestStops(stops, address.lat, address.lon, 8).filter(entry => entry.meters <= 2000);
     if (nearby.length > 0) {
@@ -1799,8 +1835,8 @@ function App() {
         </div>
       );
     }
-    if (item.kind === 'address') return <MapPinIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />;
-    return <StopCircleIcon className="w-4 h-4 text-sky-400 flex-shrink-0" />;
+    if (item.kind === 'address') return <PlaceIcon category={item.category} className="w-4 h-4 flex-shrink-0" fallback={<MapPinIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />} />;
+    return <TbBusStop className="w-4 h-4 text-sky-400 flex-shrink-0" />;
   };
 
   const getHistoryItemSubtitle = (item: SearchHistoryItem) => {
@@ -2338,6 +2374,7 @@ function App() {
       }}
       selectedAddress={selectedAddress}
       alwaysLabelledStopIds={addressNearbyStopIds}
+      disruptedLineIds={disruptedLineCodes}
       sharedMobility={visibleSharedMobility}
       focusedShared={sharedSelection}
       highlightedVehicleId={highlightedVehicleId}
@@ -2945,7 +2982,7 @@ function App() {
                               onMouseDown={e => { e.preventDefault(); handleSearchResultSelect(stop); }}
                               className="w-full text-left px-3 py-2 hover:bg-slate-800 transition flex items-start gap-2"
                             >
-                              <StopCircleIcon className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                              <TbBusStop className="w-4 h-4 text-blue-400 flex-shrink-0" />
                               <div className="min-w-0 flex-1">
                                 <div className="flex min-w-0 items-center gap-2">
                                   <div className="min-w-0 truncate text-sm font-medium text-gray-100">{stop.name}</div>
@@ -2970,7 +3007,7 @@ function App() {
                               onMouseDown={e => { e.preventDefault(); handleAddressSelect(addr); }}
                               className="w-full text-left px-3 py-2 hover:bg-slate-800 transition flex items-center gap-2"
                             >
-                              <MapPinIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                              <PlaceIcon category={addr.category} className="w-4 h-4 flex-shrink-0" fallback={<MapPinIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />} />
                               <div className="min-w-0 flex-1">
                                 <div className="text-sm font-medium text-gray-100 truncate">{addr.name}</div>
                                 <div className="text-xs text-gray-400 truncate">{addr.context}</div>
@@ -3833,13 +3870,22 @@ function App() {
             lines={spotlightLines}
             trafficInfo={trafficInfo}
             onSelectStop={stop => {
+              closeOtherPanels();
               setSelectedAddress(null);
               setSelectedLine(null);
               handleStopClick(stop);
               mapRef.current?.centerOnStop(stop);
             }}
-            onSelectLine={handleLineSearchSelect}
-            onSelectAddress={handleAddressSelect}
+            onSelectLine={line => {
+              closeOtherPanels();
+              handleLineSearchSelect(line);
+            }}
+            onSelectAddress={address => {
+              closeOtherPanels();
+              setSelectedStop(null);
+              setSidebarState('closed');
+              handleAddressSelect(address);
+            }}
             onOpenSettings={tab => {
               setActiveSettingsTab(tab ?? 'general');
               setSettingsState('open');

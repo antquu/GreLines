@@ -90,7 +90,7 @@ function readStored(): SncfCatalog | null {
 export function loadSncfCatalog(): Promise<SncfCatalog | null> {
   if (!catalog) {
     const stored = readStored();
-    catalog = fetch('/api/sncf?ressource=reseau')
+    const download = fetch('/api/sncf?ressource=reseau')
       .then(response => (response.ok ? (response.json() as Promise<SncfCatalog>) : null))
       .then(fresh => {
         rememberColors(fresh);
@@ -104,6 +104,14 @@ export function loadSncfCatalog(): Promise<SncfCatalog | null> {
         return stored;
       })
       .catch(() => stored);
+    if (stored) {
+      catalog = Promise.resolve(stored);
+      void download.then(fresh => {
+        if (fresh?.stations) catalog = Promise.resolve(fresh);
+      });
+    } else {
+      catalog = download;
+    }
     void catalog.then(result => {
       if (!result) catalog = null;
     });
@@ -425,4 +433,14 @@ export async function sncfLinesNear(stop: { lat: number; lon: number; name: stri
     .map(code => byCode.get(code))
     .filter((entry): entry is SncfLineEntry => Boolean(entry))
     .map(toLine);
+}
+
+export async function sncfDisruptedLinesNear(stop: { lat: number; lon: number; name: string }, radiusMeters = 250): Promise<Set<string>> {
+  if (IS_NANCY) return new Set();
+  const near = await sncfStationsNear(stop.lat, stop.lon, radiusMeters, stop.name);
+  const lists = await Promise.all(near.flatMap(station => [station.uic, ...(station.also ?? [])]).map(getPassages));
+  const now = Date.now();
+  return new Set(lists.flatMap(list => list ?? [])
+    .filter(item => item.alert && item.real >= now - 30_000)
+    .map(item => sncfLineId(item.line)));
 }

@@ -336,14 +336,14 @@ const COMMANDS: ConsoleCommand[] = [
     description: 'What is saved on this device for offline use',
     run: async () => {
       const [stops, timetables, geometries, servedStops] = await Promise.all([
-        idbCountPrefix('offsched_v1_'),
+        idbCountPrefix('offsched_v2_'),
         idbCountPrefix('timetable_offline_v1_'),
         idbCountPrefix('lineGeometry_v2_'),
         idbCountPrefix('servedStops_v2_'),
       ]);
       let lines = 0;
       try {
-        lines = Object.keys(JSON.parse(localStorage.getItem('greLines_offlineLines_v4') || '{}')).length;
+        lines = Object.keys(JSON.parse(localStorage.getItem('greLines_offlineLines_v5') || '{}')).length;
       } catch {
         lines = 0;
       }

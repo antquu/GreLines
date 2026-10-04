@@ -1,4 +1,5 @@
 import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
+import { BadgeLabel } from './FitText';
 import { badgeImage } from '../utils/badgeImages';
 import { resolveLineStyle, isGrenobleNetworkLine, isSncfLine, SNCF_TER_COLOR } from '../utils/lineColors';
 import type { Line } from '../types';
@@ -211,6 +212,18 @@ export function LineBadge({
       size === 'xs' ? 'text-[0.5rem]' : size === 'sm' ? 'text-[0.625rem]' : size === 'lg' ? 'text-sm' : 'text-[0.6875rem]';
     const bareLogoDim =
       size === 'xs' ? 'h-3 w-auto' : size === 'sm' ? 'h-4 w-auto' : size === 'lg' ? 'h-6 w-auto' : 'h-5 w-auto';
+    if (sncfCode === 'OUIGO') {
+      return (
+        <div className={`${dim} relative flex flex-shrink-0 items-center justify-center rounded-full ${activeClass} ${opacityClass}`}>
+          <img src={badgeImage('/assets/ouigo.svg')} alt="OUIGO" className="h-full w-full object-contain" />
+          {line.hasTraffic && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400/90 text-amber-900 border border-amber-200 shadow-sm">
+              <ExclamationTriangleIcon className="w-2.5 h-2.5" />
+            </span>
+          )}
+        </div>
+      );
+    }
     if (sncfCode === 'TGV') {
       return (
         <div
@@ -248,7 +261,7 @@ export function LineBadge({
       className={`${dim} relative flex items-center justify-center font-extrabold flex-shrink-0 ${round ? 'rounded-full' : 'rounded-lg'} ${activeClass} ${opacityClass}`}
       style={style}
     >
-      {label}
+      <BadgeLabel text={label} />
       {line.hasTraffic && (
         <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400/90 text-amber-900 border border-amber-200 shadow-sm">
           <ExclamationTriangleIcon className="w-2.5 h-2.5" />

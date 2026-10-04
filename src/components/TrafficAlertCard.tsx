@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDownIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
 import { stripHtml } from '../utils/stripHtml';
@@ -15,6 +16,16 @@ export interface TrafficAlertCardProps {
   defaultExpanded?: boolean;
   expandable?: boolean;
   isLight?: boolean;
+}
+
+function readableEnd(raw: string, language: 'fr' | 'en'): string {
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(raw)) return raw;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  const locale = language === 'fr' ? 'fr-FR' : 'en-GB';
+  const day = date.toLocaleDateString(locale, { day: 'numeric', month: 'long' });
+  const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  return language === 'fr' ? `${day} à ${time}` : `${day} at ${time}`;
 }
 
 export function TrafficAlertCard({
@@ -77,8 +88,17 @@ export function TrafficAlertCard({
         <p className={`text-xs ${isLight ? 'text-amber-900' : 'text-amber-200'}`}>{title}</p>
       </button>
 
+      <AnimatePresence initial={false}>
       {expanded && hasMore && (
-        <div className="gl-fade px-3 pb-3">
+        <motion.div
+          key="details"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+          className="overflow-hidden"
+        >
+        <div className="px-3 pb-3">
           {description && (
             <p
               className={`whitespace-pre-line text-xs leading-relaxed ${
@@ -90,7 +110,7 @@ export function TrafficAlertCard({
           )}
           {detail.dateFin && (
             <p className={`mt-1 text-xs ${isLight ? 'text-amber-700/70' : 'text-amber-400/60'}`}>
-              {isFr ? 'Fin estimée' : 'Estimated end'} {detail.dateFin}
+              {isFr ? 'Fin estimée' : 'Estimated end'} {readableEnd(detail.dateFin, language)}
             </p>
           )}
           {sortedLines.length > 0 && (
@@ -113,7 +133,9 @@ export function TrafficAlertCard({
             </div>
           )}
         </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

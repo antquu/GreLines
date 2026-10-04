@@ -9,6 +9,7 @@ import { MarqueeText } from './MarqueeText';
 import { getForeignTimetable } from '../services/foreignTimetable';
 import { getTimetable, formatTimetableTime, toTimetableRouteId, type Timetable, type TimetableDirection } from '../services/timetable';
 import type { Line } from '../types';
+import { sameStationName } from '../services/sncfNetwork';
 
 interface TimetableSidebarProps {
   isOpen: boolean;
@@ -30,18 +31,23 @@ const getText = (language: 'fr' | 'en') => {
   const fr = language === 'fr';
   return {
     title: fr ? 'Fiche horaire' : 'Timetable',
-    direction: fr ? 'Direction' : 'Direction',
     loading: fr ? 'Chargement…' : 'Loading…',
     empty: fr
       ? 'Aucun horaire publié pour cette ligne en ce moment. Le réseau ne circule peut-être pas à cette heure-ci.'
       : 'No timetable published for this line right now. The network may not be running at this hour.',
     close: fr ? 'Fermer' : 'Close',
-    stops: fr ? 'Arrêts' : 'Stops',
     noTimes: fr ? 'Pas de passage' : 'No departure',
     previousTimes: fr ? 'Horaires précédents' : 'Earlier times',
     nextTimes: fr ? 'Horaires suivants' : 'Later times',
     lineMap: fr ? 'Plan de la ligne' : 'Line map',
-    trips: (n: number) => (fr ? `${n} course${n > 1 ? 's' : ''}` : `${n} trip${n > 1 ? 's' : ''}`),
+    towards: fr ? 'vers' : 'to',
+    towardsTab: fr ? 'Vers' : 'To',
+    trainNumber: (n: string) => (fr ? `Train n° ${n}` : `Train no. ${n}`),
+    arrival: (time: string) => (fr ? `arrivée ${time}` : `arrives ${time}`),
+    next: fr ? 'Prochain' : 'Next',
+    noRuns: (train: boolean) => (fr
+      ? `Aucun ${train ? 'train' : 'départ'} aujourd’hui dans ce sens.`
+      : `No ${train ? 'trains' : 'departures'} today in this direction.`),
   };
 };
 
@@ -128,7 +134,7 @@ function TimetableGrid({
   }
 
   return (
-    <div className="mt-1">
+    <div className="mt-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <button
           type="button"
@@ -244,11 +250,181 @@ function TimetableGrid({
   );
 }
 
+type TrainRow = {
+  index: number;
+  at: number;
+  label?: string;
+  destination: string;
+  arrival: number;
+  calls: Array<{ name: string; time: number }>;
+  startsHere: boolean;
+};
+
+const shortName = (name: string) => name.split(' - ')[0];
+
+function TrainList({
+  direction,
+  lineColor,
+  text,
+  highlightStopName,
+  isTrain,
+}: {
+  direction: TimetableDirection;
+  lineColor: string;
+  text: ReturnType<typeof getText>;
+  highlightStopName?: string | null;
+  isTrain: boolean;
+}) {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const nextRef = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    setOpenIndex(null);
+  }, [direction.key]);
+
+  const boarding = useMemo(() => {
+    if (!highlightStopName) return -1;
+    return direction.stops.findIndex(stop =>
+      stop.name.trim().toLowerCase() === highlightStopName.trim().toLowerCase() ||
+      sameStationName(highlightStopName, stop.name) || sameStationName(stop.name, highlightStopName));
+  }, [direction.stops, highlightStopName]);
+
+  const rows = useMemo(() => {
+    const list: TrainRow[] = [];
+    (direction.trips ?? []).forEach((info, index) => {
+      const served = direction.stops
+        .map((stop, position) => ({ position, name: stop.name, time: stop.times[index] }))
+        .filter((call): call is { position: number; name: string; time: number } => typeof call.time === 'number');
+      if (served.length < 2) return;
+      const from = boarding >= 0 ? served.findIndex(call => call.position === boarding) : 0;
+      if (from < 0 || from === served.length - 1) return;
+      list.push({
+        index,
+        at: served[from].time,
+        label: info.label,
+        destination: info.destination,
+        arrival: served[served.length - 1].time,
+        calls: served.slice(from).map(call => ({ name: call.name, time: call.time })),
+        startsHere: from === 0,
+      });
+    });
+    return list.sort((a, b) => a.at - b.at);
+  }, [direction, boarding]);
+
+  const now = secondsSinceMidnight();
+  const nextIndex = rows.find(row => row.at >= now - 60)?.index;
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => nextRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    return () => cancelAnimationFrame(frame);
+  }, [direction.key, nextIndex]);
+
+  return (
+    <div className="mt-1">
+      {rows.length === 0 ? (
+        <p className="py-8 text-sm text-slate-400">{text.noRuns(isTrain)}</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {rows.map(row => {
+            const isNext = row.index === nextIndex;
+            const isOpen = openIndex === row.index;
+            const endsEarly = row.destination !== direction.headsign;
+            return (
+              <li
+                key={row.index}
+                ref={isNext ? nextRef : undefined}
+                className={`overflow-hidden rounded-2xl border ${
+                  isNext ? 'border-blue-500/60 bg-blue-500/10' : 'border-slate-800 bg-slate-800/50'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setOpenIndex(isOpen ? null : row.index)}
+                  aria-expanded={isOpen}
+                  className="flex w-full items-center gap-3 px-3 py-3 text-left"
+                >
+                  <span className="tabular w-14 flex-shrink-0 text-xl font-bold text-white">{formatTimetableTime(row.at)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="flex-shrink-0 text-xs text-slate-400">{text.towards}</span>
+                      <span className={`truncate text-sm font-semibold ${endsEarly ? 'text-amber-300' : 'text-white'}`}>
+                        {shortName(row.destination)}
+                      </span>
+                      {isNext && (
+                        <span className="flex-shrink-0 rounded bg-blue-600 px-1.5 py-0.5 text-[0.625rem] font-bold uppercase leading-none text-white">
+                          {text.next}
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                      {row.label ? `${text.trainNumber(row.label)} · ` : ''}{text.arrival(formatTimetableTime(row.arrival))}
+                    </span>
+                  </span>
+                  <ChevronRightIcon className={`h-4 w-4 flex-shrink-0 text-slate-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                </button>
+                <AnimatePresence initial={false}>
+                {isOpen && (
+                  <motion.div
+                    key="stops"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+                    className="overflow-hidden"
+                  >
+                  <div className="border-t border-slate-800 px-3 pb-3 pt-2">
+                    <ol>
+                      {row.calls.map((call, position) => {
+                        const continued = position === 0 && !row.startsHere;
+                        const edge = (position === 0 && row.startsHere) || position === row.calls.length - 1;
+                        return (
+                          <li key={`${call.name}-${position}`} className="flex items-center gap-3" style={{ height: 34 }}>
+                            <span className="tabular w-12 flex-shrink-0 text-sm text-slate-300">{formatTimetableTime(call.time)}</span>
+                            <span className="relative w-3 flex-shrink-0 self-stretch" aria-hidden="true">
+                              <span
+                                className="absolute left-1/2 w-[3px] -translate-x-1/2"
+                                style={{
+                                  backgroundColor: lineColor,
+                                  top: continued ? -8 : position === 0 ? '50%' : 0,
+                                  bottom: position === row.calls.length - 1 ? '50%' : 0,
+                                }}
+                              />
+                              <span
+                                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px]"
+                                style={{
+                                  borderColor: lineColor,
+                                  backgroundColor: edge ? lineColor : 'var(--gl-sheet-bg)',
+                                  width: edge ? 12 : 10,
+                                  height: edge ? 12 : 10,
+                                }}
+                              />
+                            </span>
+                            <span className={`min-w-0 flex-1 truncate text-sm ${edge ? 'font-semibold text-white' : 'text-slate-300'}`}>
+                              {call.name}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </div>
+                  </motion.div>
+                )}
+                </AnimatePresence>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function DirectionSwitch({
   directions,
   activeKey,
   onSelect,
+  towards,
 }: {
+  towards: string;
   directions: TimetableDirection[];
   activeKey: string | null | undefined;
   onSelect: (key: string) => void;
@@ -295,7 +471,7 @@ function DirectionSwitch({
               active ? 'text-white' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            {item.headsign}
+            {directions.some(entry => entry.trips) ? `${towards} ${shortName(item.headsign)}` : item.headsign}
           </button>
         );
       })}
@@ -338,8 +514,9 @@ export function TimetableSidebar({
         setTimetable(result);
         const match = preferredHeadsign
           ? result?.directions.find(direction =>
-              preferredHeadsign.toLowerCase().includes(direction.headsign.toLowerCase()) ||
-              direction.headsign.toLowerCase().includes(preferredHeadsign.toLowerCase()))
+              [direction.headsign, ...(direction.destinations ?? [])].some(name =>
+                preferredHeadsign.toLowerCase().includes(name.toLowerCase()) ||
+                name.toLowerCase().includes(preferredHeadsign.toLowerCase())))
           : null;
         setDirectionKey(match?.key ?? result?.directions[0]?.key ?? null);
       })
@@ -351,11 +528,32 @@ export function TimetableSidebar({
   const direction = timetable?.directions.find(item => item.key === directionKey) ?? timetable?.directions[0];
   const lineStyle = line ? resolveLineStyle(line.id, line.color, line.textColor) : {};
   const lineColor = (lineStyle as { backgroundColor?: string }).backgroundColor || '#475569';
+  const routeName = useMemo(() => {
+    const ends = [...new Set((timetable?.directions ?? []).map(item => shortName(item.headsign)).filter(Boolean))];
+    if (ends.length >= 2) return [ends[0], ends[1]];
+    const only = timetable?.directions[0];
+    const start = only?.stops[0]?.name;
+    if (only && start && start !== only.headsign) return [shortName(start), shortName(only.headsign)];
+    return ends[0] ? [ends[0]] : [];
+  }, [timetable]);
 
   const body = (
     <>
       <div className="flex items-center justify-between gap-3">
-        {line && <LineBadge line={line} size="md" />}
+        <div className="flex min-w-0 items-center gap-3">
+          {line && <span className="flex-shrink-0"><LineBadge line={line} size="md" /></span>}
+          {routeName.length > 0 && (
+            <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-lg font-bold leading-tight text-white">
+              <span>{routeName[0]}</span>
+              {routeName[1] && (
+                <>
+                  <ArrowsRightLeftIcon className="h-4 w-4 flex-shrink-0 text-slate-400" aria-hidden="true" />
+                  <span>{routeName[1]}</span>
+                </>
+              )}
+            </p>
+          )}
+        </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           {onOpenLineMap && (
           <button
@@ -382,27 +580,22 @@ export function TimetableSidebar({
           directions={timetable.directions}
           activeKey={direction?.key}
           onSelect={setDirectionKey}
+          towards={text.towardsTab}
         />
       )}
-
-      {direction && (
-        <p className="mt-4 flex items-center justify-center gap-2 text-sm text-slate-400">
-          <ArrowsRightLeftIcon className="h-4 w-4 flex-shrink-0 text-slate-500" />
-          <span className="truncate">{text.direction} {direction.headsign}</span>
-        </p>
-      )}
-
-      <div className="mt-4 flex items-baseline justify-between border-b border-slate-800 pb-2">
-        <p className="section-caps text-slate-400">{text.stops}</p>
-        {direction && (
-          <p className="tabular text-xs text-slate-500">{text.trips(direction.tripCount)}</p>
-        )}
-      </div>
 
       {loading ? (
         <p className="py-8 text-sm text-slate-400">{text.loading}</p>
       ) : !direction ? (
         <p className="py-8 text-sm leading-relaxed text-slate-500">{text.empty}</p>
+      ) : direction.trips ? (
+        <TrainList
+          direction={direction}
+          lineColor={lineColor}
+          text={text}
+          highlightStopName={highlightStopName}
+          isTrain={line?.id.startsWith('SNC:') ?? false}
+        />
       ) : (
         <TimetableGrid
           direction={direction}

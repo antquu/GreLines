@@ -21,7 +21,7 @@ export interface DaySchedule {
 
 export type DayKind = 'wd' | 'sat' | 'sun';
 
-const KEY_PREFIX = 'offsched_v1_';
+const KEY_PREFIX = 'offsched_v2_';
 const SCHEDULE_TTL_MS = 45 * 24 * 60 * 60 * 1000;
 
 const memory = new Map<string, DaySchedule | null>();

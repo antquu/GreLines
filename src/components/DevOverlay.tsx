@@ -220,7 +220,7 @@ export function DevOverlay() {
   return (
     <div
       ref={overlayRef}
-      className="fixed z-[10001] w-56 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-2.5 font-mono text-[0.6875rem] leading-relaxed text-slate-200 shadow-lg backdrop-blur-sm"
+      className="fixed z-[10240] w-56 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-2.5 font-mono text-[0.6875rem] leading-relaxed text-slate-200 shadow-lg backdrop-blur-sm"
       aria-hidden="true"
       style={{ left: position.x, top: position.y, pointerEvents: 'none' }}
     >

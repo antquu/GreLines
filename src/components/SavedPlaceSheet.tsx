@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapPinIcon, StopCircleIcon, XMarkIcon, HomeIcon, BriefcaseIcon, MapIcon } from '@heroicons/react/24/solid';
+import { MapPinIcon, XMarkIcon, HomeIcon, BriefcaseIcon, MapIcon } from '@heroicons/react/24/solid';
+import { PlaceIcon } from './PlaceIcon';
+import { TbBusStop } from 'react-icons/tb';
 import { searchAddresses } from '../services/geocoding';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { RouteLocation } from '../services/api';
@@ -147,7 +149,7 @@ function SavedPlaceSearch({ kind, stops, language, theme = 'dark', isOpen, onClo
                           index > 0 ? (isLight ? 'border-t border-slate-200' : 'border-t border-slate-800') : ''
                         }`}
                       >
-                        <StopCircleIcon className="h-5 w-5 flex-shrink-0 text-blue-400" />
+                        <TbBusStop className="h-5 w-5 flex-shrink-0 text-blue-400" />
                         <span className={`min-w-0 flex-1 truncate text-[0.95rem] font-semibold ${strong}`}>
                           {location.label}
                         </span>
@@ -172,7 +174,11 @@ function SavedPlaceSearch({ kind, stops, language, theme = 'dark', isOpen, onClo
                           index > 0 ? (isLight ? 'border-t border-slate-200' : 'border-t border-slate-800') : ''
                         }`}
                       >
-                        <MapPinIcon className="h-5 w-5 flex-shrink-0 text-amber-400" />
+                        <PlaceIcon
+                          category={(location.raw as { category?: string } | undefined)?.category}
+                          className="h-5 w-5 flex-shrink-0"
+                          fallback={<MapPinIcon className="h-5 w-5 flex-shrink-0 text-amber-400" />}
+                        />
                         <span className="min-w-0 flex-1">
                           <span className={`block truncate text-[0.95rem] font-semibold ${strong}`}>
                             {location.raw?.name || location.label}

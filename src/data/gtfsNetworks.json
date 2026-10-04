@@ -10,6 +10,7 @@
     "gtfs": "https://transport.data.gouv.fr/resources/83710/download",
     "tripUpdates": "https://proxy.transport.data.gouv.fr/resource/fluo-stan-nancy-gtfs-rt-trip-update",
     "alertsFromStanSite": true,
+    "separateStops": true,
     "shortNames": {
       "CITADINE 1": "Cit1",
       "CITADINE 2": "Cit2",

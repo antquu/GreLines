@@ -12,6 +12,10 @@ const NETWORKS = process.env.VITE_SITE === 'nancy'
 
 const MERGE_RADIUS_M = 250;
 
+const SPLIT_RADIUS_M = 30;
+
+const PLATFORM_RADIUS_M = 35;
+
 const NETWORK_RADIUS_M = 150_000;
 
 const round = value => Math.round(value * 1e5) / 1e5;
@@ -120,7 +124,7 @@ async function buildNetwork(config, today) {
     if (!station) {
       const key = nameKey(stop.name);
       const candidates = loose.get(key) ?? [];
-      station = candidates.find(candidate => distanceM(candidate, stop) <= MERGE_RADIUS_M);
+      station = candidates.find(candidate => distanceM(candidate, stop) <= (config.separateStops ? PLATFORM_RADIUS_M : MERGE_RADIUS_M));
       if (!station) {
         station = newStation(stop);
         stations.set(stop.id, station);
@@ -188,6 +192,59 @@ async function buildNetwork(config, today) {
       }
       stations.set(split.id, split);
     }
+  }
+
+  const linesOfStop = new Map();
+  for (const trip of trips.values()) {
+    for (const [, stopId] of trip.stops) {
+      if (!linesOfStop.has(stopId)) linesOfStop.set(stopId, new Set());
+      linesOfStop.get(stopId).add(trip.code);
+    }
+  }
+  const centerOf = group => ({
+    lat: group.reduce((sum, stop) => sum + stop.lat, 0) / group.length,
+    lon: group.reduce((sum, stop) => sum + stop.lon, 0) / group.length,
+  });
+  for (const station of new Set(stationOf.values())) {
+    const served = station.members.map(memberId => stops.get(memberId)).filter(stop => linesOfStop.has(stop.id));
+    if (served.length < 2) continue;
+    const parentOf = new Map(served.map(stop => [stop.id, stop.id]));
+    const root = id => (parentOf.get(id) === id ? id : root(parentOf.get(id)));
+    for (let i = 0; i < served.length; i += 1) {
+      for (let j = i + 1; j < served.length; j += 1) {
+        const a = served[i];
+        const b = served[j];
+        const shareLine = [...linesOfStop.get(a.id)].some(line => linesOfStop.get(b.id).has(line));
+        if ((shareLine && !config.separateStops) || distanceM(a, b) <= PLATFORM_RADIUS_M) parentOf.set(root(b.id), root(a.id));
+      }
+    }
+    const groups = new Map();
+    for (const stop of served) {
+      const key = root(stop.id);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(stop);
+    }
+    if (groups.size < 2) continue;
+    const ordered = [...groups.values()].sort((a, b) => b.length - a.length);
+    const centers = ordered.map(centerOf);
+    const apart = centers.every((center, i) => centers.every((other, j) => i === j || distanceM(center, other) > SPLIT_RADIUS_M));
+    if (!apart) continue;
+    const [kept, ...detached] = ordered;
+    const moved = new Set(detached.flat().map(stop => stop.id));
+    station.members = station.members.filter(memberId => !moved.has(memberId));
+    station.names = new Set(station.members.map(memberId => stops.get(memberId).name));
+    Object.assign(station, centers[0]);
+    detached.forEach((group, index) => {
+      const split = newStation({ ...group[0], ...centers[index + 1], parent: '' });
+      for (const stop of group) {
+        split.members.push(stop.id);
+        split.names.add(stop.name);
+        if (stop.wheelchair === '1') split.yes = true;
+        if (stop.wheelchair === '2') split.no = true;
+        stationOf.set(stop.id, split);
+      }
+      stations.set(split.id, split);
+    });
   }
 
   const shapesOfLine = new Map();

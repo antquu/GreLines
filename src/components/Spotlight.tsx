@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  MapPinIcon,
   MagnifyingGlassIcon,
   Cog6ToothIcon,
   ExclamationTriangleIcon,
   ArrowsRightLeftIcon,
   HomeIcon,
 } from '@heroicons/react/24/solid';
+import { PlaceIcon } from './PlaceIcon';
+import { distanceFromFocusKm } from '../services/geocoding';
+import { TbBusStop } from 'react-icons/tb';
 import type { AllLinesLine } from '../services/allLines';
 import type { Line, Stop, TrafficDetail } from '../types';
 import { foreignAsCatalogLine, foreignLineCity, isForeignLineId } from '../utils/foreignNetworks';
@@ -41,6 +43,7 @@ interface SpotlightProps {
 }
 
 const MAX_PER_GROUP = 5;
+const FAR_STOP_KM = 50;
 
 const EMPTY_ADDRESSES: AddressResult[] = [];
 
@@ -189,25 +192,25 @@ export function Spotlight({
         line,
       }));
 
-    const startHits: typeof stopIndex = [];
-    const containHits: typeof stopIndex = [];
-    for (const entry of stopIndex) {
-      if (entry.name.startsWith(q)) startHits.push(entry);
-      else if (containHits.length < MAX_PER_GROUP && (entry.name.includes(q) || entry.city.includes(q))) containHits.push(entry);
-    }
-    const byName = (a: { stop: Stop }, b: { stop: Stop }) => a.stop.name.localeCompare(b.stop.name, 'fr');
-    const stopHits = startHits.length >= MAX_PER_GROUP
-      ? startHits.sort(byName)
-      : [...startHits.sort(byName), ...containHits.sort(byName)];
-    const matchedStops: SpotlightResult[] = stopHits
-      .slice(0, MAX_PER_GROUP)
-      .map(({ stop }) => ({
+    const ranked = stopIndex
+      .map(entry => ({
+        entry,
+        tier: entry.name === q ? 0 : entry.name.startsWith(q) ? 1 : entry.name.includes(q) || entry.city.includes(q) ? 2 : 3,
+      }))
+      .filter(item => item.tier < 3)
+      .map(item => ({ ...item, km: distanceFromFocusKm(item.entry.stop.lat, item.entry.stop.lon) }))
+      .sort((a, b) => a.tier - b.tier || a.km - b.km);
+    const stopHits = [...ranked.filter(item => item.km <= FAR_STOP_KM), ...ranked.filter(item => item.km > FAR_STOP_KM)]
+      .slice(0, MAX_PER_GROUP);
+    const toStopResult = ({ entry: { stop } }: (typeof stopHits)[number]) => ({
         kind: 'stop' as const,
         id: `stop-${stop.id}`,
         title: stop.name,
         subtitle: stop.city || (isFr ? 'Arrêt' : 'Stop'),
         stop,
-      }));
+      });
+    const matchedStops: SpotlightResult[] = stopHits.filter(item => item.km <= FAR_STOP_KM).map(toStopResult);
+    const farStops: SpotlightResult[] = stopHits.filter(item => item.km > FAR_STOP_KM).map(toStopResult);
 
     const trafficLabel = (lineName: string) => {
       if (!isForeignLineId(lineName)) return `${isFr ? 'Ligne' : 'Line'} ${lineName}`;
@@ -242,6 +245,7 @@ export function Spotlight({
       ...matchedStops,
       ...matchedTraffic,
       ...matchedAddresses,
+      ...farStops,
       ...matchedActions,
     ];
   }, [query, lineIndex, stopIndex, trafficInfo, addresses, actions, isFr]);
@@ -433,8 +437,8 @@ function ResultIcon({ result, lines }: { result: SpotlightResult; lines: AllLine
 
   const iconClass = 'h-4 w-4';
   const icon =
-    result.kind === 'stop' ? <MapPinIcon className={`${iconClass} text-amber-300`} /> :
-    result.kind === 'address' ? <HomeIcon className={`${iconClass} text-sky-300`} /> :
+    result.kind === 'stop' ? <TbBusStop className={`${iconClass} text-sky-300`} /> :
+    result.kind === 'address' ? <PlaceIcon category={result.address.category} className={iconClass} fallback={<HomeIcon className={`${iconClass} text-sky-300`} />} /> :
     result.kind === 'traffic' ? <ExclamationTriangleIcon className={`${iconClass} text-orange-300`} /> :
     result.id === 'action-route' ? <ArrowsRightLeftIcon className={`${iconClass} text-slate-300`} /> :
     <Cog6ToothIcon className={`${iconClass} text-slate-300`} />;

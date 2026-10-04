@@ -5,6 +5,7 @@ import { relayTramOf } from './LineBadge';
 import { tclBadge } from '../utils/tclLogos';
 import { TclModeCorner } from './TclLogo';
 import { rerLine } from '../utils/rer';
+import { BadgeLabel } from './FitText';
 
 function TrafficMark() {
   return (
@@ -84,6 +85,15 @@ export function DepartureLineBadge({
     );
   }
 
+  if (isSncfLine(routeRef) && /OUIGO/i.test(label)) {
+    return (
+      <div className={`relative flex flex-shrink-0 items-center justify-center rounded-full ${sizeClass}`}>
+        <img src={badgeImage('/assets/ouigo.svg')} alt="OUIGO" className="h-full w-full object-contain" />
+        {hasTraffic && <TrafficMark />}
+      </div>
+    );
+  }
+
   if (isSncfLine(routeRef) && /TGV/i.test(label)) {
     return (
       <div className={`relative flex flex-shrink-0 items-center justify-center rounded-2xl bg-white px-1 ${sizeClass}`}>
@@ -112,7 +122,7 @@ export function DepartureLineBadge({
       className={`relative flex flex-shrink-0 items-center justify-center font-bold ${round ? 'rounded-full' : 'rounded-2xl'} ${sizeClass}`}
       style={style}
     >
-      {label}
+      <BadgeLabel text={label} />
       {hasTraffic && <TrafficMark />}
     </div>
   );

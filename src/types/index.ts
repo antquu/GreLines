@@ -86,4 +86,5 @@ export type SearchHistoryItem =
       context?: string;
       lat: number;
       lon: number;
+      category?: string;
     };

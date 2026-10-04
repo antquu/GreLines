@@ -22,6 +22,8 @@ export interface TimetableDirection {
   stops: TimetableStop[];
 
   tripCount: number;
+  trips?: Array<{ destination: string; label?: string }>;
+  destinations?: string[];
 }
 
 export interface Timetable {

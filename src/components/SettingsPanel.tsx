@@ -1401,7 +1401,7 @@ function DesktopFinderWindow({
 
   return (
     <motion.div
-      className={`fixed inset-0 select-none pointer-events-none ${minimizing ? 'z-[49]' : 'z-[60]'}`}
+      className={`fixed inset-0 select-none pointer-events-none ${minimizing ? 'z-[49]' : 'z-[10200]'}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

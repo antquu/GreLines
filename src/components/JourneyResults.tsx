@@ -96,6 +96,11 @@ export function JourneyResults({
               <p className={`text-[0.9375rem] leading-snug ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
                 {fr ? `Départ à ${journey.dep}` : `Leave at ${journey.dep}`}
               </p>
+              {journey.tight && (
+                <p className="mt-0.5 text-[0.9375rem] font-semibold leading-snug text-amber-500">
+                  {fr ? 'Serré : pars maintenant en pressant le pas' : 'Tight: leave now and walk briskly'}
+                </p>
+              )}
             </div>
             {fare && (
               <div className="mt-0.5">

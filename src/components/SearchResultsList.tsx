@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MapPinIcon } from '@heroicons/react/24/solid';
+import { PlaceIcon } from './PlaceIcon';
+import { TbBusStop } from 'react-icons/tb';
 import { getCachedStopLines, getStopLines } from '../services/api';
 import { resolveLineStyle } from '../utils/lineColors';
 import type { RouteLocation } from '../services/api';
@@ -97,6 +99,7 @@ export function SearchResultsList({
             onClick={() => onSelectLocation(stop)}
             className={rowClass}
           >
+            <TbBusStop className={`mt-1 h-6 w-6 flex-shrink-0 ${muted}`} />
             <span className="min-w-0 flex-1">
               <span className={`block truncate text-[1.375rem] font-bold leading-tight ${ink}`}>
                 {stop.label}
@@ -170,7 +173,11 @@ export function SearchResultsList({
           onClick={() => onSelectLocation(address)}
           className={rowClass}
         >
-          <MapPinIcon className={`mt-1 h-6 w-6 flex-shrink-0 ${muted}`} />
+          <PlaceIcon
+            category={(address.raw as { category?: string } | undefined)?.category}
+            className="mt-1 h-6 w-6 flex-shrink-0"
+            fallback={<MapPinIcon className={`mt-1 h-6 w-6 flex-shrink-0 ${muted}`} />}
+          />
           <span className="min-w-0 flex-1">
             <span className={`block truncate text-[1.375rem] font-bold leading-tight ${ink}`}>
               {address.raw?.name || address.label}

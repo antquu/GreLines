@@ -202,7 +202,7 @@ export const AddressSidebar = ({
           <p className="truncate text-[1.0625rem] font-semibold text-white">{address.name}</p>
           {address.context && <p className="mt-0.5 truncate text-xs text-slate-400">{address.context}</p>}
         </div>
-        <span className="signal-label flex-shrink-0 text-slate-500">{text.tag}</span>
+        <span className="section-caps flex-shrink-0 text-[0.625rem] text-slate-500">{text.tag}</span>
       </div>
 
       {onOpenItinerary && (
@@ -217,7 +217,7 @@ export const AddressSidebar = ({
       )}
 
       <div className="mt-7 flex items-baseline justify-between pb-3">
-        <p className="signal-label text-slate-400">{text.onFoot}</p>
+        <p className="section-caps text-slate-400">{text.onFoot}</p>
         <p className="tabular text-xs text-slate-500">{text.stopsCount(nearbyStops.length)}</p>
       </div>
 
