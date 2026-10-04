@@ -22,6 +22,7 @@ export interface SncfStationEntry {
   lon: number;
   lines: string[];
   also?: string[];
+  links?: number[];
 }
 
 interface SncfCatalog {
@@ -42,7 +43,7 @@ interface SncfPassage {
   alert?: { effect: string; text: string; end: number | null } | null;
 }
 
-const STORAGE_KEY = 'greLines_sncfCatalog_v3';
+const STORAGE_KEY = 'greLines_sncfCatalog_v4';
 const TRACE_KEY = 'sncfTrace_v2_';
 const CATALOG_TTL_MS = 12 * 60 * 60 * 1000;
 const PASSAGES_TTL_MS = 30_000;
@@ -382,3 +383,11 @@ export async function sncfOrderedStops(lineId: string): Promise<Stop[] | null> {
 }
 
 readStored();
+
+export async function sncfStationsLinkedTo<T extends { id: string }>(anchors: T[], candidates: T[]): Promise<T[]> {
+  const data = await loadSncfCatalog();
+  if (!data) return anchors;
+  const linksOf = new Map(data.stations.map(station => [sncfStopId(station.uic), station.links ?? []]));
+  const wanted = new Set(anchors.flatMap(anchor => linksOf.get(anchor.id) ?? []));
+  return candidates.filter(candidate => (linksOf.get(candidate.id) ?? []).some(link => wanted.has(link)));
+}

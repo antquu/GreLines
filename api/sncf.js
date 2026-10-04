@@ -117,6 +117,14 @@ async function buildCatalog(key) {
     return id;
   };
 
+  const trainLinks = new Map();
+  const trainLinkOf = line => {
+    const physicals = (line.physical_modes ?? []).map(mode => mode.name);
+    if (physicals.length > 0 && physicals.every(isCoach)) return null;
+    if (!trainLinks.has(line.id)) trainLinks.set(line.id, trainLinks.size);
+    return trainLinks.get(line.id);
+  };
+
   const stations = [];
   for (const area of areas) {
     const uic = uicOf(area.id);
@@ -124,8 +132,10 @@ async function buildCatalog(key) {
     const lat = Number(area.coord?.lat);
     const lon = Number(area.coord?.lon);
     if (!uic || !name || !Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) continue;
-    const served = [...new Set((area.lines ?? []).filter(line => !isExtraService(line)).map(keyOfLine))];
+    const usable = (area.lines ?? []).filter(line => !isExtraService(line));
+    const served = [...new Set(usable.map(keyOfLine))];
     if (served.length === 0) continue;
+    const links = [...new Set(usable.map(trainLinkOf).filter(index => index !== null))];
     const rail = (area.physical_modes ?? []).some(mode => !isCoach(mode.name) && !/bike|car$/i.test(mode.id ?? ''));
     stations.push({
       rail,
@@ -135,6 +145,7 @@ async function buildCatalog(key) {
       lat: Math.round(lat * 1e5) / 1e5,
       lon: Math.round(lon * 1e5) / 1e5,
       lines: served,
+      links,
     });
   }
 
@@ -152,6 +163,7 @@ async function buildCatalog(key) {
     const target = nearest.candidate;
     target.also = [...(target.also ?? []), station.uic];
     for (const id of station.lines) if (!target.lines.includes(id)) target.lines.push(id);
+    for (const link of station.links) if (!target.links.includes(link)) target.links.push(link);
     merged.add(station.uic);
   }
   const kept = stations.filter(station => !merged.has(station.uic)).map(({ rail, ...station }) => station);
@@ -464,7 +476,7 @@ export default async function handler(request, response) {
 
   try {
     if (resource === 'reseau') {
-      const payload = await cached('catalog', CATALOG_TTL_MS, () => buildCatalog(key));
+      const payload = await cached('catalog-v2', CATALOG_TTL_MS, () => buildCatalog(key));
       sendJson(response, 200, payload, { 'Cache-Control': 'public, s-maxage=43200, stale-while-revalidate=86400' });
       return;
     }

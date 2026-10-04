@@ -35,7 +35,7 @@ import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
 import { NancyAreaPrompt } from './components/NancyAreaPrompt';
 import { UnservedAreaPrompt } from './components/UnservedAreaPrompt';
-import { getSncfLines, getSncfStopDetail, getSncfStops, isMergedStation, isSncfStopId, withNearbySncf } from './services/sncfNetwork';
+import { getSncfLines, getSncfStopDetail, getSncfStops, isMergedStation, isSncfStopId, sncfStationsLinkedTo, withNearbySncf } from './services/sncfNetwork';
 import { DepartureLabOverlay } from './components/DepartureLabOverlay';
 import { closeLab, getLabState, openLab, setLabSelectedLines, subscribeLab } from './dev/departureLab';
 import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
@@ -1478,7 +1478,12 @@ function App() {
         const merged = applyOverrides(data);
         const editedTclStops = applyOverrides(tclStops);
         const gtfsStops = applyOverrides(gtfsStopLists.flat(), true);
-        const deduplicated = withoutSncfDuplicates(merged, inServedZones(applyOverrides(sncfStops), [...merged, ...editedTclStops, ...gtfsStops]));
+        const allStations = applyOverrides(sncfStops);
+        const anchorStations = inServedZones(allStations, [...merged, ...editedTclStops, ...gtfsStops]);
+        const linkedStations = await sncfStationsLinkedTo(anchorStations, allStations);
+        const anchorIds = new Set(anchorStations.map(station => station.id));
+        const shownStations = [...anchorStations, ...linkedStations.filter(station => !anchorIds.has(station.id))];
+        const deduplicated = withoutSncfDuplicates(merged, shownStations);
         setStops(editedTclStops.length > 0 || gtfsStops.length > 0 ? [...deduplicated, ...editedTclStops, ...gtfsStops] : deduplicated);
         setError(null);
       } catch (err) {
