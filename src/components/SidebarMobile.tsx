@@ -8,7 +8,7 @@ import { TrafficAlertCard } from './TrafficAlertCard';
 import { CarpoolStopPanel, isCarpoolStop, isCarpoolLine } from './CarpoolStopPanel';
 import { getMcoLines, type McoLine } from '../services/mcoLines';
 import { RealtimeWifi } from './RealtimeWifi';
-import { TheoreticalPill } from './TheoreticalPill';
+import { DepartureTags } from './TrainPill';
 import { sortLinesByPriority, tclDeparturePriority } from '../utils/lineOrder';
 import {
   MapSheetShell,
@@ -670,8 +670,8 @@ export const SidebarMobile = ({ stop, closeSignal, isOpen, frozen = false, onClo
                             hasTraffic={hasTrafficAlert}
                           />
                               <div className="min-w-0 flex-1">
-                                {departure.theoretical ? (
-  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><TheoreticalPill language={language} /></div>
+                                {(departure.theoretical || departure.train) ? (
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={departure} language={language} /></div>
 ) : <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>}
                                 {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                                 <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
@@ -711,8 +711,8 @@ export const SidebarMobile = ({ stop, closeSignal, isOpen, frozen = false, onClo
                                 hasTraffic={secondHasTraffic}
                               />
                               <div className="min-w-0 flex-1">
-                                {second.theoretical ? (
-  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={second.destination} className="text-sm font-semibold text-white" /></div><TheoreticalPill language={language} /></div>
+                                {(second.theoretical || second.train) ? (
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={second.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={second} language={language} /></div>
 ) : <p className="truncate text-sm font-semibold text-white">{second.destination}</p>}
                                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
                                   <TransportModeIcon mode={second.type} className="w-3 h-3" />
@@ -790,8 +790,8 @@ export const SidebarMobile = ({ stop, closeSignal, isOpen, frozen = false, onClo
                             hasTraffic={hasTrafficAlert}
                           />
                           <div className="min-w-0 flex-1">
-                            {departure.theoretical ? (
-  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><TheoreticalPill language={language} /></div>
+                            {(departure.theoretical || departure.train) ? (
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={departure} language={language} /></div>
 ) : <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>}
                             {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                             <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
@@ -820,8 +820,8 @@ export const SidebarMobile = ({ stop, closeSignal, isOpen, frozen = false, onClo
                             hasTraffic={hasTrafficAlert}
                           />
                         <div className="min-w-0 flex-1">
-                          {departure.theoretical ? (
-  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><TheoreticalPill language={language} /></div>
+                          {(departure.theoretical || departure.train) ? (
+  <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1"><ScrollingText text={departure.destination} className="text-sm font-semibold text-white" /></div><DepartureTags departure={departure} language={language} /></div>
 ) : <p className="text-sm font-semibold text-white truncate">{departure.destination}</p>}
                           {isLastRun && <div className="mt-1"><LastRunRibbon language={language} /></div>}
                           <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">

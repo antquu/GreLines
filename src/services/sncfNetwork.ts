@@ -35,6 +35,7 @@ interface SncfCatalog {
 interface SncfPassage {
   train: string;
   direction: string;
+  mode?: string;
   line: string;
   code?: string;
   coach: boolean;
@@ -188,6 +189,16 @@ function getPassages(uic: string): Promise<SncfPassage[] | null> {
   return value;
 }
 
+function trainKindOf(entry: SncfPassage): string {
+  if (['OUIGO', 'TGV', 'IC'].includes(entry.line)) return entry.line;
+  const mode = entry.mode ?? '';
+  if (/ouigo/i.test(mode)) return 'OUIGO';
+  if (/tgv|inoui|lyria/i.test(mode)) return 'TGV';
+  if (/intercit/i.test(mode)) return 'IC';
+  if (/l[ée]man|\blex\b/i.test(mode)) return 'LEX';
+  return 'TER';
+}
+
 export async function sncfDeparturesAt(uic: string): Promise<{ lines: Line[]; departures: Departure[] }> {
   const data = await loadSncfCatalog();
   const station = stationOf(data, uic);
@@ -208,6 +219,7 @@ export async function sncfDeparturesAt(uic: string): Promise<{ lines: Line[]; de
       at: entry.real,
       realtime: entry.live,
       type: entry.coach ? 'BUS' : 'RAIL',
+      ...(/^\d{3,6}$/.test(entry.train) && !entry.coach ? { train: entry.train, trainKind: trainKindOf(entry) } : {}),
     }));
 
   const alerts = new Map<string, TrafficDetail[]>();
@@ -400,4 +412,17 @@ export async function withTrainsNearby(detail: StopDetail | null): Promise<StopD
   const { getActiveNetworks } = await import('./api');
   if (!getActiveNetworks().includes('SNC')) return detail;
   return withNearbySncf(detail).catch(() => detail);
+}
+
+export async function sncfLinesNear(stop: { lat: number; lon: number; name: string }, radiusMeters = 250): Promise<Line[]> {
+  if (IS_NANCY) return [];
+  const { getActiveNetworks } = await import('./api');
+  if (!getActiveNetworks().includes('SNC')) return [];
+  const data = await loadSncfCatalog();
+  const near = await sncfStationsNear(stop.lat, stop.lon, radiusMeters, stop.name);
+  const byCode = new Map((data?.lines ?? []).map(entry => [entry.id, entry]));
+  return [...new Set(near.flatMap(station => station.lines))]
+    .map(code => byCode.get(code))
+    .filter((entry): entry is SncfLineEntry => Boolean(entry))
+    .map(toLine);
 }

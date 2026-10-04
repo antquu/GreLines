@@ -44,6 +44,8 @@ export interface Departure {
   at?: number;
   realtime: boolean;
   theoretical?: boolean;
+  train?: string;
+  trainKind?: string;
   type: 'BUS' | 'TRAM' | 'RAIL' | 'METRO' | 'OTHER';
   occupancy?: 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED';
 }

@@ -208,6 +208,7 @@ function App() {
   const [selectedStop, setSelectedStop] = useState<StopDetail | null>(null);
   const [carpoolMapLines, setCarpoolMapLines] = useState<McoLine[]>([]);
   const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
+  const autoSelectedLineRef = useRef<string | null>(null);
   const [selectedLine, setSelectedLine] = useState<AllLinesLine | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [initialSelectedLines, setInitialSelectedLines] = useState<Set<string>>(new Set());
@@ -730,12 +731,24 @@ function App() {
       return;
     }
     if (initialSelectedLines.size > 0) {
+      const [only] = initialSelectedLines;
+      autoSelectedLineRef.current = initialSelectedLines.size === 1 && (selectedStop.lines?.length ?? 0) <= 1
+        ? `${selectedStop.id}::${only}`
+        : null;
       setSelectedLines(new Set(initialSelectedLines));
       setInitialSelectedLines(new Set());
       return;
     }
-    if (selectedStop.lines && selectedStop.lines.length === 1) {
-      setSelectedLines(new Set([selectedStop.lines[0].id]));
+    const stopLines = selectedStop.lines ?? [];
+    if (stopLines.length === 1) {
+      autoSelectedLineRef.current = `${selectedStop.id}::${stopLines[0].id}`;
+      setSelectedLines(new Set([stopLines[0].id]));
+      return;
+    }
+    const auto = autoSelectedLineRef.current;
+    if (stopLines.length > 1 && auto) {
+      autoSelectedLineRef.current = null;
+      setSelectedLines(prev => (prev.size === 1 && `${selectedStop.id}::${[...prev][0]}` === auto ? new Set() : prev));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStop?.id, selectedStop?.lines?.length]);

@@ -4,7 +4,7 @@ import type { Departure, Line } from '../types';
 import { getNextServiceDayDepartures, type NextServiceDepartures as NextService } from '../services/api';
 import { DepartureLineBadge } from './DepartureLineBadge';
 import { ScrollingText } from './ScrollingText';
-import { TheoreticalPill } from './TheoreticalPill';
+import { DepartureTags } from './TrainPill';
 import { TransportModeIcon } from './TransportModeIcon';
 import { resolveLineStyle, isGrenobleNetworkLine } from '../utils/lineColors';
 import { normalizeMode } from '../utils/transportMode';
@@ -124,7 +124,7 @@ export function NextServiceDepartures({
                   <div className="min-w-0 flex-1">
                     <ScrollingText text={departure.destination} className="text-sm font-semibold text-white" />
                   </div>
-                  <TheoreticalPill language={language} />
+                  <DepartureTags departure={departure} language={language} />
                 </div>
                 <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                   <TransportModeIcon mode={departure.type} className="w-3 h-3" />

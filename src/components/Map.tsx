@@ -16,6 +16,7 @@ import type { LineGeometry, ServedStopPoint } from '../services/lineShapes';
 import { stopIsNearAny, snapStopToLines } from '../services/lineShapes';
 import { getCachedStopLines, getStopLines } from '../services/api';
 import { getGtfsLinesForStopSync } from '../services/gtfsNetwork';
+import { isSncfStopId, sncfLinesNear } from '../services/sncfNetwork';
 import { consumeLocationPick } from '../utils/devLocation';
 import { resolveLineBackgroundColor } from '../utils/lineColors';
 import type { JourneyBadge } from '../utils/journeyGeometry';
@@ -638,6 +639,33 @@ const MapComponentBase = (
     for (let i = 0; i < toStart; i += 1) void worker();
   }, [badgeCandidateIds]);
 
+  const sncfCheckedRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (IS_NANCY) return;
+    const byId = new globalThis.Map(visibleStops.map(stop => [stop.id, stop]));
+    const targets = Object.keys(stopLinesById)
+      .filter(id => !sncfCheckedRef.current.has(id) && !isSncfStopId(id))
+      .map(id => byId.get(id))
+      .filter((stop): stop is Stop => Boolean(stop));
+    if (targets.length === 0) return;
+    targets.forEach(stop => sncfCheckedRef.current.add(stop.id));
+    void Promise.all(targets.map(async stop => [stop.id, await sncfLinesNear(stop).catch(() => [] as Line[])] as const))
+      .then(results => {
+        const found = results.filter(([, lines]) => lines.length > 0);
+        if (found.length === 0) return;
+        setStopLinesById(prev => {
+          const next = { ...prev };
+          for (const [id, lines] of found) {
+            const current = next[id] ?? [];
+            const known = new Set(current.map(line => line.id));
+            const added = lines.filter(line => !known.has(line.id));
+            if (added.length > 0) next[id] = [...current, ...added];
+          }
+          return next;
+        });
+      });
+  }, [stopLinesById, visibleStops]);
+
   const renderStopLineBadges = useCallback((stopId: string) => {
     if (!perf.stopLineBadges) return null;
     const lines = sortStopPreviewLines(stopLinesById[stopId] || []);
@@ -749,6 +777,8 @@ const MapComponentBase = (
     };
   }, []);
 
+  const pendingPaddingRef = useRef<number | null>(null);
+
   useImperativeHandle(ref, () => ({
     centerOnStop: (stop: Stop) => {
       if (mapRef.current) {
@@ -762,6 +792,20 @@ const MapComponentBase = (
     setBottomPadding: (px: number) => {
       const map = mapRef.current?.getMap?.();
       if (!map) return;
+      if (map.isMoving()) {
+        const waiting = pendingPaddingRef.current !== null;
+        pendingPaddingRef.current = px;
+        if (!waiting) {
+          map.once('moveend', () => {
+            const pending = pendingPaddingRef.current;
+            pendingPaddingRef.current = null;
+            if (pending === null || Math.abs((map.getPadding().bottom ?? 0) - pending) < 1) return;
+            map.easeTo({ padding: { top: 0, left: 0, right: 0, bottom: pending }, duration: 250 });
+          });
+        }
+        return;
+      }
+      pendingPaddingRef.current = null;
       const current = map.getPadding();
       if (Math.abs((current.bottom ?? 0) - px) < 1) return;
       map.setPadding({ top: 0, left: 0, right: 0, bottom: px });
