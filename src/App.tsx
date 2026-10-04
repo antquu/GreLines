@@ -11,8 +11,8 @@ import { OfflineLaunchScreen } from './components/OfflineLaunchScreen';
 import { IoWifi } from 'react-icons/io5';
 import { useIsOffline, useReconnectCount } from './hooks/useIsOffline';
 import { OfflinePanel } from './components/OfflinePanel';
-﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy } from 'react';
-import { AnimatePresence, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
+﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useSyncExternalStore, lazy } from 'react';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
 import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StopCircleIcon, StarIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
@@ -34,6 +34,9 @@ import { TrafficAlertCard } from './components/TrafficAlertCard';
 import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
 import { NancyAreaPrompt } from './components/NancyAreaPrompt';
+import { getSncfLines, getSncfStopDetail, getSncfStops, isMergedStation, isSncfStopId, withNearbySncf } from './services/sncfNetwork';
+import { DepartureLabOverlay } from './components/DepartureLabOverlay';
+import { closeLab, getLabState, openLab, setLabSelectedLines, subscribeLab } from './dev/departureLab';
 import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
 import { LaunchScreen } from './components/LaunchScreen';
 import { SidebarMobile } from './components/SidebarMobile';
@@ -134,7 +137,7 @@ import { getTclLines, getTclLinesForStop, getTclStopDetail, getTclStops, isTclId
 import { getGtfsLines, getGtfsLinesForStop, getGtfsStopDetail, getGtfsStops, gtfsStopMembers, GTFS_NETWORKS, isGtfsNetworkId } from './services/gtfsNetwork';
 import { foreignAsCatalogLine, foreignSolidStyle, isForeignLineId } from './utils/foreignNetworks';
 import { searchAddresses, reverseGeocode, type AddressResult } from './services/geocoding';
-import { getLinesGeometryPrecise, getStopsServedByLines, stopNameKey, type LineGeometry, type ServedStopPoint } from './services/lineShapes';
+import { getLinesGeometryPrecise, getStopsServedByLines, type LineGeometry, type ServedStopPoint } from './services/lineShapes';
 import type { Line, SearchHistoryItem, Stop, StopDetail, TrafficDetail } from './types';
 import type { MapRef } from './components/Map';
 import { useStopUrlSync } from './hooks/useStopUrlSync';
@@ -152,22 +155,45 @@ import { setSavedPlace, type SavedPlaceKind } from './services/savedPlaces';
 
 export type MapPickTarget = 'from' | 'to' | SavedPlaceKind;
 
-const SNCF_DUPLICATE_RADIUS_METERS = 3000;
+const SNCF_MERGE_RADIUS_METERS = 250;
 const SHARED_CITY_RADIUS_METERS = 12_000;
 
-function withoutSncfDuplicates(stops: Stop[]): Stop[] {
-  const tagByName = new Map<string, Stop[]>();
-  for (const stop of stops) {
-    if (!/^(SEM|SE2)[:_]/.test(stop.id)) continue;
-    const key = stopNameKey(stop.name);
-    const list = tagByName.get(key);
-    if (list) list.push(stop);
-    else tagByName.set(key, [stop]);
+function withoutSncfDuplicates(stops: Stop[], stations: Stop[]): Stop[] {
+  const tagStops = stops.filter(stop => /^(SEM|SE2)[:_]/.test(stop.id));
+  const kept = stations.filter(station =>
+    !tagStops.some(stop =>
+      Math.abs(stop.lat - station.lat) < 0.03 &&
+      Math.abs(stop.lon - station.lon) < 0.04 &&
+      isMergedStation(station, stop, SNCF_MERGE_RADIUS_METERS)));
+  return [...stops, ...kept];
+}
+
+const MAP_PADDING_MAX_RATIO = 0.62;
+const MAP_PIN_MAGNET_PX = 28;
+const MAP_PIN_COLOR = '#c026d3';
+const MAP_PIN_MIN_MOVE_METERS = 30;
+const SNCF_ZONE_RADIUS_METERS = 2500;
+const ZONE_CELL_DEGREES = 0.05;
+
+function inServedZones(stations: Stop[], references: Stop[]): Stop[] {
+  const cellOf = (lat: number, lon: number) => `${Math.floor(lat / ZONE_CELL_DEGREES)}:${Math.floor(lon / ZONE_CELL_DEGREES)}`;
+  const grid = new Map<string, Stop[]>();
+  for (const stop of references) {
+    const key = cellOf(stop.lat, stop.lon);
+    const cell = grid.get(key);
+    if (cell) cell.push(stop);
+    else grid.set(key, [stop]);
   }
-  return stops.filter(stop => {
-    if (!stop.id.startsWith('SNC:')) return true;
-    const twins = tagByName.get(stopNameKey(stop.name));
-    return !twins?.some(twin => haversineMeters(stop.lat, stop.lon, twin.lat, twin.lon) <= SNCF_DUPLICATE_RADIUS_METERS);
+  return stations.filter(station => {
+    const row = Math.floor(station.lat / ZONE_CELL_DEGREES);
+    const column = Math.floor(station.lon / ZONE_CELL_DEGREES);
+    for (let dRow = -1; dRow <= 1; dRow += 1) {
+      for (let dColumn = -1; dColumn <= 1; dColumn += 1) {
+        const cell = grid.get(`${row + dRow}:${column + dColumn}`);
+        if (cell?.some(stop => haversineMeters(station.lat, station.lon, stop.lat, stop.lon) <= SNCF_ZONE_RADIUS_METERS)) return true;
+      }
+    }
+    return false;
   });
 }
 
@@ -243,7 +269,19 @@ function App() {
     localStorage.setItem('greLines_atmoFollowMap', String(atmoFollowMap));
   }, [atmoFollowMap]);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number } | null>(null);
+  const [exploringMap, setExploringMap] = useState(false);
+  const exploringMapRef = useRef(false);
+  exploringMapRef.current = exploringMap;
+  const [mapPin, setMapPin] = useState<{ lat: number; lon: number } | null>(null);
+  const [mapPanSignal, setMapPanSignal] = useState(0);
+  const [stopSheetCloseSignal, setStopSheetCloseSignal] = useState(0);
+  const placeMapPin = useCallback((lat: number, lon: number) => {
+    setMapPin(current =>
+      current && haversineMeters(current.lat, current.lon, lat, lon) < MAP_PIN_MIN_MOVE_METERS ? current : { lat, lon },
+    );
+  }, []);
   const handleMapCenterChange = useCallback((lat: number, lon: number) => {
+    if (exploringMapRef.current) placeMapPin(lat, lon);
     setMapArea(lat, lon);
     setMapCenter(current => {
       if (current && Math.abs(current.lat - lat) < 0.01 && Math.abs(current.lon - lon) < 0.01) {
@@ -251,7 +289,7 @@ function App() {
       }
       return { lat, lon };
     });
-  }, []);
+  }, [placeMapPin]);
 
   const [desktopTrafficFilter, setDesktopTrafficFilter] = useState<string>('all');
   const [desktopTrafficSubFilter, setDesktopTrafficSubFilter] = useState<string | null>(null);
@@ -279,6 +317,7 @@ function App() {
   const [canOfferInstallGuide] = useState(canShowInstallGuide);
   const [autoOpenInstallGuide] = useState(shouldAutoOpenInstallGuide);
   const [isInstallSheetOpen, setIsInstallSheetOpen] = useState(false);
+  const lab = useSyncExternalStore(subscribeLab, getLabState);
   const [isMobileNotificationPromptOpen, setIsMobileNotificationPromptOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const { settings: perfSettings, setSetting: setPerfSetting } = usePerfSettings();
@@ -343,22 +382,60 @@ function App() {
   const [isNearbySheetOpen, setIsNearbySheetOpen] = useState(false);
 
   const sheetProgress = useMotionValue(0.15);
+  const homeSheetProgress = useMotionValue(0.15);
 
   const [snapHomeToMiniSignal, setSnapHomeToMiniSignal] = useState(0);
 
-  const [openHomeSheetSignal, setOpenHomeSheetSignal] = useState(0);
   const [isLinesExplorerOpen, setIsLinesExplorerOpen] = useState(false);
 
   const geolocButtonBottom = useTransform(sheetProgress, p => {
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
     return `${Math.round(p * vh + 12)}px`;
   });
-  const layersButtonBottom = useTransform(sheetProgress, p => {
+  const layersLift = useMotionValue(56);
+  const layersButtonBottom = useTransform([sheetProgress, layersLift], ([p, lift]: number[]) => {
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
-    return `${Math.round(p * vh + 12 + 56)}px`;
+    return `${Math.round(p * vh + 12 + lift)}px`;
   });
-  const geolocButtonOpacity = useTransform(sheetProgress, [0, 0.85, 1], [1, 1, 0]);
-  const geolocButtonScale = useTransform(sheetProgress, [0, 0.85, 1], [1, 1, 0.85]);
+  const mapControlsOpacity = useTransform(sheetProgress, [0, 0.22, 0.55], [1, 1, 0]);
+  const geolocButtonScale = useTransform(sheetProgress, [0, 0.22, 0.55], [1, 1, 0.85]);
+  const layersButtonPointer = useTransform<number, string>(sheetProgress, p => (p > 0.45 ? 'none' : 'auto'));
+  const recenterShown = useMotionValue(1);
+  const geolocButtonOpacity = useTransform([mapControlsOpacity, recenterShown], ([base, shown]: number[]) => base * shown);
+  const geolocButtonPointer = useTransform([sheetProgress, recenterShown], ([p, shown]: number[]) => (p > 0.45 || shown < 0.5 ? 'none' : 'auto'));
+  const mapVisibleBottom = useTransform(homeSheetProgress, p => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    return Math.min(p * vh, vh * MAP_PADDING_MAX_RATIO);
+  });
+  const mapPinTop = useTransform(mapVisibleBottom, bottom => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    return `${Math.round((vh - bottom) / 2)}px`;
+  });
+  useEffect(() => {
+    if (!isMobile) {
+      mapRef.current?.setBottomPadding(0);
+      return;
+    }
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      mapRef.current?.setBottomPadding(Math.round(mapVisibleBottom.get()));
+    };
+    apply();
+    const unsubscribe = mapVisibleBottom.on('change', () => {
+      if (!frame) frame = requestAnimationFrame(apply);
+    });
+    return () => {
+      unsubscribe();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [isMobile, mapVisibleBottom]);
+  const showRecenter = exploringMap || !currentLocation;
+  useEffect(() => {
+    const fade = animate(recenterShown, showRecenter ? 1 : 0, { duration: 0.25 });
+    const lift = animate(layersLift, showRecenter ? 56 : 0, { type: 'spring', stiffness: 380, damping: 32 });
+    return () => { fade.stop(); lift.stop(); };
+  }, [showRecenter, recenterShown, layersLift]);
   const [sidebarState, setSidebarState] = useState<'closed' | 'peek' | 'open'>('closed');
   const [activeSettingsTab, setActiveSettingsTab] = useState('general');
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
@@ -521,6 +598,7 @@ function App() {
       onDevCommand('show.onboarding', () => setIsOnboardingOpen(true)),
       onDevCommand('show.notifications', () => setIsMobileNotificationPromptOpen(true)),
       onDevCommand('show.install', () => setIsInstallSheetOpen(true)),
+      onDevCommand('show.teststop', () => openLab()),
       onDevCommand('show.popup', args => {
         const kind = args[0] === 'promo' ? 'promo' : 'infotraffic';
         const isFr = language === 'fr';
@@ -1272,7 +1350,11 @@ function App() {
       const targetStop = resolveStopFromUrlId(targetStopId, stops);
       if (targetStop) {
         try {
-          const stopDetail = await getStopDetail(targetStop.id);
+          const stopDetail = isTclId(targetStop.id)
+            ? await getTclStopDetail(targetStop.id)
+            : isGtfsNetworkId(targetStop.id)
+              ? await getGtfsStopDetail(targetStop.id)
+              : await getStopDetail(targetStop.id);
           if (stopDetail) {
             setSelectedStop(stopDetail);
             setSidebarState('open');
@@ -1365,11 +1447,13 @@ function App() {
         const gtfsCodes = GTFS_NETWORKS.map(network => network.code).filter(code => appliedNetworks.includes(code));
         if (wantsTcl) void getTclLines({ includeSchool: true });
 
-        const [data, overrides, tclStops, gtfsStopLists] = await Promise.all([
+        const wantsSncf = !IS_NANCY && appliedNetworks.includes('SNC');
+        const [data, overrides, tclStops, gtfsStopLists, sncfStops] = await Promise.all([
           IS_NANCY ? Promise.resolve([] as Stop[]) : getStopsByPrefixes(appliedNetworks),
           getStopOverrides(),
           wantsTcl ? getTclStops() : Promise.resolve([] as Stop[]),
           Promise.all(gtfsCodes.map(code => getGtfsStops(code).catch(() => [] as Stop[]))),
+          wantsSncf ? getSncfStops().catch(() => [] as Stop[]) : Promise.resolve([] as Stop[]),
         ]);
         if (!active) return;
 
@@ -1393,7 +1477,7 @@ function App() {
         const merged = applyOverrides(data);
         const editedTclStops = applyOverrides(tclStops);
         const gtfsStops = applyOverrides(gtfsStopLists.flat(), true);
-        const deduplicated = withoutSncfDuplicates(merged);
+        const deduplicated = withoutSncfDuplicates(merged, inServedZones(applyOverrides(sncfStops), [...merged, ...editedTclStops, ...gtfsStops]));
         setStops(editedTclStops.length > 0 || gtfsStops.length > 0 ? [...deduplicated, ...editedTclStops, ...gtfsStops] : deduplicated);
         setError(null);
       } catch (err) {
@@ -1474,6 +1558,7 @@ function App() {
     void Promise.all([
       appliedNetworks.includes(TCL_NETWORK) ? getTclLines().catch(() => []) : Promise.resolve([]),
       ...codes.map(code => getGtfsLines(code).catch(() => [])),
+      appliedNetworks.includes('SNC') ? getSncfLines().catch(() => []) : Promise.resolve([]),
     ]).then(lists => {
       if (active) setForeignCatalog(IS_NANCY ? [] : lists.flat().map(line => foreignAsCatalogLine(line)));
     });
@@ -1529,6 +1614,11 @@ function App() {
         if (detail) setSelectedStop(detail);
         return;
       }
+      if (isSncfStopId(stop.id)) {
+        const detail = await getSncfStopDetail(stop.id);
+        if (detail) setSelectedStop(detail);
+        return;
+      }
 
       const cachedLines = getCachedStopLines(stop.id);
       const linesPromise = cachedLines ? Promise.resolve(cachedLines) : getStopLines(stop.id);
@@ -1540,6 +1630,12 @@ function App() {
       const lines = linesResult.status === 'fulfilled' ? linesResult.value : cachedLines || [];
       const departures = departuresResult.status === 'fulfilled' ? departuresResult.value : [];
       setSelectedStop(prev => prev ? { ...prev, lines, departures, lastUpdate: new Date() } : { ...placeholder, lines, departures, lastUpdate: new Date() });
+      void withNearbySncf({ ...placeholder, lines, departures, lastUpdate: new Date() }).then(withTrains => {
+        if (withTrains.departures.length === departures.length && withTrains.lines.length === lines.length) return;
+        setSelectedStop(prev => (prev && prev.id === stop.id
+          ? { ...prev, lines: withTrains.lines, departures: withTrains.departures }
+          : prev));
+      });
       if (cachedLines) {
         void refreshStopLines(stop.id).then(({ lines: refreshedLines, changed }) => {
           if (!changed) return;
@@ -2238,9 +2334,29 @@ function App() {
       lineGeometries={lineGeometries}
       carpoolLines={carpoolMapLines}
       onCenterChange={handleMapCenterChange}
+      onUserPan={() => {
+        if (!isMobile) return;
+        setMapPanSignal(signal => signal + 1);
+        if (exploringMapRef.current) return;
+        exploringMapRef.current = true;
+        setExploringMap(true);
+      }}
+      onMoveSettled={(lat, lon) => {
+        if (!exploringMapRef.current || !currentLocation) return;
+        const gap = mapRef.current?.distancePx({ lat, lon }, currentLocation);
+        if (gap === null || gap === undefined || gap > MAP_PIN_MAGNET_PX) return;
+        exploringMapRef.current = false;
+        setExploringMap(false);
+        setMapPin(null);
+        mapRef.current?.snapCenterTo(currentLocation.lat, currentLocation.lon);
+      }}
       pickMode={mapPickTarget}
       onLongPress={handleMapLongPress}
       onMapClick={async (lat: number, lon: number) => {
+        if (!mapPickTarget) {
+          if (isMobile && isSidebarOpen && !lab.open) setStopSheetCloseSignal(signal => signal + 1);
+          return;
+        }
         const addr = await describeMapPoint(lat, lon);
         const location: RouteLocation = {
           id: addr.id || `mappick-${lat}-${lon}`,
@@ -2352,6 +2468,7 @@ function App() {
 
       <DevConsole />
       <NetOverlay />
+      <DepartureLabOverlay />
 
 
       {popupsReleased && (
@@ -2662,20 +2779,41 @@ function App() {
       {!isLoading && (
         <>
 
+          <AnimatePresence>
+            {isMobile && exploringMap && isNearbySheetOpen && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
+              <motion.div
+                key="map-pin"
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.6 }}
+                transition={{ duration: 0.2 }}
+                className="pointer-events-none fixed z-[4] -ml-3 -mt-3"
+                style={{ left: '50%', top: mapPinTop }}
+                aria-hidden
+              >
+                <span className="relative flex h-6 w-6 items-center justify-center">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40" style={{ backgroundColor: MAP_PIN_COLOR }} />
+                  <span className="relative h-5 w-5 rounded-full border-[3px] border-white shadow-lg" style={{ backgroundColor: MAP_PIN_COLOR }} />
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {isMobile && !hidePageControls && isNearbySheetOpen && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
             <>
               <motion.button
                 onClick={() => {
+                  setExploringMap(false);
+                  setMapPin(null);
                   handleLocationClick();
                   setIsNearbySheetOpen(true);
-                  setSnapHomeToMiniSignal(0);
-                  setOpenHomeSheetSignal(s => s + 1);
                 }}
                 style={{
                   zIndex: 5,
                   bottom: geolocButtonBottom,
                   opacity: geolocButtonOpacity,
                   scale: geolocButtonScale,
+                  pointerEvents: geolocButtonPointer,
               }}
               initial={false}
               className="fixed right-4 w-12 h-12 rounded-full flex items-center justify-center cursor-pointer border-2 border-gray-700 bg-slate-900/85 hover:bg-slate-900 transition-colors shadow-lg"
@@ -2693,8 +2831,9 @@ function App() {
               onToggleLayer={toggleSharedLayer}
               operators={sharedOperatorsNearby}
               bottom={layersButtonBottom}
-              opacity={geolocButtonOpacity}
+              opacity={mapControlsOpacity}
               scale={geolocButtonScale}
+              pointerEvents={layersButtonPointer}
             />
             </>
           )}
@@ -3201,7 +3340,7 @@ function App() {
 
       {isMobile && (
         <HomeSheet
-          isOpen={isNearbySheetOpen && !isCardFocused && !(isMobile && isSidebarOpen) && !isRouteSidebarOpen}
+          isOpen={isNearbySheetOpen && !isCardFocused && !(isMobile && (isSidebarOpen || sharedSelection !== null)) && !isRouteSidebarOpen}
           locked={isAccountOpen || isFavoritesOpen || isRouteSidebarOpen}
           lockedScreen={isAccountOpen ? 'account' : isFavoritesOpen ? 'favorites' : isRouteSidebarOpen ? 'route' : undefined}
           layerAbove={isRouteSidebarOpen}
@@ -3211,10 +3350,11 @@ function App() {
             setHasUserClosedHome(true);
           }}
           onSheetProgress={(p) => sheetProgress.set(p)}
+          onHomeProgress={(p) => homeSheetProgress.set(p)}
+          lowerOnMapPanSignal={mapPanSignal}
           snapToMiniSignal={snapHomeToMiniSignal}
-          openToMidSignal={openHomeSheetSignal}
           stops={stops}
-          currentLocation={currentLocation}
+          currentLocation={exploringMap && mapPin ? mapPin : currentLocation}
           onStopClick={(stop, lineFilter) => {
             if (lineFilter && lineFilter.length > 0) {
               setInitialSelectedLines(new Set(lineFilter));
@@ -3222,10 +3362,7 @@ function App() {
             setSnapHomeToMiniSignal(s => s + 1);
             handleStopClick(stop);
           }}
-          onOpenTraffic={() => {
-            setSnapHomeToMiniSignal(s => s + 1);
-            setIsTrafficPanelOpenMobile(true);
-          }}
+          onOpenTraffic={() => setIsTrafficPanelOpenMobile(true)}
           onOpenSettings={() => {
             setSnapHomeToMiniSignal(s => s + 1);
             setSettingsState('open');
@@ -3245,35 +3382,8 @@ function App() {
           navCompact={(isAccountOpen || isFavoritesOpen) && isNavCompact}
           language={language}
           theme={effectiveTheme}
-          account={account}
-          accountPhotoUrl={
-            walletCards.find(entry => entry.cardCode === account?.cardCode)?.photoUrl ?? null
-          }
-          onOpenProfile={() => setIsProfileOpen(true)}
-          walletCardCount={walletCards.length}
           favorites={favoritesList}
           favoriteDetails={favoritesDetails}
-          atmoReport={atmoReport}
-          atmoLoading={atmoLoading}
-          onAtmoCommuneChange={setAtmoCommune}
-          atmoFollowMap={atmoFollowMap}
-          allLines={allLines}
-          onOpenLines={() => {
-            setSnapHomeToMiniSignal(s => s + 1);
-            setIsLinesExplorerOpen(true);
-          }}
-          onNavigateToPlace={(place) => {
-            setSnapHomeToMiniSignal(s => s + 1);
-            openRouteToAddress({
-              id: `place:${place.id}`,
-              label: place.title,
-              name: place.title,
-              context: 'Grenoble',
-              lat: place.lat,
-              lon: place.lon,
-              score: 1,
-            });
-          }}
           searchBar={
             <SearchBarMobile
               inline
@@ -3558,12 +3668,13 @@ function App() {
 
       {!isMobile && (
         <Sidebar
-          stop={selectedStop}
-          isOpen={isSidebarOpen}
-          onClose={handleSidebarClose}
-          initialSelectedLines={initialSelectedLines}
-          selectedLines={selectedLines}
-          onSelectedLinesChange={setSelectedLines}
+          stop={lab.open ? lab.stop : selectedStop}
+          isOpen={lab.open || isSidebarOpen}
+          frozen={lab.open}
+          onClose={lab.open ? closeLab : handleSidebarClose}
+          initialSelectedLines={lab.open ? undefined : initialSelectedLines}
+          selectedLines={lab.open ? lab.selectedLines : selectedLines}
+          onSelectedLinesChange={lab.open ? setLabSelectedLines : setSelectedLines}
           compactMode={compactMode}
           autoSync={autoSync}
           refreshIntervalMs={parseRefreshInterval(refreshInterval)}
@@ -3626,14 +3737,16 @@ function App() {
 
       {isMobile && (
         <SidebarMobile
-          stop={selectedStop}
-          isOpen={isSidebarOpen}
+          closeSignal={stopSheetCloseSignal}
+          stop={lab.open ? lab.stop : selectedStop}
+          isOpen={lab.open || isSidebarOpen}
+          frozen={lab.open}
           sidebarState={sidebarState}
-          onClose={handleSidebarClose}
+          onClose={lab.open ? closeLab : handleSidebarClose}
           onOpen={handleSidebarOpen}
-          initialSelectedLines={initialSelectedLines}
-          selectedLines={selectedLines}
-          onSelectedLinesChange={setSelectedLines}
+          initialSelectedLines={lab.open ? undefined : initialSelectedLines}
+          selectedLines={lab.open ? lab.selectedLines : selectedLines}
+          onSelectedLinesChange={lab.open ? setLabSelectedLines : setSelectedLines}
           compactMode={compactMode}
           autoSync={autoSync}
           refreshIntervalMs={parseRefreshInterval(refreshInterval)}
@@ -3750,6 +3863,7 @@ function App() {
       <DeferredPanel isOpen={sharedSelection !== null}>
         {sharedSelection && (
           <SharedMobilitySidebar
+            collapseSignal={mapPanSignal}
             isOpen={sharedSelection !== null}
             onClose={() => { setSharedSelection(null); setHighlightedVehicleId(null); }}
             onVehicleFocus={setHighlightedVehicleId}

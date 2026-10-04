@@ -24,10 +24,10 @@ export const OPERATOR_TILES: NetworkTile[] = [
   { asset: 'Bulle', selectedAsset: 'Bulle-selectionned', codes: ['BUL'], label: 'Bulles' },
   { asset: 'Transaltitude', selectedAsset: 'Transaltitude-selectionned', codes: ['TRA'], label: 'Transaltitude' },
   { asset: 'MCovoit', selectedAsset: 'MCovoit-selectionned', codes: ['MCO'], label: "M'Covoit" },
-  { asset: 'TER', selectedAsset: 'TER-selectionned', codes: ['SNC'], label: 'TER' },
 ];
 
 export const LYON_TILE: NetworkTile = { asset: 'TCL', selectedAsset: 'TCL-selectionned', codes: ['TCL'], label: 'Lyon' };
+export const SNCF_TILE: NetworkTile = { asset: 'SNCF', selectedAsset: 'SNCF-selectionned', codes: ['SNC'], label: 'SNCF' };
 
 const CITY_ASSETS: Record<string, string> = {
   STAN: 'STAN',
@@ -57,7 +57,7 @@ export const CITY_TILES: NetworkTile[] = (gtfsNetworks as Array<{ code: string; 
     label: network.city,
   }));
 
-export const TILE_CODES = new Set([...NETWORK_TILES, ...OPERATOR_TILES, LYON_TILE, ...CITY_TILES].flatMap(tile => tile.codes));
+export const TILE_CODES = new Set([...NETWORK_TILES, ...OPERATOR_TILES, LYON_TILE, SNCF_TILE, ...CITY_TILES].flatMap(tile => tile.codes));
 export const SECONDARY_NETWORKS = NETWORKS.filter(network => !TILE_CODES.has(network.code) && network.provider !== 'gtfs');
 
 export const CITY_NETWORKS = NETWORKS.filter(network => !TILE_CODES.has(network.code) && network.provider === 'gtfs');

@@ -2,9 +2,10 @@ import type { AllLinesLine } from '../services/allLines';
 import { GTFS_NETWORKS, gtfsLineStyle, gtfsShortName } from '../services/gtfsNetwork';
 import { isGtfsNetworkId } from '../services/gtfsNetworkIds';
 import { tclAsCatalogLine, tclSolidStyle } from './tclLogos';
+import { sncfLineStyle } from '../services/sncfNetwork';
 
 export const isForeignLineId = (id: string | null | undefined) =>
-  String(id ?? '').startsWith('TCL:') || isGtfsNetworkId(id);
+  String(id ?? '').startsWith('TCL:') || String(id ?? '').startsWith('SNC:') || isGtfsNetworkId(id);
 
 export function foreignAsCatalogLine(line: {
   id: string;
@@ -15,6 +16,16 @@ export function foreignAsCatalogLine(line: {
   textColor?: string;
 }): AllLinesLine {
   if (String(line.id).startsWith('TCL:')) return tclAsCatalogLine(line);
+  if (String(line.id).startsWith('SNC:')) {
+    return {
+      id: line.id,
+      shortName: line.shortName || String(line.id).slice(4),
+      longName: line.longName || line.name || '',
+      color: sncfLineStyle(line.id).backgroundColor,
+      textColor: sncfLineStyle(line.id).color,
+      family: 'other',
+    };
+  }
   const style = foreignSolidStyle(line);
   return {
     id: line.id,
@@ -29,6 +40,7 @@ export function foreignAsCatalogLine(line: {
 export function foreignSolidStyle(line: { id: string; color?: string; textColor?: string }): { backgroundColor: string; color: string } | null {
   const id = String(line.id);
   if (id.startsWith('TCL:')) return tclSolidStyle(id);
+  if (id.startsWith('SNC:')) return sncfLineStyle(id);
   if (isGtfsNetworkId(id)) {
     return gtfsLineStyle(id) ?? (line.color ? { backgroundColor: line.color, color: line.textColor ?? '#FFFFFF' } : null);
   }

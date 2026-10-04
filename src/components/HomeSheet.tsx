@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { IS_NANCY } from '../site';
-import { resolveLineStyle } from '../utils/lineColors';
-import { motion, useMotionTemplate, AnimatePresence } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useMotionTemplate } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
 import {
   MapSheetShell,
@@ -11,75 +9,35 @@ import {
   readSafeAreaBottom,
   useSnapValue,
   COMPACT_ITEM_WIDTH,
-  LAST_SNAP,
 } from './MapSheet';
 import {
   MapPinIcon,
   ExclamationTriangleIcon,
-  ChevronRightIcon,
-  ClockIcon,
   ArrowsRightLeftIcon,
   StarIcon,
   UserCircleIcon,
 } from '@heroicons/react/24/solid';
 import { MobileNavBar, NAV_ITEM_WIDTH, type MobileNavItem } from './MobileNavBar';
-import { loadRecentStops, type RecentStop } from '../utils/recentStops';
-import { PlacesCarousel } from './PlacesCarousel';
-import type { Place } from '../services/places';
+import { NearbyDepartures } from './NearbyDepartures';
 
-const HOME_FACES = AVATARS;
-
-const HOME_SPIN_MS = 110000;
-
-const HOME_FACE_SIZE = 32;
-const HOME_MIN_GAP = HOME_FACE_SIZE + 5;
-
-function homeFacePoint(angle: number, radius: number): { x: number; y: number } {
-  const radians = (angle * Math.PI) / 180;
-  return { x: Math.cos(radians) * radius, y: Math.sin(radians) * radius };
-}
-
-function homeSpacedSlot(
-  taken: Array<{ angle: number; radius: number }>
-): { angle: number; radius: number } {
-  let best = { angle: 0, radius: 0 };
-  let bestDistance = -1;
-
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const candidate = { angle: Math.random() * 360, radius: 58 + Math.random() * 22 };
-    const point = homeFacePoint(candidate.angle, candidate.radius);
-    let nearest = Infinity;
-    for (const other of taken) {
-      const otherPoint = homeFacePoint(other.angle, other.radius);
-      nearest = Math.min(nearest, Math.hypot(point.x - otherPoint.x, point.y - otherPoint.y));
-    }
-    if (nearest >= HOME_MIN_GAP) return candidate;
-    if (nearest > bestDistance) {
-      bestDistance = nearest;
-      best = candidate;
-    }
-  }
-  return best;
-}
-
-interface HomeFace {
-  key: number;
-  emoji: string;
-  angle: number;
-  radius: number;
-  spunBy: number;
-}
-import { AVATARS, type Account } from '../services/account';
-import type { Stop, Line } from '../types';
+import type { Stop } from '../types';
 import { findClosestStops } from '../utils/geo';
-import { getStopLines } from '../services/api';
 import type { Favorite } from '../services/favorites';
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
-import { AtmoPanel } from './AtmoPanel';
-import type { AtmoReport, Commune } from '../services/atmo';
 
-type MarqueeLine = Pick<Line, 'id' | 'shortName' | 'color' | 'textColor'>;
 const HEADER_SWAP_HEIGHT = 76;
+
+export const HOME_SHEET_ID = 'gl-home-sheet';
+const NEARBY_SETTLE_MS = 1000;
+let nearbyAutoOpened = false;
+const HOME_PEEK_SNAP = 2;
+const HOME_MID_SNAP = 3;
+const HOME_LAST_SNAP = 4;
+const HOME_PEEK_HEIGHT = 0.36;
+
+function homeSnapPoints(base: number[]): number[] {
+  return [...base.slice(0, 2), HOME_PEEK_HEIGHT, ...base.slice(2)];
+}
 
 function SheetHeaderSwap({
   navBar,
@@ -88,8 +46,8 @@ function SheetHeaderSwap({
   navBar: React.ReactNode;
   searchBar?: React.ReactNode;
 }) {
-  const navOpacity = useSnapValue([1, 1, 0, 0], 1);
-  const searchOpacity = useSnapValue([0, 0, 1, 1], 0);
+  const navOpacity = useSnapValue([1, 1, 0, 0, 0], 1);
+  const searchOpacity = useSnapValue([0, 0, 1, 1, 1], 0);
   const { currentSnap } = Sheet.useContext();
   const searchTakesOver = (currentSnap ?? 1) > 1;
 
@@ -114,12 +72,12 @@ function SheetHeaderSwap({
 }
 
 function SheetBackdrop({ onTap, snapIdx }: { onTap: () => void; snapIdx: number }) {
-  const opacity = useSnapValue([0, 0, 0, 0.5], 0);
+  const opacity = useSnapValue([0, 0, 0, 0, 0.5], 0);
   const backgroundColor = useMotionTemplate`rgba(2, 6, 23, ${opacity})`;
 
   return (
     <Sheet.Backdrop
-      {...(snapIdx > 1 ? { onTap } : {})}
+      {...(snapIdx === HOME_LAST_SNAP ? { onTap } : {})}
       style={{
         backgroundColor,
         opacity: 1,
@@ -148,33 +106,24 @@ interface HomeSheetProps {
   onLeaveRoute?: () => void;
   navCompact?: boolean;
   onOpenItinerary: () => void;
-  onOpenLines?: () => void;
-  onNavigateToPlace?: (place: Place) => void;
-  allLines?: MarqueeLine[];
   onSnapChange?: (snapIdx: number) => void;
   onSheetProgress?: (progress: number) => void;
+  onHomeProgress?: (progress: number) => void;
+  lowerOnMapPanSignal?: number;
 
   snapToMiniSignal?: number;
 
   openToMidSignal?: number;
   language: 'fr' | 'en';
   theme?: 'light' | 'dark';
-  account?: Account | null;
-  accountPhotoUrl?: string | null;
-  walletCardCount?: number;
-  onOpenProfile?: () => void;
   favorites: Favorite[];
   favoriteDetails: FavoriteDetail[];
 
-  atmoReport: AtmoReport | null;
-  atmoLoading: boolean;
-  onAtmoCommuneChange: (commune: Commune) => void;
-  atmoFollowMap?: boolean;
   searchBar?: React.ReactNode;
 }
 
 const getText = (language: 'fr' | 'en') => ({
-  nearbyTitle: language === 'fr' ? 'Arrêts à proximité' : 'Nearby stops',
+  nearPrefix: language === 'fr' ? 'Près de' : 'Near',
   noLocation: language === 'fr' ? 'Position non disponible' : 'Location unavailable',
   noLocationHint:
     language === 'fr'
@@ -186,13 +135,11 @@ const getText = (language: 'fr' | 'en') => ({
     : 'No favorites yet. Add one by opening a stop and tapping the star.',
   loading: language === 'fr' ? 'Chargement…' : 'Loading…',
   noDepartures: language === 'fr' ? 'Aucun passage prévu' : 'No upcoming departures',
-  quickAccess: language === 'fr' ? 'Accès rapide' : 'Quick access',
   navHome: language === 'fr' ? 'Autour' : 'Nearby',
   navRoute: language === 'fr' ? 'Itinéraire' : 'Route',
   navFavorites: language === 'fr' ? 'Favoris' : 'Favorites',
   navAccount: language === 'fr' ? 'Compte' : 'Account',
   placesTitle: language === 'fr' ? 'Lieux' : 'Places',
-  recentTitle: language === 'fr' ? 'Récents' : 'Recents',
   homeLabel: language === 'fr' ? 'Domicile' : 'Home',
   workLabel: language === 'fr' ? 'Bureau' : 'Work',
   addLabel: language === 'fr' ? 'Ajouter' : 'Add',
@@ -200,135 +147,9 @@ const getText = (language: 'fr' | 'en') => ({
   trafficLabel: language === 'fr' ? 'Infotrafic' : 'Traffic info',
   itineraryLabel: language === 'fr' ? 'Itinéraire' : 'Itinerary',
   settingsLabel: language === 'fr' ? 'Réglages' : 'Settings',
-  walletLabel: language === 'fr' ? 'GreLines Wallet' : 'GreLines Wallet',
-  linesLabel: language === 'fr' ? 'Explorer les lignes' : 'Explore lines',
-  visitTitle: language === 'fr' ? 'À visiter' : 'Worth a visit',
   remove: language === 'fr' ? 'Retirer' : 'Remove',
   direction: language === 'fr' ? 'Direction' : 'To',
 });
-
-function isRoundLine(label: string): boolean {
-  const n = label.toUpperCase().trim();
-  if (n === 'A' || n === 'B' || n === 'C' || n === 'D' || n === 'E') return true;
-  return /^C\d+$/.test(n);
-}
-
-function sortLinesForBadge<T extends MarqueeLine>(lines: T[]): T[] {
-  const priority = (l: T) => {
-    const n = (l.shortName || l.id).toUpperCase();
-    if (['A', 'B', 'C', 'D', 'E'].includes(n)) return 0;
-    if (/^C\d+$/.test(n)) return 1;
-    return 2;
-  };
-  return [...lines].sort((a, b) => {
-    const dp = priority(a) - priority(b);
-    if (dp !== 0) return dp;
-    return (a.shortName || a.id).localeCompare(b.shortName || b.id, undefined, { numeric: true });
-  });
-}
-
-function MiniLineBadge({ line }: { line: MarqueeLine }) {
-  const label = line.shortName || line.id;
-  const round = isRoundLine(label);
-  const style = resolveLineStyle(line.id, line.color, line.textColor);
-  return (
-    <div
-      className={`h-6 min-w-[24px] px-1.5 flex items-center justify-center text-[0.625rem] font-extrabold flex-shrink-0 ${
-        round ? 'rounded-full' : 'rounded-md'
-      }`}
-      style={style}
-    >
-      {label}
-    </div>
-  );
-}
-
-const URBAN_NETWORKS = ['SEM', 'SE2', 'GSV', 'TPV'];
-
-const PROXIMO_CODES = [
-  '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25',
-  '30', '31', '32', '33', '34', '35', '36', '37',
-  '80', '82', '84', '85', '86', '88', '89', '90', '91', '92',
-  'N62', 'N93', 'N94', 'N97', 'N98', 'N99',
-];
-
-function networkOf(id: string): string {
-  return id.split(':')[0].toUpperCase().trim();
-}
-
-function codeOf(line: MarqueeLine): string {
-  return (line.shortName || line.id).toUpperCase().trim();
-}
-
-function isMarqueeLine(line: MarqueeLine): boolean {
-  if (IS_NANCY) {
-    if (networkOf(line.id) !== 'STAN') return false;
-    const stanCode = codeOf(line);
-    return /^T[1-5]$/.test(stanCode) || stanCode === 'COROL' || /^CIT\d$/.test(stanCode) || /^1\d$|^2[0-2]$/.test(stanCode);
-  }
-  if (!URBAN_NETWORKS.includes(networkOf(line.id))) return false;
-  const code = codeOf(line);
-  if (['A', 'B', 'C', 'D', 'E'].includes(code)) return true;
-  if (/^C([1-9]|1[01])$/.test(code)) return true;
-  return PROXIMO_CODES.includes(code);
-}
-
-function dedupeByCode(lines: MarqueeLine[]): MarqueeLine[] {
-  const best = new Map<string, MarqueeLine>();
-  for (const line of lines) {
-    const code = codeOf(line);
-    const current = best.get(code);
-    if (!current || URBAN_NETWORKS.indexOf(networkOf(line.id)) < URBAN_NETWORKS.indexOf(networkOf(current.id))) {
-      best.set(code, line);
-    }
-  }
-  return [...best.values()];
-}
-
-const LINES_MARQUEE_SPEED_PX_PER_SEC = 40;
-
-function LinesMarquee({ lines }: { lines: MarqueeLine[] }) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [durationSec, setDurationSec] = useState(20);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    const update = () => {
-      const loopWidth = track.scrollWidth / 2;
-      if (loopWidth > 0) {
-        setDurationSec(Math.max(8, loopWidth / LINES_MARQUEE_SPEED_PX_PER_SEC));
-      }
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(track);
-    return () => observer.disconnect();
-  }, [lines]);
-
-  return (
-    <div className="relative w-full overflow-hidden">
-      <div
-        ref={trackRef}
-        className="flex w-max items-center gap-1.5"
-        style={{
-          animationName: 'footer-marquee',
-          animationDuration: `${durationSec}s`,
-          animationTimingFunction: 'linear',
-          animationIterationCount: 'infinite',
-        }}
-      >
-        {lines.map(line => (
-          <MiniLineBadge key={`a-${line.id}`} line={line} />
-        ))}
-        {lines.map(line => (
-          <MiniLineBadge key={`b-${line.id}`} line={line} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 
 export const HomeSheet = ({
   isOpen,
@@ -350,106 +171,73 @@ export const HomeSheet = ({
   onOpenItinerary,
   onSnapChange,
   onSheetProgress,
+  onHomeProgress,
+  lowerOnMapPanSignal,
   snapToMiniSignal,
   openToMidSignal,
   language,
   theme = 'dark',
-  account,
-  accountPhotoUrl,
-  walletCardCount = 0,
-  onNavigateToPlace,
-  onOpenProfile,
-  atmoReport,
-  atmoLoading,
-  onAtmoCommuneChange,
-  atmoFollowMap = false,
-  onOpenLines,
-  allLines = [],
   searchBar,
 }: HomeSheetProps) => {
   const text = getText(language);
-  const RECENTS_SHOWN = 4;
 
   const isLight = theme === 'light';
 
-  const [recents, setRecents] = useState<RecentStop[]>([]);
-  useEffect(() => {
-    if (isOpen) setRecents(loadRecentStops().slice(0, RECENTS_SHOWN));
-  }, [isOpen]);
 
-  const [homeCloud, setHomeCloud] = useState<HomeFace[]>([]);
-  const homeSeedRef = useRef(0);
-
-  useEffect(() => {
-    if (!isOpen || !account) {
-      setHomeCloud([]);
-      return;
-    }
-    const startedAt = Date.now();
-    const draw = (taken: Array<{ angle: number; radius: number }>): HomeFace => {
-      const slot = homeSpacedSlot(taken);
-      return {
-        key: homeSeedRef.current++,
-        emoji: HOME_FACES[Math.floor(Math.random() * HOME_FACES.length)],
-        angle: slot.angle,
-        radius: slot.radius,
-        spunBy: (((Date.now() - startedAt) % HOME_SPIN_MS) / HOME_SPIN_MS) * 360,
-      };
-    };
-
-    const initial: HomeFace[] = [];
-    for (let i = 0; i < 5; i++) initial.push(draw(initial));
-    setHomeCloud(initial);
-
-    const timer = window.setInterval(() => {
-      setHomeCloud((current) => {
-        if (current.length === 0) return current;
-        const next = [...current];
-        const index = Math.floor(Math.random() * next.length);
-        next[index] = draw(current.filter((_, i) => i !== index));
-        return next;
-      });
-    }, 3000);
-
-    return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, account?.cardCode]);
   const surfaceClass = isLight
     ? 'bg-white border border-slate-200 shadow-[0_20px_50px_rgba(148,163,184,0.18)]'
     : 'bg-[#2c2d31]/90 border-white/10 shadow-xl';
   const titleClass = isLight ? 'text-slate-900' : 'text-white';
   const mutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
 
-  const marqueeLines = useMemo(
-    () => sortLinesForBadge(dedupeByCode(allLines.filter(isMarqueeLine))),
-    [allLines]
-  );
+  const [nearbyOrigin, setNearbyOrigin] = useState(currentLocation);
+  const [originSettling, setOriginSettling] = useState(false);
+  useEffect(() => {
+    if (!currentLocation) return;
+    if (!nearbyOrigin) {
+      setNearbyOrigin(currentLocation);
+      return;
+    }
+    if (nearbyOrigin.lat === currentLocation.lat && nearbyOrigin.lon === currentLocation.lon) {
+      setOriginSettling(false);
+      return;
+    }
+    setOriginSettling(true);
+    const timer = window.setTimeout(() => {
+      setNearbyOrigin(currentLocation);
+      setOriginSettling(false);
+    }, NEARBY_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [currentLocation?.lat, currentLocation?.lon]);
 
   const nearby = useMemo(() => {
-    if (!currentLocation) return [];
-    return findClosestStops(stops, currentLocation.lat, currentLocation.lon, 5);
-  }, [stops, currentLocation?.lat, currentLocation?.lon]);
+    if (!nearbyOrigin) return [];
+    const seen = new Set<string>();
+    return findClosestStops(stops, nearbyOrigin.lat, nearbyOrigin.lon, 10)
+      .filter(({ stop }) => {
+        const key = stop.name.trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 4);
+  }, [stops, nearbyOrigin]);
 
-  const [nearbyLines, setNearbyLines] = useState<Record<string, Line[]>>({});
-  useEffect(() => {
-    if (!isOpen || nearby.length === 0) return;
-    let cancelled = false;
-    nearby.forEach(({ stop }) => {
-      if (nearbyLines[stop.id]) return;
-      getStopLines(stop.id)
-        .then(lines => {
-          if (cancelled) return;
-          setNearbyLines(prev => ({ ...prev, [stop.id]: lines }));
-        })
-        .catch(() => { });
-    });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, nearby.map(n => n.stop.id).join('|')]);
 
   const sheetRef = useRef<SheetRef>(null);
+  useEffect(() => {
+    if (!lowerOnMapPanSignal || locked) return;
+    if (snapIdxRef.current >= HOME_MID_SNAP) sheetRef.current?.snapTo(HOME_PEEK_SNAP);
+  }, [lowerOnMapPanSignal]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [snapIdx, setSnapIdx] = useState<number>(1);
+  const snapIdxRef = useRef(snapIdx);
+  snapIdxRef.current = snapIdx;
+  const openOnceNearbyReady = useCallback(() => {
+    if (nearbyAutoOpened || locked || !isOpen) return;
+    nearbyAutoOpened = true;
+    if (snapIdxRef.current <= 1) sheetRef.current?.snapTo(HOME_MID_SNAP);
+  }, [locked, isOpen]);
   const safeBottom = useMemo(readSafeAreaBottom, []);
   const [activeTab, setActiveTab] = useState('home');
 
@@ -464,11 +252,13 @@ export const HomeSheet = ({
 
   const onSheetProgressRef = useRef(onSheetProgress);
   useEffect(() => { onSheetProgressRef.current = onSheetProgress; }, [onSheetProgress]);
+  const onHomeProgressRef = useRef(onHomeProgress);
+  useEffect(() => { onHomeProgressRef.current = onHomeProgress; }, [onHomeProgress]);
 
   const handleSnapChange = (idx: number) => {
     setSnapIdx(idx);
     onSnapChange?.(idx);
-    if (idx !== LAST_SNAP && scrollRef.current) {
+    if (idx !== HOME_LAST_SNAP && scrollRef.current) {
       scrollRef.current.scrollTo({ top: 0, behavior: 'instant' });
     }
   };
@@ -489,7 +279,7 @@ export const HomeSheet = ({
         onLeaveFavorites?.();
         onLeaveRoute?.();
         if (snapIdx > 1) collapseToMini();
-        else sheetRef.current?.snapTo(2);
+        else sheetRef.current?.snapTo(HOME_MID_SNAP);
       },
     },
     {
@@ -570,7 +360,7 @@ export const HomeSheet = ({
   useEffect(() => {
     if (openToMidSignal === undefined || openToMidSignal === 0) return;
     if (!isOpen) return;
-    sheetRef.current?.snapTo(2);
+    sheetRef.current?.snapTo(HOME_MID_SNAP);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openToMidSignal]);
 
@@ -580,14 +370,15 @@ export const HomeSheet = ({
       style={{ zIndex: layerAbove ? 1001 : 10 }}
       isOpen={isOpen}
       onClose={onClose}
-      snapPoints={mapSheetSnapPoints({ bottomInset: safeBottom, noHandle: locked, compact: navCompact })}
+      snapPoints={homeSnapPoints(mapSheetSnapPoints({ bottomInset: safeBottom, noHandle: locked, compact: navCompact }))}
       initialSnap={1}
+      onOpenEnd={() => sheetRef.current?.snapTo(Math.max(1, snapIdxRef.current))}
       disableDrag={locked || searchOpen}
       disableDismiss
       onSnap={handleSnapChange}
       onOpenStart={() => {}}
     >
-	    <MapSheetShell isLight={isLight} bottomInset={safeBottom} collapsedPadding={collapsedPadding}>
+	    <MapSheetShell isLight={isLight} bottomInset={safeBottom} collapsedPadding={collapsedPadding} peek id={HOME_SHEET_ID}>
 	        <Sheet.Header style={{ position: 'relative', zIndex: 30 }}>
 	          <div
 	            className={`flex justify-center overflow-hidden transition-all duration-300 ${
@@ -602,267 +393,63 @@ export const HomeSheet = ({
 	          </div>
 	          <SheetHeaderSwap
 	            navBar={<MobileNavBar items={navItems} activeKey={activeTab} isLight={isLight} compact={navCompact} />}
-	            searchBar={locked ? undefined : searchBar}
-	          />
-	          <div
-	            className={`mx-5 border-t transition-opacity duration-300 ${
-	              isLight ? 'border-slate-200' : 'border-white/10'
-	            } ${snapIdx > 1 ? 'opacity-100' : 'opacity-0'}`}
+	            searchBar={locked || !searchBar ? undefined : (
+              <div className="flex w-full min-w-0 items-center gap-2">
+                <div className="min-w-0 flex-1">{searchBar}</div>
+                {!searchOpen && (
+                  <button
+                    type="button"
+                    onClick={onOpenTraffic}
+                    aria-label={text.trafficLabel}
+                    title={text.trafficLabel}
+                    className={`flex h-[58px] w-[58px] flex-shrink-0 items-center justify-center rounded-full border shadow-2xl backdrop-blur-xl transition active:scale-95 ${
+                      isLight ? 'border-slate-200 bg-white/95 shadow-slate-200/60' : 'border-white/10 bg-slate-950/82 shadow-black/30'
+                    }`}
+                  >
+                    <ExclamationTriangleIcon className={`h-6 w-6 ${isLight ? 'text-slate-700' : 'text-white'}`} />
+                  </button>
+                )}
+              </div>
+            )}
 	          />
 	        </Sheet.Header>
         <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
-          <ProgressWatcher onSheetProgressRef={onSheetProgressRef} />
-	        <MapSheetBody>
+          <ProgressWatcher onSheetProgressRef={onSheetProgressRef} onHomeProgressRef={onHomeProgressRef} />
+	        <MapSheetBody peek>
 	          <div
 	            ref={scrollRef}
-	            className={`flex-1 pb-12 ${snapIdx === LAST_SNAP ? 'overflow-y-auto' : 'overflow-hidden'}`}
+	            className={`flex-1 pb-12 ${snapIdx === HOME_LAST_SNAP ? 'overflow-y-auto' : 'overflow-hidden'}`}
 	          >
 	            <div className="px-5 pt-3 space-y-7">
               <section>
-                <div className="mb-3 flex items-center gap-2 px-1">
-                  <h3
-                    className={`text-sm font-semibold leading-none ${titleClass}`}
+                {nearby[0] && (
+                  <div
+                    className={`truncate px-1 pb-5 text-[0.9375rem] font-normal ${titleClass}`}
                     style={isLight ? { color: '#0f172a' } : undefined}
                   >
-                    {text.recentTitle}
-                  </h3>
-                </div>
-                {recents.length === 0 ? (
+                    {text.nearPrefix} {nearby[0].stop.name}
+                  </div>
+                )}
+                {nearby.length === 0 ? (
                   <div className={`rounded-[28px] p-6 text-center ${surfaceClass}`}>
-                    <p className={`text-sm ${mutedClass}`}>
-                      {language === 'fr'
-                        ? 'Les arrêts que vous ouvrez apparaîtront ici.'
-                        : 'Stops you open will show up here.'}
-                    </p>
+                    <p className={`text-sm font-semibold ${titleClass}`}>{text.noLocation}</p>
+                    <p className={`mt-1 text-sm ${mutedClass}`}>{text.noLocationHint}</p>
                   </div>
                 ) : (
-                  <div className={`overflow-hidden rounded-[28px] ${surfaceClass}`}>
-                    {recents.map((entry, idx) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() =>
-                          onStopClick({
-                            id: entry.id,
-                            name: entry.name,
-                            city: entry.city,
-                            lat: entry.lat,
-                            lon: entry.lon,
-                          } as Stop)
-                        }
-                        className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition active:bg-black/5 ${
-                          idx > 0 ? (isLight ? 'border-t border-slate-200' : 'border-t border-white/5') : ''
-                        }`}
-                      >
-                        <ClockIcon className={`h-5 w-5 flex-shrink-0 ${mutedClass}`} />
-                        <span className="min-w-0 flex-1">
-                          <span
-                            className={`block truncate text-[0.9375rem] font-semibold ${titleClass}`}
-                            style={isLight ? { color: '#0f172a' } : undefined}
-                          >
-                            {entry.name}
-                          </span>
-                          {entry.city && (
-                            <span className={`block truncate text-xs ${mutedClass}`}>{entry.city}</span>
-                          )}
-                        </span>
-                        <ChevronRightIcon className={`h-4 w-4 flex-shrink-0 ${mutedClass}`} />
-                      </button>
-                    ))}
-                  </div>
+                  <NearbyDepartures
+                    nearby={nearby}
+                    active={isOpen && !locked}
+                    language={language}
+                    isLight={isLight}
+                    titleClass={titleClass}
+                    mutedClass={mutedClass}
+                    onStopClick={onStopClick}
+                    onReady={openOnceNearbyReady}
+                    pending={originSettling}
+                  />
                 )}
               </section>
 
-              {account && onOpenProfile && (
-                <section>
-                  <button
-                    type="button"
-                    onClick={onOpenProfile}
-                    className={`w-full overflow-hidden rounded-[28px] p-5 text-left transition active:scale-[0.99] ${surfaceClass}`}
-                  >
-                    <div className="relative mx-auto flex h-40 w-40 items-center justify-center">
-                      <motion.div
-                        className="absolute inset-0 z-10"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: HOME_SPIN_MS / 1000, repeat: Infinity, ease: 'linear' }}
-                      >
-                        <AnimatePresence>
-                          {homeCloud.map((face) => (
-                            <motion.span
-                              key={face.key}
-                              className="absolute flex h-8 w-8 items-center justify-center rounded-full bg-white text-base shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
-                              style={{
-                                left: `calc(50% + ${
-                                  Math.cos((face.angle * Math.PI) / 180) * face.radius
-                                }px - 1rem)`,
-                                top: `calc(50% + ${
-                                  Math.sin((face.angle * Math.PI) / 180) * face.radius
-                                }px - 1rem)`,
-                              }}
-                              initial={{ opacity: 0, scale: 0.5 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.5 }}
-                              transition={{ duration: 1.1, ease: 'easeInOut' }}
-                              aria-hidden
-                            >
-                              <motion.span
-                                className="block"
-                                animate={{ rotate: [-face.spunBy, -face.spunBy - 360] }}
-                                transition={{
-                                  duration: HOME_SPIN_MS / 1000,
-                                  repeat: Infinity,
-                                  ease: 'linear',
-                                }}
-                              >
-                                {face.emoji}
-                              </motion.span>
-                            </motion.span>
-                          ))}
-                        </AnimatePresence>
-                      </motion.div>
-
-                      <span className="relative z-0 flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white text-[2.625rem] shadow-[0_6px_20px_rgba(0,0,0,0.3)]">
-                        {account.avatarUrl ? (
-                          <img src={account.avatarUrl} alt="" className="h-full w-full object-cover" />
-                        ) : account.avatarEmoji ? (
-                          <span aria-hidden>{account.avatarEmoji}</span>
-                        ) : accountPhotoUrl ? (
-                          <img src={accountPhotoUrl} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          <span aria-hidden>{'\u{1F642}'}</span>
-                        )}
-                      </span>
-                    </div>
-
-                    {[account.firstName, account.lastName].some(Boolean) && (
-                      <p className={`mt-4 text-sm font-medium leading-none ${mutedClass}`}>
-                        {[account.firstName, account.lastName].filter(Boolean).join(' ')}
-                      </p>
-                    )}
-
-                    <p
-                      className={`text-[1.25rem] font-extrabold leading-none ${
-                        [account.firstName, account.lastName].some(Boolean) ? 'mt-1.5' : 'mt-4'
-                      } ${titleClass}`}
-                      style={isLight ? { color: '#0f172a' } : undefined}
-                    >
-                      {account.pseudo}
-                    </p>
-
-                    <div
-                      className={`mt-3 rounded-2xl px-4 py-3.5 ${
-                        isLight ? 'bg-slate-100' : 'bg-white/5'
-                      }`}
-                    >
-                      <p
-                        className={`tabular text-[1.75rem] font-extrabold leading-none ${titleClass}`}
-                        style={isLight ? { color: '#0f172a' } : undefined}
-                      >
-                        {account.travellersHelped.toLocaleString('fr-FR')}
-                      </p>
-                      <p className={`mt-1 text-sm ${mutedClass}`}>
-                        {language === 'fr'
-                          ? 'personnes que vous avez aidées'
-                          : 'travellers you have helped'}
-                      </p>
-                    </div>
-                  </button>
-                </section>
-              )}
-
-	              <section>
-	                <h3 className={`mb-3 px-1 text-xs font-semibold uppercase tracking-wider ${mutedClass}`}>
-	                  {text.visitTitle}
-	                </h3>
-	                <PlacesCarousel
-	                  language={language}
-	                  isLight={isLight}
-	                  onNavigate={onNavigateToPlace}
-	                />
-	              </section>
-
-	              <section>
-	                <h3 className={`mb-3 px-1 text-xs font-semibold uppercase tracking-wider ${mutedClass}`}>
-	                  {text.quickAccess}
-	                </h3>
-	                <div className="grid grid-cols-2 gap-3">
-	                  <button
-	                    onClick={onOpenTraffic}
-	                    className={`rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
-	                      isLight
-	                        ? 'border border-slate-200 bg-white shadow-[0_12px_30px_rgba(148,163,184,0.14)]'
-	                        : 'border border-white/10 bg-white/5'
-	                    }`}
-	                  >
-	                    <ExclamationTriangleIcon className="mb-3 h-7 w-7 text-amber-300" />
-	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.trafficLabel}</span>
-	                  </button>
-	                  <button
-	                    onClick={onOpenFavorites}
-	                    className={`rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
-	                      isLight
-	                        ? 'border border-slate-200 bg-white shadow-[0_12px_30px_rgba(148,163,184,0.14)]'
-	                        : 'border border-white/10 bg-white/5'
-	                    }`}
-	                  >
-	                    <StarIcon className="mb-3 h-7 w-7 text-amber-400" />
-	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.favoritesTitle}</span>
-	                  </button>
-
-	                  {!IS_NANCY && (
-	                  <button
-	                    onClick={onOpenAccount}
-	                    className={`rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
-	                      isLight
-	                        ? 'border border-slate-200 bg-white shadow-[0_12px_30px_rgba(148,163,184,0.14)]'
-	                        : 'border border-white/10 bg-white/5'
-	                    }`}
-	                  >
-	                    <span className="relative mb-3 block h-7">
-	                      {Array.from({ length: Math.min(3, Math.max(1, walletCardCount)) }).map(
-	                        (_, index) => (
-	                          <img
-	                            key={index}
-	                            src="/assets/oura.png"
-	                            alt=""
-	                            draggable={false}
-	                            className="absolute top-0 h-7 w-auto rounded-[3px]"
-	                            style={{ left: index * 9, zIndex: index }}
-	                          />
-	                        ),
-	                      )}
-	                    </span>
-	                    <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.walletLabel}</span>
-	                  </button>
-	                  )}
-	                  {onOpenLines && marqueeLines.length > 0 && (
-	                    <button
-	                      onClick={onOpenLines}
-	                      className={`overflow-hidden rounded-[24px] p-4 text-left transition active:scale-[0.98] ${
-	                        isLight
-	                          ? 'border border-slate-200 bg-white shadow-[0_12px_30px_rgba(148,163,184,0.14)]'
-	                          : 'border border-white/10 bg-white/5'
-	                      }`}
-	                    >
-	                      <div className="mb-3">
-	                        <LinesMarquee lines={marqueeLines} />
-	                      </div>
-	                      <span className={`text-sm font-bold ${titleClass}`} style={isLight ? { color: '#0f172a' } : undefined}>{text.linesLabel}</span>
-	                    </button>
-	                  )}
-{!IS_NANCY && (
-	                  <div className="col-span-2 aspect-square overflow-hidden rounded-[24px]">
-	                    <AtmoPanel
-	                      report={atmoReport}
-	                      loading={atmoLoading}
-	                      onCommuneChange={onAtmoCommuneChange}
-	                      language={language}
-	                      followMap={atmoFollowMap}
-	                    />
-	                  </div>
-	                  )}
-	                </div>
-	              </section>
             </div>
           </div>
         </MapSheetBody>
@@ -876,23 +463,38 @@ export const HomeSheet = ({
 
 function ProgressWatcher({
   onSheetProgressRef,
+  onHomeProgressRef,
 }: {
   onSheetProgressRef: React.MutableRefObject<((p: number) => void) | undefined>;
+  onHomeProgressRef: React.MutableRefObject<((p: number) => void) | undefined>;
 }) {
   useEffect(() => {
     let rafId = 0;
     let lastProgress = -1;
+    let lastHome = -1;
 
     const tick = () => {
       const containers = document.getElementsByClassName('react-modal-sheet-container');
       if (containers.length > 0) {
-        const rect = (containers[0] as HTMLElement).getBoundingClientRect();
         const vh = window.innerHeight;
-        const visibleHeight = Math.max(0, vh - rect.top);
+        let visibleHeight = 0;
+        for (const container of Array.from(containers)) {
+          const rect = (container as HTMLElement).getBoundingClientRect();
+          if (rect.height === 0) continue;
+          visibleHeight = Math.max(visibleHeight, vh - rect.top);
+        }
         const progress = Math.min(1, Math.max(0, visibleHeight / vh));
         if (Math.abs(progress - lastProgress) > 0.001) {
           lastProgress = progress;
           onSheetProgressRef.current?.(progress);
+        }
+        const home = document.getElementById(HOME_SHEET_ID);
+        const homeRect = home?.getBoundingClientRect();
+        const homeShown = Boolean(homeRect && homeRect.height > 0 && homeRect.top < vh - 1);
+        const homeProgress = homeShown ? Math.min(1, Math.max(0, (vh - homeRect!.top) / vh)) : lastHome;
+        if (homeShown && Math.abs(homeProgress - lastHome) > 0.001) {
+          lastHome = homeProgress;
+          onHomeProgressRef.current?.(homeProgress);
         }
       }
       rafId = requestAnimationFrame(tick);
@@ -900,7 +502,7 @@ function ProgressWatcher({
 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [onSheetProgressRef]);
+  }, [onSheetProgressRef, onHomeProgressRef]);
 
   return null;
 }

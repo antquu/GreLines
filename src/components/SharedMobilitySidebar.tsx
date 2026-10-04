@@ -23,6 +23,7 @@ import {
 } from '../services/sharedMobility';
 
 interface SharedMobilitySidebarProps {
+  collapseSignal?: number;
   isOpen: boolean;
   onClose: () => void;
   operator: SharedOperator;
@@ -54,7 +55,7 @@ const OPERATOR_BRAND: Record<SharedOperator, string> = {
 const OPERATORS: Record<SharedOperator, { label: string; color: string; logo: string; logoDark?: string }> = {
 
   citiz: { label: 'Citiz', color: '#2563eb', logo: '/assets/citiz.png', logoDark: '/assets/citiz_white.png' },
-  voi: { label: 'Voi', color: '#ec4899', logo: '/assets/voi.png' },
+  voi: { label: 'Voi', color: '#f46c63', logo: '/assets/voi.png' },
   velostan: { label: 'vélOstan’lib', color: VELO_GREEN, logo: '/assets/velostanlib-logo.svg' },
 };
 
@@ -586,6 +587,7 @@ function VehicleActions({
 
 export function SharedMobilitySidebar({
   isOpen,
+  collapseSignal,
   onClose,
   operator,
   points,
@@ -889,7 +891,7 @@ export function SharedMobilitySidebar({
   }
 
   return (
-    <MapSheet initialSnap={2} compactSnap footer={footer} isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={100}>
+    <MapSheet initialSnap={2} compactSnap collapseSignal={collapseSignal} footer={footer} isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={100}>
       <MobileSheetContent
         full={<>{body}{zoneLegend}</>}
         hasFooter={Boolean(footer)}

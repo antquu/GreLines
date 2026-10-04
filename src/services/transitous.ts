@@ -1,9 +1,18 @@
 import { rememberRouteColor } from '../utils/routeLineResolver';
 import { GTFS_NETWORKS, gtfsLineIdForShort, gtfsNetworkOfAgency, preloadGtfsNetwork } from './gtfsNetwork';
+import { loadSncfCatalog } from './sncfNetwork';
 
 const ENDPOINT = 'https://api.transitous.org/api/v5/plan';
 
 const TCL_PREFIX = 'fr-lyon-tcl_';
+
+const PUBLIC_TRANSIT_MODES = 'TRAM,SUBWAY,BUS,RAIL,FERRY,FUNICULAR,AERIAL_LIFT';
+
+const NON_SNCF_OPERATORS = /\b(trenitalia|flixbus|blablacar|renfe|eurostar)\b/i;
+
+const RESULT_COUNT = 6;
+
+const cleanRouteName = (value?: string) => value?.replace(/^(REF|COM)~[^~]*~[^~]*~/i, '').trim() || undefined;
 const TAG_PREFIX = 'fr-horaires-theoriques-du-reseau-tag_';
 
 type NetworkMatcher = (agencyName: string | undefined) => string | null;
@@ -151,16 +160,10 @@ const normalizeStation = (name: string) =>
 let sncfRoutes: Promise<SncfRoute[]> | null = null;
 
 function loadSncfRoutes(): Promise<SncfRoute[]> {
-  sncfRoutes ??= fetch('https://data.mobilites-m.fr/api/routers/default/index/routes')
-    .then(response => (response.ok ? response.json() : []))
-    .then((routes: Array<{ id: string; shortName?: string; longName?: string }>) =>
-      routes
-        .filter(route => route.id.startsWith('SNC:') && route.shortName && route.longName)
-        .map(route => ({
-          code: route.shortName!,
-          ends: route.longName!.split(/\s[-/]\s/).map(normalizeStation).filter(Boolean),
-        })),
-    )
+  sncfRoutes ??= loadSncfCatalog()
+    .then(catalog => (catalog?.lines ?? [])
+      .filter(line => /^[A-Z]{1,2}\d{1,3}[A-Z]?$/.test(line.code))
+      .map(line => ({ code: line.code, ends: line.name.split(/\s\/\s/).map(normalizeStation).filter(Boolean) })))
     .catch(() => {
       sncfRoutes = null;
       return [];
@@ -195,6 +198,11 @@ function lineOf(leg: MotisLeg, routes: SncfRoute[], matchNetwork: NetworkMatcher
     return { routeId, routeShortName: short };
   }
   const isSncf = /SNCF|\bTER\b|OUIGO/i.test(leg.agencyName ?? '') || /^TER\b/i.test(leg.displayName ?? '');
+  if (isSncf && /^(HIGHSPEED_RAIL|LONG_DISTANCE|NIGHT_RAIL)$/.test(leg.mode)) {
+    const label = `${leg.displayName ?? ''} ${leg.routeShortName ?? ''}`;
+    const kind = /ouigo/i.test(label) ? 'OUIGO' : /intercit/i.test(label) ? 'IC' : leg.mode === 'NIGHT_RAIL' ? 'IC' : 'TGV';
+    return { routeId: `SNC:${kind}`, routeShortName: kind };
+  }
   if (isSncf) {
     const shortIsLine = /^[A-Z]{1,2}\d{1,3}[A-Z]?$/i.test(short);
     const code = (shortIsLine ? short : '') || trainLineCode(leg, routes);
@@ -239,7 +247,7 @@ function toOtpLeg(leg: MotisLeg, fromName: string, toName: string, routes: SncfR
           routeId: line.routeId,
           route: line.routeShortName,
           routeShortName: line.routeShortName,
-          routeLongName: leg.routeLongName,
+          routeLongName: cleanRouteName(leg.routeLongName),
           routeColor: leg.routeColor,
           routeTextColor: leg.routeTextColor,
           agencyName: leg.agencyName,
@@ -278,8 +286,9 @@ export async function planTransitousOtp(options: {
     toPlace: `${options.toLatitude},${options.toLongitude}`,
     time: when.toISOString(),
     arriveBy: options.arriveBy ? 'true' : 'false',
-    numItineraries: '4',
+    numItineraries: '8',
     detailedTransfers: 'false',
+    transitModes: PUBLIC_TRANSIT_MODES,
   });
   if (options.walkSpeed) params.set('pedestrianSpeed', String(options.walkSpeed));
   if (options.wheelchair) params.set('pedestrianProfile', 'WHEELCHAIR');
@@ -296,7 +305,12 @@ export async function planTransitousOtp(options: {
   const codes = new Set((data.itineraries ?? []).flatMap(itinerary => itinerary.legs.map(leg => matchNetwork(leg.agencyName))));
   await Promise.all([...codes].filter((code): code is string => Boolean(code)).map(code => preloadGtfsNetwork(code)));
 
-  return (data.itineraries ?? []).map(itinerary => ({
+  const kept = (data.itineraries ?? [])
+    .filter(itinerary => !itinerary.legs.some(leg => NON_SNCF_OPERATORS.test(leg.agencyName ?? '')))
+    .sort((a, b) => (ms(a.startTime) ?? 0) - (ms(b.startTime) ?? 0))
+    .slice(0, RESULT_COUNT);
+
+  return kept.map(itinerary => ({
     duration: itinerary.duration,
     startTime: ms(itinerary.startTime),
     endTime: ms(itinerary.endTime),

@@ -1,6 +1,6 @@
 import gtfsNetworks from '../data/siteNetworks';
 
-export type ProviderId = 'mtag' | 'tcl' | 'gtfs';
+export type ProviderId = 'mtag' | 'tcl' | 'gtfs' | 'sncf';
 
 export interface TransitProvider {
   id: ProviderId;
@@ -13,7 +13,7 @@ export interface TransitProvider {
   localCode(value: string): string;
 }
 
-const FOREIGN_NETWORK_CODES = new Set(['TCL', ...(gtfsNetworks as Array<{ code: string }>).map(network => network.code)]);
+const FOREIGN_NETWORK_CODES = new Set(['TCL', 'SNC', ...(gtfsNetworks as Array<{ code: string }>).map(network => network.code)]);
 
 const MTAG: TransitProvider = {
   id: 'mtag',
@@ -88,7 +88,26 @@ const GTFS: TransitProvider = {
   },
 };
 
-export const PROVIDERS: TransitProvider[] = [MTAG, TCL, GTFS];
+const SNCF: TransitProvider = {
+  id: 'sncf',
+  label: 'SNCF',
+
+  owns(value) {
+    const raw = String(value);
+    return raw.startsWith('SNC:') || raw.startsWith('SNC_');
+  },
+
+  networkOf(value) {
+    return SNCF.owns(value) ? 'SNC' : null;
+  },
+
+  localCode(value) {
+    const raw = String(value);
+    return SNCF.owns(raw) ? raw.slice(4) : raw;
+  },
+};
+
+export const PROVIDERS: TransitProvider[] = [MTAG, TCL, GTFS, SNCF];
 
 export function providerOf(value: string): TransitProvider | null {
   for (const provider of PROVIDERS) {
@@ -107,6 +126,7 @@ export function localCode(value: string): string {
 
 export function providerOfNetwork(networkCode: string): ProviderId {
   if (networkCode === 'TCL') return 'tcl';
+  if (networkCode === 'SNC') return 'sncf';
   if ((gtfsNetworks as Array<{ code: string }>).some(network => network.code === networkCode)) return 'gtfs';
   return 'mtag';
 }

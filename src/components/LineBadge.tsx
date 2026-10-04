@@ -4,6 +4,7 @@ import { resolveLineStyle, isGrenobleNetworkLine, isSncfLine, SNCF_TER_COLOR } f
 import type { Line } from '../types';
 import { tclBadge, tclWholeLogo } from '../utils/tclLogos';
 import { TclModeCorner } from './TclLogo';
+import { rerLine } from '../utils/rer';
 
 type MinimalLine = Pick<Line, 'id' | 'shortName' | 'color' | 'textColor'> & {
   hasTraffic?: boolean;
@@ -115,7 +116,7 @@ export function LineBadge({
     const overlayStyle = resolveLineStyle(`SEM:${overlayLine}`);
 
     return (
-      <div className={`${dim} relative flex items-center justify-center flex-shrink-0 ${round ? 'rounded-full' : 'rounded-lg'} overflow-hidden ${activeClass} ${opacityClass}`}>
+      <div className={`${dim} relative flex items-center justify-center flex-shrink-0 rounded-full ${activeClass} ${opacityClass}`}>
         <img
           src={badgeImage('/assets/bus_relais.svg')}
           alt="Bus relais"
@@ -176,15 +177,49 @@ export function LineBadge({
     }
   }
 
+  const rer = rerLine(line.routeId || line.id);
+  if (rer) {
+    const corner = size === 'xs' ? 10 : size === 'sm' ? 14 : size === 'lg' ? 18 : 16;
+    return (
+      <div
+        className={`${dim} relative flex flex-shrink-0 items-center justify-center rounded-lg font-extrabold ${activeClass} ${opacityClass}`}
+        style={rer.style}
+      >
+        <span>{rer.letter}</span>
+        <img
+          src={badgeImage(rer.logo)}
+          alt={rer.logoAlt}
+          width={corner}
+          height={corner}
+          className="pointer-events-none absolute -left-1.5 -top-1.5 drop-shadow-[0_0_1.5px_rgba(0,0,0,0.7)]"
+        />
+        {line.hasTraffic && (
+          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400/90 text-amber-900 border border-amber-200 shadow-sm">
+            <ExclamationTriangleIcon className="w-2.5 h-2.5" />
+          </span>
+        )}
+      </div>
+    );
+  }
+
   if (isSncfLine(line.routeId || line.id)) {
     const rawCode = (line.shortName || line.id).toUpperCase().replace(/^[A-Z0-9]{3}[:_]/, '');
-    const sncfCode = rawCode === 'TGV' || /^[A-Z]{0,2}\d{1,3}[A-Z]?$/.test(rawCode) ? rawCode : 'TER';
+    const sncfCode = rawCode && rawCode.length <= 5 ? rawCode : 'TER';
     const logoDim =
       size === 'xs' ? 'h-2 w-auto' : size === 'sm' ? 'h-2.5 w-auto' : size === 'lg' ? 'h-4 w-auto' : 'h-3 w-auto';
     const codeDim =
       size === 'xs' ? 'text-[0.5rem]' : size === 'sm' ? 'text-[0.625rem]' : size === 'lg' ? 'text-sm' : 'text-[0.6875rem]';
     const bareLogoDim =
       size === 'xs' ? 'h-3 w-auto' : size === 'sm' ? 'h-4 w-auto' : size === 'lg' ? 'h-6 w-auto' : 'h-5 w-auto';
+    if (sncfCode === 'TGV') {
+      return (
+        <div
+          className={`${dim} relative flex flex-shrink-0 items-center justify-center rounded-lg bg-white px-1 ${activeClass} ${opacityClass}`}
+        >
+          <img src={badgeImage('/assets/tgv-inoui.svg')} alt="TGV INOUI" className="h-auto w-full object-contain" />
+        </div>
+      );
+    }
     return (
       <div
         className={`${dim} relative flex flex-shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg ${activeClass} ${opacityClass}`}

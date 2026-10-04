@@ -12,7 +12,6 @@ export const NETWORK_FILTERS: Array<{ code: string; label: string }> = [
   { code: 'TPV', label: 'Pays Voironnais' },
   { code: 'BUL', label: 'Bulles' },
   { code: 'C38', label: 'Cars Région' },
-  { code: 'SNC', label: 'TER' },
   { code: 'MCO', label: "M'Covoit" },
   { code: 'TRA', label: 'Transaltitude' },
   { code: 'FUN', label: 'Funiculaire' },

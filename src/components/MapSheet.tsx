@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { interpolate, motion, useMotionTemplate, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
-import { Sheet } from 'react-modal-sheet';
+import { Sheet, type SheetRef } from 'react-modal-sheet';
 import { NAV_ITEM_WIDTH } from './MobileNavBar';
 
 export const NAVBAR_SNAP_PX = 108;
@@ -15,6 +15,8 @@ export const SHEET_PADDING = 8;
 export const NAVBAR_LIFT_PX = 10;
 
 export const SHEET_RADIUS = 30;
+
+export const SHEET_FLOATING_BOTTOM_RADIUS = 46;
 
 export const LAST_SNAP = 3;
 
@@ -100,7 +102,8 @@ function CompactProgressProvider({ children }: { children: React.ReactNode }) {
   return <MapSheetCompactContext.Provider value={progress}>{children}</MapSheetCompactContext.Provider>;
 }
 
-function perSnap<T>(values: [T, T, T, T], compact: boolean, compactValue?: T): T[] {
+function perSnap<T>(values: [T, T, T, T], compact: boolean, compactValue?: T, peek = false): T[] {
+  if (peek) return [values[0], values[1], values[2], values[2], values[3]];
   if (!compact) return values;
   return [values[0], values[1], compactValue ?? values[2], values[2], values[3]];
 }
@@ -111,6 +114,8 @@ export function MapSheetShell({
   collapsedPadding,
   zIndex = 10,
   compact = false,
+  peek = false,
+  id,
   children,
 }: {
   isLight: boolean;
@@ -118,12 +123,14 @@ export function MapSheetShell({
   collapsedPadding: number;
   zIndex?: number;
   compact?: boolean;
+  peek?: boolean;
+  id?: string;
   children: React.ReactNode;
 }) {
   const { y, yProgress } = Sheet.useContext();
 
   const paddingHorizontal = useSnapValue(
-    perSnap([collapsedPadding, collapsedPadding, SHEET_PADDING, 0], compact),
+    perSnap([collapsedPadding, collapsedPadding, SHEET_PADDING, 0], compact, undefined, peek),
     collapsedPadding,
   );
   const paddingBottom = useSnapValue(
@@ -136,11 +143,12 @@ export function MapSheetShell({
       ],
       compact,
       SHEET_PADDING + NAVBAR_LIFT_PX + bottomInset,
+      peek,
     ),
     SHEET_PADDING + bottomInset,
   );
   const borderBottomRadius = useSnapValue(
-    perSnap([SHEET_RADIUS, SHEET_RADIUS, SHEET_RADIUS, 0], compact),
+    perSnap([SHEET_RADIUS, SHEET_RADIUS, SHEET_FLOATING_BOTTOM_RADIUS, 0], compact, undefined, peek),
     SHEET_RADIUS,
   );
 
@@ -168,6 +176,7 @@ export function MapSheetShell({
 
   return (
     <Sheet.Container
+      id={id}
       onPointerDownCapture={onPointerDownCapture}
       onPointerMoveCapture={onPointerMoveCapture}
       onPointerUpCapture={onPointerEnd}
@@ -194,8 +203,8 @@ export function MapSheetShell({
   );
 }
 
-export function MapSheetBody({ children, compact = false }: { children: React.ReactNode; compact?: boolean }) {
-  const opacity = useSnapValue(perSnap([0, 0, 1, 1], compact, 1), 1);
+export function MapSheetBody({ children, compact = false, peek = false }: { children: React.ReactNode; compact?: boolean; peek?: boolean }) {
+  const opacity = useSnapValue(perSnap([0, 0, 1, 1], compact, 1, peek), 1);
   return <motion.div className="flex min-h-0 flex-1 flex-col" style={{ opacity }}>{children}</motion.div>;
 }
 
@@ -247,6 +256,7 @@ export function MapSheet({
   zIndex = 10,
   initialSnap = 2,
   compactSnap = false,
+  collapseSignal,
   footer,
   children,
 }: {
@@ -256,6 +266,7 @@ export function MapSheet({
   zIndex?: number;
   initialSnap?: number;
   compactSnap?: boolean;
+  collapseSignal?: number;
   footer?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -283,14 +294,25 @@ export function MapSheet({
   const hasSettledRef = useRef(false);
   useEffect(() => { hasSettledRef.current = false; }, [isOpen]);
 
+  const sheetRef = useRef<SheetRef>(null);
+  const currentSnapRef = useRef(effectiveInitialSnap);
+  const restingSnap = compactSnap ? COMPACT_SNAP_INDEX : NAVBAR_SNAP + 1;
+  useEffect(() => {
+    if (!collapseSignal || !isOpen) return;
+    if (currentSnapRef.current > restingSnap) sheetRef.current?.snapTo(restingSnap);
+  }, [collapseSignal]);
+
   return (
     <Sheet
+      ref={sheetRef}
       style={{ zIndex }}
       isOpen={isOpen}
       onClose={onClose}
       snapPoints={snapPoints}
       initialSnap={effectiveInitialSnap}
+      onOpenEnd={() => sheetRef.current?.snapTo(effectiveInitialSnap)}
       onSnap={index => {
+        currentSnapRef.current = index;
         if (index > NAVBAR_SNAP) { hasSettledRef.current = true; return; }
         if (hasSettledRef.current) onClose();
       }}

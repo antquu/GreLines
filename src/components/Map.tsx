@@ -70,6 +70,8 @@ interface MapProps {
   visibleStopPoints?: ServedStopPoint[] | null;
 
   onCenterChange?: (lat: number, lon: number) => void;
+  onUserPan?: () => void;
+  onMoveSettled?: (lat: number, lon: number) => void;
   pickMode?: 'from' | 'to' | 'home' | 'work' | null;
   onMapClick?: (lat: number, lon: number) => void;
   onLongPress?: (lat: number, lon: number) => void;
@@ -118,7 +120,7 @@ const CITIZ_LAYER_ID = 'citiz-circles';
 const VOI_LAYER_ID = 'voi-circles';
 const VELOSTAN_LAYER_ID = 'velostan-circles';
 const CITIZ_COLOR = '#2563eb';
-const VOI_COLOR = '#ec4899';
+const VOI_COLOR = '#f46c63';
 const VELOSTAN_COLOR = '#ee3424';
 const SHARED_LAYER_IDS: Record<SharedOperator, string> = {
   citiz: CITIZ_LAYER_ID,
@@ -211,6 +213,9 @@ export interface MapRef {
     options?: { padding?: number; duration?: number }
   ) => void;
   clearStopLabel: () => void;
+  setBottomPadding: (px: number) => void;
+  distancePx: (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => number | null;
+  snapCenterTo: (lat: number, lon: number) => void;
 }
 
 interface ViewportBounds {
@@ -404,7 +409,7 @@ const animateFeatureCollectionProgress = (
 };
 
 const MapComponentBase = (
-  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
+  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, onUserPan, onMoveSettled, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
   ref: ForwardedRef<MapRef>
 ) => {
   const { settings: perf } = usePerfSettings();
@@ -664,6 +669,10 @@ const MapComponentBase = (
 
   const onCenterChangeRef = useRef(onCenterChange);
   useEffect(() => { onCenterChangeRef.current = onCenterChange; }, [onCenterChange]);
+  const onUserPanRef = useRef(onUserPan);
+  useEffect(() => { onUserPanRef.current = onUserPan; }, [onUserPan]);
+  const onMoveSettledRef = useRef(onMoveSettled);
+  useEffect(() => { onMoveSettledRef.current = onMoveSettled; }, [onMoveSettled]);
 
   const updateViewport = useCallback(() => {
     if (!mapRef.current) return;
@@ -749,6 +758,23 @@ const MapComponentBase = (
           duration: 1000,
         });
       }
+    },
+    setBottomPadding: (px: number) => {
+      const map = mapRef.current?.getMap?.();
+      if (!map) return;
+      const current = map.getPadding();
+      if (Math.abs((current.bottom ?? 0) - px) < 1) return;
+      map.setPadding({ top: 0, left: 0, right: 0, bottom: px });
+    },
+    distancePx: (a, b) => {
+      const map = mapRef.current?.getMap?.();
+      if (!map) return null;
+      const pa = map.project([a.lon, a.lat]);
+      const pb = map.project([b.lon, b.lat]);
+      return Math.hypot(pa.x - pb.x, pa.y - pb.y);
+    },
+    snapCenterTo: (lat: number, lon: number) => {
+      mapRef.current?.easeTo({ center: [lon, lat], duration: 260 });
     },
     centerOnLocation: (lat: number, lon: number) => {
       if (mapRef.current) {
@@ -992,6 +1018,8 @@ const MapComponentBase = (
       mouseLongPressFiredRef.current = false;
       return;
     }
+    const clicked = event.lngLat;
+    if (clicked && consumeLocationPick(clicked.lat, clicked.lng)) return;
     const features: any[] = event.features ?? [];
     const feature = features.find(f => /^(citiz|voi|velostan)-/.test(f?.layer?.id ?? ''))
       ?? nearestStopFeature(features, event.point, mapRef.current?.getMap?.())
@@ -1115,6 +1143,7 @@ const MapComponentBase = (
     longPressTimerRef.current = window.setTimeout(() => {
       longPressTimerRef.current = null;
       navigator.vibrate?.(15);
+      if (consumeLocationPick(lat, lng)) return;
       onLongPress(lat, lng);
     }, LONG_PRESS_MS);
   }, [cancelLongPress, onLongPress]);
@@ -1154,6 +1183,7 @@ const MapComponentBase = (
       stopWatchingMouseRef.current?.();
       stopWatchingMouseRef.current = null;
       mouseLongPressFiredRef.current = true;
+      if (consumeLocationPick(lat, lng)) return;
       onLongPress(lat, lng);
     }, LONG_PRESS_MS);
   }, [handleMouseUp, onLongPress]);
@@ -1315,7 +1345,12 @@ const MapComponentBase = (
           markMapMoving();
           handleMapMove();
         }}
-        onMoveEnd={updateViewport}
+        onMoveEnd={() => {
+          updateViewport();
+          const center = mapRef.current?.getCenter();
+          if (center) onMoveSettledRef.current?.(center.lat, center.lng);
+        }}
+        onDragStart={() => onUserPanRef.current?.()}
         onZoomEnd={updateViewport}
         interactiveLayerIds={[STOPS_LAYER_ID, STOPS_HIT_LAYER_ID]}
         cursor={hoveredStopId ? 'pointer' : undefined}

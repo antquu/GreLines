@@ -1,4 +1,5 @@
 import { stripHtml } from '../utils/stripHtml';
+import { DepartureCard, DepartureList, MotionTime, useExitMode, useFirstPaint, useGroupMotion } from './DepartureMotion';
 import { ScrollingText } from './ScrollingText';
 import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
 ﻿import { motion } from 'framer-motion';
@@ -37,6 +38,7 @@ interface SidebarProps {
   initialSelectedLines?: Set<string>;
 
   selectedLines?: Set<string>;
+  frozen?: boolean;
   onSelectedLinesChange?: (lines: Set<string>) => void;
   compactMode: boolean;
   autoSync: boolean;
@@ -224,6 +226,7 @@ const ExportModal = ({ isOpen, onClose, exportUrl, position, language }: { isOpe
 export const Sidebar = ({
   stop,
   isOpen,
+  frozen = false,
   onClose,
   initialSelectedLines,
   selectedLines: controlledSelectedLines,
@@ -291,7 +294,7 @@ export const Sidebar = ({
   const reconnects = useReconnectCount();
 
   const updateDepartures = async () => {
-    if (!currentStopDetail || !isOpen || currentStopDetail.lines.length === 0) return;
+    if (!currentStopDetail || !isOpen || frozen || currentStopDetail.lines.length === 0) return;
     try {
       const updatedStopDetail = await refreshStopDepartures(currentStopDetail);
       setCurrentStopDetail(prev => {
@@ -371,7 +374,7 @@ export const Sidebar = ({
 
 
   useEffect(() => {
-    if (!isOpen || !currentStopDetail) return;
+    if (!isOpen || !currentStopDetail || frozen) return;
     let active = true;
 
     const load = async () => {
@@ -415,6 +418,26 @@ export const Sidebar = ({
     });
   })();
 
+  const motionScope = currentStopDetail?.id ?? '';
+  const { exitMode, filtering } = useExitMode([...selectedLines].sort().join(','));
+  const firstPaint = useFirstPaint(motionScope);
+  const groupMotion = useGroupMotion(
+    motionScope,
+    groupedDepartures.map(group => ({
+      key: `${group.first.lineId}::${group.first.destination}`,
+      minutes: group.first.departureTime,
+      count: group.count,
+    })),
+  );
+
+  const orderedGroups = [...groupedDepartures].sort((a, b) => {
+    const priority = getDeparturePriority(b.first) - getDeparturePriority(a.first);
+    if (priority !== 0) return priority;
+    const rankA = groupMotion.get(`${a.first.lineId}::${a.first.destination}`)?.rank ?? 0;
+    const rankB = groupMotion.get(`${b.first.lineId}::${b.first.destination}`)?.rank ?? 0;
+    return rankA - rankB;
+  });
+
   const toggleExpanded = (key: string) => {
     setExpandedItems(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
   };
@@ -425,7 +448,7 @@ export const Sidebar = ({
       animate={{ x: isOpen ? 0 : -420, opacity: isOpen ? 1 : 0 }}
       exit={{ x: -420, opacity: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="relative fixed left-0 top-0 h-screen w-96 border-r border-slate-800 shadow-2xl z-60 overflow-y-auto bg-slate-900"
+      className="relative fixed left-0 top-0 h-screen w-96 border-r border-slate-800 shadow-2xl z-60 overflow-y-auto [scrollbar-gutter:stable] bg-slate-900"
     >
       {isOpen && currentStopDetail && (
         <div className={compactMode ? 'p-4 pb-10' : 'p-6 pb-10'}>
@@ -624,7 +647,7 @@ export const Sidebar = ({
           <div>
             <h3 className="section-caps text-slate-400 mb-3">{text.nextDepartures}</h3>
             <div className="space-y-2">
-              {groupedDepartures.length > 0 ? groupedDepartures.map((group, index) => {
+              {groupedDepartures.length > 0 ? (<DepartureList exitMode={exitMode} className="flex flex-col gap-3">{orderedGroups.map((group, index) => {
                 const departure = group.first;
                 const second = group.second;
                 const displayTime = getDepartureDisplay(departure, language);
@@ -634,8 +657,8 @@ export const Sidebar = ({
                 const isChrono = isChronoLine(departure.lineId);
                 const itemKey = `${departure.lineId}::${departure.destination}`;
                 const isExpanded = expandedItems.has(itemKey);
-                const departureLine = currentStopDetail.lines.find(l => l.id === departure.lineId || l.shortName === departure.lineShortName || l.shortName === departure.lineId);
-                const secondLine = second ? currentStopDetail.lines.find(l => l.id === second.lineId || l.shortName === second.lineShortName || l.shortName === second.lineId) : undefined;
+                const departureLine = currentStopDetail.lines.find(l => l.id === departure.lineId) ?? currentStopDetail.lines.find(l => l.shortName === departure.lineShortName || l.shortName === departure.lineId);
+                const secondLine = second ? (currentStopDetail.lines.find(l => l.id === second.lineId) ?? currentStopDetail.lines.find(l => l.shortName === second.lineShortName || l.shortName === second.lineId)) : undefined;
                 const departureRef = departureLine?.routeId || departure.routeId || departure.lineId;
                 const secondRef = second ? (secondLine?.routeId || second.routeId || second.lineId) : '';
                 const departureIsSem = isGrenobleNetworkLine(departureRef);
@@ -649,10 +672,12 @@ export const Sidebar = ({
                   departure.destination,
                   minutesUntil,
                 );
+                const cardMotion = groupMotion.get(itemKey);
+                const cardKey = cardMotion?.renderKey ?? itemKey;
 
                 if (second) {
                   return (
-                    <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
+                    <DepartureCard key={cardKey} index={index} firstPaint={firstPaint} filtering={filtering}
                       className="border border-slate-700 rounded-2xl overflow-hidden bg-slate-800">
                           <motion.button
                         onClick={() => toggleExpanded(itemKey)}
@@ -681,7 +706,7 @@ export const Sidebar = ({
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                             <div className="text-right">
-                              <p className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`}>{renderDepartureTime(displayTime)}</p>
+                              <MotionTime className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`} value={renderDepartureTime(displayTime)} valueKey={displayTime} change={cardMotion?.change ?? null} />
                               {!compactMode && (isTram || isChrono) && <OccupancyDisplay occupancy={departure.occupancy} />}
                             </div>
                             {isExpanded ? <ChevronUpIcon className="w-4 h-4 text-slate-400" /> : <ChevronDownIcon className="w-4 h-4 text-slate-400" />}
@@ -756,13 +781,13 @@ export const Sidebar = ({
                           />
                         </div>
                       </motion.div>
-                    </motion.div>
+                    </DepartureCard>
                   );
                 }
 
                 if (isTram) {
                   return (
-                    <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
+                    <DepartureCard key={cardKey} index={index} firstPaint={firstPaint} filtering={filtering}
                       className="flex items-center justify-between p-3 rounded-2xl bg-slate-800 border border-slate-700 hover:bg-slate-750 transition">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <DepartureLineBadge
@@ -784,15 +809,15 @@ export const Sidebar = ({
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0 ml-2">
-                        <p className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`}>{renderDepartureTime(displayTime)}</p>
+                        <MotionTime className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`} value={renderDepartureTime(displayTime)} valueKey={displayTime} change={cardMotion?.change ?? null} />
                         {!compactMode && <OccupancyDisplay occupancy={departure.occupancy} />}
                       </div>
-                    </motion.div>
+                    </DepartureCard>
                   );
                 }
 
                 return (
-                  <motion.div key={itemKey} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
+                  <DepartureCard key={cardKey} index={index} firstPaint={firstPaint} filtering={filtering}
                     className="flex items-center justify-between p-3 rounded-2xl border border-slate-700 bg-slate-800 transition hover:bg-slate-750">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <DepartureLineBadge
@@ -816,12 +841,12 @@ export const Sidebar = ({
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0 ml-2">
-                      <p className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`}>{renderDepartureTime(displayTime)}</p>
+                      <MotionTime className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`} value={renderDepartureTime(displayTime)} valueKey={displayTime} change={cardMotion?.change ?? null} />
                       {second && <p className="text-xs text-slate-500">{renderDepartureTime(getDepartureDisplay(second, language))}</p>}
                     </div>
-                  </motion.div>
+                  </DepartureCard>
                 );
-              }) : currentStopDetail.lastUpdate ? (
+              })}</DepartureList>) : currentStopDetail.lastUpdate ? (
                 <NextServiceDepartures
                   stopId={currentStopDetail.id}
                   lines={currentStopDetail.lines}

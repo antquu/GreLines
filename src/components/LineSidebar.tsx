@@ -172,7 +172,21 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
 
   const text = getSidebarText(language);
   const normalizedLineKey = line ? normalizeLineKey(line.id) : null;
-  const lineTraffic = normalizedLineKey ? trafficInfo.get(normalizedLineKey) || [] : [];
+  const [sncfTraffic, setSncfTraffic] = useState<{ lineId: string; details: TrafficDetail[] } | null>(null);
+  useEffect(() => {
+    const id = String(line?.id ?? '');
+    if (!id.startsWith('SNC:')) return;
+    let active = true;
+    void import('../services/sncfNetwork')
+      .then(module => module.sncfLineAlerts(id))
+      .then(details => { if (active) setSncfTraffic({ lineId: id, details }); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [line?.id]);
+  const lineTraffic = [
+    ...(normalizedLineKey ? trafficInfo.get(normalizedLineKey) || [] : []),
+    ...(sncfTraffic && sncfTraffic.lineId === line?.id ? sncfTraffic.details : []),
+  ];
 
   const [isLineFav, setIsLineFav] = useState(false);
   useEffect(() => {
@@ -252,7 +266,20 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
     return byName;
   }, [stops]);
 
+  const [sncfStops, setSncfStops] = useState<{ lineId: string; stops: Stop[] } | null>(null);
+  useEffect(() => {
+    const id = String(line?.id ?? '');
+    if (!id.startsWith('SNC:')) return;
+    let active = true;
+    void import('../services/sncfNetwork')
+      .then(module => module.sncfOrderedStops(id))
+      .then(list => { if (active && list) setSncfStops({ lineId: id, stops: list }); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [line?.id]);
+
   const lineStops = useMemo(() => {
+    if (sncfStops && sncfStops.lineId === line?.id) return sncfStops.stops;
     if (!servedStopPoints || stops.length === 0) return [];
     const uniqueStops = new Map<string, Stop>();
     const nearestAmong = (point: ServedStopPoint, candidates: Stop[]) => {
@@ -276,7 +303,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
     if (!foreignRoute) return found;
     const rank = (stop: Stop) => foreignRoute.order.get(stopNameKey(stop.name)) ?? Number.MAX_SAFE_INTEGER;
     return found.sort((a, b) => rank(a) - rank(b));
-  }, [servedStopPoints, stops, stopsByName, foreignRoute]);
+  }, [servedStopPoints, stops, stopsByName, foreignRoute, sncfStops, line?.id]);
   const renderedStops = lineStops;
 
   const isLineE = normalizedLineKey === 'E';

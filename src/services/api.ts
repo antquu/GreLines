@@ -21,6 +21,9 @@ import {
 } from './offlineSchedule';
 
 import { isInGrenobleArea, planTransitousOtp } from './transitous';
+import { haversineMeters } from '../utils/geo';
+import { applySncfToItineraries } from './sncfLive';
+import { getSncfStopDetail, withNearbySncf } from './sncfNetwork';
 
 const TAG_API_BASE = 'https://data.mobilites-m.fr/api/routers/default';
 
@@ -173,7 +176,7 @@ async function buildOtpParams(
     minTransferTime: '20',
     transferPenalty: '60',
     walkBoardCost: '300',
-    bannedAgencies: 'MCO:MC',
+    bannedAgencies: 'MCO:MC,SNC:SNC',
     walkSpeed: String(options?.walkSpeed ?? 1.4),
     numItineraries: '4',
     wheelchair: options?.wheelchair ? 'true' : 'false',
@@ -249,7 +252,7 @@ export async function planItineraries(options: {
     !isInGrenobleArea(options.toLatitude, options.toLongitude)
   ) {
     try {
-      const itineraries = await planTransitousOtp(options);
+      const itineraries = await applySncfToItineraries(await planTransitousOtp(options));
       return itineraries.map(it => {
         const parsed = parseOtpItinerary(it, options.fromName, options.toName);
         parsed.bikeTransit =
@@ -261,6 +264,16 @@ export async function planItineraries(options: {
       return [];
     }
   }
+
+  const trainCandidates = !options.mode?.includes('BICYCLE')
+    && haversineMeters(options.fromLatitude, options.fromLongitude, options.toLatitude, options.toLongitude) >= TRAIN_RELEVANT_METERS
+    ? planTransitousOtp(options)
+        .then(applySncfToItineraries)
+        .then(found => found
+          .filter(it => it.legs.some(leg => leg.mode === 'RAIL'))
+          .map(it => parseOtpItinerary(it, options.fromName, options.toName)))
+        .catch(() => [] as RouteItinerary[])
+    : Promise.resolve([] as RouteItinerary[]);
 
   const params = await buildOtpParams(
     options.fromLatitude,
@@ -282,8 +295,8 @@ export async function planItineraries(options: {
     const url = `${TAG_API_BASE}/plan?${params.toString()}`;
     const response = await axios.get(url, { headers: TAG_HEADERS });
     const data = response.data;
-    const itineraries = Array.isArray(data?.plan?.itineraries) ? data.plan.itineraries : [];
-    return itineraries.map((it: any) => {
+    const itineraries = await applySncfToItineraries(Array.isArray(data?.plan?.itineraries) ? data.plan.itineraries : []);
+    const local = itineraries.map((it: any) => {
       const parsed = parseOtpItinerary(it, options.fromName, options.toName);
       const legs: any[] = Array.isArray(it.legs) ? it.legs : [];
       parsed.bikeTransit =
@@ -291,8 +304,32 @@ export async function planItineraries(options: {
         legs.some(leg => leg?.mode && leg.mode !== 'BICYCLE' && leg.mode !== 'WALK');
       return parsed;
     });
-  } catch (error) {    return [];
+    return withLiveTrains(local, await trainCandidates);
+  } catch (error) {
+    return await trainCandidates;
   }
+}
+
+const TRAIN_RELEVANT_METERS = 6000;
+
+const usesTrain = (itinerary: RouteItinerary) => itinerary.legs.some(leg => leg?.mode === 'RAIL');
+
+const startOf = (itinerary: RouteItinerary) =>
+  Number(itinerary.allLegs[0]?.startTime ?? 0) || Number(itinerary.dep.replace(':', '')) || 0;
+
+function withLiveTrains(local: RouteItinerary[], trains: RouteItinerary[]): RouteItinerary[] {
+  if (trains.length === 0) return local;
+  const merged = [...local.filter(itinerary => !usesTrain(itinerary)), ...trains];
+  const seen = new Set<string>();
+  return merged
+    .sort((a, b) => startOf(a) - startOf(b))
+    .filter(itinerary => {
+      const key = `${itinerary.dep}|${itinerary.arr}|${itinerary.lineKeys?.join(',') ?? ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 6);
 }
 
 export async function planDirectItinerary(options: {
@@ -370,8 +407,8 @@ const DEPARTURES_CACHE_DURATION = 30 * 1000;
 const NEXT_SERVICE_CACHE_DURATION = 30 * 60 * 1000;
 const ROUTES_CACHE_DURATION = 6 * 60 * 60 * 1000;
 const STOPS_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
-const STOPS_SNAPSHOT_KEY = 'stopsSnapshot_v3';
-const ROUTES_SNAPSHOT_KEY = 'routes_v2';
+const STOPS_SNAPSHOT_KEY = 'stopsSnapshot_v4';
+const ROUTES_SNAPSHOT_KEY = 'routes_v3';
 const TRAFFIC_LINES_STORAGE_KEY = 'greLines_trafficLinesCache_v1';
 const TRAFFIC_LINES_CACHE_TTL_MS = 15 * 60 * 1000;
 let trafficLinesCache: Map<string, TrafficDetail[]> | null = null;
@@ -389,7 +426,7 @@ type StopLinesCacheEntry = { data: Line[]; timestamp: number };
 type StopLinesCacheStore = { version: 1; entries: Record<string, StopLinesCacheEntry> };
 const stopLinesCache = new Map<string, StopLinesCacheEntry>();
 const stopLinesInflight = new Map<string, Promise<Line[]>>();
-const STOP_LINES_CACHE_STORAGE_KEY = 'greLines_stopLinesCache_v2';
+const STOP_LINES_CACHE_STORAGE_KEY = 'greLines_stopLinesCache_v3';
 const STOP_LINES_CACHE_MAX_ENTRIES = 500;
 let stopLinesCacheHydrated = false;
 
@@ -411,7 +448,7 @@ const GRENOBLE_NETWORKS: NetworkDefinition[] = [
   { code: 'FUN', provider: 'mtag', label: 'Funiculaire des Petites Roches', defaultEnabled: true },
   { code: 'TRA', provider: 'mtag', label: 'Transaltitude', defaultEnabled: true },
   { code: 'MCO', provider: 'mtag', label: "M'Covoit ligne+", defaultEnabled: true },
-  { code: 'SNC', provider: 'mtag', label: 'TER — SNCF', defaultEnabled: true, addedInRevision: 2 },
+  { code: 'SNC', provider: 'sncf', label: 'SNCF', defaultEnabled: true, addedInRevision: 7 },
   { code: 'C38', provider: 'mtag', label: 'Cars Région (C38)', defaultEnabled: false },
 
   { code: 'TCL', provider: 'tcl', label: 'TCL — Lyon', defaultEnabled: true, addedInRevision: 6 },
@@ -791,7 +828,7 @@ async function loadRoutes(): Promise<Line[]> {
     const trafficLines = await getTrafficLines();
 
     const lines = routes
-      .filter((r: any) => networkOf(String(r?.id || '')) !== null && !isSchoolRoute(r?.type))
+      .filter((r: any) => providerOf(String(r?.id || ''))?.id === 'mtag' && !isSchoolRoute(r?.type))
       .map((route: any) => {
         const routeId = String(route.id);
         const id = normalizeRouteCode(routeId);
@@ -1444,6 +1481,7 @@ function collectDepartures(data: any, departures: Departure[], seen: Set<string>
         if (!Array.isArray(times)) continue;
 
         const meta = readPattern(pattern);
+        if (meta.patternRouteId && isSncfLine(meta.patternRouteId)) continue;
         const { lineId, destination } = meta;
 
         for (const t of times) {
@@ -1535,6 +1573,7 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
 
           for (const route of routes) {
             const routeId = String(route.id);
+            if (isSncfLine(routeId)) continue;
             const lineId = normalizeRouteCode(routeId);
             if (routeMap.has(routeId)) continue;
 
@@ -1583,6 +1622,7 @@ export async function refreshStopLines(stopId: string): Promise<{ lines: Line[];
 
         for (const route of routes) {
           const routeId = String(route.id);
+          if (isSncfLine(routeId)) continue;
           const lineId = normalizeRouteCode(routeId);
           if (routeMap.has(routeId)) continue;
 
@@ -1612,6 +1652,7 @@ export async function refreshStopLines(stopId: string): Promise<{ lines: Line[];
 }
 
 export async function getStopDetail(stopId: string, prefixes: string[] = activeMtagNetworks()): Promise<StopDetail | null> {
+  if (providerOf(stopId)?.id === 'sncf') return getSncfStopDetail(stopId);
   try {
     const stops = await getAllStops(prefixes);
     let stop = stops.find(s => s.id === stopId);
@@ -1633,12 +1674,12 @@ export async function getStopDetail(stopId: string, prefixes: string[] = activeM
       getStopLines(stop.id),
       getDepartures(stop.id),
     ]);
-    return {
+    return await withNearbySncf({
       ...stop,
       lines,
       departures,
       lastUpdate: new Date(),
-    };
+    });
   } catch (err) {    return null;
   }
 }
@@ -1652,15 +1693,19 @@ export async function refreshStopDepartures(stopDetail: StopDetail): Promise<Sto
     const { getGtfsStopDetail } = await import('./gtfsNetwork');
     return (await getGtfsStopDetail(stopDetail.id)) ?? stopDetail;
   }
+  if (providerOf(stopDetail.id)?.id === 'sncf') {
+    return (await getSncfStopDetail(stopDetail.id)) ?? stopDetail;
+  }
 
   try {
     const departures = await getDepartures(stopDetail.id, true);
 
-    return {
+    return await withNearbySncf({
       ...stopDetail,
+      lines: stopDetail.lines.filter(line => providerOf(line.routeId || line.id)?.id !== 'sncf'),
       departures,
       lastUpdate: new Date(),
-    };
+    });
   } catch (err) {    return stopDetail;
   }
 }

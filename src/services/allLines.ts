@@ -67,7 +67,7 @@ function familyFromType(type: string | undefined): LineFamily {
 
 export async function getAllSemLines(): Promise<AllLinesLine[]> {
   hydrateCache();
-  if (cache) return cache;
+  if (cache) return cache.filter(line => !line.id.startsWith('SNC:'));
   if (inflight) return inflight;
 
   inflight = (async () => {
@@ -85,7 +85,7 @@ export async function getAllSemLines(): Promise<AllLinesLine[]> {
           textColor: withHash(r?.textColor, '#FFFFFF'),
           family: familyFromType(r?.type),
         }))
-        .filter(l => l.shortName);
+        .filter(l => l.shortName && !l.id.startsWith('SNC:'));
       cache = lines;
       persistCache(lines);
       return lines;

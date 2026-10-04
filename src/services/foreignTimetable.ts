@@ -4,6 +4,11 @@ import type { Timetable, TimetableDirection } from './timetable';
 const ficheBase = (network: string) =>
   network === 'TCL' ? '/data/tcl-fiches' : network && /^[A-Z0-9]+$/.test(network) ? `/data/networks/${network}/fiches` : null;
 
+const ficheUrl = (network: string, code: string) =>
+  network === 'SNC'
+    ? `/api/sncf?ressource=fiche&ligne=${encodeURIComponent(code)}`
+    : `${ficheBase(network)}/${encodeURIComponent(code)}.json`;
+
 const splitLineId = (lineId: string) => {
   const raw = String(lineId);
   const at = raw.indexOf(':');
@@ -56,10 +61,9 @@ const fiches = new Map<string, Promise<Fiche | null>>();
 
 export function getLineFiche(lineId: string): Promise<Fiche | null> {
   const { network, code } = splitLineId(lineId);
-  const base = ficheBase(network);
-  if (!base) return Promise.resolve(null);
+  if (network !== 'SNC' && !ficheBase(network)) return Promise.resolve(null);
   if (!fiches.has(lineId)) {
-    const pending = fetch(`${base}/${encodeURIComponent(code)}.json`)
+    const pending = fetch(ficheUrl(network, code))
       .then(response => (response.ok && (response.headers.get('content-type') ?? '').includes('json') ? response.json() as Promise<Fiche> : null))
       .catch(() => null);
     fiches.set(lineId, pending);

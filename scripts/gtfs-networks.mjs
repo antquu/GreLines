@@ -144,6 +144,52 @@ async function buildNetwork(config, today) {
     stationOf.set(stop.id, station);
   }
 
+  const sameName = (a, b) => {
+    if (a === b) return true;
+    const wordsA = a.split(' ');
+    const wordsB = b.split(' ');
+    if (wordsA.at(-1) === wordsB.at(-1)) return true;
+    const [shorter, longer] = wordsA.length <= wordsB.length ? [wordsA, new Set(wordsB)] : [wordsB, new Set(wordsA)];
+    return shorter.every(word => longer.has(word));
+  };
+
+  for (const station of new Set(stationOf.values())) {
+    const keys = [...new Set(station.members.map(memberId => nameKey(stops.get(memberId).name)))];
+    if (keys.length < 2) continue;
+    const family = new Map(keys.map(key => [key, key]));
+    const root = key => (family.get(key) === key ? key : root(family.get(key)));
+    for (let i = 0; i < keys.length; i += 1) {
+      for (let j = i + 1; j < keys.length; j += 1) {
+        if (sameName(keys[i], keys[j])) family.set(root(keys[j]), root(keys[i]));
+      }
+    }
+    const groups = new Map();
+    for (const memberId of station.members) {
+      const stop = stops.get(memberId);
+      const key = root(nameKey(stop.name));
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(stop);
+    }
+    if (groups.size < 2) continue;
+    const [kept, ...detached] = [...groups.values()].sort((a, b) => b.length - a.length);
+    station.members = kept.map(stop => stop.id);
+    station.names = new Set(kept.map(stop => stop.name));
+    if (!kept.some(stop => sameName(nameKey(stop.name), nameKey(station.name)))) station.name = kept[0].name;
+    for (const group of detached) {
+      const lat = group.reduce((sum, stop) => sum + stop.lat, 0) / group.length;
+      const lon = group.reduce((sum, stop) => sum + stop.lon, 0) / group.length;
+      const split = newStation({ ...group[0], lat, lon });
+      for (const stop of group) {
+        split.members.push(stop.id);
+        split.names.add(stop.name);
+        if (stop.wheelchair === '1') split.yes = true;
+        if (stop.wheelchair === '2') split.no = true;
+        stationOf.set(stop.id, split);
+      }
+      stations.set(split.id, split);
+    }
+  }
+
   const shapesOfLine = new Map();
   for (const trip of trips.values()) {
     for (const [, stopId] of trip.stops) stationOf.get(stopId)?.lines.add(trip.code);

@@ -58,6 +58,7 @@ function serverlessFunctions(): Plugin {
       serve('/api/gtfsrt', '/api/gtfsrt.js', []);
       serve('/api/where', '/api/where.js', []);
       serve('/api/pdf', '/api/pdf.js', []);
+      serve('/api/sncf', '/api/sncf.js', ['SNCF_API_KEY']);
     },
   };
 }

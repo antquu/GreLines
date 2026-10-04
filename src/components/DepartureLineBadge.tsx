@@ -4,6 +4,7 @@ import { isSncfLine, resolveLineStyle, SNCF_TER_COLOR } from '../utils/lineColor
 import { relayTramOf } from './LineBadge';
 import { tclBadge } from '../utils/tclLogos';
 import { TclModeCorner } from './TclLogo';
+import { rerLine } from '../utils/rer';
 
 function TrafficMark() {
   return (
@@ -58,6 +59,35 @@ export function DepartureLineBadge({
         >
           <span className="text-[0.5625rem] font-extrabold leading-none">{relayTram}</span>
         </div>
+        {hasTraffic && <TrafficMark />}
+      </div>
+    );
+  }
+
+  const rer = rerLine(routeRef);
+  if (rer) {
+    return (
+      <div
+        className={`relative flex flex-shrink-0 items-center justify-center rounded-2xl font-bold ${sizeClass}`}
+        style={rer.style}
+      >
+        {rer.letter}
+        <img
+          src={badgeImage(rer.logo)}
+          alt={rer.logoAlt}
+          width={15}
+          height={15}
+          className="pointer-events-none absolute -left-1.5 -top-1.5 drop-shadow-[0_0_1.5px_rgba(0,0,0,0.7)]"
+        />
+        {hasTraffic && <TrafficMark />}
+      </div>
+    );
+  }
+
+  if (isSncfLine(routeRef) && /TGV/i.test(label)) {
+    return (
+      <div className={`relative flex flex-shrink-0 items-center justify-center rounded-2xl bg-white px-1 ${sizeClass}`}>
+        <img src={badgeImage('/assets/tgv-inoui.svg')} alt="TGV INOUI" className="h-auto w-full object-contain" />
         {hasTraffic && <TrafficMark />}
       </div>
     );

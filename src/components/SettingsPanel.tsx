@@ -36,6 +36,7 @@ import {
   CITY_NETWORKS,
   CITY_TILES,
   LYON_TILE,
+  SNCF_TILE,
   networkAssetUrl,
   SECONDARY_NETWORKS,
   toggleNetworkCodes,
@@ -769,7 +770,7 @@ export function SettingsPanel({
 
       <Group title={IS_NANCY ? (language === 'fr' ? 'Réseau' : 'Network') : language === 'fr' ? 'Autres réseaux' : 'Other networks'}>
         <NetworkTiles
-          tiles={(IS_NANCY ? CITY_TILES : [LYON_TILE, ...CITY_TILES]).map(tile => ({ ...tile, key: tile.codes.join('+') }))}
+          tiles={(IS_NANCY ? CITY_TILES : [LYON_TILE, SNCF_TILE, ...CITY_TILES]).map(tile => ({ ...tile, key: tile.codes.join('+') }))}
           isActive={key => key.split('+').every(code => perf.networks.includes(code))}
           onToggle={key => toggleNetwork(key.split('+'))}
         />

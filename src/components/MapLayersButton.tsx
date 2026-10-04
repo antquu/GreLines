@@ -14,6 +14,7 @@ interface MapLayersButtonProps {
   bottom: MotionValue<string>;
   opacity: MotionValue<number>;
   scale: MotionValue<number>;
+  pointerEvents?: MotionValue<string>;
 }
 
 const LOGOS: Record<SharedOperator, { file: string; x0: number; x1: number; y0: number; y1: number }> = {
@@ -62,6 +63,7 @@ export function MapLayersButton({
   bottom,
   opacity,
   scale,
+  pointerEvents,
 }: MapLayersButtonProps) {
   const isFr = language === 'fr';
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -85,7 +87,7 @@ export function MapLayersButton({
   return (
     <motion.div
       ref={rootRef}
-      style={{ zIndex: 5, bottom, opacity, scale, width: WIDTH }}
+      style={{ zIndex: 5, bottom, opacity, scale, width: WIDTH, pointerEvents }}
       initial={false}
       className="fixed right-4"
     >

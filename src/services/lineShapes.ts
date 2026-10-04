@@ -87,6 +87,7 @@ export async function getLinesGeometry(
   lines: Pick<Line, 'id' | 'shortName'>[]
 ): Promise<LineGeometry[]> {
   const ids = lines
+    .filter(l => !String(l.id).startsWith('SNC:'))
     .map(l => l.shortName || l.id)
     .filter(Boolean) as string[];
   const results = await Promise.all(ids.map(id => getLineGeometry(id)));
@@ -279,13 +280,15 @@ export async function getLinesGeometryPrecise(
 ): Promise<LineGeometry[]> {
   const tclLines = lines.filter(line => String(line.id).startsWith('TCL:'));
   const gtfsLines = lines.filter(line => isGtfsNetworkId(line.id));
-  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:') && !isGtfsNetworkId(line.id));
+  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:') && !String(line.id).startsWith('SNC:') && !isGtfsNetworkId(line.id));
 
   const ids = mtagLines
     .map(l => l.shortName || l.id)
     .filter(Boolean) as string[];
 
-  const [results, tclGeometries, gtfsGeometries] = await Promise.all([
+  const sncfLines = lines.filter(line => String(line.id).startsWith('SNC:'));
+
+  const [results, tclGeometries, gtfsGeometries, sncfGeometries] = await Promise.all([
     Promise.all(ids.map(id => resolveLineGeometry(id))),
     tclLines.length > 0
       ? import('./tclNetwork').then(module => module.getTclLineGeometries(tclLines))
@@ -293,9 +296,12 @@ export async function getLinesGeometryPrecise(
     gtfsLines.length > 0
       ? import('./gtfsNetwork').then(module => module.getGtfsLineGeometries(gtfsLines))
       : Promise.resolve([]),
+    sncfLines.length > 0
+      ? import('./sncfNetwork').then(module => module.getSncfLineGeometries(sncfLines)).catch(() => [])
+      : Promise.resolve([]),
   ]);
 
-  return [...results.filter((r): r is LineGeometry => r !== null), ...tclGeometries, ...gtfsGeometries];
+  return [...results.filter((r): r is LineGeometry => r !== null), ...tclGeometries, ...gtfsGeometries, ...sncfGeometries];
 }
 
 async function resolveLineGeometry(id: string): Promise<LineGeometry | null> {
@@ -461,11 +467,18 @@ export async function getStopsServedByLines(
 ): Promise<ServedStopPoint[] | null> {
   const tclLines = lines.filter(line => String(line.id).startsWith('TCL:'));
   const gtfsLines = lines.filter(line => isGtfsNetworkId(line.id));
-  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:') && !isGtfsNetworkId(line.id));
+  const sncfLines = lines.filter(line => String(line.id).startsWith('SNC:'));
+  const mtagLines = lines.filter(line => !String(line.id).startsWith('TCL:') && !String(line.id).startsWith('SNC:') && !isGtfsNetworkId(line.id));
 
   const ids = mtagLines
     .map(l => l.shortName || l.id)
     .filter(Boolean) as string[];
+
+  const sncfServed = sncfLines.length > 0
+    ? await import('./sncfNetwork').then(module => Promise.all(sncfLines.map(line => module.sncfStopsOfLine(line.id))))
+        .then(lists => lists.flat().map(stop => ({ lat: stop.lat, lon: stop.lon, name: stop.name })))
+        .catch(() => [] as ServedStopPoint[])
+    : [];
 
   const [results, tclServed, gtfsServed] = await Promise.all([
     Promise.all(ids.map(id => getStopsServedByLine(id))),
@@ -478,8 +491,8 @@ export async function getStopsServedByLines(
   ]);
 
   const successful = results.filter((r): r is ServedStopPoint[] => r !== null);
-  if (successful.length === 0 && tclServed.length === 0 && gtfsServed.length === 0) return null;
-  return [...successful.flat(), ...tclServed, ...gtfsServed];
+  if (successful.length === 0 && tclServed.length === 0 && gtfsServed.length === 0 && sncfServed.length === 0) return null;
+  return [...successful.flat(), ...tclServed, ...gtfsServed, ...sncfServed];
 }
 
 const METRES_PER_DEG_LAT = 111320;

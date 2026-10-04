@@ -18,7 +18,6 @@ const GRENOBLE_GROUPS: { key: string; label: string; networks: string[] }[] = [
   { key: 'tougo',  label: 'Tougo',        networks: ['TPV'] },
   { key: 'reso',   label: 'Réso',         networks: ['GSV'] },
   { key: 'cars',   label: 'Cars Région',  networks: ['C38'] },
-  { key: 'ter',    label: 'TER',          networks: ['SNC'] },
 ];
 
 const NETWORK_GROUPS: { key: string; label: string; networks: string[] }[] = IS_NANCY

@@ -14,7 +14,7 @@ export const ROUTE_NETWORKS: RouteNetwork[] = [
   { code: 'FUN', label: 'Funiculaire des Petites Roches' },
   { code: 'TRA', label: 'Transaltitude' },
   { code: 'MCO', label: "M'Covoit ligne+" },
-  { code: 'SNC', label: 'TER' },
+  { code: 'SNC', label: 'SNCF' },
   { code: 'C38', label: 'Cars Région' },
 ];
 

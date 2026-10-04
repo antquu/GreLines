@@ -33,7 +33,7 @@ export interface PerfSettings {
   networksRevision: number;
 }
 
-export const NETWORKS_REVISION = 6;
+export const NETWORKS_REVISION = 7;
 
 export const DEFAULT_PERF_SETTINGS: PerfSettings = {
   hideFooterTicker: false,

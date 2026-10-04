@@ -8,6 +8,7 @@ import type { AllLinesLine } from '../services/allLines';
 import type { RouteLocation } from '../services/api';
 import { SearchResultsList } from './SearchResultsList';
 import { hapticTap } from '../utils/haptics';
+import { loadRecentStops } from '../utils/recentStops';
 
 interface SearchBarMobileProps {
   searchQuery: string;
@@ -175,6 +176,18 @@ export const SearchBarMobile = ({
         raw: stop ?? { id: item.id, name: item.name, city: item.city, lat: 0, lon: 0 },
       };
     });
+  const openedStops: RouteLocation[] = loadRecentStops()
+    .filter(entry => !historyStops.some(item => item.id === entry.id))
+    .slice(0, 4)
+    .map(entry => ({
+      id: entry.id,
+      label: entry.name,
+      lat: entry.lat,
+      lon: entry.lon,
+      kind: 'stop' as const,
+      raw: { id: entry.id, name: entry.name, city: entry.city, lat: entry.lat, lon: entry.lon },
+    }));
+  const recentStops = [...historyStops, ...openedStops];
   const historyAddresses: RouteLocation[] = searchHistoryItems
     .filter((item): item is Extract<SearchHistoryItem, { kind: 'address' }> => item.kind === 'address')
     .map(item => ({
@@ -196,7 +209,7 @@ export const SearchBarMobile = ({
     .filter((line): line is AllLinesLine => Boolean(line));
 
   const isSearching = searchQuery.trim() !== '';
-  const activeStops = isSearching ? resultStops : historyStops;
+  const activeStops = isSearching ? resultStops : recentStops;
   const activeAddresses = isSearching ? resultAddresses : historyAddresses;
   const activeLines = isSearching ? matchedLines : historyLines;
   const hasActiveResults = activeStops.length > 0 || activeAddresses.length > 0 || activeLines.length > 0;
@@ -205,7 +218,7 @@ export const SearchBarMobile = ({
     isFocused &&
     (searchQuery.trim() !== ''
       ? true
-      : searchHistoryItems.length > 0);
+      : searchHistoryItems.length > 0 || openedStops.length > 0);
 
   const closeAfterSelection = () => {
     inputRef.current?.blur();
@@ -238,7 +251,7 @@ export const SearchBarMobile = ({
           ? 'fixed inset-0 z-[1000] flex flex-col'
           : inline
             ? 'relative w-full'
-            : 'fixed left-4 right-4 top-[max(0.75rem,var(--gl-safe-top))]'
+            : 'fixed left-4 right-4 top-[calc(var(--gl-safe-top)+0.75rem)]'
       }
       style={
         showOverlay
@@ -262,7 +275,7 @@ export const SearchBarMobile = ({
       <div
         ref={showOverlay ? scrollerRef : undefined}
         className={showOverlay ? 'flex min-h-0 flex-1 flex-col' : 'relative transition-all duration-300 ease-out'}
-        style={showOverlay ? { paddingTop: 'max(0.75rem, var(--gl-safe-top))' } : undefined}
+        style={showOverlay ? { paddingTop: 'calc(var(--gl-safe-top) + 0.75rem)' } : undefined}
       >
 
         <div

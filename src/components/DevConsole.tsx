@@ -117,6 +117,14 @@ const COMMANDS: ConsoleCommand[] = [
   showOnMobile('show.onboarding', 'Replay the first-launch onboarding (mobile view only)'),
   showOnMobile('show.notifications', 'Show the "turn on notifications" prompt (mobile view only)'),
   showOnMobile('show.install', 'Show the "add to home screen" guide (mobile view only)'),
+  {
+    name: 'show.teststop',
+    description: 'Open a frozen test stop (Chavant) with a draggable panel to replay departure animations',
+    run: () => {
+      emitDevCommand('show.teststop');
+      return 'Test stop opened. Drag the DEPARTURE LAB panel by its title.';
+    },
+  },
   ...(IS_NANCY ? [{
     name: 'show.outside',
     description: 'Show the "not in Nancy" prompt, even after "Stay on GreLines Nancy"',
@@ -187,7 +195,7 @@ const COMMANDS: ConsoleCommand[] = [
   settingToggle('net.overlay', 'netOverlay', 'Raw live list of every network request, top right'),
   {
     name: 'location.pick',
-    description: 'Close the console; the next right-click on the map becomes your location',
+    description: 'Close the console; the next tap or right-click on the map becomes your location',
     run: () => { armLocationPick(); },
   },
   {

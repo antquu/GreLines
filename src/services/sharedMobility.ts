@@ -54,7 +54,7 @@ export const SHARED_OPERATORS: SharedOperator[] = IS_NANCY ? ['citiz', 'velostan
 
 export const SHARED_OPERATOR_COLORS: Record<SharedOperator, string> = {
   citiz: '#2563eb',
-  voi: '#ec4899',
+  voi: '#f46c63',
   velostan: '#ee3424',
 };
 
