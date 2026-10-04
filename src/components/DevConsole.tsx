@@ -132,7 +132,14 @@ const COMMANDS: ConsoleCommand[] = [
       emitDevCommand('show.outside');
       return 'Outside-area prompt shown.';
     },
-  }] : []),
+  }] : [{
+    name: 'show.unserved',
+    description: 'Show the "area not covered yet" prompt',
+    run: () => {
+      emitDevCommand('show.unserved');
+      return 'Unserved-area prompt shown.';
+    },
+  }]),
   {
     name: 'show.popup',
     usage: '[infotraffic|promo]',

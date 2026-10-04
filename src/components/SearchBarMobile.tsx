@@ -59,9 +59,30 @@ export const SearchBarMobile = ({
     return () => window.clearTimeout(timer);
   }, [wantOverlay]);
 
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const placeholderRef = useRef<HTMLDivElement | null>(null);
+  const [barTravel, setBarTravel] = useState<{ dx: number; dy: number; fromWidth: number; toWidth: number } | null>(null);
+
+  const measureTravel = () => {
+    const bar = barRef.current?.getBoundingClientRect();
+    const slot = placeholderRef.current?.getBoundingClientRect();
+    if (!bar || !slot || slot.width === 0) return null;
+    return { dx: slot.left - bar.left, dy: slot.top - bar.top, fromWidth: slot.width, toWidth: bar.width };
+  };
+
+  useLayoutEffect(() => {
+    if (!showOverlay) {
+      setBarTravel(null);
+      return;
+    }
+    if (wantOverlay && entered) return;
+    const travel = measureTravel();
+    if (travel) setBarTravel(current => (wantOverlay ? travel : { ...travel, toWidth: current?.toWidth ?? travel.toWidth }));
+  }, [showOverlay, wantOverlay]);
+
   useEffect(() => {
     if (!showOverlay || !wantOverlay) return;
-    const raf = requestAnimationFrame(() => setEntered(true));
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setEntered(true)));
     return () => cancelAnimationFrame(raf);
   }, [showOverlay, wantOverlay]);
 
@@ -241,8 +262,13 @@ export const SearchBarMobile = ({
   const mobilePlaceholder = language === 'fr' ? 'On va où ?' : 'Where to?';
   const dragToCloseLabel = language === 'fr' ? 'Glissez vers le bas pour fermer' : 'Swipe down to close';
 
-  const restingOffsetPx = entered ? 0 : 18;
-  const overlayOffsetPx = dragY > 0 ? dragY : restingOffsetPx;
+  const SLIDE = '260ms cubic-bezier(0.32,0.72,0,1)';
+  const barMotion: React.CSSProperties = showOverlay && barTravel
+    ? entered
+      ? { transform: 'none', width: barTravel.toWidth, transition: `transform ${SLIDE}, width ${SLIDE}` }
+      : { transform: `translate(${barTravel.dx}px, ${barTravel.dy}px)`, width: barTravel.fromWidth, transition: `transform ${SLIDE}, width ${SLIDE}` }
+    : {};
+  const overlayFade: React.CSSProperties = { opacity: entered ? 1 : 0, transition: 'opacity 220ms ease' };
 
   const content = (
     <div
@@ -256,9 +282,8 @@ export const SearchBarMobile = ({
       style={
         showOverlay
           ? {
-              transform: overlayOffsetPx !== 0 ? `translateY(${overlayOffsetPx}px)` : undefined,
-              opacity: entered || dragY > 0 ? 1 : 0,
-              transition: dragY > 0 ? 'none' : 'transform 260ms cubic-bezier(0.32,0.72,0,1), opacity 220ms ease',
+              transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+              transition: dragY > 0 ? 'none' : `transform ${SLIDE}`,
             }
           : inline
             ? undefined
@@ -268,6 +293,7 @@ export const SearchBarMobile = ({
       {showOverlay && (
         <div
           className={`pointer-events-none absolute inset-0 -z-10 ${isLight ? 'bg-slate-50' : 'bg-slate-950'}`}
+          style={overlayFade}
           aria-hidden
         />
       )}
@@ -288,7 +314,8 @@ export const SearchBarMobile = ({
                 ? 'border-emerald-300/50 bg-slate-950/95 shadow-emerald-950/30'
                 : 'border-white/10 bg-slate-950/82 shadow-black/30'
           }`}
-          style={{ height: '58px' }}
+          ref={barRef}
+          style={{ height: '58px', ...barMotion }}
         >
           <MagnifyingGlassIcon className={`h-6 w-6 flex-shrink-0 ${isLight ? 'text-slate-500' : 'text-white/90'}`} />
           <input
@@ -329,6 +356,7 @@ export const SearchBarMobile = ({
         {showDropdown && (
           <div
             ref={showOverlay ? listRef : undefined}
+            style={showOverlay ? overlayFade : undefined}
             className={
               showOverlay
                 ? 'mt-3 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain'
@@ -393,5 +421,11 @@ export const SearchBarMobile = ({
     </div>
   );
 
-  return showOverlay ? createPortal(content, document.body) : content;
+  if (!showOverlay) return content;
+  return (
+    <>
+      {inline && <div ref={placeholderRef} className="w-full" style={{ height: 58, visibility: 'hidden' }} aria-hidden />}
+      {createPortal(content, document.body)}
+    </>
+  );
 };

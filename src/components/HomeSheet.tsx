@@ -30,6 +30,7 @@ const HEADER_SWAP_HEIGHT = 76;
 export const HOME_SHEET_ID = 'gl-home-sheet';
 const NEARBY_SETTLE_MS = 1000;
 let nearbyAutoOpened = false;
+const NEARBY_MAX_METERS = 3000;
 const HOME_PEEK_SNAP = 2;
 const HOME_MID_SNAP = 3;
 const HOME_LAST_SNAP = 4;
@@ -124,6 +125,11 @@ interface HomeSheetProps {
 
 const getText = (language: 'fr' | 'en') => ({
   nearPrefix: language === 'fr' ? 'Près de' : 'Near',
+  noStopsNearby: language === 'fr' ? 'Aucun arrêt à proximité' : 'No stops nearby',
+  noStopsNearbyHint:
+    language === 'fr'
+      ? 'Cette zone n’est pas encore desservie par GreLines.'
+      : 'This area is not covered by GreLines yet.',
   noLocation: language === 'fr' ? 'Position non disponible' : 'Location unavailable',
   noLocationHint:
     language === 'fr'
@@ -214,6 +220,7 @@ export const HomeSheet = ({
     if (!nearbyOrigin) return [];
     const seen = new Set<string>();
     return findClosestStops(stops, nearbyOrigin.lat, nearbyOrigin.lon, 10)
+      .filter(({ meters }) => meters <= NEARBY_MAX_METERS)
       .filter(({ stop }) => {
         const key = stop.name.trim().toLowerCase();
         if (seen.has(key)) return false;
@@ -238,6 +245,13 @@ export const HomeSheet = ({
     nearbyAutoOpened = true;
     if (snapIdxRef.current <= 1) sheetRef.current?.snapTo(HOME_MID_SNAP);
   }, [locked, isOpen]);
+
+  const outsideServedArea = Boolean(nearbyOrigin) && !originSettling && nearby.length === 0 && stops.length > 0;
+  useEffect(() => {
+    if (!outsideServedArea) return;
+    nearbyAutoOpened = false;
+    if (!locked && isOpen && snapIdxRef.current > 1) sheetRef.current?.snapTo(1);
+  }, [outsideServedArea, locked, isOpen]);
   const safeBottom = useMemo(readSafeAreaBottom, []);
   const [activeTab, setActiveTab] = useState('home');
 
@@ -432,8 +446,8 @@ export const HomeSheet = ({
                 )}
                 {nearby.length === 0 ? (
                   <div className={`rounded-[28px] p-6 text-center ${surfaceClass}`}>
-                    <p className={`text-sm font-semibold ${titleClass}`}>{text.noLocation}</p>
-                    <p className={`mt-1 text-sm ${mutedClass}`}>{text.noLocationHint}</p>
+                    <p className={`text-sm font-semibold ${titleClass}`}>{nearbyOrigin ? text.noStopsNearby : text.noLocation}</p>
+                    <p className={`mt-1 text-sm ${mutedClass}`}>{nearbyOrigin ? text.noStopsNearbyHint : text.noLocationHint}</p>
                   </div>
                 ) : (
                   <NearbyDepartures

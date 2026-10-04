@@ -20,6 +20,14 @@ export const isAndroidDevice = (): boolean => {
   return /Android/i.test(navigator.userAgent);
 };
 
+export const isTabletDevice = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if (/iPad/.test(ua)) return true;
+  if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true;
+  return isAndroidDevice() && !/Mobile/i.test(ua);
+};
+
 export const isMobileDevice = (): boolean => {
   if (typeof window === 'undefined') return false;
   if (isIOSDevice() || isAndroidDevice()) return true;
@@ -59,4 +67,4 @@ export const markInstallGuideSeen = (): void => {
 export const canShowInstallGuide = (): boolean => !isStandaloneApp();
 
 export const shouldAutoOpenInstallGuide = (): boolean =>
-  isMobileDevice() && !isStandaloneApp();
+  isMobileDevice() && !isTabletDevice() && !isStandaloneApp();

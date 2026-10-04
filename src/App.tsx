@@ -34,6 +34,7 @@ import { TrafficAlertCard } from './components/TrafficAlertCard';
 import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
 import { NancyAreaPrompt } from './components/NancyAreaPrompt';
+import { UnservedAreaPrompt } from './components/UnservedAreaPrompt';
 import { getSncfLines, getSncfStopDetail, getSncfStops, isMergedStation, isSncfStopId, withNearbySncf } from './services/sncfNetwork';
 import { DepartureLabOverlay } from './components/DepartureLabOverlay';
 import { closeLab, getLabState, openLab, setLabSelectedLines, subscribeLab } from './dev/departureLab';
@@ -2481,6 +2482,15 @@ function App() {
         />
       )}
 
+      {!IS_NANCY && (
+        <UnservedAreaPrompt
+          position={exploringMap && mapPin ? mapPin : currentLocation}
+          isMobile={isMobile}
+          language={language}
+          theme={effectiveTheme}
+        />
+      )}
+
       {IS_NANCY && (
         <NancyAreaPrompt
           position={currentLocation}
@@ -2792,7 +2802,6 @@ function App() {
                 aria-hidden
               >
                 <span className="relative flex h-6 w-6 items-center justify-center">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40" style={{ backgroundColor: MAP_PIN_COLOR }} />
                   <span className="relative h-5 w-5 rounded-full border-[3px] border-white shadow-lg" style={{ backgroundColor: MAP_PIN_COLOR }} />
                 </span>
               </motion.div>
