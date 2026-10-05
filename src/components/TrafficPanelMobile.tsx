@@ -12,6 +12,7 @@ import { useWheelScroll } from '../hooks/useWheelScroll';
 import { TrafficAlertCard } from './TrafficAlertCard';
 import type { AllLinesLine } from '../services/allLines';
 import type { TrafficDetail } from '../types';
+import { tx } from '../i18n';
 
 interface TrafficPanelMobileProps {
   isOpen: boolean;
@@ -25,11 +26,11 @@ interface TrafficPanelMobileProps {
 const getTrafficPanelText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
-    liveTrafficInfo: isFr ? 'Infos trafic' : 'Traffic info',
-    noIncidents: isFr ? 'Aucun incident connu pour le moment.' : 'No known incidents at the moment.',
-    incidentSingular: isFr ? 'incident' : 'incident',
-    incidentPlural: isFr ? 'incidents' : 'incidents',
-    endPrefix: isFr ? 'Fin :' : 'End:',
+    liveTrafficInfo: tx(isFr).trafficPanelMobile.trafficInfo,
+    noIncidents: tx(isFr).trafficPanelMobile.noKnownIncidentsAt,
+    incidentSingular: tx(isFr).trafficPanelMobile.incident,
+    incidentPlural: tx(isFr).trafficPanelMobile.incidents,
+    endPrefix: tx(isFr).trafficPanelMobile.end,
   };
 };
 

@@ -1,4 +1,6 @@
 import { CheckIcon, XMarkIcon } from '@heroicons/react/24/solid';
+import { tx } from '../i18n';
+import { appLanguage } from '../utils/appLanguage';
 
 interface OuraCardFaceProps {
   firstName?: string;
@@ -55,7 +57,7 @@ export function OuraCardFace({
 
       <img
         src={isComplete ? '/assets/oura-verso.png' : '/assets/oura.png'}
-        alt="Carte OURA"
+        alt={tx(appLanguage() === 'fr').common.ouraCard}
         className="block h-full w-full rounded-[4.5%] object-cover"
         style={disabled ? { filter: 'grayscale(1) brightness(0.75)' } : undefined}
         draggable={false}

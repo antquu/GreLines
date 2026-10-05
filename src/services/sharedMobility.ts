@@ -1,5 +1,6 @@
 import { idbGet, idbSet } from './persistentCache';
 import { IS_NANCY } from '../site';
+import { tx, type Messages } from '../i18n';
 
 const GBFS_BASE = 'https://data.mobilites-m.fr/api/gbfs';
 const CITIZ_GRAND_EST_BASE = 'https://backend.citiz.fr/public/provider/1/gbfs/v3.0';
@@ -155,13 +156,13 @@ export function propulsionLabel(propulsion: string | undefined, language: 'fr' |
   switch (propulsion) {
     case 'electric':
     case 'electric_assist':
-      return fr ? 'Électrique' : 'Electric';
+      return tx(fr).sharedMobility.electric;
     case 'combustion':
     case 'combustion_diesel':
-      return fr ? 'Thermique' : 'Combustion';
+      return tx(fr).sharedMobility.combustion;
     case 'hybrid':
     case 'plug_in_hybrid':
-      return fr ? 'Hybride' : 'Hybrid';
+      return tx(fr).sharedMobility.hybrid;
     default:
       return '';
   }
@@ -474,18 +475,18 @@ async function loadOperator(
   return points;
 }
 
-const RANGE_LANDMARKS: Array<{ meters: number; fr: string; en: string }> = IS_NANCY ? [
-  { meters: 1_500,   fr: 'la place Stanislas à la gare', en: 'Place Stanislas to the station' },
-  { meters: 6_000,   fr: 'la traversée de Nancy', en: 'a crossing of Nancy' },
-  { meters: 15_000,  fr: 'le tour de la métropole', en: 'a loop of the metropolis' },
-  { meters: 57_000,  fr: 'un Nancy–Metz', en: 'a Nancy–Metz run' },
-  { meters: 140_000, fr: 'un Nancy–Strasbourg', en: 'a Nancy–Strasbourg run' },
+const RANGE_LANDMARKS: Array<{ meters: number; key: keyof Messages['sharedMobility']['landmarks'] }> = IS_NANCY ? [
+  { meters: 1_500,   key: 'stanislasToStation' },
+  { meters: 6_000,   key: 'acrossNancy' },
+  { meters: 15_000,  key: 'nancyMetropolisLoop' },
+  { meters: 57_000,  key: 'nancyMetz' },
+  { meters: 140_000, key: 'nancyStrasbourg' },
 ] : [
-  { meters: 1_800,   fr: 'la montée à la Bastille', en: 'the climb to the Bastille' },
-  { meters: 5_400,   fr: 'la traversée de Grenoble', en: 'a crossing of Grenoble' },
-  { meters: 12_000,  fr: 'le tour de la rocade', en: 'a loop of the ring road' },
-  { meters: 31_000,  fr: 'la montée à Chamrousse', en: 'the climb to Chamrousse' },
-  { meters: 110_000, fr: 'un Grenoble–Lyon', en: 'a Grenoble–Lyon run' },
+  { meters: 1_800,   key: 'bastilleClimb' },
+  { meters: 5_400,   key: 'acrossGrenoble' },
+  { meters: 12_000,  key: 'ringRoadLoop' },
+  { meters: 31_000,  key: 'chamrousseClimb' },
+  { meters: 110_000, key: 'grenobleLyon' },
 ];
 
 export function rangeComparison(rangeMeters: number, language: 'fr' | 'en'): string | null {
@@ -501,23 +502,20 @@ export function rangeComparison(rangeMeters: number, language: 'fr' | 'en'): str
   if (!best) return null;
 
   const times = Math.round(best.times);
-  const label = fr ? best.landmark.fr : best.landmark.en;
-  return fr
-    ? `De quoi faire ${times} fois ${label}.`
-    : `Enough for ${times} times ${label}.`;
+  return tx(fr).sharedMobility.enoughForTimesTimes(times, tx(fr).sharedMobility.landmarks[best.landmark.key]);
 }
 
 export function formFactorLabel(formFactor: string, language: 'fr' | 'en'): string {
   const fr = language === 'fr';
   switch (formFactor) {
     case 'car':      return '';
-    case 'truck':    return fr ? 'Utilitaire' : 'Van';
+    case 'truck':    return tx(fr).sharedMobility.van;
     case 'scooter':
     case 'scooter_standing':
-    case 'scooter_seated': return fr ? 'Trottinette' : 'Scooter';
-    case 'bicycle': return fr ? 'Vélo' : 'Bike';
-    case 'moped':   return fr ? 'Scooter' : 'Moped';
-    default:        return fr ? 'Véhicule' : 'Vehicle';
+    case 'scooter_seated': return tx(fr).sharedMobility.scooter;
+    case 'bicycle': return tx(fr).sharedMobility.bike;
+    case 'moped':   return tx(fr).sharedMobility.moped;
+    default:        return tx(fr).sharedMobility.vehicle;
   }
 }
 

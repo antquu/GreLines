@@ -6,6 +6,7 @@ import { MinimalScreen } from './MinimalScreen';
 import { OuraCardFace } from './OuraCardFace';
 import type { OuraCard } from '../services/ouraCard';
 import { AVATARS, type Account } from '../services/account';
+import { tx } from '../i18n';
 
 const PROFILE_ORBIT_MS = 110000;
 const PROFILE_ORBIT_SIZE = 28;
@@ -22,7 +23,7 @@ function monthAndYear(value: string | null, isFr: boolean): string {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString(isFr ? 'fr-FR' : 'en-GB', { month: 'long', year: 'numeric' });
+  return date.toLocaleDateString(tx(isFr).profileScreen.locale, { month: 'long', year: 'numeric' });
 }
 
 export function ProfileScreen({
@@ -69,17 +70,17 @@ export function ProfileScreen({
   const stats = [
     {
       emoji: '🤝',
-      label: isFr ? 'Utilisateurs aidés' : 'Travellers helped',
+      label: tx(isFr).profileScreen.travellersHelped,
       value: (account?.travellersHelped ?? 0).toLocaleString('fr-FR'),
     },
     {
       emoji: '🚋',
-      label: isFr ? 'Trajets réalisés sur GreLines' : 'Trips made with GreLines',
+      label: tx(isFr).profileScreen.tripsMadeWithGrelines,
       value: (account?.trips ?? 0).toLocaleString('fr-FR'),
     },
     {
       emoji: '📅',
-      label: isFr ? 'Sur GreLines depuis' : 'On GreLines since',
+      label: tx(isFr).profileScreen.onGrelinesSince,
       value: monthAndYear(account?.createdAt ?? null, isFr),
     },
   ];
@@ -91,9 +92,7 @@ export function ProfileScreen({
           <OfflinePanel
             language={language}
             isLight={isLight}
-            detail={isFr
-              ? 'Votre compte s’affichera au retour du réseau.'
-              : 'Your account will show once you are back online.'}
+            detail={tx(isFr).profileScreen.yourAccountWillShow}
           />
         ) : (
         <>
@@ -194,7 +193,7 @@ export function ProfileScreen({
         {card && (
           <div className="mt-8 px-4">
             <p className={`mb-3 px-1 text-sm font-bold ${ink}`}>
-              {isFr ? 'Carte liée au compte' : 'Card linked to the account'}
+              {tx(isFr).profileScreen.cardLinkedToThe}
             </p>
             <OuraCardFace
               firstName={card.firstName}

@@ -7,6 +7,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { RouteLocation } from '../services/api';
 import type { SavedPlaceKind } from '../services/savedPlaces';
 import type { Stop } from '../types';
+import { tx } from '../i18n';
 
 interface SavedPlaceSheetProps {
   kind: SavedPlaceKind;
@@ -28,17 +29,17 @@ function SavedPlaceSearch({ kind, stops, language, theme = 'dark', isOpen, onClo
   const inputRef = useRef<HTMLInputElement>(null);
 
   const text = {
-    home: isFr ? 'Domicile' : 'Home',
-    work: isFr ? 'Travail' : 'Work',
-    titleHome: isFr ? 'Définir le domicile' : 'Set home',
-    titleWork: isFr ? 'Définir le travail' : 'Set work',
-    placeholder: isFr ? 'Adresse ou arrêt' : 'Address or stop',
-    openMap: isFr ? 'Ouvrir la carte' : 'Open the map',
-    openMapHint: isFr ? 'Pointer un endroit précis' : 'Point at an exact spot',
-    stops: isFr ? 'Arrêts' : 'Stops',
-    addresses: isFr ? 'Adresses' : 'Addresses',
-    noResult: isFr ? 'Aucun résultat' : 'No results',
-    close: isFr ? 'Fermer' : 'Close',
+    home: tx(isFr).savedPlaceSheet.home,
+    work: tx(isFr).savedPlaceSheet.work,
+    titleHome: tx(isFr).savedPlaceSheet.setHome,
+    titleWork: tx(isFr).savedPlaceSheet.setWork,
+    placeholder: tx(isFr).savedPlaceSheet.addressOrStop,
+    openMap: tx(isFr).savedPlaceSheet.openTheMap,
+    openMapHint: tx(isFr).savedPlaceSheet.pointAtAnExact,
+    stops: tx(isFr).savedPlaceSheet.stops,
+    addresses: tx(isFr).savedPlaceSheet.addresses,
+    noResult: tx(isFr).savedPlaceSheet.noResults,
+    close: tx(isFr).savedPlaceSheet.close,
   };
 
   useEffect(() => {

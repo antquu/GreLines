@@ -147,13 +147,17 @@ export const searchAddresses = async (
     searchPlaces(trimmed, options?.signal),
     searchStreetAddresses(trimmed, options),
   ]);
-  if (/^\d/.test(trimmed)) return [...addresses, ...places];
+  return rankSearchResults(places, addresses, trimmed);
+};
+
+export function rankSearchResults(places: AddressResult[], addresses: AddressResult[], query: string): AddressResult[] {
+  if (/^\d/.test(query)) return [...addresses, ...places];
   const ranked = [...places, ...addresses]
-    .map((result, order) => ({ result, order, rank: relevance(result, trimmed), near: distanceKm(result.lat, result.lon) <= PLACE_RADIUS_KM }))
+    .map((result, order) => ({ result, order, rank: relevance(result, query), near: distanceKm(result.lat, result.lon) <= PLACE_RADIUS_KM }))
     .sort((a, b) => b.rank - a.rank || a.order - b.order);
   const near = ranked.filter(entry => entry.near);
   return (near.length >= 3 ? near : ranked).map(entry => entry.result);
-};
+}
 
 const searchStreetAddresses = async (
   query: string,

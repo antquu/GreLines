@@ -1,6 +1,7 @@
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import type { AllLinesLine, LineFamily } from '../services/allLines';
 import { getCachedStopLines } from '../services/api';
+import { tx } from '../i18n';
 
 const FAMILY_RANK: Record<LineFamily, number> = {
   tram: 0,
@@ -127,7 +128,7 @@ export function minutesUntilClock(clock: string): number | null {
 export function formatWait(minutes: number | undefined, language: 'fr' | 'en'): string {
   if (minutes == null) return '–';
   if (minutes < 0) return '–';
-  if (minutes === 0) return language === 'fr' ? 'ARR' : 'NOW';
+  if (minutes === 0) return tx(language === 'fr').favoriteDepartures.now;
   if (minutes < 60) return `${minutes}min`;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;

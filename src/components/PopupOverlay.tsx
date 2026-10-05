@@ -8,6 +8,7 @@ import { scrollByHand, useAutoScroll } from '../screen/useAutoScroll';
 import { LineBadge } from './LineBadge';
 import { MapSheet, MapSheetBottomSpacer } from './MapSheet';
 import { getOptedOutIds, markOptedOut } from '../utils/optedOutPopups';
+import { tx } from '../i18n';
 
 interface PopupOverlayProps {
   popups: CmsPopup[];
@@ -22,16 +23,16 @@ const STACK_MAX = 4;
 function formatEnd(raw: string, language: 'fr' | 'en'): string | null {
   const text = raw.trim();
   if (!text) return null;
-  const fr = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
-  const date = fr
-    ? new Date(Number(fr[3]), Number(fr[2]) - 1, Number(fr[1]), Number(fr[4] ?? 0), Number(fr[5] ?? 0))
+  const frenchDate = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  const date = frenchDate
+    ? new Date(Number(frenchDate[3]), Number(frenchDate[2]) - 1, Number(frenchDate[1]), Number(frenchDate[4] ?? 0), Number(frenchDate[5] ?? 0))
     : new Date(text);
   if (Number.isNaN(date.getTime())) return text;
   if (date.getFullYear() - new Date().getFullYear() > 3) return null;
-  const locale = language === 'fr' ? 'fr-FR' : 'en-GB';
+  const locale = tx(language === 'fr').popupOverlay.locale;
   const day = date.toLocaleDateString(locale, { day: 'numeric', month: 'long' });
   const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-  return language === 'fr' ? `${day} à ${time}` : `${day} at ${time}`;
+  return tx(language === 'fr').popupOverlay.dayAtTime(day, time);
 }
 
 const asBadgeLine = (line: CmsPopupLine) => ({
@@ -159,26 +160,26 @@ function PopupLineRow({
       <LineBadge line={asBadgeLine(line)} size={compact ? 'xs' : 'sm'} />
       <div className="min-w-0 flex-1">
         <p className={`truncate font-semibold ${compact ? 'text-[0.8125rem]' : 'text-[0.9375rem]'}`} style={{ color: ink }}>
-          {(isFr ? 'Ligne ' : 'Line ') + line.short}
+          {(tx(isFr).popupOverlay.line) + line.short}
           {line.name && !compact && <span className="font-normal" style={{ color: soft }}> · {line.name}</span>}
         </p>
         {first ? (
           <>
             <p className={`flex items-start gap-1 leading-snug text-amber-500 ${compact ? 'text-[0.75rem]' : 'text-[0.8125rem]'}`}>
               <ExclamationTriangleIcon className="mt-[2px] h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-              <span className={compact ? 'line-clamp-1' : 'line-clamp-2'}>{first.titre || (isFr ? 'Perturbation en cours' : 'Ongoing disruption')}</span>
+              <span className={compact ? 'line-clamp-1' : 'line-clamp-2'}>{first.titre || (tx(isFr).popupOverlay.ongoingDisruption)}</span>
             </p>
             <p className="text-[0.75rem]" style={{ color: soft }}>
               {end
-                ? (isFr ? `Fin estimée : ${end}` : `Estimated end: ${end}`)
-                : (isFr ? 'Fin non communiquée' : 'No end date given')}
-              {traffic.length > 1 && (isFr ? ` · ${traffic.length - 1} autre${traffic.length > 2 ? 's' : ''}` : ` · ${traffic.length - 1} more`)}
+                ? (tx(isFr).popupOverlay.estimatedEndEnd(end))
+                : (tx(isFr).popupOverlay.noEndDateGiven)}
+              {traffic.length > 1 && tx(isFr).popupOverlay.moreCount(traffic.length - 1)}
             </p>
           </>
         ) : (
           <p className={`flex items-center gap-1 text-emerald-500 ${compact ? 'text-[0.75rem]' : 'text-[0.8125rem]'}`}>
             <CheckCircleIcon className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-            {isFr ? 'Aucune perturbation signalée' : 'No disruption reported'}
+            {tx(isFr).popupOverlay.noDisruptionReported}
           </p>
         )}
       </div>
@@ -189,7 +190,7 @@ function PopupLineRow({
           className="flex-shrink-0 rounded-full px-3.5 py-2 text-[0.8125rem] font-semibold transition active:scale-95"
           style={isLight ? { backgroundColor: '#000000', color: '#ffffff' } : { backgroundColor: '#ffffff', color: '#000000' }}
         >
-          {isFr ? 'Consulter' : 'Open'}
+          {tx(isFr).popupOverlay.open}
         </button>
       )}
     </div>
@@ -350,9 +351,7 @@ export function PopupOverlay({ popups, language, theme = 'dark', trafficFor = no
   const faint = '#737373';
   const surface = isLight ? '#ffffff' : isMobile ? 'rgb(var(--gl-sheet-rgb))' : '#0b0b0b';
   const PopupIcon = isPromo ? MegaphoneIcon : ExclamationTriangleIcon;
-  const linesLabel = isFr
-    ? `${lines.length} ligne${lines.length > 1 ? 's' : ''} concernée${lines.length > 1 ? 's' : ''}`
-    : `${lines.length} affected line${lines.length > 1 ? 's' : ''}`;
+  const linesLabel = tx(isFr).popupOverlay.lengthAffectedLineValue(lines.length, lines.length > 1 ? 's' : '');
 
   const content = (
     <>
@@ -390,7 +389,7 @@ export function PopupOverlay({ popups, language, theme = 'dark', trafficFor = no
             className="mt-4 inline-block text-[0.9375rem] font-semibold underline underline-offset-4"
             style={{ color: ink }}
           >
-            {isFr ? 'En savoir plus' : 'Learn more'}
+            {tx(isFr).popupOverlay.learnMore}
           </a>
         )}
         <button
@@ -399,7 +398,7 @@ export function PopupOverlay({ popups, language, theme = 'dark', trafficFor = no
           className="mt-8 w-full rounded-2xl py-4 text-[1.0625rem] font-semibold transition active:scale-[0.98]"
           style={isLight ? { backgroundColor: '#000000', color: '#ffffff' } : { backgroundColor: '#ffffff', color: '#000000' }}
         >
-          {isFr ? 'Compris' : 'Got it'}
+          {tx(isFr).popupOverlay.gotIt}
         </button>
         <button
           type="button"
@@ -407,7 +406,7 @@ export function PopupOverlay({ popups, language, theme = 'dark', trafficFor = no
           className="mt-3 w-full py-1 text-[0.875rem] transition active:opacity-70"
           style={{ color: faint }}
         >
-          {isFr ? 'Ne plus afficher ce message' : "Don't show this again"}
+          {tx(isFr).popupOverlay.donTShowThis}
         </button>
       </div>
     </>
@@ -421,7 +420,7 @@ export function PopupOverlay({ popups, language, theme = 'dark', trafficFor = no
         <button
           type="button"
           onClick={() => setLinesOpen(false)}
-          aria-label={isFr ? 'Revenir au message' : 'Back to the message'}
+          aria-label={tx(isFr).popupOverlay.backToTheMessage}
           className="-ml-2 rounded-full p-1.5 transition active:scale-95"
           style={{ color: ink }}
         >
@@ -510,7 +509,7 @@ export function PopupOverlay({ popups, language, theme = 'dark', trafficFor = no
           <button
             onClick={handleClose}
             className="absolute right-3 top-3 rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50"
-            aria-label={isFr ? 'Fermer' : 'Close'}
+            aria-label={tx(isFr).popupOverlay.close}
           >
             <XMarkIcon className="h-4 w-4" />
           </button>

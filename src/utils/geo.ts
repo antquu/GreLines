@@ -1,4 +1,5 @@
 import type { RouteLocation } from '../services/api';
+import { tx } from '../i18n';
 
 export const haversineMeters = (
   lat1: number,
@@ -32,9 +33,7 @@ export const currentPositionLocation = (position: { lat: number; lon: number }):
 export const formatDistance = (meters: number, language: 'fr' | 'en' = 'fr'): string => {
   if (meters < 1000) return `${Math.round(meters)} m`;
   const km = meters / 1000;
-  return language === 'fr'
-    ? `${km.toFixed(km < 10 ? 1 : 0).replace('.', ',')} km`
-    : `${km.toFixed(km < 10 ? 1 : 0)} km`;
+  return tx(language === 'fr').geo.distanceKm(km);
 };
 
 export interface StopWithDistance<T extends { lat: number; lon: number }> {

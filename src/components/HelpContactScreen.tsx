@@ -8,6 +8,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { MinimalScreen } from './MinimalScreen';
 import { openExternal } from '../utils/openExternal';
 import { getCurrentCity, subscribeCurrentCity } from '../utils/currentArea';
+import { tx } from '../i18n';
 
 interface NetworkContact {
   name: string;
@@ -105,12 +106,12 @@ export function HelpContactScreen({
   return (
     <MinimalScreen
       isOpen={isOpen}
-      title={isFr ? 'Aide et contact' : 'Help and contact'}
+      title={tx(isFr).helpContactScreen.helpAndContact}
       isLight={isLight}
       onBack={onBack}
     >
       <div className="px-4 pb-10">
-        {heading(isFr ? 'Signaler un incident ou un comportement' : 'Report an incident or behaviour')}
+        {heading(tx(isFr).helpContactScreen.reportAnIncidentOr)}
         <div
           className={`mb-3 flex items-start gap-3 rounded-2xl border px-4 py-4 ${
             isLight ? 'border-rose-200 bg-rose-50' : 'border-rose-500/30 bg-rose-950/40'
@@ -120,9 +121,7 @@ export function HelpContactScreen({
             className={`mt-0.5 h-5 w-5 flex-shrink-0 ${isLight ? 'text-rose-600' : 'text-rose-400'}`}
           />
           <p className={`text-sm leading-relaxed ${isLight ? 'text-rose-900' : 'text-rose-100'}`}>
-            {isFr
-              ? 'En cas d’urgence, appelez le 112. C’est le numéro européen : il répond depuis n’importe quel téléphone, même sans forfait et même verrouillé.'
-              : 'In an emergency, call 112. It is the European number: it answers from any phone, even without a plan and even locked.'}
+            {tx(isFr).helpContactScreen.inAnEmergencyCall}
           </p>
         </div>
 
@@ -133,18 +132,16 @@ export function HelpContactScreen({
                 {networkContacts.map(contact => (
                   <div key={contact.name} className="space-y-2">
                     {contact.phone && row(
-                      isFr ? `Appeler ${contact.name}` : `Call ${contact.name}`,
+                      tx(isFr).helpContactScreen.callName(contact.name),
                       PhoneIcon,
                       () => handOff(`tel:${phoneForDialing(contact.phone!)}`),
                       phoneForDisplay(contact.phone),
                     )}
                     {contact.url && row(
-                      isFr ? `Site de ${contact.name}` : `${contact.name} website`,
+                      tx(isFr).helpContactScreen.nameWebsite(contact.name),
                       ArrowTopRightOnSquareIcon,
                       () => openExternal(contact.url!),
-                      isFr
-                        ? `${hostOf(contact.url)} · contact, réclamations, objets trouvés`
-                        : `${hostOf(contact.url)} · contact, complaints, lost property`,
+                      tx(isFr).helpContactScreen.hostofContactComplaintsLost(hostOf(contact.url)),
                     )}
                   </div>
                 ))}
@@ -152,10 +149,8 @@ export function HelpContactScreen({
             ) : (
               <p className={`rounded-2xl border px-4 py-4 text-sm leading-relaxed ${surface} ${muted}`}>
                 {contacts === null
-                  ? (isFr ? 'Chargement des coordonnées du réseau…' : 'Loading the network’s contact details…')
-                  : (isFr
-                    ? 'Ce réseau ne publie pas ses coordonnées dans ses données ouvertes. Cherchez son site officiel.'
-                    : 'This network does not publish its contact details in its open data. Look up its official website.')}
+                  ? (tx(isFr).helpContactScreen.loadingTheNetworkS)
+                  : (tx(isFr).helpContactScreen.thisNetworkDoesNot)}
               </p>
             )}
           </>
@@ -163,41 +158,35 @@ export function HelpContactScreen({
           <>
         <div className="space-y-2">
             {row(
-              isFr ? 'Appeler Allo TAG' : 'Call Allo TAG',
+              tx(isFr).helpContactScreen.callAlloTag,
               PhoneIcon,
               () => handOff(`tel:${ALLO_TAG_TEL}`),
-              isFr
-                ? `${ALLO_TAG_LABEL} · du lundi au samedi, 8 h – 18 h 30`
-                : `${ALLO_TAG_LABEL} · Monday to Saturday, 8 am – 6.30 pm`,
+              tx(isFr).helpContactScreen.alloTagLabelMonday(ALLO_TAG_LABEL),
             )}
             {row(
-              isFr ? 'Écrire au réseau' : 'Write to the network',
+              tx(isFr).helpContactScreen.writeToTheNetwork,
               ArrowTopRightOnSquareIcon,
               () => openExternal(NETWORK_CONTACT_URL),
-              isFr
-                ? 'Formulaire de M réso : incident, réclamation, question sur un titre.'
-                : 'M réso form: incidents, complaints, questions about a ticket.',
+              tx(isFr).helpContactScreen.mResoFormIncidents,
             )}
           </div>
 
-          {heading(isFr ? 'Objets trouvés' : 'Lost property')}
+          {heading(tx(isFr).helpContactScreen.lostProperty)}
           <div className="space-y-2">
             {row(
-              isFr ? 'Déclarer ou retrouver un objet' : 'Report or find an item',
+              tx(isFr).helpContactScreen.reportOrFindAn,
               ArrowTopRightOnSquareIcon,
               () => openExternal(LOST_PROPERTY_URL),
-              isFr
-                ? 'Ce qui est oublié dans un tram ou un bus part chez France Objets Trouvés.'
-                : 'Anything left on a tram or bus goes to France Objets Trouvés.',
+              tx(isFr).helpContactScreen.anythingLeftOnA,
             )}
           </div>
           </>
         )}
 
-        {heading(isFr ? 'L’application' : 'The app')}
+        {heading(tx(isFr).helpContactScreen.theApp)}
         <div className="space-y-2">
           {row(
-            isFr ? 'Signaler un problème dans GreLines' : 'Report a problem in GreLines',
+            tx(isFr).helpContactScreen.reportAProblemIn,
             ChatBubbleLeftRightIcon,
             () => handOff(`mailto:${APP_CONTACT_MAIL}`),
             APP_CONTACT_MAIL,

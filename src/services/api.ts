@@ -23,7 +23,9 @@ import {
 import { isInGrenobleArea, planTransitousOtp } from './transitous';
 import { haversineMeters } from '../utils/geo';
 import { applySncfToItineraries } from './sncfLive';
+import { clockOf, keepCatchable } from './catchable';
 import { getSncfStationLines, getSncfStopDetail } from './sncfNetwork';
+import { tx } from '../i18n';
 
 const TAG_API_BASE = 'https://data.mobilites-m.fr/api/routers/default';
 
@@ -106,6 +108,8 @@ export interface RouteItinerary {
   rawDep?: string;
   rawArr?: string;
   tight?: boolean;
+  rush?: boolean;
+  busDelayMinutes?: number;
   shared?: SharedJourneyInfo;
   uber?: UberJourneyInfo;
   taxi?: TaxiJourneyInfo;
@@ -262,14 +266,14 @@ export async function planItineraries(options: {
       time: `${pad(earlier.getHours())}:${pad(earlier.getMinutes())}`,
     };
   }
-  const catchable = (found: RouteItinerary[]) => (departNow ? keepCatchable(found, Date.now()) : found);
+  const catchable = async (found: RouteItinerary[]) => (departNow ? keepCatchable(await withLiveBoarding(found, Date.now()), Date.now()) : found);
   if (
     !isInGrenobleArea(options.fromLatitude, options.fromLongitude) ||
     !isInGrenobleArea(options.toLatitude, options.toLongitude)
   ) {
     try {
       const itineraries = await applySncfToItineraries(await planTransitousOtp(options));
-      return catchable(itineraries.map(it => {
+      return await catchable(itineraries.map(it => {
         const parsed = parseOtpItinerary(it, options.fromName, options.toName);
         parsed.bikeTransit =
           it.legs.some(leg => leg.mode === 'BICYCLE') &&
@@ -321,50 +325,59 @@ export async function planItineraries(options: {
         legs.some(leg => leg?.mode && leg.mode !== 'BICYCLE' && leg.mode !== 'WALK');
       return parsed;
     });
-    return catchable(withLiveTrains(local, await trainCandidates));
+    return await catchable(withLiveTrains(local, await trainCandidates));
   } catch (error) {
-    return catchable(await trainCandidates);
+    return await catchable(await trainCandidates);
   }
 }
 
 const LOOKBACK_MS = 5 * 60_000;
-const BRISK_WALK_RATIO = 0.75;
-const MISSED_GRACE_MS = 30_000;
+const LIVE_CHECK_WINDOW_MS = 20 * 60_000;
 
-const clockOf = (at: number) => new Date(at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+async function liveBoardingTime(stopId: string, tripId: string): Promise<number | null> {
+  try {
+    const response = await axios.get(`${TAG_API_BASE}/index/stops/${encodeURIComponent(stopId)}/stoptimes`, { headers: TAG_HEADERS });
+    for (const group of Array.isArray(response.data) ? response.data : []) {
+      for (const time of group?.times ?? []) {
+        if (time?.tripId === tripId && time.realtime && typeof time.serviceDay === 'number' && typeof time.realtimeDeparture === 'number') {
+          return (time.serviceDay + time.realtimeDeparture) * 1000;
+        }
+      }
+    }
+  } catch {
+  }
+  return null;
+}
 
-function keepCatchable(itineraries: RouteItinerary[], now: number): RouteItinerary[] {
-  const kept: RouteItinerary[] = [];
-  for (const itinerary of itineraries) {
+async function withLiveBoarding(itineraries: RouteItinerary[], now: number): Promise<RouteItinerary[]> {
+  const lookups = new Map<string, Promise<number | null>>();
+  return Promise.all(itineraries.map(async itinerary => {
     const legs: any[] = itinerary.allLegs ?? [];
-    const start = Number(legs[0]?.startTime);
-    if (!Number.isFinite(start) || start >= now) {
-      kept.push(itinerary);
-      continue;
-    }
     const boardIndex = legs.findIndex(leg => leg?.mode && leg.mode !== 'WALK');
-    const leadIn = boardIndex < 0 ? legs : legs.slice(0, boardIndex);
-    if (boardIndex <= 0 || leadIn.some(leg => leg?.mode !== 'WALK')) {
-      if (start >= now - MISSED_GRACE_MS) kept.push(itinerary);
-      continue;
-    }
-    const board = Number(legs[boardIndex].startTime);
-    const walkMs = leadIn.reduce((sum, leg) => sum + Number(leg.endTime) - Number(leg.startTime), 0);
-    if (!Number.isFinite(board) || board - now < walkMs * BRISK_WALK_RATIO) continue;
-    const end = Number(legs[legs.length - 1]?.endTime);
-    const first = { ...legs[0], startTime: now, duration: Math.max(0, (Number(legs[0].endTime) - now) / 1000) };
-    const allLegs = [first, ...legs.slice(1)];
-    const minutes = Number.isFinite(end) ? Math.round((end - now) / 60_000) : null;
-    kept.push({
+    const leg = legs[boardIndex];
+    const board = Number(leg?.startTime);
+    const stopId = String(leg?.from?.stopId ?? '');
+    const tripId = String(leg?.tripId ?? '');
+    if (boardIndex < 0 || !stopId.startsWith('SEM:') || !tripId || !Number.isFinite(board) || board - now > LIVE_CHECK_WINDOW_MS) return itinerary;
+    const key = `${stopId}|${tripId}`;
+    if (!lookups.has(key)) lookups.set(key, liveBoardingTime(stopId, tripId));
+    const live = await lookups.get(key);
+    if (live === null || live === undefined || Math.abs(live - board) < 60_000) return itinerary;
+    const shift = live - board;
+    const allLegs = legs.map((item, index) => {
+      if (index < boardIndex) return { ...item, startTime: Number(item.startTime) + shift, endTime: Number(item.endTime) + shift };
+      if (index === boardIndex) return { ...item, startTime: live };
+      return item;
+    });
+    return {
       ...itinerary,
       allLegs,
-      dep: clockOf(now),
-      dur: minutes !== null ? `${minutes} min` : itinerary.dur,
-      tight: true,
-    });
-  }
-  return kept;
+      dep: clockOf(Number(allLegs[0].startTime)),
+      busDelayMinutes: Math.round(shift / 60_000),
+    };
+  }));
 }
+
 
 const TRAIN_RELEVANT_METERS = 6000;
 
@@ -1797,9 +1810,9 @@ export function formatDepartureTime(departure: Departure, locale: 'fr' | 'en' = 
   const minutes = departure.departureTime;
 
   if (minutes < 0) {
-    return locale === 'fr' ? 'Passé' : 'Passed';
+    return tx(locale === 'fr').api.passed;
   } else if (minutes === 0) {
-    return locale === 'fr' ? 'ARR' : 'Now';
+    return tx(locale === 'fr').api.now;
   } else if (minutes < 60) {
     return `${minutes}m`;
   } else {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { IS_NANCY } from '../site';
 import { appLanguage } from '../utils/appLanguage';
+import { tx } from '../i18n';
 
 const MOBILE_SPLASH_MS = 300;
 const MOBILE_FADE_MS = 200;
@@ -25,7 +26,7 @@ function MapLoadingSpinner({ visible, light }: { visible: boolean; light: boolea
       className="pointer-events-none fixed inset-0 z-[9998] flex items-center justify-center"
       style={{ opacity: visible ? 1 : 0, transition: `opacity ${SPINNER_FADE_MS}ms ease-out` }}
       role="status"
-      aria-label={appLanguage() === 'en' ? 'Loading' : 'Chargement'}
+      aria-label={tx(!(appLanguage() === 'en')).launchScreen.loading}
     >
       <div
         className="flex h-28 w-28 items-center justify-center rounded-3xl shadow-2xl"

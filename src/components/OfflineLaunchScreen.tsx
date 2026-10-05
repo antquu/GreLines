@@ -6,6 +6,7 @@ import { IoWifi } from 'react-icons/io5';
 import { isOffline } from '../services/offlineSchedule';
 import { hasOfflineSchedules } from '../services/networkSchedules';
 import { useIsOffline } from '../hooks/useIsOffline';
+import { tx } from '../i18n';
 
 export function OfflineLaunchScreen({ language }: { language: 'fr' | 'en' }) {
   const isFr = language === 'fr';
@@ -45,14 +46,12 @@ export function OfflineLaunchScreen({ language }: { language: 'fr' | 'en' }) {
             <IoWifi className="h-24 w-24 md:h-16 md:w-16" style={{ color: '#333333' }} aria-hidden="true" />
 
             <p role="heading" aria-level={1} id="offline-launch-title" className="pt-14 text-[1.875rem] font-medium leading-[1.15] md:pt-16 md:text-[1.75rem]" style={{ color: '#ffffff' }}>
-              {isFr ? 'Vous êtes en mode hors ligne' : 'You are offline'}
+              {tx(isFr).offlineLaunchScreen.youAreOffline}
             </p>
             <p className="pt-3 text-[1.1875rem] leading-snug md:pt-5" style={{ color: '#a3a3a3' }}>
               {launch?.hasData
-                ? (isFr ? 'Vous pouvez tout de même utiliser GreLines.' : 'You can still use GreLines.')
-                : (isFr
-                  ? 'Aucun horaire n’est encore enregistré sur cet appareil. Ouvrez GreLines une première fois avec une connexion : ensuite, il fonctionnera même sans réseau.'
-                  : 'No timetable is saved on this device yet. Open GreLines once with a connection: after that, it will work even offline.')}
+                ? (tx(isFr).offlineLaunchScreen.youCanStillUse)
+                : (tx(isFr).offlineLaunchScreen.noTimetableIsSaved)}
             </p>
 
             {launch?.hasData && (
@@ -63,13 +62,13 @@ export function OfflineLaunchScreen({ language }: { language: 'fr' | 'en' }) {
                   style={{ backgroundColor: '#ffffff', color: '#000000' }}
                   className="mt-auto w-full rounded-2xl py-4 text-[1.0625rem] font-semibold transition active:scale-[0.98] md:hidden"
                 >
-                  {isFr ? 'Continuer' : 'Continue'}
+                  {tx(isFr).offlineLaunchScreen.continue}
                 </button>
                 <button
                   type="button"
                   onClick={() => setDismissed(true)}
-                  aria-label={isFr ? 'Continuer' : 'Continue'}
-                  title={isFr ? 'Continuer' : 'Continue'}
+                  aria-label={tx(isFr).offlineLaunchScreen.continue}
+                  title={tx(isFr).offlineLaunchScreen.continue}
                   style={{ backgroundColor: '#ffffff', color: '#000000' }}
                   className="mt-10 hidden h-12 w-12 items-center justify-center self-end rounded-full transition hover:scale-105 active:scale-95 md:flex"
                 >

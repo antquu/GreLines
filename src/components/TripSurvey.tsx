@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon, CheckCircleIcon, ShieldCheckIcon } from '@heroicons/react/24/solid';
 import { submitTripSurvey, type TripSurveyLeg } from '../services/cms';
+import { tx } from '../i18n';
 
 const CONSENT_KEY = 'greLines_surveyConsent';
 
@@ -36,25 +37,25 @@ interface TripSurveyProps {
 }
 
 const TIERS = [
-  { value: 1, tone: 'bad' as const, label: (isFr: boolean) => (isFr ? 'Mauvais' : 'Poor') },
-  { value: 3, tone: 'mid' as const, label: (isFr: boolean) => (isFr ? 'Moyen' : 'Okay') },
-  { value: 5, tone: 'good' as const, label: (isFr: boolean) => (isFr ? 'Bien' : 'Good') },
+  { value: 1, tone: 'bad' as const, label: (isFr: boolean) => (tx(isFr).tripSurvey.poor) },
+  { value: 3, tone: 'mid' as const, label: (isFr: boolean) => (tx(isFr).tripSurvey.okay) },
+  { value: 5, tone: 'good' as const, label: (isFr: boolean) => (tx(isFr).tripSurvey.good) },
 ];
 
 const QUESTIONS = (isFr: boolean) => [
   {
     key: 'cleanliness' as const,
-    label: isFr ? 'Propreté du véhicule' : 'Vehicle cleanliness',
+    label: tx(isFr).tripSurvey.vehicleCleanliness,
     emojis: { bad: '💩', mid: '🧻', good: '✨' },
   },
   {
     key: 'comfort' as const,
-    label: isFr ? 'Confort du trajet' : 'Ride comfort',
+    label: tx(isFr).tripSurvey.rideComfort,
     emojis: { bad: '🤢', mid: '😐', good: '😌' },
   },
   {
     key: 'crowding' as const,
-    label: isFr ? "Niveau d'affluence" : 'Crowding level',
+    label: tx(isFr).tripSurvey.crowdingLevel,
     emojis: { bad: '🥵', mid: '🧍', good: '💺' },
   },
 ];
@@ -205,34 +206,32 @@ export function TripSurvey({
           {done ? (
             <div className="flex flex-col items-center py-8 text-center">
               <CheckCircleIcon className="mb-3 h-14 w-14 text-emerald-400" />
-              <p className="text-lg font-semibold text-white">{isFr ? 'Merci !' : 'Thank you!'}</p>
+              <p className="text-lg font-semibold text-white">{tx(isFr).tripSurvey.thankYou}</p>
               <p className="mt-1 text-sm text-slate-400">
-                {isFr ? 'Votre retour aide à améliorer le réseau.' : 'Your feedback helps improve the network.'}
+                {tx(isFr).tripSurvey.yourFeedbackHelpsImprove}
               </p>
             </div>
           ) : consent === null ? (
             <div>
               <ShieldCheckIcon className="mb-3 h-10 w-10 text-indigo-400" />
               <h2 className="text-xl font-bold" style={{ color: '#ffffff' }}>
-                {isFr ? 'Donnez votre avis sur ce trajet ?' : 'Rate this trip?'}
+                {tx(isFr).tripSurvey.rateThisTrip}
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                {isFr
-                  ? "Quelques questions rapides sur la qualité du service. Vos réponses sont anonymes : aucun compte ni identifiant d'appareil n'est enregistré. Sont transmis la ligne, l'arrêt et l'heure de montée, afin que l'exploitant sache de quel passage il s'agit. Vous pouvez refuser, ce choix sera mémorisé."
-                  : 'A few quick questions about service quality. Your answers are anonymous: no account or device identifier is stored. The line, boarding stop and boarding time are sent so the operator knows which run is concerned. You may decline, and your choice will be remembered.'}
+                {tx(isFr).tripSurvey.aFewQuickQuestions}
               </p>
               <div className="mt-5 flex gap-2">
                 <button
                   onClick={handleRefuse}
                   className="flex-1 rounded-xl bg-slate-800 py-3 text-sm font-semibold text-slate-300 active:bg-slate-700"
                 >
-                  {isFr ? 'Non merci' : 'No thanks'}
+                  {tx(isFr).tripSurvey.noThanks}
                 </button>
                 <button
                   onClick={handleAccept}
                   className="flex-1 rounded-xl bg-indigo-500 py-3 text-sm font-semibold text-white active:bg-indigo-600"
                 >
-                  {isFr ? 'Participer' : 'Participate'}
+                  {tx(isFr).tripSurvey.participate}
                 </button>
               </div>
             </div>
@@ -241,7 +240,7 @@ export function TripSurvey({
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-bold" style={{ color: '#ffffff' }}>
-                    {isFr ? 'Votre trajet' : 'Your trip'} · {lineId}
+                    {tx(isFr).tripSurvey.yourTrip} · {lineId}
                   </h2>
                   <div className="mt-2 flex gap-1.5" aria-hidden="true">
                     {Array.from({ length: stepCount }).map((_, i) => (
@@ -257,7 +256,7 @@ export function TripSurvey({
                 <button
                   onClick={onClose}
                   className="flex-shrink-0 rounded-full p-1 text-slate-500 active:text-white"
-                  aria-label={isFr ? 'Fermer' : 'Close'}
+                  aria-label={tx(isFr).tripSurvey.close}
                 >
                   <XMarkIcon className="h-5 w-5" />
                 </button>
@@ -275,14 +274,14 @@ export function TripSurvey({
                     {isCommentStep ? (
                       <div>
                         <p className="mb-1.5 text-sm font-medium text-slate-300">
-                          {isFr ? 'Un mot à ajouter ?' : 'Anything to add?'}
+                          {tx(isFr).tripSurvey.anythingToAdd}
                         </p>
                         <textarea
                           rows={3}
                           value={comment}
                           onChange={(e) => setComment(e.target.value)}
                           className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder={isFr ? 'Facultatif' : 'Optional'}
+                          placeholder={tx(isFr).tripSurvey.optional}
                         />
                       </div>
                     ) : (
@@ -308,7 +307,7 @@ export function TripSurvey({
                     onClick={() => goTo(stepIndex - 1)}
                     className="rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-400 active:text-white"
                   >
-                    {isFr ? 'Retour' : 'Back'}
+                    {tx(isFr).tripSurvey.back}
                   </button>
                 )}
                 <div className="flex-1" />
@@ -318,14 +317,14 @@ export function TripSurvey({
                     disabled={submitting}
                     className="rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40 active:bg-indigo-600"
                   >
-                    {submitting ? (isFr ? 'Envoi…' : 'Sending…') : isFr ? 'Terminer' : 'Finish'}
+                    {submitting ? (tx(isFr).tripSurvey.sending) : tx(isFr).tripSurvey.finish}
                   </button>
                 ) : (
                   <button
                     onClick={() => goTo(stepIndex + 1)}
                     className="rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-400 active:text-white"
                   >
-                    {isFr ? 'Ignorer' : 'Skip'}
+                    {tx(isFr).tripSurvey.skip}
                   </button>
                 )}
               </div>

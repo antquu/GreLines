@@ -4,6 +4,7 @@ import { gtfsCodeOf } from '../services/gtfsNetworkIds';
 import { gtfsLineMode, gtfsShortName } from '../services/gtfsNetwork';
 import { tclCode, tclLogoEntry } from './tclLogos';
 import { IS_NANCY } from '../site';
+import { tx } from '../i18n';
 
 export type MetroFamily = 'tram' | 'chrono' | 'proximo' | 'flexo';
 
@@ -19,13 +20,7 @@ export const NETWORK_FILTERS: Array<{ code: string; label: string }> = [
   ...(gtfsNetworks as Array<{ code: string; city: string }>).map(network => ({ code: network.code, label: network.city })),
 ];
 
-const STAN_FAMILIES: Array<{ key: string; fr: string; en: string }> = [
-  { key: 'stan-tempo', fr: 'Tempo', en: 'Tempo' },
-  { key: 'stan-corol', fr: 'Corol', en: 'Corol' },
-  { key: 'stan-urbain', fr: 'Urbaines', en: 'Urban' },
-  { key: 'stan-suburbain', fr: 'Suburbaines', en: 'Suburban' },
-  { key: 'stan-autres', fr: 'Autres', en: 'Other' },
-];
+const STAN_FAMILIES = ['stan-tempo', 'stan-corol', 'stan-urbain', 'stan-suburbain', 'stan-autres'];
 
 function stanFamily(line: string): string | null {
   if (gtfsCodeOf(line) !== 'STAN' || gtfsLineMode(line) === null) return null;
@@ -103,16 +98,16 @@ export function trafficFilters(
   const isFr = language === 'fr';
   if (IS_NANCY) {
     return [
-      { key: 'all', label: isFr ? 'Tout' : 'All' },
-      ...STAN_FAMILIES.filter(family => present.has(family.key)).map(family => ({
-        key: family.key,
-        label: isFr ? family.fr : family.en,
+      { key: 'all', label: tx(isFr).trafficFilters.all },
+      ...STAN_FAMILIES.filter(family => present.has(family)).map(family => ({
+        key: family,
+        label: tx(isFr).trafficFilters.families[family],
       })),
     ];
   }
   return [
-    { key: 'all', label: isFr ? 'Tout' : 'All' },
-    { key: 'tram', label: isFr ? 'Trams' : 'Trams' },
+    { key: 'all', label: tx(isFr).trafficFilters.all },
+    { key: 'tram', label: tx(isFr).trafficFilters.trams },
     { key: 'chrono', label: 'Chrono' },
     { key: 'proximo', label: 'Proximo' },
     { key: 'flexo', label: 'Flexo' },
@@ -124,16 +119,6 @@ export function trafficFilters(
 }
 
 
-const MODE_LABELS: Record<string, { fr: string; en: string }> = {
-  metro: { fr: 'Métro', en: 'Metro' },
-  tram: { fr: 'Tram', en: 'Tram' },
-  trambus: { fr: 'Trambus', en: 'Trolleybus' },
-  chrono: { fr: 'Chrono', en: 'Chrono' },
-  funi: { fr: 'Funiculaire', en: 'Funicular' },
-  train: { fr: 'Train', en: 'Train' },
-  bus: { fr: 'Bus', en: 'Bus' },
-  relais: { fr: 'Bus relais', en: 'Replacement bus' },
-};
 const MODE_ORDER = ['metro', 'tram', 'trambus', 'chrono', 'funi', 'train', 'bus'];
 
 const TCL_MODES: Record<string, string> = {
@@ -190,12 +175,12 @@ function computeSubCategory(
 const NAME_PREFIXES: Record<string, string> = { CIT: 'Citadine', NAV: 'Navette', EXP: 'Express' };
 
 function subLabel(key: string, language: 'fr' | 'en'): string {
-  if (key.startsWith('mode:')) return MODE_LABELS[key.slice(5)]?.[language] ?? key.slice(5);
-  if (key === 'num') return language === 'fr' ? 'Numéros' : 'Numbered';
-  if (key === 'other') return language === 'fr' ? 'Autres' : 'Other';
+  if (key.startsWith('mode:')) return tx(language === 'fr').trafficFilters.modes[key.slice(5)] ?? key.slice(5);
+  if (key === 'num') return tx(language === 'fr').trafficFilters.numbered;
+  if (key === 'other') return tx(language === 'fr').trafficFilters.other;
   const prefix = key.slice(5);
   if (NAME_PREFIXES[prefix]) return NAME_PREFIXES[prefix];
-  if (prefix.length <= 2) return language === 'fr' ? `Lignes ${prefix}` : `${prefix} lines`;
+  if (prefix.length <= 2) return tx(language === 'fr').trafficFilters.prefixLines(prefix);
   return prefix.charAt(0) + prefix.slice(1).toLowerCase();
 }
 

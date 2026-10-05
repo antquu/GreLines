@@ -1,6 +1,7 @@
 import { ArrowRightIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
 import type { RouteLocation } from '../services/api';
+import { tx } from '../i18n';
 
 export interface PendingJourney {
   from: RouteLocation;
@@ -30,7 +31,7 @@ export function AddJourneyDialog({
     <div className="fixed inset-0 z-[1200] flex items-center justify-center p-6" role="dialog" aria-modal="true">
       <button
         type="button"
-        aria-label={isFr ? 'Annuler' : 'Cancel'}
+        aria-label={tx(isFr).addJourneyDialog.cancel}
         onClick={onCancel}
         className="absolute inset-0 bg-black/60"
       />
@@ -43,7 +44,7 @@ export function AddJourneyDialog({
         }`}
       >
         <h3 className="mb-4 text-lg font-extrabold leading-tight">
-          {isFr ? 'Ajouter ce trajet aux favoris ?' : 'Add this journey to favorites?'}
+          {tx(isFr).addJourneyDialog.addThisJourneyTo}
         </h3>
 
         <div
@@ -67,15 +68,11 @@ export function AddJourneyDialog({
 
         {isFull ? (
           <p className="mb-4 text-sm font-medium text-amber-500">
-            {isFr
-              ? 'La liste des trajets favoris est pleine. Retires-en un pour ajouter celui-ci.'
-              : 'Your favorite journeys are full. Remove one to add this.'}
+            {tx(isFr).addJourneyDialog.yourFavoriteJourneysAre}
           </p>
         ) : (
           <p className={`mb-4 text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-            {isFr
-              ? 'Il apparaîtra comme onglet dans vos favoris. Appui long sur l’onglet pour le renommer.'
-              : 'It will appear as a tab in your favorites. Long-press the tab to rename it.'}
+            {tx(isFr).addJourneyDialog.itWillAppearAs}
           </p>
         )}
 
@@ -87,7 +84,7 @@ export function AddJourneyDialog({
               isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-800 bg-slate-900 text-slate-200'
             }`}
           >
-            {isFr ? 'Non' : 'No'}
+            {tx(isFr).addJourneyDialog.no}
           </button>
           <button
             type="button"
@@ -95,7 +92,7 @@ export function AddJourneyDialog({
             disabled={isFull}
             className="flex-1 rounded-2xl bg-blue-600 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-40"
           >
-            {isFr ? 'Oui, ajouter' : 'Yes, add'}
+            {tx(isFr).addJourneyDialog.yesAdd}
           </button>
         </div>
       </div>

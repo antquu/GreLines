@@ -1,4 +1,6 @@
 import type { ComponentType, SVGProps } from 'react';
+import { tx } from '../i18n';
+import { appLanguage } from '../utils/appLanguage';
 
 export interface MobileNavItem {
   key: string;
@@ -23,7 +25,7 @@ export function MobileNavBar({
 }) {
   return (
     <nav
-      aria-label="Navigation principale"
+      aria-label={tx(appLanguage() === 'fr').common.mainNavigation}
       className={`flex items-stretch px-2 transition-[gap,padding] duration-300 ease-in-out ${
         compact ? 'gap-0 py-0' : 'gap-1 py-1'
       }`}

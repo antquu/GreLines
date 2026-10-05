@@ -5,6 +5,7 @@ import { LineBadge } from './LineBadge';
 import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
 import { resolveRouteLine } from '../utils/routeLineResolver';
+import { tx } from '../i18n';
 
 interface ItineraryStepsProps {
   itinerary: RouteItinerary;
@@ -40,7 +41,7 @@ export const ItinerarySteps = memo(({ itinerary, language, stops, lineLookup }: 
   return (
     <div className="mt-4 space-y-2 border-t border-slate-800 pt-4">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-        {isFr ? 'Étapes' : 'Steps'}
+        {tx(isFr).itinerarySteps.steps}
       </div>
 
       <div className="relative space-y-3 pl-6">
@@ -85,7 +86,7 @@ export const ItinerarySteps = memo(({ itinerary, language, stops, lineLookup }: 
                     <div className="flex items-center gap-2">
                       <FaWalking className="h-4 w-4 text-slate-500" />
                       <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        {isFr ? 'À pied' : 'Walk'}
+                        {tx(isFr).itinerarySteps.walk}
                       </span>
                     </div>
                     <div className="mt-1 text-xs text-slate-500">

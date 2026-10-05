@@ -225,6 +225,7 @@ async function departures(uic, key) {
       base,
       real,
       live: times.data_freshness === 'realtime',
+      deleted: (times.additional_informations ?? []).some(flag => /deleted/i.test(String(flag))),
       alert: linked[0] ?? null,
     };
   }).filter(entry => entry.base !== null && entry.real !== null);

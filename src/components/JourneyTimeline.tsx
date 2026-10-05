@@ -8,6 +8,7 @@ import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
 import { resolveRouteLine } from '../utils/routeLineResolver';
 import type { JourneyIntermediateStop } from '../types';
+import { tx } from '../i18n';
 
 interface JourneyTimelineProps {
   journey: RouteItinerary;
@@ -25,7 +26,7 @@ const formatDuration = (minutes: number): string => {
 
 export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLookup, getLineDisruptions }: JourneyTimelineProps) => {
   const [expandedLegs, setExpandedLegs] = useState<Set<number>>(new Set());
-  const isEn = appLanguage() === 'en';
+  const text = tx(appLanguage() === 'fr').journeyTimeline;
 
   const toggleLeg = (index: number) => {
     setExpandedLegs(current => {
@@ -123,7 +124,7 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
         : [];
       const stopCount = intermediateStops.length + 1;
       const isExpanded = expandedLegs.has(i);
-      const summary = `${formatDuration(durationMin)} · ${stopCount} ${isEn ? 'stop' : 'arrêt'}${stopCount > 1 ? 's' : ''}`;
+      const summary = `${formatDuration(durationMin)} · ${text.stops(stopCount)}`;
       items.push(
         <div
           key={`transit-bar-${i}`}
@@ -236,7 +237,7 @@ export const JourneyTimeline = memo(({ journey, lineColors = new Map(), lineLook
             <FaWalking className="w-5 h-5 text-slate-400 flex-shrink-0" />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-semibold text-slate-300">{isEn ? 'Walk' : 'À pied'}</p>
+            <p className="text-sm font-semibold text-slate-300">{text.walk}</p>
             <p className="text-[0.7812rem] text-slate-400">
               {leg.from?.name?.replace(/^[^,]+,\s*/, '')} → {leg.to?.name?.replace(/^[^,]+,\s*/, '')}
             </p>

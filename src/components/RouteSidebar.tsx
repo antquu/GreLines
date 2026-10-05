@@ -35,6 +35,7 @@ import { hapticTap } from '../utils/haptics';
 import type { AllLinesLine } from '../services/allLines';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Stop, TrafficDetail } from '../types';
+import { tx } from '../i18n';
 
 interface RouteSidebarProps {
   isOpen: boolean;
@@ -75,72 +76,68 @@ interface RouteSidebarProps {
 const getText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
-    title: isFr ? 'Itinéraire' : 'Route planner',
-    from: isFr ? 'Départ' : 'From',
-    to: isFr ? 'Arrivée' : 'To',
-    choosePoint: isFr ? 'Choisissez un arrêt ou une adresse' : 'Pick a stop or address',
-    search: isFr ? 'Rechercher' : 'Search',
-    reset: isFr ? 'Réinitialiser' : 'Reset',
-    noSuggestion: isFr ? 'Aucun résultat' : 'No results',
-    unknownCity: isFr ? 'Ville inconnue' : 'Unknown city',
-    stops: isFr ? 'Arrêts' : 'Stops',
-    addresses: isFr ? 'Adresses' : 'Addresses',
-    selectRoute: isFr ? 'Sélectionnez un itinéraire' : 'Select an itinerary',
-    duration: isFr ? 'Durée' : 'Duration',
-    depart: isFr ? 'Départ' : 'Depart',
-    arrive: isFr ? 'Arrivée' : 'Arrive',
-    lines: isFr ? 'Lignes' : 'Lines',
-    walking: isFr ? 'À pied' : 'Walk',
-    routeError: isFr ? 'Veuillez choisir un départ ET une arrivée valides.' : 'Please choose a valid origin AND destination.',
-    noRoutes: isFr ? 'Aucun itinéraire trouvé' : 'No route found',
-    close: isFr ? 'Fermer' : 'Close',
-    selectedStop: isFr ? 'Arrêt sélectionné' : 'Selected stop',
-    selectedAddress: isFr ? 'Adresse sélectionnée' : 'Selected address',
-    stopKind: isFr ? 'Arrêt' : 'Stop',
-    addressKind: isFr ? 'Adresse' : 'Address',
-    swapEndpoints: isFr ? "Inverser le départ et l'arrivée" : 'Swap origin and destination',
-    pickerTitle: isFr ? 'Nouveau trajet' : 'New journey',
-    pickerHint: isFr
-      ? 'Choisis un itinéraire pour en faire un favori.'
-      : 'Pick a route to turn it into a favorite.',
-    pickerAdd: isFr ? 'Ajouter ce trajet' : 'Add this journey',
-    dragToClose: isFr ? 'Glissez vers le bas pour fermer' : 'Swipe down to close',
-    pickPointOnMap: isFr ? 'Cliquez sur la carte pour choisir un point' : 'Click on the map to pick a point',
-    tapPointOnMap: isFr ? 'Touchez la carte pour choisir un point' : 'Tap the map to pick a point',
-    cancel: isFr ? 'Annuler' : 'Cancel',
-    leaveNow: isFr ? 'Partir maintenant' : 'Leave now',
-    refreshRoutes: isFr ? 'Rafraîchir les itinéraires' : 'Refresh routes',
-    refresh: isFr ? 'Actualiser' : 'Refresh',
-    expectedDeparture: isFr ? 'Départ prévu à' : 'Expected departure',
-    estimatedArrival: isFr ? "Heure d'arrivée estimée :" : 'Estimated arrival:',
-    extraSteps: (count: number) => isFr ? `+${count} étapes supplémentaires` : `+${count} more steps`,
-    walkPriority: isFr ? 'Priorité à la marche' : 'Walking priority',
+    title: tx(isFr).routeSidebar.routePlanner,
+    from: tx(isFr).routeSidebar.from,
+    to: tx(isFr).routeSidebar.to,
+    choosePoint: tx(isFr).routeSidebar.pickAStopOr,
+    search: tx(isFr).routeSidebar.search,
+    reset: tx(isFr).routeSidebar.reset,
+    noSuggestion: tx(isFr).routeSidebar.noResults,
+    unknownCity: tx(isFr).routeSidebar.unknownCity,
+    stops: tx(isFr).routeSidebar.stops,
+    addresses: tx(isFr).routeSidebar.addresses,
+    selectRoute: tx(isFr).routeSidebar.selectAnItinerary,
+    duration: tx(isFr).routeSidebar.duration,
+    depart: tx(isFr).routeSidebar.depart,
+    arrive: tx(isFr).routeSidebar.arrive,
+    lines: tx(isFr).routeSidebar.lines,
+    walking: tx(isFr).routeSidebar.walk,
+    routeError: tx(isFr).routeSidebar.pleaseChooseAValid,
+    noRoutes: tx(isFr).routeSidebar.noRouteFound,
+    close: tx(isFr).routeSidebar.close,
+    selectedStop: tx(isFr).routeSidebar.selectedStop,
+    selectedAddress: tx(isFr).routeSidebar.selectedAddress,
+    stopKind: tx(isFr).routeSidebar.stop,
+    addressKind: tx(isFr).routeSidebar.address,
+    swapEndpoints: tx(isFr).routeSidebar.swapOriginAndDestination,
+    pickerTitle: tx(isFr).routeSidebar.newJourney,
+    pickerHint: tx(isFr).routeSidebar.pickARouteTo,
+    pickerAdd: tx(isFr).routeSidebar.addThisJourney,
+    dragToClose: tx(isFr).routeSidebar.swipeDownToClose,
+    pickPointOnMap: tx(isFr).routeSidebar.clickOnTheMap,
+    tapPointOnMap: tx(isFr).routeSidebar.tapTheMapTo,
+    cancel: tx(isFr).routeSidebar.cancel,
+    leaveNow: tx(isFr).routeSidebar.leaveNow,
+    refreshRoutes: tx(isFr).routeSidebar.refreshRoutes,
+    refresh: tx(isFr).routeSidebar.refresh,
+    expectedDeparture: tx(isFr).routeSidebar.expectedDeparture,
+    estimatedArrival: tx(isFr).routeSidebar.estimatedArrival,
+    extraSteps: (count: number) => tx(isFr).routeSidebar.countMoreSteps(count),
+    walkPriority: tx(isFr).routeSidebar.walkingPriority,
     greLinesTrip: 'GreLines Trip',
-    otherOptions: isFr ? 'Autres options' : 'Other options',
-    departAt: isFr ? 'Départ' : 'Depart',
-    arriveAt: isFr ? 'Arrivée' : 'Arrive',
-    now: isFr ? 'Maintenant' : 'Now',
-    schedule: isFr ? 'Date et heure' : 'Date and time',
-    prefer: isFr ? 'Préférer' : 'Prefer',
-    walkBalanced: isFr ? 'Équilibré' : 'Balanced',
-    pmr: isFr ? 'Accès PMR' : 'Step-free access',
-    pmrHint: isFr
-      ? 'Uniquement des trajets praticables en fauteuil : ni escalier en correspondance, ni arrêt non repris.'
-      : 'Only step-free journeys: no stairs-only transfers, no stops that are not fitted.',
-    preferWalk: isFr ? 'Plus de marche' : 'More walking',
-    preferTransit: isFr ? 'Moins de marche' : 'Less walking',
-    walkSpeed: isFr ? 'Vitesse de marche' : 'Walking speed',
-    copiedUrl: isFr ? 'URL copié' : 'URL copied',
-    shareJourney: isFr ? 'Partager le trajet' : 'Share journey',
-    expiredJourney: isFr ? 'Malheureusement, ce trajet est dépassé.' : 'Unfortunately, this journey has expired.',
-    planNewRoute: isFr ? 'Planifier un nouveau trajet' : 'Plan a new journey',
-    useCurrentLocation: isFr ? 'Utiliser ma position' : 'Use my location',
-    chooseOnMap: isFr ? 'Choisir sur la carte' : 'Choose on map',
-    homeLabel: isFr ? 'Domicile' : 'Home',
-    workLabel: isFr ? 'Travail' : 'Work',
-    whereTo: isFr ? 'Où allez-vous ?' : 'Where to?',
-    recents: isFr ? 'Recherches récentes' : 'Recent searches',
-    visitTitle: isFr ? 'À visiter' : 'Worth a visit',
+    otherOptions: tx(isFr).routeSidebar.otherOptions,
+    departAt: tx(isFr).routeSidebar.depart,
+    arriveAt: tx(isFr).routeSidebar.arrive,
+    now: tx(isFr).routeSidebar.now,
+    schedule: tx(isFr).routeSidebar.dateAndTime,
+    prefer: tx(isFr).routeSidebar.prefer,
+    walkBalanced: tx(isFr).routeSidebar.balanced,
+    pmr: tx(isFr).routeSidebar.stepFreeAccess,
+    pmrHint: tx(isFr).routeSidebar.onlyStepFreeJourneys,
+    preferWalk: tx(isFr).routeSidebar.moreWalking,
+    preferTransit: tx(isFr).routeSidebar.lessWalking,
+    walkSpeed: tx(isFr).routeSidebar.walkingSpeed,
+    copiedUrl: tx(isFr).routeSidebar.urlCopied,
+    shareJourney: tx(isFr).routeSidebar.shareJourney,
+    expiredJourney: tx(isFr).routeSidebar.unfortunatelyThisJourneyHas,
+    planNewRoute: tx(isFr).routeSidebar.planANewJourney,
+    useCurrentLocation: tx(isFr).routeSidebar.useMyLocation,
+    chooseOnMap: tx(isFr).routeSidebar.chooseOnMap,
+    homeLabel: tx(isFr).routeSidebar.home,
+    workLabel: tx(isFr).routeSidebar.work,
+    whereTo: tx(isFr).routeSidebar.whereTo,
+    recents: tx(isFr).routeSidebar.recentSearches,
+    visitTitle: tx(isFr).routeSidebar.worthAVisit,
   };
 };
 
@@ -190,7 +187,7 @@ const formatPillDate = (date: string, time: string) => {
 };
 
 const monthLabel = (date: Date, language: 'fr' | 'en') => {
-  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-FR' : 'en-US', {
+  return new Intl.DateTimeFormat(tx(language === 'fr').routeSidebar.localeUs, {
     month: 'long',
     year: 'numeric',
   }).format(date);
@@ -492,7 +489,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                         applyScheduleDraft();
                       }}
                       className={`flex items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-500 ${isMobile ? 'h-11 w-11' : 'h-9 w-9'}`}
-                      aria-label="Valider"
+                      aria-label={tx(language === 'fr').common.confirm}
                     >
                       <CheckIcon className="h-5 w-5" />
                     </button>
@@ -543,7 +540,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                     </div>
 
                     <div className="mt-4 grid grid-cols-7 gap-y-1 text-center text-[0.625rem] font-bold uppercase text-slate-400">
-                      {(language === 'fr' ? ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.', 'Dim.'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']).map(day => (
+                      {(tx(language === 'fr').routeSidebar.mon).map(day => (
                         <div key={day}>{day}</div>
                       ))}
                     </div>
@@ -575,7 +572,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                     </div>
 
                     <div className="relative mt-4 flex items-center justify-between">
-                      <div className="text-sm font-bold text-white">Heure</div>
+                      <div className="text-sm font-bold text-white">{tx(language === 'fr').common.time}</div>
                       {isMobile ? (
                         <input
                           type="time"
@@ -1583,7 +1580,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
               <ArrowLeftIcon className="w-5 h-5" />
             </button>
             <div className={`text-sm font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-              {language === 'fr' ? 'Trajet' : 'Journey'}
+              {tx(language === 'fr').routeSidebar.journey}
             </div>
             <button
               type="button"
@@ -1885,7 +1882,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                   type="button"
                   onClick={() => onRequestPickLocation?.('from')}
                   className={`flex cursor-pointer items-center ${pickMode === 'from' ? 'text-blue-400' : 'text-slate-500'}`}
-                  aria-label="Pick origin on map"
+                  aria-label={tx(language === 'fr').common.pickOriginOnMap}
                 >
                   <MapPinIcon className="w-5 h-5" />
                 </button>
@@ -1936,7 +1933,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                   type="button"
                   onClick={() => onRequestPickLocation?.('to')}
                   className={`flex cursor-pointer items-center ${pickMode === 'to' ? 'text-blue-400' : 'text-slate-500'}`}
-                  aria-label="Pick destination on map"
+                  aria-label={tx(language === 'fr').common.pickDestinationOnMap}
                 >
                   <MapPinIcon className="w-5 h-5" />
                 </button>
@@ -2048,9 +2045,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           <OfflinePanel
             language={language}
             isLight={isLight}
-            detail={language === 'fr'
-              ? 'Le calcul d’un itinéraire a besoin du réseau. Il sera de nouveau possible dès le retour de la connexion.'
-              : 'Planning a route needs the network. It will be available again as soon as you are back online.'}
+            detail={tx(language === 'fr').routeSidebar.planningARouteNeeds}
           />
         )}
 
@@ -2311,7 +2306,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             </button>
             <p className="pb-2 text-xs leading-snug text-slate-500">{text.pmrHint}</p>
 
-            <SectionRule label={isFr ? 'Réseaux' : 'Networks'} isLight={isLight} />
+            <SectionRule label={tx(isFr).routeSidebar.networks} isLight={isLight} />
             <div className="pt-1">
               {ROUTE_NETWORKS.map(network => {
                 const active = routeNetworks.includes(network.code);
@@ -2351,9 +2346,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             </div>
 
             <p className="pb-2 pt-6 text-center text-[0.6875rem] leading-snug text-slate-500">
-              {isFr
-                ? 'Ces réglages sont conservés sur cet appareil et servent au calcul de vos prochains itinéraires.'
-                : 'These settings stay on this device and shape your next journeys.'}
+              {tx(isFr).routeSidebar.theseSettingsStayOn}
             </p>
           </div>
         </MapSheet>

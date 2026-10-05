@@ -1,6 +1,7 @@
 import type { RouteItinerary } from '../services/api';
 import { formatEuro } from '../services/sharedPricing';
 import { estimateTransitFare } from '../services/tagFares';
+import { tx } from '../i18n';
 
 export function journeyFareChip(journey: RouteItinerary, language: 'fr' | 'en'): string | null {
   if (journey.taxi) {
@@ -24,6 +25,6 @@ export function journeyFareChip(journey: RouteItinerary, language: 'fr' | 'en'):
 
   const price = formatEuro(fare.total, language);
   return fare.uncoveredNetworks.length > 0
-    ? `${language === 'fr' ? 'dès' : 'from'} ${price}`
+    ? `${tx(language === 'fr').journeyFare.from} ${price}`
     : price;
 }

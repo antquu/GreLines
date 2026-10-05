@@ -1,5 +1,6 @@
 import { SHARED_OPERATOR_LABELS } from '../services/sharedMobility';
 import type { RouteItinerary } from '../services/api';
+import { tx } from '../i18n';
 
 const BIKE_MODES = new Set(['BICYCLE', 'BICYCLE_RENT']);
 
@@ -50,30 +51,28 @@ export function journeyLabels(journeys: RouteItinerary[], language: 'fr' | 'en')
     if (journey.uber) claim(index, String(journey.uber.productName || 'VTC'));
     else if (journey.taxi) claim(index, journey.taxi.company);
     else if (journey.shared) claim(index, SHARED_OPERATOR_LABELS[journey.shared.operator]);
-    else if (journey.bikeTransit) claim(index, fr ? 'Vélo et transports' : 'Bike and transit');
+    else if (journey.bikeTransit) claim(index, tx(fr).journeyLabels.bikeAndTransit);
     else if (transitLegs(journey).length === 0) {
       const bike = (journey.allLegs || []).some((leg: Record<string, unknown>) =>
         BIKE_MODES.has(String(leg.mode ?? '').toUpperCase()),
       );
-      claim(index, bike ? (fr ? 'À vélo' : 'By bike') : fr ? 'À pied' : 'On foot');
+      claim(index, bike ? (tx(fr).journeyLabels.byBike) : tx(fr).journeyLabels.onFoot);
     }
   });
 
-  claim(bestIndex(durationOf), fr ? 'Arrive en premier' : 'Arrives first');
-  claim(bestIndex(walkMinutes), fr ? 'Le moins de marche' : 'Least walking');
+  claim(bestIndex(durationOf), tx(fr).journeyLabels.arrivesFirst);
+  claim(bestIndex(walkMinutes), tx(fr).journeyLabels.leastWalking);
   claim(
     bestIndex(journey => transitLegs(journey).length),
-    fr ? 'Le moins de changements' : 'Fewest changes',
+    tx(fr).journeyLabels.fewestChanges,
   );
 
   journeys.forEach((journey, index) => {
     if (labels[index]) return;
     const changes = Math.max(0, transitLegs(journey).length - 1);
     labels[index] = changes === 0
-      ? fr ? 'Direct' : 'Direct'
-      : fr
-        ? `${changes} changement${changes > 1 ? 's' : ''}`
-        : `${changes} change${changes > 1 ? 's' : ''}`;
+      ? tx(fr).journeyLabels.direct
+      : tx(fr).journeyLabels.changesChangeValue(changes, changes > 1 ? 's' : '');
   });
 
   return labels;
@@ -100,12 +99,10 @@ export function describeJourney(journey: RouteItinerary, language: 'fr' | 'en'):
     const bike = (journey.allLegs || []).some((leg: Record<string, unknown>) =>
       BIKE_MODES.has(String(leg.mode ?? '').toUpperCase()),
     );
-    return bike ? (fr ? 'À vélo' : 'By bike') : fr ? 'À pied' : 'On foot';
+    return bike ? (tx(fr).journeyLabels.byBike) : tx(fr).journeyLabels.onFoot;
   }
 
   const changes = rides.length - 1;
   if (changes === 0) return 'Direct';
-  return fr
-    ? `${changes} changement${changes > 1 ? 's' : ''}`
-    : `${changes} change${changes > 1 ? 's' : ''}`;
+  return tx(fr).journeyLabels.changesChangeValue(changes, changes > 1 ? 's' : '');
 }

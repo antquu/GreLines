@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/solid';
+import { tx } from '../i18n';
 
 const GREEN = '#489a4e';
 
@@ -34,15 +35,13 @@ export function GreenerBanner({ language }: { language: 'fr' | 'en' }) {
         type="button"
         onClick={dismiss}
         className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm transition active:scale-90"
-        aria-label={language === 'fr' ? 'Fermer' : 'Close'}
+        aria-label={tx(language === 'fr').greenerBanner.close}
       >
         <XMarkIcon className="h-5 w-5" style={{ color: GREEN }} />
       </button>
 
       <p className="px-5 pr-14 pt-4 text-[1.2rem] font-bold leading-snug text-white">
-        {language === 'fr'
-          ? 'Merci de choisir un moyen plus responsable pour voyager.'
-          : 'Thank you for choosing a greener way to travel.'}
+        {tx(language === 'fr').greenerBanner.thankYouForChoosing}
       </p>
 
       <svg

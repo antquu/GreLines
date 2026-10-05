@@ -1,6 +1,7 @@
 import { idbGet, idbSet } from './persistentCache';
 import type { SharedOperator } from './sharedMobility';
 import { IS_NANCY } from '../site';
+import { tx } from '../i18n';
 
 const GBFS_BASE = 'https://data.mobilites-m.fr/api/gbfs';
 
@@ -106,7 +107,7 @@ export async function getSharedPricing(
 }
 
 export function formatEuro(amount: number, language: 'fr' | 'en'): string {
-  return new Intl.NumberFormat(language === 'fr' ? 'fr-FR' : 'en-GB', {
+  return new Intl.NumberFormat(tx(language === 'fr').sharedPricing.locale, {
     style: 'currency',
     currency: 'EUR',
     minimumFractionDigits: 2,

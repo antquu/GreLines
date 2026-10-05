@@ -18,6 +18,7 @@ import {
   type OuraCard,
   type OuraNotification,
 } from '../services/ouraCard';
+import { tx } from '../i18n';
 
 interface OuraWalletProps {
   cards: OuraCard[];
@@ -132,34 +133,28 @@ export function OuraWallet({
   }, [transferStep, transferFrom]);
 
   const text = {
-    empty: isFr ? 'Carte OURA non-configurée.' : 'No OURA card set up.',
-    add: isFr ? 'Ajouter une carte' : 'Add a card',
-    unavailable: isFr ? 'Indisponible hors ligne.' : 'Unavailable offline.',
-    remove: isFr ? 'Supprimer la carte' : 'Remove the card',
-    transfer: isFr ? 'Transférer vers une nouvelle carte' : 'Transfer to a new card',
-    transferHint: isFr
-      ? 'Numéro de la nouvelle carte'
-      : 'New card number',
-    transferDo: isFr ? 'Transférer' : 'Transfer',
-    transferFailed: isFr ? 'Ce numéro est introuvable.' : 'This number was not found.',
-    transferBusy: isFr ? 'Transfert…' : 'Transferring…',
-    transferScan: isFr ? 'Scanner la nouvelle carte' : 'Scan the new card',
-    transferManual: isFr ? 'Saisir le numéro' : 'Enter the number',
-    transferReading: isFr ? 'Lecture de la carte…' : 'Reading the card…',
-    transferCamera: isFr
-      ? "L'appareil photo n'est pas accessible."
-      : 'The camera is unavailable.',
-    transferExplain: isFr
-      ? 'Votre nom et votre photo seront reportés sur le nouveau support. L’ancien quittera cet appareil.'
-      : 'Your name and photo move to the new card. The old one leaves this device.',
-    controller: isFr ? 'Contrôleur' : 'Inspector',
-    more: isFr ? 'Autres actions' : 'More actions',
-    close: isFr ? 'Replier' : 'Collapse',
-    born: isFr ? 'Né(e) le' : 'Born on',
-    disabled: isFr ? 'Carte désactivée' : 'Card disabled',
-    removeFromWallet: isFr ? 'Supprimer la carte' : 'Remove the card',
+    empty: tx(isFr).ouraWallet.noOuraCardSet,
+    add: tx(isFr).ouraWallet.addACard,
+    unavailable: tx(isFr).ouraWallet.unavailableOffline,
+    remove: tx(isFr).ouraWallet.removeTheCard,
+    transfer: tx(isFr).ouraWallet.transferToANew,
+    transferHint: tx(isFr).ouraWallet.newCardNumber,
+    transferDo: tx(isFr).ouraWallet.transfer,
+    transferFailed: tx(isFr).ouraWallet.thisNumberWasNot,
+    transferBusy: tx(isFr).ouraWallet.transferring,
+    transferScan: tx(isFr).ouraWallet.scanTheNewCard,
+    transferManual: tx(isFr).ouraWallet.enterTheNumber,
+    transferReading: tx(isFr).ouraWallet.readingTheCard,
+    transferCamera: tx(isFr).ouraWallet.theCameraIsUnavailable,
+    transferExplain: tx(isFr).ouraWallet.yourNameAndPhoto,
+    controller: tx(isFr).ouraWallet.inspector,
+    more: tx(isFr).ouraWallet.moreActions,
+    close: tx(isFr).ouraWallet.collapse,
+    born: tx(isFr).ouraWallet.bornOn,
+    disabled: tx(isFr).ouraWallet.cardDisabled,
+    removeFromWallet: tx(isFr).ouraWallet.removeTheCard,
 
-    notifications: isFr ? 'Dernières notifications' : 'Latest notifications',
+    notifications: tx(isFr).ouraWallet.latestNotifications,
   };
 
   const safeIndex = openIndex !== null && openIndex < cards.length ? openIndex : null;

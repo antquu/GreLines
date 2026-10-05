@@ -1,4 +1,4 @@
-﻿import { foreignAsCatalogLine, isForeignLineId } from '../utils/foreignNetworks';
+import { foreignAsCatalogLine, isForeignLineId } from '../utils/foreignNetworks';
 import { MagnifyingGlassIcon, XMarkIcon, ArrowDownIcon } from '@heroicons/react/24/solid';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -9,6 +9,7 @@ import type { RouteLocation } from '../services/api';
 import { SearchResultsList } from './SearchResultsList';
 import { hapticTap } from '../utils/haptics';
 import { loadRecentStops } from '../utils/recentStops';
+import { tx } from '../i18n';
 
 interface SearchBarMobileProps {
   searchQuery: string;
@@ -257,10 +258,10 @@ export const SearchBarMobile = ({
     onAddressClick?.(address);
   };
 
-  const noResultsLabel = language === 'fr' ? 'Aucun résultat' : 'No results';
-  const clearLabel = language === 'fr' ? 'Effacer la recherche' : 'Clear search';
-  const mobilePlaceholder = language === 'fr' ? 'On va où ?' : 'Where to?';
-  const dragToCloseLabel = language === 'fr' ? 'Glissez vers le bas pour fermer' : 'Swipe down to close';
+  const noResultsLabel = tx(language === 'fr').searchBarMobile.noResults;
+  const clearLabel = tx(language === 'fr').searchBarMobile.clearSearch;
+  const mobilePlaceholder = tx(language === 'fr').searchBarMobile.whereTo;
+  const dragToCloseLabel = tx(language === 'fr').searchBarMobile.swipeDownToClose;
 
   const SLIDE = '260ms cubic-bezier(0.32,0.72,0,1)';
   const barMotion: React.CSSProperties = showOverlay && barTravel

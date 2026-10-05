@@ -2,6 +2,7 @@ import { ChevronLeftIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/
 import type { OuraNotification } from '../services/ouraCard';
 import { formatNotificationDay } from '../utils/notificationDay';
 import { openExternal } from '../utils/openExternal';
+import { tx } from '../i18n';
 
 interface NotificationDetailProps {
   notification: OuraNotification | null;
@@ -48,7 +49,7 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
           className={`flex h-11 w-11 items-center justify-center rounded-full transition active:scale-90 ${
             isLight ? 'bg-slate-200/70 text-slate-700' : 'bg-white/10 text-white'
           }`}
-          aria-label={isFr ? 'Retour' : 'Back'}
+          aria-label={tx(isFr).notificationDetail.back}
         >
           <ChevronLeftIcon className="h-6 w-6" />
         </button>
@@ -92,9 +93,7 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
           )}
 
           <p className="mt-6 px-1 text-xs leading-snug text-slate-500">
-            {isFr
-              ? "Ce message vient du réseau ou de votre portefeuille. GreLines ne l'a ni relu ni modifié."
-              : 'This message comes from the network or from your wallet. GreLines neither reviewed nor altered it.'}
+            {tx(isFr).notificationDetail.thisMessageComesFrom}
           </p>
         </div>
       )}

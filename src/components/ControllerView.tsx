@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/solid';
 import type { OuraCard } from '../services/ouraCard';
 import { cardStatusSentence } from '../utils/cardStatus';
+import { tx } from '../i18n';
 
 interface ControllerViewProps {
   card: OuraCard | null;
@@ -48,12 +49,12 @@ export function ControllerView({ card, language, theme = 'dark', onClose }: Cont
           className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition active:scale-90 ${
             isLight ? 'text-slate-600' : 'text-slate-300'
           }`}
-          aria-label={isFr ? 'Fermer' : 'Close'}
+          aria-label={tx(isFr).controllerView.close}
         >
           <XMarkIcon className="h-6 w-6" />
         </button>
         <span className="text-base font-bold">
-          {isFr ? 'Disposition contrôleur' : 'Inspector view'}
+          {tx(isFr).controllerView.inspectorView}
         </span>
       </div>
 
@@ -82,7 +83,7 @@ export function ControllerView({ card, language, theme = 'dark', onClose }: Cont
 
           {card.birthDate && (
             <div className="text-base font-semibold">
-              {isFr ? 'Né(e) le' : 'Born on'} {formatDate(card.birthDate)}
+              {tx(isFr).controllerView.bornOn} {formatDate(card.birthDate)}
             </div>
           )}
 
@@ -97,7 +98,7 @@ export function ControllerView({ card, language, theme = 'dark', onClose }: Cont
           {qrUrl && (
             <img
               src={qrUrl}
-              alt={isFr ? 'Numéro de carte en code QR' : 'Card number as a QR code'}
+              alt={tx(isFr).controllerView.cardNumberAsA}
               className="h-44 w-44 rounded-2xl bg-white p-2 shadow-xl"
               draggable={false}
             />
@@ -109,7 +110,7 @@ export function ControllerView({ card, language, theme = 'dark', onClose }: Cont
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
           <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-slate-950/95 px-6 py-7 text-center shadow-2xl">
             <p className="text-3xl font-extrabold text-white">
-              {isFr ? 'Carte désactivée' : 'Card disabled'}
+              {tx(isFr).controllerView.cardDisabled}
             </p>
             <p className="mt-3 text-base font-medium leading-snug text-slate-400">{statusSentence}</p>
           </div>

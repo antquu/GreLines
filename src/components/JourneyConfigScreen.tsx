@@ -5,6 +5,7 @@ import {
   type JourneyHistoryEntry,
 } from '../services/journeyHistory';
 import { FAVORITE_JOURNEYS_MAX, type FavoriteJourney } from '../services/favoriteJourneys';
+import { tx } from '../i18n';
 
 interface JourneyConfigScreenProps {
   isOpen: boolean;
@@ -20,19 +21,17 @@ interface JourneyConfigScreenProps {
 const getText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
-    title: isFr ? 'Trajets favoris' : 'Favorite journeys',
-    historyTitle: isFr ? 'Trajets réalisés' : 'Past journeys',
-    empty: isFr
-      ? 'Aucun trajet réalisé pour l’instant. Calcule un itinéraire, et il apparaîtra ici.'
-      : 'No past journeys yet. Plan a route and it will show up here.',
-    newJourney: isFr ? 'Nouveau trajet' : 'New journey',
-    back: isFr ? 'Retour' : 'Back',
-    remove: isFr ? 'Retirer de l’historique' : 'Remove from history',
-    alreadySaved: isFr ? 'Déjà en favori' : 'Already saved',
-    add: isFr ? 'Ajouter aux favoris' : 'Add to favorites',
+    title: tx(isFr).journeyConfigScreen.favoriteJourneys,
+    historyTitle: tx(isFr).journeyConfigScreen.pastJourneys,
+    empty: tx(isFr).journeyConfigScreen.noPastJourneysYet,
+    newJourney: tx(isFr).journeyConfigScreen.newJourney,
+    back: tx(isFr).journeyConfigScreen.back,
+    remove: tx(isFr).journeyConfigScreen.removeFromHistory,
+    alreadySaved: tx(isFr).journeyConfigScreen.alreadySaved,
+    add: tx(isFr).journeyConfigScreen.addToFavorites,
     count: (n: number) =>
-      isFr ? `${n} / ${FAVORITE_JOURNEYS_MAX} trajets en favori` : `${n} / ${FAVORITE_JOURNEYS_MAX} favorite journeys`,
-    times: (n: number) => (isFr ? `${n} fois` : `${n}×`),
+      tx(isFr).journeyConfigScreen.nFavoriteJourneysMax(n, FAVORITE_JOURNEYS_MAX),
+    times: (n: number) => (tx(isFr).journeyConfigScreen.n(n)),
   };
 };
 
@@ -43,10 +42,10 @@ function formatWhen(timestamp: number, language: 'fr' | 'en'): string {
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   const days = Math.floor((startOfToday - new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()) / 86_400_000);
 
-  if (days <= 0) return isFr ? "Aujourd'hui" : 'Today';
-  if (days === 1) return isFr ? 'Hier' : 'Yesterday';
-  if (days < 7) return isFr ? `Il y a ${days} jours` : `${days} days ago`;
-  return day.toLocaleDateString(isFr ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short' });
+  if (days <= 0) return tx(isFr).journeyConfigScreen.today;
+  if (days === 1) return tx(isFr).journeyConfigScreen.yesterday;
+  if (days < 7) return tx(isFr).journeyConfigScreen.daysDaysAgo(days);
+  return day.toLocaleDateString(tx(isFr).journeyConfigScreen.locale, { day: 'numeric', month: 'short' });
 }
 
 export function JourneyConfigScreen({

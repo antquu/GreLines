@@ -47,6 +47,7 @@ import {
   requestNotificationPermission,
   setNotificationsEnabled,
 } from '../services/tripNotifications';
+import { tx, type Messages } from '../i18n';
 
 interface SettingsPanelProps {
   variant?: 'panel' | 'inline';
@@ -271,29 +272,29 @@ function NetworkTiles({
   );
 }
 
-const GRENOBLE_DATA_SOURCES: Array<{ what: { fr: string; en: string }; who: string }> = [
-  { what: { fr: 'Grenoble et l’Isère', en: 'Grenoble and Isère' }, who: 'Mobilités M (API MTAG)' },
-  { what: { fr: 'Lyon', en: 'Lyon' }, who: 'TCL · SYTRAL Mobilités, data.grandlyon.com' },
+const GRENOBLE_DATA_SOURCES: Array<{ what: keyof Messages['settingsPanel']['sources']; who: string }> = [
+  { what: 'grenobleIsere', who: 'Mobilités M (API MTAG)' },
+  { what: 'lyon', who: 'TCL · SYTRAL Mobilités, data.grandlyon.com' },
   {
-    what: { fr: 'Autres villes', en: 'Other cities' },
+    what: 'otherCities',
     who: 'transport.data.gouv.fr (GTFS, GTFS-RT)',
   },
-  { what: { fr: 'Perturbations de Nancy', en: 'Nancy disruptions' }, who: 'reseau-stan.com' },
-  { what: { fr: 'Trains et cars TER', en: 'TER trains and coaches' }, who: 'SNCF' },
-  { what: { fr: 'Itinéraires hors de Grenoble', en: 'Routes outside Grenoble' }, who: 'Transitous (MOTIS)' },
-  { what: { fr: 'Adresses', en: 'Addresses' }, who: 'Base Adresse Nationale (api-adresse.data.gouv.fr)' },
-  { what: { fr: 'Qualité de l’air', en: 'Air quality' }, who: 'Atmo Auvergne-Rhône-Alpes' },
-  { what: { fr: 'Carte', en: 'Map' }, who: 'MapTiler, OpenStreetMap' },
+  { what: 'nancyDisruptions', who: 'reseau-stan.com' },
+  { what: 'terTrains', who: 'SNCF' },
+  { what: 'routesOutsideGrenoble', who: 'Transitous (MOTIS)' },
+  { what: 'addresses', who: 'Base Adresse Nationale (api-adresse.data.gouv.fr)' },
+  { what: 'airQuality', who: 'Atmo Auvergne-Rhône-Alpes' },
+  { what: 'map', who: 'MapTiler, OpenStreetMap' },
 ];
 
-const NANCY_DATA_SOURCES: Array<{ what: { fr: string; en: string }; who: string }> = [
-  { what: { fr: 'Horaires Stan', en: 'Stan timetables' }, who: 'transport.data.gouv.fr (GTFS, GTFS-RT)' },
-  { what: { fr: 'Perturbations Stan', en: 'Stan disruptions' }, who: 'reseau-stan.com' },
-  { what: { fr: 'Vélos en libre-service', en: 'Bike sharing' }, who: 'vélOstan’lib (JCDecaux)' },
-  { what: { fr: 'Autopartage', en: 'Car sharing' }, who: 'Citiz Grand Est' },
-  { what: { fr: 'Itinéraires', en: 'Routes' }, who: 'Transitous (MOTIS)' },
-  { what: { fr: 'Adresses', en: 'Addresses' }, who: 'Base Adresse Nationale (api-adresse.data.gouv.fr)' },
-  { what: { fr: 'Carte', en: 'Map' }, who: 'MapTiler, OpenStreetMap' },
+const NANCY_DATA_SOURCES: Array<{ what: keyof Messages['settingsPanel']['sources']; who: string }> = [
+  { what: 'stanTimetables', who: 'transport.data.gouv.fr (GTFS, GTFS-RT)' },
+  { what: 'stanDisruptions', who: 'reseau-stan.com' },
+  { what: 'bikeSharing', who: 'vélOstan’lib (JCDecaux)' },
+  { what: 'carSharing', who: 'Citiz Grand Est' },
+  { what: 'routes', who: 'Transitous (MOTIS)' },
+  { what: 'addresses', who: 'Base Adresse Nationale (api-adresse.data.gouv.fr)' },
+  { what: 'map', who: 'MapTiler, OpenStreetMap' },
 ];
 
 const DATA_SOURCES = IS_NANCY ? NANCY_DATA_SOURCES : GRENOBLE_DATA_SOURCES;
@@ -387,7 +388,7 @@ export function SettingsPanel({
   const tabs = [
     { key: 'general', label: text.settings.general, icon: Cog6ToothIcon },
     { key: 'display', label: text.settings.display, icon: PaintBrushIcon },
-    { key: 'accessibility', label: isFrench ? 'Accessibilité' : 'Accessibility', icon: FaWheelchair },
+    { key: 'accessibility', label: tx(isFrench).settingsPanel.accessibility, icon: FaWheelchair },
     { key: 'data', label: text.settings.data, icon: CircleStackIcon },
     ...(devAvailable && perf.devMode
       ? [{ key: 'dev', label: dev.section, icon: CommandLineIcon }]
@@ -401,20 +402,14 @@ export function SettingsPanel({
             <Row label="Notification" last>
               <span className="hidden">
                 <span className="block text-[0.9375rem] font-medium text-white">
-                  {language === 'fr' ? 'Notification' : 'Notification'}
+                  {tx(language === 'fr').settingsPanel.notification}
                 </span>
                 <span className="mt-0.5 block text-xs text-slate-400">
                   {tripNotificationPermission === 'granted'
-                    ? language === 'fr'
-                      ? 'Activées pour les trajets'
-                      : 'Enabled for trips'
+                    ? tx(language === 'fr').settingsPanel.enabledForTrips
                     : tripNotificationPermission === 'denied'
-                    ? language === 'fr'
-                      ? 'Autorisation refusée'
-                      : 'Permission denied'
-                    : language === 'fr'
-                    ? 'Configurer les notifications de trajet'
-                    : 'Set up trip notifications'}
+                    ? tx(language === 'fr').settingsPanel.permissionDenied
+                    : tx(language === 'fr').settingsPanel.setUpTripNotifications}
                 </span>
               </span>
               <Toggle value={notificationsOn} onChange={handleNotificationsToggle} />
@@ -435,9 +430,7 @@ export function SettingsPanel({
             }}
           />
       <p className="px-4 text-xs leading-relaxed text-slate-500">
-        {isFrench
-          ? 'GreLines ne prévient que pendant un trajet : le moment de partir, la correspondance, l’arrêt où descendre. Ni promotion, ni rappel, ni nouveauté.'
-          : 'GreLines only alerts you during a trip: when to leave, your connection, the stop to get off at. No promotions, no reminders, no news.'}
+        {tx(isFrench).settingsPanel.grelinesOnlyAlertsYou}
       </p>
     </>
   );
@@ -482,7 +475,7 @@ export function SettingsPanel({
                   isLight ? 'text-slate-900' : 'text-white'
                 }`}
               >
-                {language === 'fr' ? 'Connecter son compte' : 'Connect your account'}
+                {tx(language === 'fr').settingsPanel.connectYourAccount}
               </span>
             )}
             <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-slate-500" />
@@ -537,9 +530,7 @@ export function SettingsPanel({
                 className="w-full flex items-center justify-between rounded-2xl px-4 py-3 transition hover:bg-slate-700/40"
           >
             <span className="text-[0.9375rem] font-medium text-blue-400 text-left">
-              {language === 'fr'
-                ? "Comment installer l'app sur l'écran d'accueil"
-                : 'How to install the app on your home screen'}
+              {tx(language === 'fr').settingsPanel.howToInstallThe}
             </span>
             <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-slate-500" />
           </button>
@@ -548,11 +539,11 @@ export function SettingsPanel({
 
       <Group>
         <a
-          href={language === 'fr' ? '/fr' : '/en'}
+          href={tx(language === 'fr').settingsPanel.languageCode}
           className="flex w-full items-center justify-between rounded-2xl px-4 py-3 transition hover:bg-slate-700/40"
         >
           <span className="text-left text-[0.9375rem] font-medium text-blue-400">
-            {language === 'fr' ? 'Découvrir GreLines' : 'Discover GreLines'}
+            {tx(language === 'fr').settingsPanel.discoverGrelines}
           </span>
           <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-slate-500" />
         </a>
@@ -586,14 +577,14 @@ export function SettingsPanel({
     const isFr = language === 'fr';
     const options: Array<{ value: 'light' | 'dark' | 'blue' | 'auto'; label: string }> = [
       { value: 'auto', label: 'Auto' },
-      { value: 'light', label: isFr ? 'Clair' : 'Light' },
-      { value: 'dark', label: isFr ? 'Sombre' : 'Dark' },
-      { value: 'blue', label: isFr ? 'Bleu' : 'Blue' },
+      { value: 'light', label: tx(isFr).settingsPanel.light },
+      { value: 'dark', label: tx(isFr).settingsPanel.dark },
+      { value: 'blue', label: tx(isFr).settingsPanel.blue },
     ];
 
     return (
       <div className="px-4 py-3">
-        <p className="mb-3 text-[0.9375rem] text-slate-200">{isFr ? 'Thème' : 'Theme'}</p>
+        <p className="mb-3 text-[0.9375rem] text-slate-200">{tx(isFr).settingsPanel.theme}</p>
         <div className={`grid gap-3 ${compactThemes ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-[repeat(auto-fill,minmax(130px,160px))] lg:justify-start'}`}>
           {options.map((option) => {
             const current = theme ?? 'auto';
@@ -717,7 +708,7 @@ export function SettingsPanel({
   const accessibilityContent = (
     <>
       <Group>
-        <Row label={isFrench ? 'Mode accessibilité' : 'Accessibility mode'} last>
+        <Row label={tx(isFrench).settingsPanel.accessibilityMode} last>
           <Toggle
             value={perf.accessibility}
             onChange={() => {
@@ -729,9 +720,7 @@ export function SettingsPanel({
         </Row>
       </Group>
       <p className="px-4 text-xs leading-relaxed text-slate-500">
-        {isFrench
-          ? 'Tous les arrêts ne sont pas renseignés : sans pastille ne veut pas dire inaccessible.'
-          : 'Not every stop carries the information: no badge does not mean unfitted.'}
+        {tx(isFrench).settingsPanel.notEveryStopCarries}
       </p>
     </>
   );
@@ -746,7 +735,7 @@ export function SettingsPanel({
 
       {!IS_NANCY && (
         <>
-      <Group title={language === 'fr' ? 'Métropole grenobloise' : 'Grenoble area'}>
+      <Group title={tx(language === 'fr').settingsPanel.grenobleArea}>
         <NetworkTiles
           tiles={[...NETWORK_TILES, ...OPERATOR_TILES].map(tile => ({ ...tile, key: tile.codes.join('+') }))}
           isActive={key => key.split('+').every(code => perf.networks.includes(code))}
@@ -768,7 +757,7 @@ export function SettingsPanel({
         </>
       )}
 
-      <Group title={IS_NANCY ? (language === 'fr' ? 'Réseau' : 'Network') : language === 'fr' ? 'Autres réseaux' : 'Other networks'}>
+      <Group title={IS_NANCY ? (tx(language === 'fr').settingsPanel.network) : tx(language === 'fr').settingsPanel.otherNetworks}>
         <NetworkTiles
           tiles={(IS_NANCY ? CITY_TILES : [LYON_TILE, SNCF_TILE, ...CITY_TILES]).map(tile => ({ ...tile, key: tile.codes.join('+') }))}
           isActive={key => key.split('+').every(code => perf.networks.includes(code))}
@@ -826,7 +815,7 @@ export function SettingsPanel({
             className="flex w-full items-center justify-between rounded-2xl px-4 py-3.5 transition hover:bg-slate-700/40"
         >
           <span className={`text-[0.9375rem] ${isLight ? 'text-slate-900' : 'text-white'}`}>
-            {language === 'fr' ? 'Conditions et données' : 'Terms and data'}
+            {tx(language === 'fr').settingsPanel.termsAndData}
           </span>
           <ChevronRightIcon className="h-4 w-4 text-slate-500" />
         </button>
@@ -838,9 +827,9 @@ export function SettingsPanel({
         </Row>
       </Group>
 
-      <Group title={language === 'fr' ? 'Sources des données' : 'Data sources'}>
+      <Group title={tx(language === 'fr').settingsPanel.dataSources}>
         {DATA_SOURCES.map((source, index) => (
-          <Row key={source.what.fr} label={source.what[language]} last={index === DATA_SOURCES.length - 1}>
+          <Row key={source.what} label={tx(language === 'fr').settingsPanel.sources[source.what]} last={index === DATA_SOURCES.length - 1}>
             <span className="text-right text-[0.8125rem] leading-snug text-slate-400">{source.who}</span>
           </Row>
         ))}
@@ -867,12 +856,10 @@ export function SettingsPanel({
         </Group>
       )}
 
-      <Group title={isFrench ? 'Données' : 'Data'}>
+      <Group title={tx(isFrench).settingsPanel.data}>
         <Row
           label={
-            isFrench
-              ? 'Merci à la Métropole de Grand Lyon de fournir ses données gratuitement.'
-              : 'Thanks to Métropole de Grand Lyon for providing their data free of charge.'
+            tx(isFrench).settingsPanel.thanksToMetropoleDe
           }
           last
         >
@@ -974,7 +961,7 @@ export function SettingsPanel({
             alt="GitHub"
             className="h-7 w-auto"
           />
-          <span className={`text-xs ${isLight ? 'text-slate-900' : 'text-white'}`}>Project</span>
+          <span className={`text-xs ${isLight ? 'text-slate-900' : 'text-white'}`}>{tx(language === 'fr').common.project}</span>
         </a>
       </div>
       )}
@@ -998,19 +985,19 @@ export function SettingsPanel({
 
   if (variant === 'inline') {
     const sections: Array<{ key: string; label: string; Icon: typeof BellIcon }> = [
-      { key: 'notifications', label: isFrench ? 'Notifications' : 'Notifications', Icon: BellIcon },
+      { key: 'notifications', label: tx(isFrench).settingsPanel.notifications, Icon: BellIcon },
       { key: 'general', label: text.settings.general, Icon: Cog6ToothIcon },
-      { key: 'display', label: isFrench ? 'Apparence' : 'Appearance', Icon: PaintBrushIcon },
+      { key: 'display', label: tx(isFrench).settingsPanel.appearance, Icon: PaintBrushIcon },
       { key: 'data', label: text.settings.data, Icon: CircleStackIcon },
       {
         key: 'accessibility',
-        label: isFrench ? 'Accessibilité' : 'Accessibility',
+        label: tx(isFrench).settingsPanel.accessibility,
         Icon: FaWheelchair as unknown as typeof BellIcon,
       },
     ];
 
     const helpSections: Array<{ key: string; label: string; Icon: typeof BellIcon }> = [
-      { key: 'help', label: isFrench ? 'Aide et contact' : 'Help and contact', Icon: ChatBubbleLeftRightIcon },
+      { key: 'help', label: tx(isFrench).settingsPanel.helpAndContact, Icon: ChatBubbleLeftRightIcon },
       { key: 'about', label: text.settings.about, Icon: InformationCircleIcon },
     ];
 
@@ -1055,10 +1042,10 @@ export function SettingsPanel({
             </span>
             <span className="min-w-0 flex-1">
               <span className={`block truncate text-[1.1875rem] font-bold ${rowInk}`}>
-                {accountPseudo ?? (isFrench ? 'Connecter son compte' : 'Connect your account')}
+                {accountPseudo ?? (tx(isFrench).settingsPanel.connectYourAccount)}
               </span>
               <span className="block text-[0.9375rem] text-slate-500">
-                {isFrench ? 'Compte' : 'Account'}
+                {tx(isFrench).settingsPanel.account}
               </span>
             </span>
             <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${rowInk}`} />
@@ -1077,7 +1064,7 @@ export function SettingsPanel({
                 }
               }}
               className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white transition active:scale-90"
-              aria-label={isFrench ? 'Fermer' : 'Close'}
+              aria-label={tx(isFrench).settingsPanel.close}
             >
               <XMarkIcon className="h-5 w-5" style={{ color: '#1d4ed8' }} />
             </button>
@@ -1088,12 +1075,10 @@ export function SettingsPanel({
               className="block w-full text-left"
             >
               <p className="px-5 pr-14 pt-5 text-[1.35rem] font-bold leading-snug" style={{ color: '#ffffff' }}>
-                {isFrench ? 'Aide et contact' : 'Help and contact'}
+                {tx(isFrench).settingsPanel.helpAndContact}
               </p>
               <p className="mt-2 px-5 pb-4 pr-10 text-[0.9375rem] leading-relaxed" style={{ color: 'rgba(255,255,255,0.8)' }}>
-                {isFrench
-                  ? 'Un incident, un comportement, un objet oublié : à qui s’adresser, et le numéro à composer.'
-                  : 'An incident, a behaviour, something left behind: who to talk to, and the number to call.'}
+                {tx(isFrench).settingsPanel.anIncidentABehaviour}
               </p>
 
               <svg viewBox="0 0 320 46" className="block w-full" aria-hidden>
@@ -1161,7 +1146,7 @@ export function SettingsPanel({
                 className={`text-base font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}
                 style={isLight ? { color: '#0f172a' } : undefined}
               >
-                {text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
+                {text.misc.settingsTitle || (tx(!(language === 'en')).settingsPanel.settings)}
               </h2>
               <button
                 onClick={handleClose}
@@ -1217,7 +1202,7 @@ export function SettingsPanel({
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onClose={handleClose}
-          title={text.misc.settingsTitle || (language === 'en' ? 'Settings' : 'Réglages')}
+          title={text.misc.settingsTitle || (tx(!(language === 'en')).settingsPanel.settings)}
           theme={resolvedTheme}
         >
           {renderTab()}
@@ -1441,13 +1426,13 @@ function DesktopFinderWindow({
           className="relative flex h-11 flex-shrink-0 cursor-default items-center justify-between border-b border-slate-700 bg-slate-800/80 px-3"
         >
           <div className="group/lights flex items-center gap-2">
-            <button type="button" onClick={onClose} aria-label={language === 'en' ? 'Close' : 'Fermer'} className={`${lightClass} bg-[#ff5f57]`}>
+            <button type="button" onClick={onClose} aria-label={tx(!(language === 'en')).settingsPanel.close} className={`${lightClass} bg-[#ff5f57]`}>
               <XMarkIcon className={glyphClass} />
             </button>
             <button
               type="button"
               onClick={minimize}
-              aria-label={language === 'en' ? 'Minimize to the Dock' : 'Placer dans le Dock'}
+              aria-label={tx(!(language === 'en')).settingsPanel.minimizeToTheDock}
               className={`${lightClass} bg-[#febc2e]`}
             >
               <MinusIcon className={glyphClass} />
@@ -1455,7 +1440,7 @@ function DesktopFinderWindow({
             <button
               type="button"
               onClick={toggleZoom}
-              aria-label={language === 'en' ? (zoomed ? 'Restore size' : 'Full screen') : zoomed ? 'Rétablir la taille' : 'Agrandir'}
+              aria-label={zoomed ? tx(language === 'fr').settingsPanel.restoreSize : tx(language === 'fr').settingsPanel.fullScreen}
               className={`${lightClass} bg-[#28c840]`}
             >
               {zoomed ? <ArrowsPointingInIcon className={glyphClass} /> : <ArrowsPointingOutIcon className={glyphClass} />}

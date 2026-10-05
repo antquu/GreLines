@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 import { appLanguage } from '../utils/appLanguage';
+import { tx } from '../i18n';
 
 const JANK_FRAME_MS = 50;
 
@@ -34,7 +35,7 @@ const EMPTY_STATS: Stats = {
 
 export function DevOverlay() {
   const { settings } = usePerfSettings();
-  const en = appLanguage() === 'en';
+  const text = tx(appLanguage() === 'fr').devOverlay;
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [history, setHistory] = useState<number[]>([]);
   const longTasksRef = useRef(0);
@@ -246,16 +247,16 @@ export function DevOverlay() {
         ))}
       </div>
 
-      <Line label={en ? 'worst frame' : 'image la pire'} value={`${stats.worstFrameMs} ms`} warn={stats.worstFrameMs > JANK_FRAME_MS} />
-      <Line label={en ? 'jank /s' : 'saccades /s'} value={String(stats.jankPerSec)} warn={stats.jankPerSec > 0} />
-      <Line label={en ? 'long tasks' : 'tâches longues'} value={String(stats.longTasks)} warn={stats.longTasks > 0} />
+      <Line label={text.worstFrame} value={`${stats.worstFrameMs} ms`} warn={stats.worstFrameMs > JANK_FRAME_MS} />
+      <Line label={text.jankPerSecond} value={String(stats.jankPerSec)} warn={stats.jankPerSec > 0} />
+      <Line label={text.longTasks} value={String(stats.longTasks)} warn={stats.longTasks > 0} />
       {stats.memoryMb !== null && (
-        <Line label={en ? 'JS memory' : 'mémoire JS'} value={`${stats.memoryMb} / ${stats.memoryLimitMb} ${en ? 'MB' : 'Mo'}`} />
+        <Line label={text.jsMemory} value={`${stats.memoryMb} / ${stats.memoryLimitMb} ${text.megabytes}`} />
       )}
-      <Line label={en ? 'DOM markers' : 'marqueurs DOM'} value={String(stats.markers)} warn={stats.markers > 120} />
-      <Line label={en ? 'DOM nodes' : 'nœuds DOM'} value={String(stats.domNodes)} warn={stats.domNodes > 5000} />
-      <Line label={en ? 'requests' : 'requêtes'} value={String(stats.requests)} />
-      <Line label={en ? 'transferred' : 'transféré'} value={`${stats.transferredKb} ${en ? 'KB' : 'ko'}`} />
+      <Line label={text.domMarkers} value={String(stats.markers)} warn={stats.markers > 120} />
+      <Line label={text.domNodes} value={String(stats.domNodes)} warn={stats.domNodes > 5000} />
+      <Line label={text.requests} value={String(stats.requests)} />
+      <Line label={text.transferred} value={`${stats.transferredKb} ${text.kilobytes}`} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { SNCF_BRAND_COLORS, SNCF_TER_COLOR } from '../utils/lineColors';
 import { idbGet, idbSet } from './persistentCache';
 import { rerLine } from '../utils/rer';
 import { appLanguage } from '../utils/appLanguage';
+import { tx } from '../i18n';
 
 export interface SncfLineEntry {
   id: string;
@@ -40,6 +41,7 @@ interface SncfPassage {
   base: number;
   real: number;
   live: boolean;
+  deleted?: boolean;
   alert?: { effect: string; text: string; end: number | null } | null;
 }
 
@@ -216,6 +218,8 @@ export async function sncfDeparturesAt(uic: string): Promise<{ lines: Line[]; de
       realtime: entry.live,
       type: entry.coach ? 'BUS' : 'RAIL',
       ...(/^\d{3,6}$/.test(entry.train) && !entry.coach ? { train: entry.train, trainKind: trainKindOf(entry) } : {}),
+      ...(entry.deleted || entry.alert?.effect === 'NO_SERVICE' ? { cancelled: true } : {}),
+      ...(Math.round((entry.real - entry.base) / 60_000) >= 1 ? { delayMinutes: Math.round((entry.real - entry.base) / 60_000) } : {}),
     }));
 
   const alerts = new Map<string, TrafficDetail[]>();
@@ -239,30 +243,19 @@ export async function sncfDeparturesAt(uic: string): Promise<{ lines: Line[]; de
   return { lines, departures };
 }
 
-const EFFECT_LABELS: Record<string, { fr: string; en: string }> = {
-  NO_SERVICE: { fr: 'supprimé', en: 'cancelled' },
-  REDUCED_SERVICE: { fr: 'parcours réduit', en: 'shortened' },
-  SIGNIFICANT_DELAYS: { fr: 'retardé', en: 'delayed' },
-  DETOUR: { fr: 'dévié', en: 'diverted' },
-  ADDITIONAL_SERVICE: { fr: 'ajouté', en: 'added' },
-  MODIFIED_SERVICE: { fr: 'horaires modifiés', en: 'schedule changed' },
-};
-
 const clock = (at: number) =>
   new Date(at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
 
 function alertDetail(entry: SncfPassage, code: string): TrafficDetail {
   const language = appLanguage();
   const delay = Math.round((entry.real - entry.base) / 60_000);
-  const effect = EFFECT_LABELS[entry.alert?.effect ?? '']?.[language] ?? (language === 'fr' ? 'perturbé' : 'disrupted');
+  const effect = tx(language === 'fr').sncfNetwork.effects[entry.alert?.effect ?? ''] ?? tx(language === 'fr').sncfNetwork.disrupted;
   const status = entry.alert?.effect === 'SIGNIFICANT_DELAYS' && delay > 0
-    ? language === 'fr' ? `retardé de ${delay} min` : `delayed by ${delay} min`
+    ? tx(language === 'fr').sncfNetwork.delayedByDelayMin(delay)
     : effect;
   const train = entry.train || code;
   return {
-    titre: language === 'fr'
-      ? `Train ${train} de ${clock(entry.base)} vers ${entry.direction} : ${status}`
-      : `Train ${train} at ${clock(entry.base)} to ${entry.direction}: ${status}`,
+    titre: tx(language === 'fr').sncfNetwork.trainTrainAtClock(train, clock(entry.base), entry.direction, status),
     description: entry.alert?.text || '',
     dateFin: entry.alert?.end ? new Date(entry.alert.end).toISOString() : '',
     listeLigne: code,
@@ -288,6 +281,9 @@ export async function getSncfStopDetail(stopId: string): Promise<StopDetail | nu
   const station = stationOf(data, uic);
   if (!station) return null;
   const { lines, departures } = await sncfDeparturesAt(station.uic);
+  void import('./foreignTimetable').then(async ({ keepSncfFicheOffline }) => {
+    for (const line of lines) await keepSncfFicheOffline(line.id);
+  });
   return {
     id: sncfStopId(station.uic),
     name: station.name,

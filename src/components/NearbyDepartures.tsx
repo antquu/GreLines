@@ -8,6 +8,7 @@ import { getGtfsStopDetail } from '../services/gtfsNetwork';
 import { isGtfsNetworkId } from '../services/gtfsNetworkIds';
 import { LineBadge } from './LineBadge';
 import { RealtimeWifi } from './RealtimeWifi';
+import { tx } from '../i18n';
 
 const REFRESH_MS = 30_000;
 const GROUPS_PER_STOP = 4;
@@ -53,11 +54,11 @@ function groupDepartures(detail: StopDetail): DepartureGroup[] {
 const formatDistance = (meters: number, language: 'fr' | 'en') => {
   if (meters < 1000) return `${Math.round(meters / 10) * 10} m`;
   const km = (meters / 1000).toFixed(1);
-  return `${language === 'fr' ? km.replace('.', ',') : km} km`;
+  return tx(language === 'fr').nearbyDepartures.distanceKm(km);
 };
 
 function formatMinutes(minutes: number[], language: 'fr' | 'en'): string {
-  const now = language === 'fr' ? 'ARR' : 'Due';
+  const now = tx(language === 'fr').nearbyDepartures.due;
   if (minutes[0] <= 0 && minutes.length === 1) return now;
   const parts = minutes.map(value => (value <= 0 ? now : String(value)));
   return `${parts.join(', ')} min`;
@@ -133,7 +134,7 @@ export function NearbyDepartures({
 
   if (pending || !ready) {
     return (
-      <div className="flex justify-center py-10" role="status" aria-label={language === 'fr' ? 'Chargement' : 'Loading'}>
+      <div className="flex justify-center py-10" role="status" aria-label={tx(language === 'fr').nearbyDepartures.loading}>
         <LoadingWheel isLight={isLight} />
       </div>
     );
@@ -177,7 +178,7 @@ export function NearbyDepartures({
               </div>
             ) : groups.length === 0 ? (
               <p className={`pt-1 text-sm ${mutedClass}`}>
-                {language === 'fr' ? 'Aucun passage prévu' : 'No upcoming departures'}
+                {tx(language === 'fr').nearbyDepartures.noUpcomingDepartures}
               </p>
             ) : (
               <div className="space-y-3 pt-1">
@@ -189,7 +190,7 @@ export function NearbyDepartures({
                     </span>
                     <span className={`flex flex-shrink-0 items-center gap-1.5 text-sm font-bold tabular-nums ${titleClass}`} style={strong}>
                       {group.realtime && (
-                        <RealtimeWifi size={13} className="text-green-400" label={language === 'fr' ? 'Temps réel' : 'Live'} />
+                        <RealtimeWifi size={13} className="text-green-400" label={tx(language === 'fr').nearbyDepartures.live} />
                       )}
                       {formatMinutes(group.minutes, language)}
                     </span>

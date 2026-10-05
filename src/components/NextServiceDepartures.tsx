@@ -8,6 +8,7 @@ import { DepartureTags } from './TrainPill';
 import { TransportModeIcon } from './TransportModeIcon';
 import { resolveLineStyle, isGrenobleNetworkLine } from '../utils/lineColors';
 import { normalizeMode } from '../utils/transportMode';
+import { tx } from '../i18n';
 
 
 const isRoundLine = (lineId: string): boolean => {
@@ -20,8 +21,8 @@ const isRoundLine = (lineId: string): boolean => {
 
 function modeLabel(departure: Departure, isFr: boolean): string {
   const mode = normalizeMode(departure.type);
-  if (mode === 'METRO') return isFr ? 'Métro' : 'Metro';
-  if (mode === 'RAIL') return isFr ? 'Train' : 'Train';
+  if (mode === 'METRO') return tx(isFr).nextServiceDepartures.metro;
+  if (mode === 'RAIL') return tx(isFr).nextServiceDepartures.train;
   if (mode === 'TRAM') return 'Tramway';
   return 'Bus';
 }
@@ -36,8 +37,8 @@ function dayOf(departure: Departure, isFr: boolean): string | null {
   const midnight = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
   const days = Math.round((midnight(at) - midnight(new Date())) / 86400000);
   if (days <= 0) return null;
-  if (days === 1) return isFr ? 'Demain' : 'Tomorrow';
-  const name = at.toLocaleDateString(isFr ? 'fr-FR' : 'en-GB', { weekday: 'long' });
+  if (days === 1) return tx(isFr).nextServiceDepartures.tomorrow;
+  const name = at.toLocaleDateString(tx(isFr).nextServiceDepartures.locale, { weekday: 'long' });
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
@@ -70,7 +71,7 @@ export function NextServiceDepartures({
   if (state === 'loading') {
     return (
       <p className="text-sm text-slate-500 py-6 text-center">
-        {isFr ? 'Recherche des premiers passages…' : 'Looking up the first departures…'}
+        {tx(isFr).nextServiceDepartures.lookingUpTheFirst}
       </p>
     );
   }

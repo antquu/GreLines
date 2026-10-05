@@ -1,6 +1,7 @@
 import { FaMapSigns } from 'react-icons/fa';
 import { ArrowsRightLeftIcon } from '@heroicons/react/24/solid';
 import type { McoLine } from '../services/mcoLines';
+import { tx } from '../i18n';
 
 export const CARPOOL_PREFIX = 'MCO:';
 
@@ -42,19 +43,17 @@ export function CarpoolStopPanel({
 
       <div className="mt-6">
         <p className={`text-xl font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-          {isFr ? 'Arrêt de covoiturage' : 'Carpooling stop'}
+          {tx(isFr).carpoolStopPanel.carpoolingStop}
         </p>
         <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-500">
-          {isFr
-            ? "Pas d'horaires ici : les départs dépendent des conducteurs qui passent."
-            : 'No timetable here: departures depend on the drivers passing by.'}
+          {tx(isFr).carpoolStopPanel.noTimetableHereDepartures}
         </p>
       </div>
 
       {lines.length > 0 && (
         <div className="mt-10 w-full">
           <p className="section-caps text-slate-400">
-            {isFr ? 'Lignes de covoiturage desservies' : 'Carpooling lines served'}
+            {tx(isFr).carpoolStopPanel.carpoolingLinesServed}
           </p>
           <div className="mt-4 flex flex-col items-center gap-2.5">
             {lines.map(line => (

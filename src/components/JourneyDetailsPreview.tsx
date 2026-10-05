@@ -7,6 +7,7 @@ import { LineBadge } from './LineBadge';
 import { TrafficAlertCard } from './TrafficAlertCard';
 import { VehicleGlyph } from './VehicleGlyph';
 import { MdDirectionsBike } from 'react-icons/md';
+import { tx } from '../i18n';
 
 const BIKE_MODES = new Set(['BICYCLE', 'BICYCLE_RENT']);
 const BIKE_COLOR = '#22c55e';
@@ -146,7 +147,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
           <div className="flex min-w-0 flex-1 flex-col justify-between gap-6">
             <div className="min-w-0">
               <p className="text-sm font-semibold leading-tight text-white">
-                {isFr ? 'À vélo' : 'By bike'}
+                {tx(isFr).journeyDetailsPreview.byBike}
               </p>
               <p className="mt-0.5 text-xs text-slate-500">
                 {durationMin} min
@@ -246,7 +247,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
                 className="flex items-center gap-1.5 rounded-lg text-xs text-slate-500 transition hover:text-slate-300"
               >
                 <span>
-                  {durationMin} min · {stopCount} arrêt{stopCount > 1 ? 's' : ''}
+                  {durationMin} min · {tx(language === 'fr').journeyTimeline.stops(stopCount)}
                 </span>
                 <ChevronDownIcon
                   className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -254,7 +255,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
               </button>
             ) : (
               <p className="text-xs text-slate-500">
-                {durationMin} min · {stopCount} arrêt{stopCount > 1 ? 's' : ''}
+                {durationMin} min · {tx(language === 'fr').journeyTimeline.stops(stopCount)}
               </p>
             )}
 
@@ -327,7 +328,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
           </div>
           <div className="mb-5 min-w-0">
             <p className="text-xs text-slate-500">
-              {isFr ? 'À pied' : 'Walk'} · {durationMin} min
+              {tx(isFr).journeyDetailsPreview.walk} · {durationMin} min
               {leg.distance ? ` · ${formatDistance(Number(leg.distance), language)}` : ''}
             </p>
             {allLegs[i + 1]?.sharedOperator && (
@@ -345,7 +346,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
     <div className="overflow-y-auto flex-1 px-4 pb-4">
       <div className="mb-4">
         <p className="text-xs uppercase tracking-[0.18em] text-slate-500 mb-2">
-          {isFr ? 'Détails du trajet' : 'Journey details'}
+          {tx(isFr).journeyDetailsPreview.journeyDetails}
         </p>
         <h2 className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-lg font-semibold" style={{ color: '#ffffff' }}>
           <span className="break-words">{journey.depName}</span>
@@ -353,7 +354,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
           <span className="break-words">{journey.arrName}</span>
         </h2>
         <p className="text-sm text-slate-500">
-          {journey.dep} {isFr ? 'à' : 'at'} {journey.arr}
+          {journey.dep} {tx(isFr).journeyDetailsPreview.at} {journey.arr}
         </p>
       </div>
 
@@ -378,8 +379,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
             </span>
           )}
           <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-300">
-            {isFr ? 'à' : ''} {formatDistance(journey.shared.accessMeters, language)}{' '}
-            {isFr ? 'à pied' : 'walk away'}
+            {tx(isFr).journeyDetailsPreview.walkAway(formatDistance(journey.shared.accessMeters, language))}
           </span>
         </div>
       )}
@@ -433,15 +433,15 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
             const top = Math.min(tooltipCoords.y + 12, window.innerHeight - 130 - 8);
             return (
               <div style={{ left, top, width: baseWidth }} className="fixed z-[55] pointer-events-none bg-slate-900/95 border border-slate-700 text-white text-xs p-3 rounded-xl shadow-xl">
-                <p className="font-semibold text-amber-400 mb-1">{isFr ? 'Infotrafic' : 'Traffic info'} {line.lineKey}</p>
+                <p className="font-semibold text-amber-400 mb-1">{tx(isFr).journeyDetailsPreview.trafficInfo} {line.lineKey}</p>
                 {line.details[0] ? (
                   <>
                     <p className="text-slate-200">{stripHtml(line.details[0].titre)}</p>
                     <p className="text-slate-400 mt-1 whitespace-pre-line line-clamp-6">{stripHtml(line.details[0].description)}</p>
-                    <p className="text-slate-500 mt-1">{isFr ? 'Fin estimée' : 'Estimated end'} {line.details[0].dateFin || 'N/A'}</p>
+                    <p className="text-slate-500 mt-1">{tx(isFr).journeyDetailsPreview.estimatedEnd} {line.details[0].dateFin || 'N/A'}</p>
                   </>
                 ) : (
-                  <p className="text-slate-400">{isFr ? 'Détails indisponibles' : 'Details unavailable'}</p>
+                  <p className="text-slate-400">{tx(isFr).journeyDetailsPreview.detailsUnavailable}</p>
                 )}
               </div>
             );
@@ -453,7 +453,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
                   key={`${lineKey}-${detail.titre}-${index}`}
                   detail={detail}
                   language={language}
-                  heading={`${isFr ? 'Perturbation' : 'Disruption'} ${lineKey}`}
+                  heading={`${tx(isFr).journeyDetailsPreview.disruption} ${lineKey}`}
                 />
               )),
             )}
@@ -464,14 +464,14 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
       <div className="flex items-center gap-4 mb-6 p-3 rounded-2xl bg-slate-900 border border-slate-800">
         <div>
           <p className="text-lg font-bold text-white">{journey.dep}</p>
-          <p className="text-xs text-slate-500">{isFr ? 'Départ' : 'Depart'}</p>
+          <p className="text-xs text-slate-500">{tx(isFr).journeyDetailsPreview.depart}</p>
         </div>
         <div className="flex-1 border-t border-dashed border-slate-600" />
         <p className="text-sm font-semibold text-slate-300">{formatDurationLabel(journey.dur)}</p>
         <div className="flex-1 border-t border-dashed border-slate-600" />
         <div className="text-right">
           <p className="text-lg font-bold text-white">{journey.arr}</p>
-          <p className="text-xs text-slate-500">{isFr ? 'Arrivée' : 'Arrival'}</p>
+          <p className="text-xs text-slate-500">{tx(isFr).journeyDetailsPreview.arrival}</p>
         </div>
       </div>
 
@@ -489,7 +489,7 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
           }}
         >
           <VehicleGlyph formFactor={journey.shared?.formFactor ?? 'car'} size={18} />
-          {isFr ? "Ouvrir l'application" : 'Open the app'} {brand.name}
+          {tx(isFr).journeyDetailsPreview.openTheApp} {brand.name}
         </a>
       )}
 
@@ -500,13 +500,13 @@ export function JourneyDetailsPreview({ journey, language, stops, lineLookup, tr
           className="mb-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-4 text-base font-bold text-white transition hover:bg-blue-500 active:bg-blue-700"
         >
           <PlayIcon className="h-5 w-5" />
-          {isFr ? 'Démarrer le trajet' : 'Start journey'}
+          {tx(isFr).journeyDetailsPreview.startJourney}
         </button>
       )}
 
       <div className="relative space-y-2">
         <p className="text-xs uppercase tracking-[0.18em] text-slate-500 mb-3">
-          {isFr ? 'Étapes' : 'Steps'}
+          {tx(isFr).journeyDetailsPreview.steps}
         </p>
         {timelineItems}
       </div>

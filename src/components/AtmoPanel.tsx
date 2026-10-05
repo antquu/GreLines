@@ -3,28 +3,29 @@ import { readableTextColor } from './LineBadge';
 import { searchCommunes, type AtmoReport, type Commune } from '../services/atmo';
 import { IoWifi } from 'react-icons/io5';
 import { useIsOffline } from '../hooks/useIsOffline';
+import { tx } from '../i18n';
 
 const UNKNOWN_COLOR = '#64748b';
 
 const getText = (language: 'fr' | 'en') => {
   const fr = language === 'fr';
   return {
-    title: fr ? 'Indice Atmo air' : 'Air quality index',
-    loading: fr ? 'Chargement…' : 'Loading…',
-    unavailable: fr ? 'Indice indisponible' : 'Index unavailable',
-    offline: fr ? 'Connexion indisponible' : 'No connection',
-    unknownCommune: fr ? 'Commune inconnue' : 'Unknown city',
-    searchLabel: fr ? 'Changer de commune' : 'Change city',
-    searchPlaceholder: fr ? 'Chercher une commune…' : 'Search a city…',
-    noMatch: fr ? 'Aucune commune trouvée' : 'No city found',
-    forecastFor: (date: string) => (fr ? `Prévision du ${date}` : `Forecast for ${date}`),
+    title: tx(fr).atmoPanel.airQualityIndex,
+    loading: tx(fr).atmoPanel.loading,
+    unavailable: tx(fr).atmoPanel.indexUnavailable,
+    offline: tx(fr).atmoPanel.noConnection,
+    unknownCommune: tx(fr).atmoPanel.unknownCity,
+    searchLabel: tx(fr).atmoPanel.changeCity,
+    searchPlaceholder: tx(fr).atmoPanel.searchACity,
+    noMatch: tx(fr).atmoPanel.noCityFound,
+    forecastFor: (date: string) => (tx(fr).atmoPanel.forecastForDate(date)),
   };
 };
 
 function shortDate(iso: string, language: 'fr' | 'en'): string {
   const parts = iso.split('-');
   if (parts.length !== 3) return iso;
-  return language === 'fr' ? `${parts[2]}/${parts[1]}` : `${parts[1]}/${parts[2]}`;
+  return tx(language === 'fr').atmoPanel.item2Item(parts[2], parts[1]);
 }
 
 export function atmoColor(report: AtmoReport | null): string {

@@ -21,6 +21,7 @@ import {
   type SharedVehicle,
   type SharedVehiclePoint,
 } from '../services/sharedMobility';
+import { tx } from '../i18n';
 
 interface SharedMobilitySidebarProps {
   collapseSignal?: number;
@@ -62,50 +63,38 @@ const OPERATORS: Record<SharedOperator, { label: string; color: string; logo: st
 const getText = (language: 'fr' | 'en') => {
   const fr = language === 'fr';
   return {
-    available: fr ? 'Véhicules disponibles' : 'Available vehicles',
-    availableCount: (n: number) => (fr
-      ? `véhicule${n > 1 ? 's' : ''} disponible${n > 1 ? 's' : ''}`
-      : `vehicle${n > 1 ? 's' : ''} available`),
-    bikesAvailable: (n: number) => (fr
-      ? `vélo${n > 1 ? 's' : ''} disponible${n > 1 ? 's' : ''}`
-      : `bike${n > 1 ? 's' : ''} available`),
-    docksFree: (n: number) => (fr
-      ? `place${n > 1 ? 's' : ''} libre${n > 1 ? 's' : ''}`
-      : `free dock${n > 1 ? 's' : ''}`),
-    stationHint: fr
-      ? 'Prenez un vélo ici et rendez-le à n’importe quelle station vélOstan’lib.'
-      : 'Take a bike here and return it to any vélOstan’lib station.',
-    stationLabel: fr ? 'Station vélOstan’lib' : 'vélOstan’lib station',
-    slots: (n: number) => (fr ? `${n} emplacements` : `${n} docks`),
-    fewBikes: fr ? 'Il reste peu de vélos' : 'Few bikes left',
-    fewDocks: fr ? 'Station presque pleine' : 'Station almost full',
-    routeToStation: fr ? 'Itinéraire jusqu’à la station' : 'Directions to the station',
-    operatorSite: fr ? 'Site vélOstan’lib' : 'vélOstan’lib website',
-    battery: fr ? 'Batterie' : 'Battery',
-    fuel: fr ? 'Carburant' : 'Fuel',
-    estimated: fr ? 'estimée' : 'estimated',
-    range: fr ? 'Autonomie' : 'Range',
-    book: fr ? 'Réserver' : 'Book',
-    unlock: fr ? 'Déverrouiller' : 'Unlock',
-    tariff: fr ? 'Tarif' : 'Pricing',
-    unlockFee: fr ? 'Déverrouillage' : 'Unlock fee',
-    perMinute: fr ? 'Par minute' : 'Per minute',
-    perMinutes: (n: number) => (fr ? `Par ${n} min` : `Per ${n} min`),
-    perKm: fr ? 'Par kilomètre' : 'Per kilometre',
-    free: fr ? 'Gratuit' : 'Free',
-    plusUnlock: fr ? '+ déverrouillage' : '+ unlock fee',
-    unlockNote: fr ? 'Déverrouillage' : 'Unlock fee',
-    details: fr ? 'Détails' : 'Details',
-    vehicle: fr ? 'Véhicule' : 'Vehicle',
-    none: fr ? 'Aucun véhicule disponible ici pour le moment.' : 'No vehicle available here right now.',
-    close: fr ? 'Fermer' : 'Close',
-    route: fr ? 'Itinéraire' : 'Directions',
-    count: (n: number) => (fr
-      ? `${n} véhicule${n > 1 ? 's' : ''}`
-      : `${n} vehicle${n > 1 ? 's' : ''}`),
-    spots: (n: number) => (fr
-      ? `${n} emplacement${n > 1 ? 's' : ''}`
-      : `${n} location${n > 1 ? 's' : ''}`),
+    available: tx(fr).sharedMobilitySidebar.availableVehicles,
+    availableCount: (n: number) => (tx(fr).sharedMobilitySidebar.vehicleValueAvailable(n > 1 ? 's' : '')),
+    bikesAvailable: (n: number) => (tx(fr).sharedMobilitySidebar.bikeValueAvailable(n > 1 ? 's' : '')),
+    docksFree: (n: number) => (tx(fr).sharedMobilitySidebar.freeDockValue(n > 1 ? 's' : '')),
+    stationHint: tx(fr).sharedMobilitySidebar.takeABikeHere,
+    stationLabel: tx(fr).sharedMobilitySidebar.velostanLibStation,
+    slots: (n: number) => (tx(fr).sharedMobilitySidebar.nDocks(n)),
+    fewBikes: tx(fr).sharedMobilitySidebar.fewBikesLeft,
+    fewDocks: tx(fr).sharedMobilitySidebar.stationAlmostFull,
+    routeToStation: tx(fr).sharedMobilitySidebar.directionsToTheStation,
+    operatorSite: tx(fr).sharedMobilitySidebar.velostanLibWebsite,
+    battery: tx(fr).sharedMobilitySidebar.battery,
+    fuel: tx(fr).sharedMobilitySidebar.fuel,
+    estimated: tx(fr).sharedMobilitySidebar.estimated,
+    range: tx(fr).sharedMobilitySidebar.range,
+    book: tx(fr).sharedMobilitySidebar.book,
+    unlock: tx(fr).sharedMobilitySidebar.unlock,
+    tariff: tx(fr).sharedMobilitySidebar.pricing,
+    unlockFee: tx(fr).sharedMobilitySidebar.unlockFee,
+    perMinute: tx(fr).sharedMobilitySidebar.perMinute,
+    perMinutes: (n: number) => (tx(fr).sharedMobilitySidebar.perNMin(n)),
+    perKm: tx(fr).sharedMobilitySidebar.perKilometre,
+    free: tx(fr).sharedMobilitySidebar.free,
+    plusUnlock: tx(fr).sharedMobilitySidebar.unlockFee2,
+    unlockNote: tx(fr).sharedMobilitySidebar.unlockFee,
+    details: tx(fr).sharedMobilitySidebar.details,
+    vehicle: tx(fr).sharedMobilitySidebar.vehicle,
+    none: tx(fr).sharedMobilitySidebar.noVehicleAvailableHere,
+    close: tx(fr).sharedMobilitySidebar.close,
+    route: tx(fr).sharedMobilitySidebar.directions,
+    count: (n: number) => (tx(fr).sharedMobilitySidebar.nVehicleValue(n, n > 1 ? 's' : '')),
+    spots: (n: number) => (tx(fr).sharedMobilitySidebar.nLocationValue(n, n > 1 ? 's' : '')),
   };
 };
 
@@ -698,9 +687,7 @@ export function SharedMobilitySidebar({
       <OfflinePanel
         language={language}
         isLight={isLight}
-        detail={language === 'fr'
-          ? 'Les véhicules disponibles se voient en direct. Ils reviendront avec le réseau.'
-          : 'Available vehicles are shown live. They will be back with the network.'}
+        detail={tx(language === 'fr').sharedMobilitySidebar.availableVehiclesAreShown}
       />
     </>
   );
@@ -836,12 +823,12 @@ export function SharedMobilitySidebar({
 
   const zoneLegend = operator === 'voi' && !offline ? (
     <div className="mt-8">
-      <p className="text-[0.8125rem] font-bold text-slate-300">{language === 'fr' ? 'Zones sur la carte' : 'Zones on the map'}</p>
+      <p className="text-[0.8125rem] font-bold text-slate-300">{tx(language === 'fr').sharedMobilitySidebar.zonesOnTheMap}</p>
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
         {[
-          { color: '#ef4444', fr: 'Circulation interdite', en: 'No riding' },
-          { color: '#f59e0b', fr: 'Stationnement interdit', en: 'No parking' },
-          { color: '#3b82f6', fr: 'Stationnement', en: 'Parking' },
+          { color: '#ef4444', label: tx(language === 'fr').sharedMobilitySidebar.zoneNoRiding },
+          { color: '#f59e0b', label: tx(language === 'fr').sharedMobilitySidebar.zoneNoParking },
+          { color: '#3b82f6', label: tx(language === 'fr').sharedMobilitySidebar.zoneParking },
         ].map(zone => (
           <li key={zone.color} className="flex items-center gap-2 text-[0.8125rem] text-slate-400">
             <span
@@ -849,12 +836,12 @@ export function SharedMobilitySidebar({
               style={{ borderColor: zone.color, backgroundColor: `${zone.color}40` }}
               aria-hidden="true"
             />
-            {language === 'fr' ? zone.fr : zone.en}
+            {zone.label}
           </li>
         ))}
         <li className="flex items-center gap-2 text-[0.8125rem] text-slate-400">
           <span className="w-3.5 flex-shrink-0 border-t-2 border-dashed" style={{ borderColor: '#ef4444' }} aria-hidden="true" />
-          {language === 'fr' ? 'Limite de la zone' : 'Area boundary'}
+          {tx(language === 'fr').sharedMobilitySidebar.areaBoundary}
         </li>
       </ul>
     </div>

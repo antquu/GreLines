@@ -7,6 +7,7 @@ import { resolveLineStyle } from '../utils/lineColors';
 import type { RouteLocation } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
 import type { Line, TrafficDetail } from '../types';
+import { tx } from '../i18n';
 
 interface SearchResultsListProps {
   lines?: AllLinesLine[];
@@ -147,7 +148,7 @@ export function SearchResultsList({
             />
             <span className="min-w-0 flex-1">
               <span className={`block truncate text-[1.375rem] font-bold leading-tight ${ink}`}>
-                {fr ? `Ligne ${line.shortName}` : `Line ${line.shortName}`}
+                {tx(fr).searchResultsList.lineShortname(line.shortName)}
               </span>
               <span
                 className={`mt-0.5 block truncate text-[1.0625rem] leading-tight ${
@@ -156,9 +157,7 @@ export function SearchResultsList({
               >
                 {alerts && alerts.length > 0
                   ? alerts[0].titre
-                  : fr
-                    ? 'Service normal'
-                    : 'Good service'}
+                  : tx(fr).searchResultsList.goodService}
               </span>
             </span>
           </button>

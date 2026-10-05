@@ -5,6 +5,7 @@ import { MinimalScreen, type MinimalScreenAction } from './MinimalScreen';
 import { minutesUntilClock, formatWait } from '../utils/favoriteDepartures';
 import { planItineraries, type RouteItinerary } from '../services/api';
 import type { FavoriteJourney } from '../services/favoriteJourneys';
+import { tx } from '../i18n';
 
 const MAX_OPTIONS = 5;
 const REFRESH_MS = 60_000;
@@ -72,9 +73,9 @@ export function FavoriteJourneyScreen({
   }, [isOpen, journeyId]);
 
   const actions: MinimalScreenAction[] = [
-    { label: isFr ? 'Ouvrir dans l’itinéraire' : 'Open in the planner', onSelect: onOpenInPlanner },
-    { label: isFr ? 'Renommer' : 'Rename', onSelect: onRename },
-    { label: isFr ? 'Retirer des favoris' : 'Remove from favorites', onSelect: onRemove, destructive: true },
+    { label: tx(isFr).favoriteJourneyScreen.openInThePlanner, onSelect: onOpenInPlanner },
+    { label: tx(isFr).favoriteJourneyScreen.rename, onSelect: onRename },
+    { label: tx(isFr).favoriteJourneyScreen.removeFromFavorites, onSelect: onRemove, destructive: true },
   ];
 
   const mutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
@@ -89,10 +90,10 @@ export function FavoriteJourneyScreen({
       onBack={onBack}
     >
       {options === null ? (
-        <p className={`px-6 py-4 text-sm ${mutedClass}`}>{isFr ? 'Recherche…' : 'Searching…'}</p>
+        <p className={`px-6 py-4 text-sm ${mutedClass}`}>{tx(isFr).favoriteJourneyScreen.searching}</p>
       ) : options.length === 0 ? (
         <p className={`px-6 py-4 text-sm ${mutedClass}`}>
-          {isFr ? 'Aucun itinéraire pour l’instant' : 'No route right now'}
+          {tx(isFr).favoriteJourneyScreen.noRouteRightNow}
         </p>
       ) : (
         options.map((itinerary, index) => {
@@ -116,14 +117,14 @@ export function FavoriteJourneyScreen({
                 </h3>
 
                 <p className={`mt-4 text-[0.6875rem] font-bold uppercase tracking-[0.14em] ${mutedClass}`}>
-                  {isFr ? 'Partir dans' : 'Leave in'}
+                  {tx(isFr).favoriteJourneyScreen.leaveIn}
                 </p>
                 <p className="tabular text-[2.125rem] font-semibold leading-none">
                   {leaveIn == null ? itinerary.dep : formatWait(Math.max(leaveIn, 0), language)}
                 </p>
 
                 <p className={`mt-3 text-[0.6875rem] font-bold uppercase tracking-[0.14em] ${mutedClass}`}>
-                  {isFr ? 'Durée' : 'Duration'}
+                  {tx(isFr).favoriteJourneyScreen.duration}
                 </p>
                 <p className="tabular text-[2.125rem] font-semibold leading-none text-slate-500">
                   {formatDurationLabel(itinerary.dur)}

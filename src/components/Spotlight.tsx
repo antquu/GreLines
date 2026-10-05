@@ -18,6 +18,7 @@ import type { AddressResult } from '../services/geocoding';
 import { searchAddresses } from '../services/geocoding';
 import { LineBadge } from './LineBadge';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { tx } from '../i18n';
 
 export type SpotlightResult =
   | { kind: 'stop'; id: string; title: string; subtitle: string; stop: Stop }
@@ -121,43 +122,43 @@ export function Spotlight({
     {
       kind: 'action' as const,
       id: 'action-settings',
-      title: isFr ? 'Ouvrir les réglages' : 'Open settings',
-      subtitle: isFr ? 'Réglages' : 'Settings',
+      title: tx(isFr).spotlight.openSettings,
+      subtitle: tx(isFr).spotlight.settings,
       run: () => onOpenSettings(),
     },
     {
       kind: 'action' as const,
       id: 'action-settings-display',
-      title: isFr ? 'Réglages : Affichage' : 'Settings: Display',
-      subtitle: isFr ? 'Thème, taille du texte, footer' : 'Theme, text size, footer',
+      title: tx(isFr).spotlight.settingsDisplay,
+      subtitle: tx(isFr).spotlight.themeTextSizeFooter,
       run: () => onOpenSettings('display'),
     },
     {
       kind: 'action' as const,
       id: 'action-settings-data',
-      title: isFr ? 'Réglages : Données' : 'Settings: Data',
-      subtitle: isFr ? 'Actualisation, cache' : 'Refresh, cache',
+      title: tx(isFr).spotlight.settingsData,
+      subtitle: tx(isFr).spotlight.refreshCache,
       run: () => onOpenSettings('data'),
     },
     {
       kind: 'action' as const,
       id: 'action-traffic',
-      title: isFr ? 'Infos trafic en direct' : 'Live traffic info',
-      subtitle: isFr ? 'Perturbations du réseau' : 'Network disruptions',
+      title: tx(isFr).spotlight.liveTrafficInfo,
+      subtitle: tx(isFr).spotlight.networkDisruptions,
       run: onOpenTraffic,
     },
     {
       kind: 'action' as const,
       id: 'action-route',
-      title: isFr ? 'Planifier un itinéraire' : 'Plan a route',
-      subtitle: isFr ? 'Itinéraire' : 'Route planner',
+      title: tx(isFr).spotlight.planARoute,
+      subtitle: tx(isFr).spotlight.routePlanner,
       run: onPlanRoute,
     },
     {
       kind: 'action' as const,
       id: 'action-nearby',
-      title: isFr ? 'Arrêts à proximité' : 'Nearby stops',
-      subtitle: isFr ? 'Autour de moi' : 'Around me',
+      title: tx(isFr).spotlight.nearbyStops,
+      subtitle: tx(isFr).spotlight.aroundMe,
       run: onOpenNearby,
     },
   ], [isFr, onOpenSettings, onOpenTraffic, onPlanRoute, onOpenNearby]);
@@ -187,7 +188,7 @@ export function Spotlight({
       .map(({ line }) => ({
         kind: 'line' as const,
         id: `line-${line.id}`,
-        title: `${isFr ? 'Ligne' : 'Line'} ${line.shortName}`,
+        title: `${tx(isFr).spotlight.line} ${line.shortName}`,
         subtitle: foreignLineCity(line.id) ? `${line.longName} · ${foreignLineCity(line.id)}` : line.longName,
         line,
       }));
@@ -206,15 +207,15 @@ export function Spotlight({
         kind: 'stop' as const,
         id: `stop-${stop.id}`,
         title: stop.name,
-        subtitle: stop.city || (isFr ? 'Arrêt' : 'Stop'),
+        subtitle: stop.city || (tx(isFr).spotlight.stop),
         stop,
       });
     const matchedStops: SpotlightResult[] = stopHits.filter(item => item.km <= FAR_STOP_KM).map(toStopResult);
     const farStops: SpotlightResult[] = stopHits.filter(item => item.km > FAR_STOP_KM).map(toStopResult);
 
     const trafficLabel = (lineName: string) => {
-      if (!isForeignLineId(lineName)) return `${isFr ? 'Ligne' : 'Line'} ${lineName}`;
-      return `${isFr ? 'Ligne' : 'Line'} ${foreignAsCatalogLine({ id: lineName }).shortName} (${foreignLineCity(lineName)})`;
+      if (!isForeignLineId(lineName)) return `${tx(isFr).spotlight.line} ${lineName}`;
+      return `${tx(isFr).spotlight.line} ${foreignAsCatalogLine({ id: lineName }).shortName} (${foreignLineCity(lineName)})`;
     };
     const matchedTraffic: SpotlightResult[] = Array.from(trafficInfo.entries())
       .filter(([lineName, details]) =>
@@ -225,7 +226,7 @@ export function Spotlight({
         kind: 'traffic' as const,
         id: `traffic-${lineName}`,
         title: details[0]?.titre || trafficLabel(lineName),
-        subtitle: `${isFr ? 'Infotrafic' : 'Traffic'} · ${trafficLabel(lineName)}`,
+        subtitle: `${tx(isFr).spotlight.traffic} · ${trafficLabel(lineName)}`,
         lineName,
       }));
 
@@ -233,7 +234,7 @@ export function Spotlight({
       kind: 'address' as const,
       id: `address-${address.label}`,
       title: address.name || address.label,
-      subtitle: address.context || (isFr ? 'Adresse' : 'Address'),
+      subtitle: address.context || (tx(isFr).spotlight.address),
       address,
     }));
 
@@ -341,7 +342,7 @@ export function Spotlight({
                 value={query}
                 onChange={event => setQuery(event.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isFr ? 'Rechercher sur GreLines...' : 'Search GreLines...'}
+                placeholder={tx(isFr).spotlight.searchGrelines}
                 className="w-full bg-transparent text-[1.0625rem] text-white outline-none placeholder:text-slate-500"
                 spellCheck={false}
                 autoComplete="off"
@@ -354,7 +355,7 @@ export function Spotlight({
             <div ref={listRef} className="max-h-[52vh] overflow-y-auto py-2">
               {results.length === 0 ? (
                 <p className="px-4 py-6 text-center text-sm text-slate-500">
-                  {isFr ? 'Aucun résultat' : 'No results'}
+                  {tx(isFr).spotlight.noResults}
                 </p>
               ) : (
                 results.map((result, index) => (

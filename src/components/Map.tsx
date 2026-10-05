@@ -2,6 +2,7 @@ import { sortStopPreviewLines } from '../utils/lineOrder';
 import { IS_NANCY } from '../site';
 import { appLanguage } from '../utils/appLanguage';
 import { useReconnectCount } from '../hooks/useIsOffline';
+import { tx } from '../i18n';
 ﻿import { useRef, forwardRef, useImperativeHandle, useCallback, useState, useMemo, useEffect, memo } from 'react';
 import type { ForwardedRef } from 'react';
 import MapLibreMap, { Marker, Source, Layer } from 'react-map-gl/maplibre';
@@ -1506,7 +1507,7 @@ const MapComponentBase = (
                 whiteSpace: 'nowrap',
               }}
             >
-              {appLanguage() === 'en' ? 'Line' : 'Ligne'} {line.shortName}
+              {tx(!(appLanguage() === 'en')).map.line} {line.shortName}
             </div>
           </Marker>
         ))}
@@ -1644,7 +1645,7 @@ const MapComponentBase = (
                 border: '3px solid #111827',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
               }}
-              title={`${appLanguage() === 'en' ? 'Start' : 'Départ'} : ${routeStart.label}`}
+              title={`${tx(!(appLanguage() === 'en')).map.start} : ${routeStart.label}`}
             />
           </Marker>
         )}
@@ -1660,7 +1661,7 @@ const MapComponentBase = (
                 border: '3px solid #111827',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
               }}
-              title={`${appLanguage() === 'en' ? 'Destination' : 'Arrivée'} : ${routeEnd.label}`}
+              title={`${tx(!(appLanguage() === 'en')).map.destination} : ${routeEnd.label}`}
             />
           </Marker>
         )}

@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { FunnelIcon } from '@heroicons/react/24/solid';
 import type { Ref } from 'react';
+import { tx } from '../i18n';
 
 export function TrafficFilterBar({
   filters,
@@ -59,7 +60,7 @@ export function TrafficFilterBar({
                   exit={{ opacity: 0, width: 0 }}
                   transition={{ duration: 0.2, ease: 'easeOut' }}
                   className="flex items-center gap-1 overflow-hidden pr-1"
-                  aria-label={language === 'fr' ? 'Modes' : 'Modes'}
+                  aria-label={tx(language === 'fr').trafficFilterBar.modes}
                 >
                   <span className="h-4 w-px flex-shrink-0 bg-white/40" aria-hidden />
                   {subFilters.map(sub => (

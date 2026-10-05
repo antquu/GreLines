@@ -14,6 +14,7 @@ import {
 import { attachKnownCard, findKnownCard, saveTestCard, lookupOuraCard, saveOuraCard, recordTermsAcceptance, type OuraCard, type OuraCardLookup } from '../services/ouraCard';
 import { getOuraTerms } from './ouraTermsContent';
 import { scanCard, toCanvas, waitForSteadyFrame } from '../services/cardOcr';
+import { tx } from '../i18n';
 
 interface AddCardSheetProps {
   isOpen: boolean;
@@ -37,90 +38,64 @@ const wait = (ms: number) => new Promise(resolve => window.setTimeout(resolve, m
 const getText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
-    title: isFr ? 'Ajouter une carte' : 'Add a card',
-    choiceTitle: isFr ? 'Ajouter une carte OURA' : 'Add an OURA card',
-    choiceBody: isFr
-      ? 'Votre carte s’affichera dans GreLines, avec votre photo et votre abonnement.'
-      : 'Your card will appear in GreLines, with your photo and your pass.',
-    stepTerms: isFr ? 'Conditions' : 'Terms',
-    termsRequired: isFr ? 'Acceptez les conditions pour continuer.' : 'Accept the terms to continue.',
-    scanTitle: isFr ? 'Scanner ma carte' : 'Scan my card',
-    scanHint: isFr ? 'La face au numéro et à la photo' : 'The side with the number and photo',
-    manualTitle: isFr ? 'Saisir le numéro' : 'Enter the number',
-    manualHint: isFr ? 'Les dix chiffres au dos de la carte' : 'The ten digits on the back',
-    close: isFr ? 'Fermer' : 'Close',
-    back: isFr ? 'Retour' : 'Back',
-    reading: isFr ? 'Lecture de la carte…' : 'Reading the card…',
-    aiming: isFr
-      ? 'Présentez la carte dans le cadre : la lecture part dès que vous ne bougez plus.'
-      : 'Hold the card inside the frame: reading starts as soon as you hold still.',
-    cameraDenied: isFr
-      ? "L'appareil photo n'est pas accessible. Saisissez le numéro à la main."
-      : 'The camera is unavailable. Enter the number by hand.',
-    numberLabel: isFr ? 'Numéro de carte' : 'Card number',
-    check: isFr ? 'Vérifier' : 'Check',
-    checking: isFr ? 'Vérification…' : 'Checking…',
-    unknown: isFr
-      ? "Ce numéro n'existe pas sur le réseau."
-      : 'This number does not exist on the network.',
-    scanFailed: isFr
-      ? "Le numéro n'a pas été lu. Saisissez-le à la main."
-      : 'The number could not be read. Type it by hand.',
-    scanRetry: isFr ? 'Carte non reconnue, on recommence…' : 'Card not recognised, trying again…',
-    found: isFr ? 'Carte reconnue' : 'Card recognised',
-    typeInstead: isFr ? 'Saisir le numéro à la main' : 'Type the number instead',
+    title: tx(isFr).addCardSheet.addACard,
+    choiceTitle: tx(isFr).addCardSheet.addAnOuraCard,
+    choiceBody: tx(isFr).addCardSheet.yourCardWillAppear,
+    stepTerms: tx(isFr).addCardSheet.terms,
+    termsRequired: tx(isFr).addCardSheet.acceptTheTermsTo,
+    scanTitle: tx(isFr).addCardSheet.scanMyCard,
+    scanHint: tx(isFr).addCardSheet.theSideWithThe,
+    manualTitle: tx(isFr).addCardSheet.enterTheNumber,
+    manualHint: tx(isFr).addCardSheet.theTenDigitsOn,
+    close: tx(isFr).addCardSheet.close,
+    back: tx(isFr).addCardSheet.back,
+    reading: tx(isFr).addCardSheet.readingTheCard,
+    aiming: tx(isFr).addCardSheet.holdTheCardInside,
+    cameraDenied: tx(isFr).addCardSheet.theCameraIsUnavailable,
+    numberLabel: tx(isFr).addCardSheet.cardNumber,
+    check: tx(isFr).addCardSheet.check,
+    checking: tx(isFr).addCardSheet.checking,
+    unknown: tx(isFr).addCardSheet.thisNumberDoesNot,
+    scanFailed: tx(isFr).addCardSheet.theNumberCouldNot,
+    scanRetry: tx(isFr).addCardSheet.cardNotRecognisedTrying,
+    found: tx(isFr).addCardSheet.cardRecognised,
+    typeInstead: tx(isFr).addCardSheet.typeTheNumberInstead,
 
-    stepCard: isFr ? 'La carte' : 'The card',
-    stepIdentity: isFr ? 'Votre identité' : 'Your identity',
-    stepName: isFr ? 'Votre nom' : 'Your name',
-    stepOf: isFr ? 'Étape' : 'Step',
+    stepCard: tx(isFr).addCardSheet.theCard,
+    stepIdentity: tx(isFr).addCardSheet.yourIdentity,
+    stepName: tx(isFr).addCardSheet.yourName,
+    stepOf: tx(isFr).addCardSheet.step,
 
-    selfieTitle: isFr ? 'Vérifions votre identité' : "Let's verify your identity",
-    selfieBody: isFr
-      ? "Prenez-vous en photo : ce portrait figure sur votre carte OURA dans l'application, et confirme qu'elle est bien la vôtre."
-      : 'Take a photo of yourself: this portrait appears on your OURA card in the app, and confirms the card is really yours.',
-    selfieHint: isFr
-      ? 'Regardez l’objectif, visage bien éclairé, sans lunettes de soleil.'
-      : 'Look at the lens, face well lit, no sunglasses.',
-    selfieCapture: isFr ? 'Prendre la photo' : 'Take the photo',
-    selfieRetake: isFr ? 'Reprendre' : 'Retake',
-    selfieContinue: isFr ? 'C’est bien moi' : "That's me",
-    selfieDenied: isFr
-      ? "L'appareil photo n'est pas accessible. La vérification demande une photo."
-      : 'The camera is unavailable. Verification requires a photo.',
-    selfieRequired: isFr ? 'La photo est obligatoire.' : 'The photo is required.',
+    selfieTitle: tx(isFr).addCardSheet.letSVerifyYour,
+    selfieBody: tx(isFr).addCardSheet.takeAPhotoOf,
+    selfieHint: tx(isFr).addCardSheet.lookAtTheLens,
+    selfieCapture: tx(isFr).addCardSheet.takeThePhoto,
+    selfieRetake: tx(isFr).addCardSheet.retake,
+    selfieContinue: tx(isFr).addCardSheet.thatSMe,
+    selfieDenied: tx(isFr).addCardSheet.theCameraIsUnavailable2,
+    selfieRequired: tx(isFr).addCardSheet.thePhotoIsRequired,
 
-    yourInfo: isFr ? 'Sont-ce bien vos informations ?' : 'Are these your details?',
-    known: isFr
-      ? 'Cette carte est déjà connue. Quel est votre nom de famille ?'
-      : 'This card is already known. What is your last name?',
-    knownMismatch: isFr
-      ? "Ce nom ne correspond pas à celui de la carte."
-      : 'That name does not match the one on the card.',
-    knownImport: isFr ? 'Importer la carte' : 'Import the card',
-    fillInfo: isFr ? 'Comment vous appelez-vous ?' : 'What is your name?',
-    nameBody: isFr
-      ? 'Le prénom et le nom doivent être ceux imprimés sur la carte.'
-      : 'First and last name must match the ones printed on the card.',
-    firstName: isFr ? 'Prénom' : 'First name',
-    lastName: isFr ? 'Nom' : 'Last name',
-    required: isFr ? 'obligatoire' : 'required',
-    nameRequired: isFr ? 'Prénom et nom sont obligatoires.' : 'First and last name are required.',
-    fromNetworkHint: isFr
-      ? 'Déjà lues sur votre carte, elles ne se modifient pas ici.'
-      : 'Already read from your card, they cannot be edited here.',
-    verified: isFr ? 'Identité vérifiée' : 'Identity verified',
-    save: isFr ? 'Enregistrer' : 'Save',
-    saving: isFr ? 'Enregistrement…' : 'Saving…',
-    saveFailed: isFr ? "L'enregistrement a échoué." : 'Saving failed.',
-    contract: isFr ? 'Abonnement' : 'Pass',
-    birthDate: isFr ? 'Naissance' : 'Birth date',
-    validUntil: isFr ? 'Valide jusqu’au' : 'Valid until',
-    mobileOnlyTitle: isFr ? 'Carte à créer sur mobile' : 'Set this card up on mobile',
-    mobileOnlyBody: isFr
-      ? "Ce numéro n'est rattaché à aucun porteur. Sur ordinateur, le portefeuille ne fait que retrouver des cartes déjà déclarées. Le nom et la photo se saisissent depuis l'application mobile, où l'on peut photographier le carton."
-      : 'This number is not linked to any holder yet. On desktop the wallet only finds cards that already exist. Name and photo are entered from the mobile app, where the card can be photographed.',
-    mobileOnlyClose: isFr ? 'Compris' : 'Got it',
+    yourInfo: tx(isFr).addCardSheet.areTheseYourDetails,
+    known: tx(isFr).addCardSheet.thisCardIsAlready,
+    knownMismatch: tx(isFr).addCardSheet.thatNameDoesNot,
+    knownImport: tx(isFr).addCardSheet.importTheCard,
+    fillInfo: tx(isFr).addCardSheet.whatIsYourName,
+    nameBody: tx(isFr).addCardSheet.firstAndLastName,
+    firstName: tx(isFr).addCardSheet.firstName,
+    lastName: tx(isFr).addCardSheet.lastName,
+    required: tx(isFr).addCardSheet.required,
+    nameRequired: tx(isFr).addCardSheet.firstAndLastName2,
+    fromNetworkHint: tx(isFr).addCardSheet.alreadyReadFromYour,
+    verified: tx(isFr).addCardSheet.identityVerified,
+    save: tx(isFr).addCardSheet.save,
+    saving: tx(isFr).addCardSheet.saving,
+    saveFailed: tx(isFr).addCardSheet.savingFailed,
+    contract: tx(isFr).addCardSheet.pass,
+    birthDate: tx(isFr).addCardSheet.birthDate,
+    validUntil: tx(isFr).addCardSheet.validUntil,
+    mobileOnlyTitle: tx(isFr).addCardSheet.setThisCardUp,
+    mobileOnlyBody: tx(isFr).addCardSheet.thisNumberIsNot,
+    mobileOnlyClose: tx(isFr).addCardSheet.gotIt,
   };
 };
 

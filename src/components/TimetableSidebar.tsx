@@ -10,6 +10,7 @@ import { getForeignTimetable } from '../services/foreignTimetable';
 import { getTimetable, formatTimetableTime, toTimetableRouteId, type Timetable, type TimetableDirection } from '../services/timetable';
 import type { Line } from '../types';
 import { sameStationName } from '../services/sncfNetwork';
+import { t } from '../i18n';
 
 interface TimetableSidebarProps {
   isOpen: boolean;
@@ -27,29 +28,7 @@ interface TimetableSidebarProps {
   onOpenLineMap?: () => void;
 }
 
-const getText = (language: 'fr' | 'en') => {
-  const fr = language === 'fr';
-  return {
-    title: fr ? 'Fiche horaire' : 'Timetable',
-    loading: fr ? 'Chargement…' : 'Loading…',
-    empty: fr
-      ? 'Aucun horaire publié pour cette ligne en ce moment. Le réseau ne circule peut-être pas à cette heure-ci.'
-      : 'No timetable published for this line right now. The network may not be running at this hour.',
-    close: fr ? 'Fermer' : 'Close',
-    noTimes: fr ? 'Pas de passage' : 'No departure',
-    previousTimes: fr ? 'Horaires précédents' : 'Earlier times',
-    nextTimes: fr ? 'Horaires suivants' : 'Later times',
-    lineMap: fr ? 'Plan de la ligne' : 'Line map',
-    towards: fr ? 'vers' : 'to',
-    towardsTab: fr ? 'Vers' : 'To',
-    trainNumber: (n: string) => (fr ? `Train n° ${n}` : `Train no. ${n}`),
-    arrival: (time: string) => (fr ? `arrivée ${time}` : `arrives ${time}`),
-    next: fr ? 'Prochain' : 'Next',
-    noRuns: (train: boolean) => (fr
-      ? `Aucun ${train ? 'train' : 'départ'} aujourd’hui dans ce sens.`
-      : `No ${train ? 'trains' : 'departures'} today in this direction.`),
-  };
-};
+const getText = (language: 'fr' | 'en') => t(language).timetable;
 
 const ROW_HEIGHT = 46;
 const PER_PAGE = 3;

@@ -10,6 +10,7 @@ import { resolveRouteLine } from '../utils/routeLineResolver';
 import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
 import type { JourneyIntermediateStop, TrafficDetail } from '../types';
+import { tx } from '../i18n';
 
 const BIKE_MODES = new Set(['BICYCLE', 'BICYCLE_RENT']);
 const NEUTRAL_COLOR = '#94a3b8';
@@ -78,11 +79,9 @@ export function JourneyDetail({
           margin: 0,
         }}
       >
-        {label || (fr ? 'Votre trajet' : 'Your journey')}
+        {label || (tx(fr).journeyDetail.yourJourney)}
         <br />
-        {fr
-          ? `${formatDurationLabel(journey.dur)}, arrivée à ${journey.arr}`
-          : `${formatDurationLabel(journey.dur)}, arrive ${journey.arr}`}
+        {tx(fr).journeyDetail.formatdurationlabelArriveArr(formatDurationLabel(journey.dur), journey.arr)}
       </h2>
 
       <div className="mt-5">
@@ -91,7 +90,7 @@ export function JourneyDetail({
             isLight ? 'border-slate-300 text-slate-900' : 'border-white/40 text-white'
           }`}
         >
-          {fr ? `Partir à ${journey.dep}` : `Leave at ${journey.dep}`}
+          {tx(fr).journeyDetail.leaveAtDep(journey.dep)}
         </span>
       </div>
 
@@ -106,7 +105,7 @@ export function JourneyDetail({
               <div key={`walk-${index}`} className={`my-5 flex items-center gap-3 rounded-2xl px-4 py-4 ${boxClass}`}>
                 <FaWalking size={20} className={ink} />
                 <span className={`text-[1.0625rem] font-semibold ${ink}`}>
-                  {fr ? `Marcher ${formatMinutesCompact(minutes)}` : `Walk ${formatMinutesCompact(minutes)}`}
+                  {tx(fr).journeyDetail.walkFormatminutescompact(formatMinutesCompact(minutes))}
                 </span>
               </div>
             );
@@ -117,7 +116,7 @@ export function JourneyDetail({
               <div key={`bike-${index}`} className={`my-5 flex items-center gap-3 rounded-2xl px-4 py-4 ${boxClass}`}>
                 <MdDirectionsBike size={22} className={ink} />
                 <span className={`text-[1.0625rem] font-semibold ${ink}`}>
-                  {fr ? `À vélo, ${formatMinutesCompact(minutes)}` : `By bike, ${formatMinutesCompact(minutes)}`}
+                  {tx(fr).journeyDetail.byBikeFormatminutescompact(formatMinutesCompact(minutes))}
                 </span>
               </div>
             );
@@ -178,7 +177,7 @@ export function JourneyDetail({
                     <button
                       type="button"
                       onClick={() => setOpenAlert({ line: lineName, details: alerts })}
-                      aria-label={fr ? `Info trafic ligne ${lineName}` : `Service info line ${lineName}`}
+                      aria-label={tx(fr).journeyDetail.serviceInfoLineLinename(lineName)}
                       className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-amber-400 text-amber-950 transition active:scale-90"
                     >
                       <ExclamationTriangleIcon className="h-5 w-5" />
@@ -199,9 +198,7 @@ export function JourneyDetail({
                       <PlusCircleIcon className="h-7 w-7 flex-shrink-0" />
                     ))}
                   <span className="text-[1.0625rem] font-bold">
-                    {fr
-                      ? `${intermediate.length + 1} arrêt${intermediate.length + 1 > 1 ? 's' : ''}`
-                      : `${intermediate.length + 1} stop${intermediate.length + 1 > 1 ? 's' : ''}`}
+                    {tx(fr).journeyDetail.valueStopValue2(intermediate.length + 1, intermediate.length + 1 > 1 ? 's' : '')}
                   </span>
                   <span className={`text-[1.0625rem] ${muted}`}>{formatMinutesCompact(minutes)}</span>
                 </button>
@@ -259,16 +256,16 @@ export function JourneyDetail({
             }`}
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
             role="dialog"
-            aria-label={fr ? `Info trafic ligne ${openAlert.line}` : `Service info line ${openAlert.line}`}
+            aria-label={tx(fr).journeyDetail.serviceInfoLineLine(openAlert.line)}
           >
             <div className="flex items-start gap-3">
               <p className={`min-w-0 flex-1 text-[1.3125rem] font-bold leading-tight ${ink}`}>
-                {fr ? `Info trafic ligne ${openAlert.line}` : `Service info line ${openAlert.line}`}
+                {tx(fr).journeyDetail.serviceInfoLineLine(openAlert.line)}
               </p>
               <button
                 type="button"
                 onClick={() => setOpenAlert(null)}
-                aria-label={fr ? 'Fermer' : 'Close'}
+                aria-label={tx(fr).journeyDetail.close}
                 className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition active:scale-90 ${
                   isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-white'
                 }`}

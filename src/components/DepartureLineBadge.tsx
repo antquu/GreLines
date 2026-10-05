@@ -6,6 +6,8 @@ import { tclBadge } from '../utils/tclLogos';
 import { TclModeCorner } from './TclLogo';
 import { rerLine } from '../utils/rer';
 import { BadgeLabel } from './FitText';
+import { tx } from '../i18n';
+import { appLanguage } from '../utils/appLanguage';
 
 function TrafficMark() {
   return (
@@ -53,7 +55,7 @@ export function DepartureLineBadge({
   if (relayTram) {
     return (
       <div className={`relative flex flex-shrink-0 items-center justify-center ${sizeClass}`}>
-        <img src={badgeImage('/assets/bus_relais.svg')} alt="Bus relais" className="absolute inset-0 h-full w-full object-contain" />
+        <img src={badgeImage('/assets/bus_relais.svg')} alt={tx(appLanguage() === 'fr').common.replacementBus} className="absolute inset-0 h-full w-full object-contain" />
         <div
           className="absolute bottom-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-white/75 shadow-lg"
           style={resolveLineStyle(`SEM:${relayTram}`)}

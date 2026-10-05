@@ -10,6 +10,7 @@ import { formatDurationLabel } from '../utils/formatDuration';
 import { journeyOperatorBrand } from '../utils/journeyOperator';
 import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
+import { t, tx } from '../i18n';
 
 const BIKE_MODES = new Set(['BICYCLE', 'BICYCLE_RENT']);
 
@@ -85,7 +86,7 @@ export function JourneyResults({
               {stepFree && (
                 <span
                   className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-600"
-                  title={fr ? 'Trajet sans marche' : 'Step-free journey'}
+                  title={tx(fr).journeyResults.stepFreeJourney}
                 >
                   <FaWheelchair size={16} style={{ color: '#ffffff' }} />
                 </span>
@@ -94,13 +95,9 @@ export function JourneyResults({
 
             <div className="mt-2">
               <p className={`text-[0.9375rem] leading-snug ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
-                {fr ? `Départ à ${journey.dep}` : `Leave at ${journey.dep}`}
+                {t(language).journey.leaveAt(journey.dep)}
               </p>
-              {journey.tight && (
-                <p className="mt-0.5 text-[0.9375rem] font-semibold leading-snug text-amber-500">
-                  {fr ? 'Serré : pars maintenant en pressant le pas' : 'Tight: leave now and walk briskly'}
-                </p>
-              )}
+              <JourneyUrgency journey={journey} language={language} />
             </div>
             {fare && (
               <div className="mt-0.5">
@@ -195,6 +192,32 @@ function JourneyChips({
           />
         );
       })}
+    </>
+  );
+}
+
+function JourneyUrgency({ journey, language }: { journey: RouteItinerary; language: 'fr' | 'en' }) {
+  const text = t(language).journey;
+  const boarding = (journey.allLegs ?? []).find(leg => leg?.mode && leg.mode !== 'WALK');
+  const line = String(boarding?.routeShortName ?? journey.lineKeys[0] ?? '').replace(/^SEM:/, '');
+  const at = Number(boarding?.startTime);
+  const time = Number.isFinite(at) ? new Date(at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+  return (
+    <>
+      {journey.rush ? (
+        <p className="mt-0.5 text-[0.9375rem] font-semibold leading-snug text-red-400">
+          {text.rush(line, time)}
+        </p>
+      ) : journey.tight ? (
+        <p className="mt-0.5 text-[0.9375rem] font-semibold leading-snug text-amber-500">
+          {text.tight}
+        </p>
+      ) : null}
+      {journey.busDelayMinutes ? (
+        <p className="mt-0.5 text-[0.9375rem] leading-snug text-amber-500">
+          {journey.busDelayMinutes > 0 ? text.busLate(line, journey.busDelayMinutes) : text.busEarly(line, -journey.busDelayMinutes)}
+        </p>
+      ) : null}
     </>
   );
 }

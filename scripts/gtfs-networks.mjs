@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFiches, downloadGtfs, eachRow, parisToday, writeFiches, readAgencyContacts } from './lib/gtfs.mjs';
+import { PLATFORM_RADIUS_M, distanceM, platformGroups } from './lib/stations.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = join(ROOT, 'public/data/networks');
@@ -12,21 +13,10 @@ const NETWORKS = process.env.VITE_SITE === 'nancy'
 
 const MERGE_RADIUS_M = 250;
 
-const SPLIT_RADIUS_M = 30;
-
-const PLATFORM_RADIUS_M = 35;
-
 const NETWORK_RADIUS_M = 150_000;
 
 const round = value => Math.round(value * 1e5) / 1e5;
 
-const distanceM = (a, b) => {
-  const rad = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * rad;
-  const dLon = (b.lon - a.lon) * rad;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
-  return 12742000 * Math.asin(Math.sqrt(h));
-};
 
 const nameKey = name => name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -201,34 +191,11 @@ async function buildNetwork(config, today) {
       linesOfStop.get(stopId).add(trip.code);
     }
   }
-  const centerOf = group => ({
-    lat: group.reduce((sum, stop) => sum + stop.lat, 0) / group.length,
-    lon: group.reduce((sum, stop) => sum + stop.lon, 0) / group.length,
-  });
   for (const station of new Set(stationOf.values())) {
     const served = station.members.map(memberId => stops.get(memberId)).filter(stop => linesOfStop.has(stop.id));
-    if (served.length < 2) continue;
-    const parentOf = new Map(served.map(stop => [stop.id, stop.id]));
-    const root = id => (parentOf.get(id) === id ? id : root(parentOf.get(id)));
-    for (let i = 0; i < served.length; i += 1) {
-      for (let j = i + 1; j < served.length; j += 1) {
-        const a = served[i];
-        const b = served[j];
-        const shareLine = [...linesOfStop.get(a.id)].some(line => linesOfStop.get(b.id).has(line));
-        if ((shareLine && !config.separateStops) || distanceM(a, b) <= PLATFORM_RADIUS_M) parentOf.set(root(b.id), root(a.id));
-      }
-    }
-    const groups = new Map();
-    for (const stop of served) {
-      const key = root(stop.id);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(stop);
-    }
-    if (groups.size < 2) continue;
-    const ordered = [...groups.values()].sort((a, b) => b.length - a.length);
-    const centers = ordered.map(centerOf);
-    const apart = centers.every((center, i) => centers.every((other, j) => i === j || distanceM(center, other) > SPLIT_RADIUS_M));
-    if (!apart) continue;
+    const split = platformGroups(served, linesOfStop, { separateStops: config.separateStops });
+    if (!split) continue;
+    const { groups: ordered, centers } = split;
     const [kept, ...detached] = ordered;
     const moved = new Set(detached.flat().map(stop => stop.id));
     station.members = station.members.filter(memberId => !moved.has(memberId));

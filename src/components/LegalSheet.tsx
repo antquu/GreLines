@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUpRightIcon, DocumentTextIcon, ShieldCheckIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { MapSheet, MapSheetBottomSpacer } from './MapSheet';
 import { openExternal } from '../utils/openExternal';
+import { tx } from '../i18n';
 
 interface LegalSheetProps {
   isOpen: boolean;
@@ -156,7 +157,7 @@ export function LegalSheet({ isOpen, onClose, language, theme = 'dark', isMobile
     <div className={`px-6 ${isMobile ? 'pt-4' : 'pt-7'}`}>
       <Icon className="h-12 w-12" style={{ color: ink }} aria-hidden="true" />
       <p role="heading" aria-level={2} className="pt-6 text-[1.625rem] font-medium leading-[1.15]" style={{ color: ink }}>
-        {isFr ? 'Conditions et données' : 'Terms and data'}
+        {tx(isFr).legalSheet.termsAndData}
       </p>
 
       <div className="mt-5 inline-flex gap-1 rounded-full p-1" style={{ backgroundColor: tint }}>
@@ -199,7 +200,7 @@ export function LegalSheet({ isOpen, onClose, language, theme = 'dark', isMobile
       {key === 'data' && (
         <section className="pt-7">
           <p className="text-[1.1875rem] font-medium leading-tight" style={{ color: ink }}>
-            {isFr ? 'Les sources' : 'Sources'}
+            {tx(isFr).legalSheet.sources}
           </p>
           <div className="mt-3 overflow-hidden rounded-2xl" style={{ backgroundColor: tint }}>
             {content.sources.map((source, index) => (
@@ -249,7 +250,7 @@ export function LegalSheet({ isOpen, onClose, language, theme = 'dark', isMobile
         className="w-full rounded-2xl py-4 text-[1.0625rem] font-semibold transition active:scale-[0.98]"
         style={isLight ? { backgroundColor: '#000000', color: '#ffffff' } : { backgroundColor: '#ffffff', color: '#000000' }}
       >
-        {isFr ? 'Compris' : 'Got it'}
+        {tx(isFr).legalSheet.gotIt}
       </button>
       <p className="pt-3 text-center text-[0.8125rem]" style={{ color: faint }}>{content.updated}</p>
     </div>
@@ -302,7 +303,7 @@ export function LegalSheet({ isOpen, onClose, language, theme = 'dark', isMobile
               type="button"
               onClick={onClose}
               className="absolute right-3 top-3 rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50"
-              aria-label={isFr ? 'Fermer' : 'Close'}
+              aria-label={tx(isFr).legalSheet.close}
             >
               <XMarkIcon className="h-4 w-4" />
             </button>

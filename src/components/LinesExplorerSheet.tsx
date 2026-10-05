@@ -3,6 +3,7 @@ import { IS_NANCY } from '../site';
 import { MapSheet } from './MapSheet';
 import { LineBadge } from './LineBadge';
 import type { AllLinesLine } from '../services/allLines';
+import { tx } from '../i18n';
 
 interface LinesExplorerSheetProps {
   isOpen: boolean;
@@ -24,7 +25,7 @@ const NETWORK_GROUPS: { key: string; label: string; networks: string[] }[] = IS_
   ? [{ key: 'stan', label: 'Stan', networks: ['STAN'] }]
   : GRENOBLE_GROUPS;
 
-const OTHERS_GROUP = { key: 'other', label: { fr: 'Autres', en: 'Others' } };
+const OTHERS_GROUP_KEY = 'other';
 
 function networkOf(id: string): string {
   return id.split(':')[0].toUpperCase().trim();
@@ -60,7 +61,7 @@ function groupLines(lines: AllLinesLine[], language: 'fr' | 'en') {
   }));
   const others = sortLines(lines.filter(l => !known.has(networkOf(l.id))));
   if (others.length > 0) {
-    sections.push({ key: OTHERS_GROUP.key, label: OTHERS_GROUP.label[language], lines: others });
+    sections.push({ key: OTHERS_GROUP_KEY, label: tx(language === 'fr').linesExplorerSheet.othersGroup, lines: others });
   }
   return sections.filter(s => s.lines.length > 0);
 }
@@ -75,7 +76,7 @@ export const LinesExplorerSheet = ({
 }: LinesExplorerSheetProps) => {
   const isLight = theme === 'light';
   const sections = groupLines(lines, language);
-  const title = language === 'fr' ? 'Explorer les lignes' : 'Explore lines';
+  const title = tx(language === 'fr').linesExplorerSheet.exploreLines;
 
   return (
     <MapSheet initialSnap={3} isOpen={isOpen} onClose={onClose} isLight={isLight} zIndex={100}>

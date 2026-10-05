@@ -6,6 +6,8 @@ import type { Line } from '../types';
 import { tclBadge, tclWholeLogo } from '../utils/tclLogos';
 import { TclModeCorner } from './TclLogo';
 import { rerLine } from '../utils/rer';
+import { tx } from '../i18n';
+import { appLanguage } from '../utils/appLanguage';
 
 type MinimalLine = Pick<Line, 'id' | 'shortName' | 'color' | 'textColor'> & {
   hasTraffic?: boolean;
@@ -120,7 +122,7 @@ export function LineBadge({
       <div className={`${dim} relative flex items-center justify-center flex-shrink-0 rounded-full ${activeClass} ${opacityClass}`}>
         <img
           src={badgeImage('/assets/bus_relais.svg')}
-          alt="Bus relais"
+          alt={tx(appLanguage() === 'fr').common.replacementBus}
           className="absolute inset-0 h-full w-full object-contain"
         />
         <div

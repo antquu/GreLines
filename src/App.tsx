@@ -11,10 +11,12 @@ import { OfflineLaunchScreen } from './components/OfflineLaunchScreen';
 import { IoWifi } from 'react-icons/io5';
 import { useIsOffline, useReconnectCount } from './hooks/useIsOffline';
 import { OfflinePanel } from './components/OfflinePanel';
+import { tx } from './i18n';
 ﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useSyncExternalStore, lazy } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
-import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StarIcon, ArrowsRightLeftIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
+import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StarIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { PlaceIcon } from './components/PlaceIcon';
+import { DesktopSearchResults, TerminusPair } from './components/DesktopSearchResults';
 import { TbBusStop } from 'react-icons/tb';
 import { resolveLineBackgroundColor, setLineColorOverrides } from './utils/lineColors';
 import { useFavorites } from './hooks/useFavorites';
@@ -143,6 +145,9 @@ import { searchAddresses, reverseGeocode, setSearchFocus, distanceFromFocusKm, t
 import { getLinesGeometryPrecise, getStopsServedByLines, type LineGeometry, type ServedStopPoint } from './services/lineShapes';
 import type { Line, SearchHistoryItem, Stop, StopDetail, TrafficDetail } from './types';
 import type { MapRef } from './components/Map';
+import { usePanelManager } from './hooks/usePanelManager';
+import { useSpotlightShortcut } from './hooks/useSpotlightShortcut';
+import { buildStopSearchIndex, inServedZones, matchStops } from './utils/stopCatalog';
 import { useStopUrlSync } from './hooks/useStopUrlSync';
 import { screenFromPath, useScreenUrl } from './hooks/useScreenUrl';
 import { MapLayersButton } from './components/MapLayersButton';
@@ -165,30 +170,6 @@ const MAP_PIN_MAGNET_PX = 28;
 const STOP_TAP_GUARD_MS = 700;
 const MAP_PIN_COLOR = '#c026d3';
 const MAP_PIN_MIN_MOVE_METERS = 30;
-const SNCF_ZONE_RADIUS_METERS = 2500;
-const ZONE_CELL_DEGREES = 0.05;
-
-function inServedZones(stations: Stop[], references: Stop[]): Stop[] {
-  const cellOf = (lat: number, lon: number) => `${Math.floor(lat / ZONE_CELL_DEGREES)}:${Math.floor(lon / ZONE_CELL_DEGREES)}`;
-  const grid = new Map<string, Stop[]>();
-  for (const stop of references) {
-    const key = cellOf(stop.lat, stop.lon);
-    const cell = grid.get(key);
-    if (cell) cell.push(stop);
-    else grid.set(key, [stop]);
-  }
-  return stations.filter(station => {
-    const row = Math.floor(station.lat / ZONE_CELL_DEGREES);
-    const column = Math.floor(station.lon / ZONE_CELL_DEGREES);
-    for (let dRow = -1; dRow <= 1; dRow += 1) {
-      for (let dColumn = -1; dColumn <= 1; dColumn += 1) {
-        const cell = grid.get(`${row + dRow}:${column + dColumn}`);
-        if (cell?.some(stop => haversineMeters(station.lat, station.lon, stop.lat, stop.lon) <= SNCF_ZONE_RADIUS_METERS)) return true;
-      }
-    }
-    return false;
-  });
-}
 
 function App() {
   const isOffline = useIsOffline();
@@ -580,13 +561,13 @@ function App() {
 
   useEffect(() => onDevCommand('notify.test', args => {
     if (args[0] === 'location') {
-      setLocationError(language === 'fr' ? 'Test : position introuvable' : 'Test: location unavailable');
+      setLocationError(tx(language === 'fr').app.testLocationUnavailable);
       return;
     }
     setTestToast({
       id: `test-${Date.now()}`,
-      text: language === 'fr' ? 'Notification de test' : 'Test notification',
-      detail: language === 'fr' ? 'Sur la carte de test' : 'On the test card',
+      text: tx(language === 'fr').app.testNotification,
+      detail: tx(language === 'fr').app.onTheTestCard,
     });
   }), [language]);
 
@@ -603,11 +584,11 @@ function App() {
           id: `dev-test-${kind}-${Date.now()}`,
           type: kind,
           title: kind === 'promo'
-            ? (isFr ? 'Popup de test' : 'Test popup')
-            : (isFr ? 'Info trafic de test' : 'Test traffic info'),
+            ? (tx(isFr).app.testPopup)
+            : (tx(isFr).app.testTrafficInfo),
           message: kind === 'promo'
-            ? (isFr ? 'Une annonce de test, affichée depuis la console.' : 'A test announcement, shown from the console.')
-            : (isFr ? 'Perturbation de test sur le réseau, affichée depuis la console.' : 'Test disruption on the network, shown from the console.'),
+            ? (tx(isFr).app.aTestAnnouncementShown)
+            : (tx(isFr).app.testDisruptionOnThe),
           image_url: null,
           link_url: null,
           target_scope: 'global',
@@ -670,31 +651,12 @@ function App() {
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 250);
 
   const MAX_STOP_MATCHES = 50;
-  const stopSearchIndex = useMemo(
-    () => stops.map(stop => ({
-      stop,
-      name: stop.name.toLowerCase(),
-      city: stop.city?.toLowerCase() ?? '',
-      id: stop.id.toLowerCase(),
-    })),
-    [stops],
+  const stopSearchIndex = useMemo(() => buildStopSearchIndex(stops), [stops]);
+  const matchedStops = useMemo(
+    () => matchStops(stopSearchIndex, searchQuery, distanceFromFocusKm, MAX_STOP_MATCHES),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searchQuery, stopSearchIndex, mapCenter],
   );
-  const matchedStops = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-    const hits: Array<{ stop: Stop; tier: number; km: number }> = [];
-    for (const entry of stopSearchIndex) {
-      const tier = entry.name === q ? 0
-        : entry.name.startsWith(q) ? 1
-          : entry.name.includes(q) || entry.city.includes(q) || entry.id.includes(q) ? 2
-            : -1;
-      if (tier >= 0) hits.push({ stop: entry.stop, tier, km: distanceFromFocusKm(entry.stop.lat, entry.stop.lon) });
-    }
-    return hits
-      .sort((a, b) => a.tier - b.tier || a.km - b.km)
-      .slice(0, MAX_STOP_MATCHES)
-      .map(hit => hit.stop);
-  }, [searchQuery, stopSearchIndex, mapCenter]);
 
   const isSidebarOpen = sidebarState !== 'closed';
 
@@ -1235,15 +1197,17 @@ function App() {
     setSharedRouteTarget(null);
   };
 
-  const closeOtherPanels = () => {
-    setTimetableTarget(null);
-    resetRoutePlanner();
-    setSharedSelection(null);
-    setHighlightedVehicleId(null);
-    setIsTrafficPanelPinned(false);
-    setIsLinesExplorerOpen(false);
-    setSettingsState('closed');
-  };
+  const closePanels = usePanelManager({
+    stop: () => { setSelectedStop(null); setSidebarState('closed'); },
+    line: () => { setSelectedLine(null); setLineGeometries([]); },
+    address: () => setSelectedAddress(null),
+    route: resetRoutePlanner,
+    timetable: () => setTimetableTarget(null),
+    shared: () => { setSharedSelection(null); setHighlightedVehicleId(null); },
+    traffic: () => setIsTrafficPanelPinned(false),
+    linesExplorer: () => setIsLinesExplorerOpen(false),
+    settings: () => setSettingsState('closed'),
+  });
 
   const describeMapPoint = useCallback(async (lat: number, lon: number): Promise<AddressResult> => {
     const found = await reverseGeocode(lat, lon);
@@ -1252,11 +1216,11 @@ function App() {
     const [closest] = findClosestStops(stops, lat, lon, 1);
     const id = `map-${lat.toFixed(5)}-${lon.toFixed(5)}`;
     if (closest && closest.meters <= 400) {
-      const label = `${language === 'en' ? 'Near' : 'Près de'} ${closest.stop.name}`;
+      const label = `${tx(!(language === 'en')).app.near} ${closest.stop.name}`;
       return { id, label, name: label, context: closest.stop.city || '', lat, lon, score: 0 };
     }
 
-    const label = language === 'fr' ? 'Point sur la carte' : 'Point on the map';
+    const label = tx(language === 'fr').app.pointOnTheMap;
     return { id, label, name: label, context: formatCoordinates(lat, lon), lat, lon, score: 0 };
   }, [stops, language]);
 
@@ -1716,25 +1680,8 @@ function App() {
     }
   }, [pushSearchHistoryItem, stops, isMobile]);
 
-  useEffect(() => {
-    if (isMobile) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (event.code !== 'Space' && event.key !== ' ') return;
-
-      const target = event.target as HTMLElement | null;
-      if (target?.isContentEditable) return;
-      const tag = target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      event.preventDefault();
-      setIsSpotlightOpen(open => !open);
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMobile]);
+  const toggleSpotlight = useCallback(() => setIsSpotlightOpen(open => !open), []);
+  useSpotlightShortcut(!isMobile, toggleSpotlight);
 
   useEffect(() => {
     let active = true;
@@ -1754,19 +1701,7 @@ function App() {
     };
   }, [reconnects]);
 
-  const renderTerminusPair = (longName: string) => {
-    const parts = longName.split('/').map(p => p.trim()).filter(Boolean);
-    if (parts.length >= 2) {
-      return (
-        <span className="inline-flex min-w-0 items-center gap-1 truncate">
-          <span className="truncate">{parts[0]}</span>
-          <ArrowsRightLeftIcon className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-          <span className="truncate">{parts[1]}</span>
-        </span>
-      );
-    }
-    return <span>{longName || 'Terminus inconnu'}</span>;
-  };
+  const renderTerminusPair = (longName: string) => <TerminusPair longName={longName} language={language} />;
 
   const renderStopLineBadges = (stopId: string) => {
     const lines = sortStopPreviewLines(searchStopLines[stopId] || []);
@@ -1917,17 +1852,13 @@ function App() {
       },
       (err) => {
         const isFr = language === 'fr';
-        let message = isFr ? 'Erreur de géolocalisation' : 'Location error';
+        let message = tx(isFr).app.locationError;
         if (err.code === 1) {
-          message = isFr
-            ? 'Accès géolocalisation refusé. Vérifiez les permissions du navigateur.'
-            : 'Location access denied. Check your browser permissions.';
+          message = tx(isFr).app.locationAccessDeniedCheck;
         } else if (err.code === 2) {
-          message = isFr
-            ? 'Position indisponible. Essayez dans une zone avec meilleure réception.'
-            : 'Position unavailable. Try somewhere with better reception.';
+          message = tx(isFr).app.positionUnavailableTrySomewhere;
         } else if (err.code === 3) {
-          message = isFr ? 'Délai d\'attente dépassé. Réessayez.' : 'Timed out. Try again.';
+          message = tx(isFr).app.timedOutTryAgain;
         }
         setLocationError(message);
       },
@@ -2467,7 +2398,7 @@ function App() {
               <button
                 onClick={() => setLocationError(null)}
                 className="text-xs font-semibold text-current opacity-80 transition hover:opacity-100"
-                aria-label="Close location notification"
+                aria-label={tx(language === 'fr').common.closeLocationNotice}
               >
                 ✕
               </button>
@@ -2883,7 +2814,7 @@ function App() {
                 className={`relative h-10 transition-[width] duration-300 ease-out ${isSearchFocused || isSearchHovered ? 'w-96' : 'w-10'} group`}>
                 <div className="absolute inset-0 bg-slate-900/85 border border-gray-700 shadow-lg rounded-full transition-all duration-300" />
                 <div className="relative h-full flex items-center pr-2">
-                  <div className={`absolute z-20 flex items-center justify-center h-full ${isSearchFocused || isSearchHovered ? 'left-5 -translate-x-0' : 'left-1/2 -translate-x-1/2'}`}>
+                  <div className="absolute left-2.5 z-20 flex h-full items-center justify-center">
                     <MagnifyingGlassIcon className="w-5 h-5 text-white" />
                   </div>
                   <input
@@ -2913,111 +2844,22 @@ function App() {
                       className="absolute left-0 top-10 w-96 h-2 pointer-events-auto" />
                     <div onMouseEnter={() => setIsSearchHovered(true)} onMouseLeave={() => setIsSearchHovered(false)}
                       className="absolute left-0 top-12 w-full max-h-72 overflow-auto bg-slate-900/95 border border-gray-700 rounded-2xl shadow-xl">
-                      {searchQuery.trim() !== '' && matchedLines.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800">
-                            {language === 'fr' ? 'Lignes' : 'Lines'}
-                          </div>
-                          {matchedLines.map(line => (
-                            <button
-                              key={line.id}
-                              type="button"
-                              onMouseDown={e => { e.preventDefault(); handleLineSearchSelect(line); }}
-                              className="w-full text-left px-3 py-2 hover:bg-slate-800 transition flex items-center gap-2"
-                            >
-                              <LineBadge line={line} size="sm" />
-                              <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium text-gray-100 truncate">{line.shortName}</div>
-                                <div className="text-xs text-slate-400 truncate">
-                                  {renderTerminusPair(line.longName)}
-                                </div>
-                              </div>
-                            </button>
-                          ))}
-                        </>
-                      )}
-
-                      {searchQuery.trim() !== '' && matchedStops.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800">
-                            {language === 'fr' ? 'Arrêts' : 'Stops'}
-                          </div>
-                          {matchedStops.map(stop => (
-                            <button
-                              key={stop.id}
-                              type="button"
-                              onMouseDown={e => { e.preventDefault(); handleSearchResultSelect(stop); }}
-                              className="w-full text-left px-3 py-2 hover:bg-slate-800 transition flex items-start gap-2"
-                            >
-                              <TbBusStop className="w-4 h-4 text-blue-400 flex-shrink-0" />
-                              <div className="min-w-0 flex-1">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <div className="min-w-0 truncate text-sm font-medium text-gray-100">{stop.name}</div>
-                                  {renderStopLineBadges(stop.id)}
-                                </div>
-                                <div className="text-xs text-gray-400 truncate">{stop.city || text.unknownCity}</div>
-                              </div>
-                            </button>
-                          ))}
-                        </>
-                      )}
-
-                      {searchQuery.trim() !== '' && addressResults.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider border-t border-b border-slate-800">
-                            {language === 'fr' ? 'Adresses' : 'Addresses'}
-                          </div>
-                          {addressResults.map(addr => (
-                            <button
-                              key={addr.id}
-                              type="button"
-                              onMouseDown={e => { e.preventDefault(); handleAddressSelect(addr); }}
-                              className="w-full text-left px-3 py-2 hover:bg-slate-800 transition flex items-center gap-2"
-                            >
-                              <PlaceIcon category={addr.category} className="w-4 h-4 flex-shrink-0" fallback={<MapPinIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />} />
-                              <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium text-gray-100 truncate">{addr.name}</div>
-                                <div className="text-xs text-gray-400 truncate">{addr.context}</div>
-                              </div>
-                            </button>
-                          ))}
-                        </>
-                      )}
-
-                      {searchQuery.trim() !== '' && matchedStops.length === 0 && addressResults.length === 0 && (
-                        <div className="px-3 py-4 text-center text-xs text-gray-500">
-                          {language === 'fr' ? 'Aucun résultat' : 'No results'}
-                        </div>
-                      )}
-
-                      {searchQuery.trim() === '' && searchHistory && searchHistoryItems.length > 0 && (
-                        searchHistoryItems.map((item, i) => (
-                          <button
-                            key={`${item.kind}-${item.id}-${i}`}
-                            type="button"
-                            onMouseDown={e => {
-                              e.preventDefault();
-                              handleHistoryItemSelect(item);
-                            }}
-                            className="w-full text-left px-3 py-2.5 hover:bg-slate-800 transition border-b border-slate-800 last:border-b-0"
-                          >
-                            <div className="flex items-start gap-2.5">
-                              {getHistoryItemIcon(item)}
-                              <div className="min-w-0 flex-1">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <div className="min-w-0 text-sm font-medium text-gray-100 truncate">
-                                    {item.kind === 'line' ? item.shortName : item.name}
-                                  </div>
-                                  {item.kind === 'stop' && renderStopLineBadges(item.id)}
-                                </div>
-                                <div className="text-xs text-gray-400 truncate">
-                                  {getHistoryItemSubtitle(item)}
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                        ))
-                      )}
+                      <DesktopSearchResults
+                        query={searchQuery}
+                        language={language}
+                        lines={matchedLines}
+                        stops={matchedStops}
+                        addresses={addressResults}
+                        history={searchHistory ? searchHistoryItems : []}
+                        unknownCity={text.unknownCity}
+                        stopBadges={renderStopLineBadges}
+                        historyIcon={getHistoryItemIcon}
+                        historySubtitle={getHistoryItemSubtitle}
+                        onSelectLine={line => { closePanels(['line']); handleLineSearchSelect(line); }}
+                        onSelectStop={stop => { closePanels(['stop']); handleSearchResultSelect(stop); }}
+                        onSelectAddress={address => { closePanels(['address']); handleAddressSelect(address); }}
+                        onSelectHistory={handleHistoryItemSelect}
+                      />
                       <div className="border-t border-gray-600 px-3 py-3">
                         {!isMobile && (
                           <button
@@ -3064,14 +2906,12 @@ function App() {
                       <div className="mb-3 flex items-center gap-2">
                         <StarIcon className="w-4 h-4 text-amber-400" />
                         <h3 className="text-sm font-semibold text-slate-300">
-                          {language === 'fr' ? 'Favoris' : 'Favorites'}
+                          {tx(language === 'fr').app.favorites}
                         </h3>
                       </div>
                       {favoritesList.length === 0 ? (
                         <p className="rounded-[26px] border border-slate-800 bg-slate-900 px-4 py-5 text-center text-sm text-slate-400">
-                          {language === 'fr'
-                            ? 'Aucun favori pour le moment. Ouvre un arrêt et clique sur l\u2019étoile pour en ajouter un.'
-                            : 'No favorites yet. Open a stop and tap the star to add one.'}
+                          {tx(language === 'fr').app.noFavoritesYetOpen}
                         </p>
                       ) : (
                         <div className="space-y-2">
@@ -3114,7 +2954,7 @@ function App() {
                                       type="button"
                                       onClick={() => open(line.lineId)}
                                       className="transition active:scale-90"
-                                      aria-label={`${line.shortName} — ${favorite.stopName}`}
+                                      aria-label={`${line.shortName} · ${favorite.stopName}`}
                                     >
                                       <LineBadge
                                         line={{
@@ -3159,7 +2999,7 @@ function App() {
                       {favoriteLinesList.length > 0 && (
                         <div className="mt-4">
                           <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                            {language === 'fr' ? 'Lignes' : 'Lines'}
+                            {tx(language === 'fr').app.lines}
                           </h3>
                           <div className="space-y-2">
                             {favoriteLinesList.map(fav => (
@@ -3218,8 +3058,8 @@ function App() {
                   }}
                   title={
                     atmoReport?.current
-                      ? `${language === 'fr' ? 'Indice Atmo air' : 'Air quality index'} — ${atmoReport.current.qualificatif}`
-                      : language === 'fr' ? 'Indice Atmo air' : 'Air quality index'
+                      ? `${tx(language === 'fr').app.airQualityIndex} · ${atmoReport.current.qualificatif}`
+                      : tx(language === 'fr').app.airQualityIndex
                   }
                 >
                   {!isAtmoPanelOpen && (
@@ -3755,7 +3595,7 @@ function App() {
           if (!selectedLine) return;
           setLineMapTarget({
             routeId: toTimetableRouteId(selectedLine.shortName || selectedLine.id),
-            label: `${language === 'fr' ? 'Ligne' : 'Line'} ${selectedLine.shortName || selectedLine.id}`,
+            label: `${tx(language === 'fr').app.line} ${selectedLine.shortName || selectedLine.id}`,
             color: selectedLine.color,
             lineId: selectedLine.id,
           });
@@ -3837,20 +3677,16 @@ function App() {
             lines={spotlightLines}
             trafficInfo={trafficInfo}
             onSelectStop={stop => {
-              closeOtherPanels();
-              setSelectedAddress(null);
-              setSelectedLine(null);
+              closePanels(['stop']);
               handleStopClick(stop);
               mapRef.current?.centerOnStop(stop);
             }}
             onSelectLine={line => {
-              closeOtherPanels();
+              closePanels(['line']);
               handleLineSearchSelect(line);
             }}
             onSelectAddress={address => {
-              closeOtherPanels();
-              setSelectedStop(null);
-              setSidebarState('closed');
+              closePanels(['address']);
               handleAddressSelect(address);
             }}
             onOpenSettings={tab => {
@@ -3881,7 +3717,7 @@ function App() {
             const line = timetableTarget.line;
             setLineMapTarget({
               routeId: toTimetableRouteId(line.shortName || line.id),
-              label: `${language === 'fr' ? 'Ligne' : 'Line'} ${line.shortName || line.id}`,
+              label: `${tx(language === 'fr').app.line} ${line.shortName || line.id}`,
               color: line.color,
               lineId: line.id,
             });
@@ -3941,11 +3777,9 @@ function App() {
           cardNotice
             ? {
                 id: cardNotice.notification.id,
-                text: language === 'fr' ? 'Nouvelle notification' : 'New notification',
+                text: tx(language === 'fr').app.newNotification,
                 detail:
-                  language === 'fr'
-                    ? `Sur la carte de ${cardNotice.cardLabel}`
-                    : `On ${cardNotice.cardLabel}’s card`,
+                  tx(language === 'fr').app.onCardlabelSCard(cardNotice.cardLabel),
                 icon: <BellAlertIcon className="h-5 w-5" />,
               }
             : null

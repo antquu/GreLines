@@ -9,6 +9,7 @@ import {
   FAVORITES_MAX,
   getFavorites,
 } from '../services/favorites';
+import { tx } from '../i18n';
 
 interface AddFavoriteModalProps {
   isOpen: boolean;
@@ -21,25 +22,19 @@ interface AddFavoriteModalProps {
 function getText(language: 'fr' | 'en') {
   const isFr = language === 'fr';
   return {
-    title: isFr ? 'Nouveau favori' : 'New favorite',
-    edit: isFr ? 'Modifier le favori' : 'Edit favorite',
-    subtitle: isFr ? 'Lignes \u00e0 suivre' : 'Lines to track',
-    allLines: isFr ? 'Toutes' : 'All',
-    pick: isFr ? 'Au choix' : 'Selected',
-    cancel: isFr ? 'Annuler' : 'Cancel',
-    save: isFr ? 'Enregistrer le favori' : 'Save favorite',
-    capReached: isFr
-      ? `Limite atteinte : ${FAVORITES_MAX} favoris. Retirez-en un pour en ajouter un autre.`
-      : `Limit reached: ${FAVORITES_MAX} favorites. Remove one to add another.`,
-    noLines: isFr ? 'Aucune ligne ne dessert cet arr\u00eat.' : 'No line serves this stop.',
-    allHint: isFr
-      ? 'Chaque ligne qui dessert l\u2019arr\u00eat appara\u00eetra dans le favori.'
-      : 'Every line serving this stop will appear in the favorite.',
-    pickHint: isFr
-      ? 'Touchez les lignes \u00e0 garder dans le favori.'
-      : 'Tap the lines to keep in the favorite.',
+    title: tx(isFr).addFavoriteModal.newFavorite,
+    edit: tx(isFr).addFavoriteModal.editFavorite,
+    subtitle: tx(isFr).addFavoriteModal.linesToTrack,
+    allLines: tx(isFr).addFavoriteModal.all,
+    pick: tx(isFr).addFavoriteModal.selected,
+    cancel: tx(isFr).addFavoriteModal.cancel,
+    save: tx(isFr).addFavoriteModal.saveFavorite,
+    capReached: tx(isFr).addFavoriteModal.limitReachedFavoritesMax(FAVORITES_MAX),
+    noLines: tx(isFr).addFavoriteModal.noLineServesThis,
+    allHint: tx(isFr).addFavoriteModal.everyLineServingThis,
+    pickHint: tx(isFr).addFavoriteModal.tapTheLinesTo,
     countSelected: (n: number) =>
-      isFr ? `${n} ligne${n > 1 ? 's' : ''} s\u00e9lectionn\u00e9e${n > 1 ? 's' : ''}` : `${n} line${n > 1 ? 's' : ''} selected`,
+      tx(isFr).addFavoriteModal.nLineValueSelected(n, n > 1 ? 's' : ''),
   };
 }
 
@@ -194,7 +189,7 @@ export function AddFavoriteModal(props: AddFavoriteModalProps) {
                   className={`w-9 h-9 flex items-center justify-center border rounded-full transition flex-shrink-0 ${
                     isLight ? 'bg-slate-100 border-slate-200 hover:bg-slate-200' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'
                   }`}
-                  aria-label="close"
+                  aria-label={tx(language === 'fr').common.close}
                 >
                   <XMarkIcon className={`w-4 h-4 ${titleClass}`} />
                 </button>

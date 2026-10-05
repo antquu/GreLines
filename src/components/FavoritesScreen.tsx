@@ -16,6 +16,7 @@ import {
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import type { AllLinesLine } from '../services/allLines';
 import type { RouteItinerary } from '../services/api';
+import { tx } from '../i18n';
 
 const MAX_ROW_BADGES = 3;
 
@@ -39,21 +40,17 @@ interface FavoritesScreenProps {
 const getText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
-    title: isFr ? 'Favoris' : 'Favorites',
-    stops: isFr ? 'Arrêts' : 'Stops',
-    lines: isFr ? 'Lignes' : 'Lines',
-    journeys: isFr ? 'Trajets' : 'Journeys',
-    noStops: isFr
-      ? 'Aucun arrêt en favori. Ouvre un arrêt et touche l’étoile pour le garder ici.'
-      : 'No favorite stops yet. Open a stop and tap the star to keep it here.',
-    noJourneys: isFr ? 'Aucun trajet en favori pour l’instant.' : 'No favorite journeys yet.',
-    configure: isFr ? 'Configurez vos trajets favoris' : 'Set up your favorite journeys',
-    rename: isFr ? 'Renommer' : 'Rename',
-    renameHint: isFr
-      ? 'Laisse vide pour revenir au nom par défaut.'
-      : 'Leave empty to restore the default name.',
-    save: isFr ? 'Enregistrer' : 'Save',
-    cancel: isFr ? 'Annuler' : 'Cancel',
+    title: tx(isFr).favoritesScreen.favorites,
+    stops: tx(isFr).favoritesScreen.stops,
+    lines: tx(isFr).favoritesScreen.lines,
+    journeys: tx(isFr).favoritesScreen.journeys,
+    noStops: tx(isFr).favoritesScreen.noFavoriteStopsYet,
+    noJourneys: tx(isFr).favoritesScreen.noFavoriteJourneysYet,
+    configure: tx(isFr).favoritesScreen.setUpYourFavorite,
+    rename: tx(isFr).favoritesScreen.rename,
+    renameHint: tx(isFr).favoritesScreen.leaveEmptyToRestore,
+    save: tx(isFr).favoritesScreen.save,
+    cancel: tx(isFr).favoritesScreen.cancel,
   };
 };
 
@@ -148,7 +145,7 @@ export function FavoritesScreen({
                             type="button"
                             onClick={() => onOpenStop(entry.favorite.stopId, line.lineId)}
                             className="transition active:scale-90"
-                            aria-label={`${line.shortName} — ${entry.favorite.stopName}`}
+                            aria-label={`${line.shortName} · ${entry.favorite.stopName}`}
                           >
                             <LineBadge
                               line={{

@@ -5,6 +5,7 @@ import Confetti from 'react-confetti-boom';
 import { isRoundLine } from './LineBadge';
 import type { TripAward } from '../services/greLinesPoints';
 import { AVATARS, type Account } from '../services/account';
+import { tx } from '../i18n';
 
 
 const CONFETTI_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ec4899', '#a855f7'];
@@ -189,7 +190,7 @@ export function TripCompleteScreen({
           <button
             onClick={onClose}
             className="absolute right-4 top-[max(1rem,var(--gl-safe-top))] z-30 flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
-            aria-label={isFr ? 'Fermer' : 'Close'}
+            aria-label={tx(isFr).tripCompleteScreen.close}
           >
             <XMarkIcon className="h-6 w-6" />
           </button>
@@ -201,7 +202,7 @@ export function TripCompleteScreen({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }}
             >
-              {isFr ? 'Trajet terminé' : 'Trip complete'}
+              {tx(isFr).tripCompleteScreen.tripComplete}
             </motion.p>
 
             <motion.div
@@ -212,11 +213,11 @@ export function TripCompleteScreen({
             >
               <ScrollingTitle>
                 <span className="text-[1.375rem] font-black leading-tight text-white">
-                  {origin || (isFr ? 'Départ' : 'Start')}
+                  {origin || (tx(isFr).tripCompleteScreen.start)}
                 </span>
                 <ArrowsRightLeftIcon className="h-5 w-5 flex-shrink-0 text-slate-500" />
                 <span className="text-[1.375rem] font-black leading-tight text-white">
-                  {destination || (isFr ? 'Arrivée' : 'Arrival')}
+                  {destination || (tx(isFr).tripCompleteScreen.arrival)}
                 </span>
               </ScrollingTitle>
             </motion.div>
@@ -319,9 +320,7 @@ export function TripCompleteScreen({
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.55 }}
                 >
-                  {isFr
-                    ? `${award.total.points} points au total · +1 trajet`
-                    : `${award.total.points} points in total · +1 trip`}
+                  {tx(isFr).tripCompleteScreen.pointsPointsInTotal(award.total.points)}
                 </motion.p>
               </>
             )}
@@ -337,13 +336,7 @@ export function TripCompleteScreen({
               {award.travellersHelped}
             </p>
             <p className="mt-1.5 text-sm text-slate-300">
-              {isFr
-                ? award.travellersHelped > 1
-                  ? 'voyageurs renseignés grâce à ce trajet'
-                  : 'voyageur renseigné grâce à ce trajet'
-                : award.travellersHelped > 1
-                ? 'travellers informed by this trip'
-                : 'traveller informed by this trip'}
+              {tx(isFr).tripCompleteScreen.travellersInformed(award.travellersHelped)}
             </p>
           </motion.div>
         </motion.div>

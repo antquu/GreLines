@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { XMarkIcon } from '@heroicons/react/24/solid';
 import { isAndroidDevice } from '../utils/pwa';
+import { tx } from '../i18n';
 
 interface InstallAppSheetProps {
   isOpen: boolean;
@@ -46,50 +47,20 @@ const STEPS: Record<Platform, Step[]> = {
 const getInstallText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
-    title: isFr
-      ? "Comment mettre l'app sur l'écran d'accueil"
-      : 'How to add the app to your home screen',
-    next: isFr ? 'Étape suivante' : 'Next step',
-    done: isFr ? 'Terminé' : 'Done',
-    skip: isFr ? 'Passer' : 'Skip',
+    title: tx(isFr).installAppSheet.howToAddThe,
+    next: tx(isFr).installAppSheet.nextStep,
+    done: tx(isFr).installAppSheet.done,
+    skip: tx(isFr).installAppSheet.skip,
     otherPlatform: (platform: Platform) =>
       platform === 'android'
-        ? isFr
-          ? 'Vous êtes sur iPhone ou iPad ?'
-          : 'On an iPhone or iPad?'
-        : isFr
-          ? 'Vous êtes sur Android ?'
-          : 'On an Android device?',
-    close: isFr ? 'Fermer' : 'Close',
+        ? tx(isFr).installAppSheet.onAnIphoneOr
+        : tx(isFr).installAppSheet.onAnAndroidDevice,
+    close: tx(isFr).installAppSheet.close,
     stepLabel: (current: number, total: number) =>
-      isFr ? `Étape ${current} sur ${total}` : `Step ${current} of ${total}`,
+      tx(isFr).installAppSheet.stepCurrentOfTotal(current, total),
     slides: {
-      apple: isFr
-        ? [
-            'Ouvrez grelines.fr dans Safari, puis touchez le bouton « … » à droite de la barre d’adresse.',
-            'Dans le menu qui s’ouvre, touchez « Partager », tout en haut.',
-            'Faites défiler la liste jusqu’à « Ajouter à l’écran d’accueil », puis touchez-la.',
-            'Vérifiez le nom de l’app, laissez « Ouvrir en tant qu’app web » activé, et touchez « Ajouter ».',
-          ]
-        : [
-            'Open grelines.fr in Safari, then tap the “…” button to the right of the address bar.',
-            'In the menu that opens, tap “Share”, right at the top.',
-            'Scroll down the list to “Add to Home Screen”, then tap it.',
-            'Check the app name, leave “Open as Web App” on, and tap “Add”.',
-          ],
-      android: isFr
-        ? [
-            'Ouvrez grelines.fr dans Chrome, puis touchez les trois points à droite de la barre d’adresse.',
-            'Dans le menu, touchez « Installer et créer un raccourci ».',
-            'Choisissez « Installer » — et non « Créer un raccourci », qui rouvrirait le site dans Chrome.',
-            'Vérifiez le nom de l’app, puis touchez « Installer ».',
-          ]
-        : [
-            'Open grelines.fr in Chrome, then tap the three dots to the right of the address bar.',
-            'In the menu, tap “Install and create a shortcut”.',
-            'Choose “Install” — not “Create shortcut”, which would reopen the site inside Chrome.',
-            'Check the app name, then tap “Install”.',
-          ],
+      apple: tx(isFr).installAppSheet.openGrelinesFrIn,
+      android: tx(isFr).installAppSheet.openGrelinesFrIn2,
     },
   };
 };
@@ -235,7 +206,7 @@ export const InstallAppSheet = ({
   };
 
   const step = steps[slide];
-  const suffix = language === 'en' ? 'EN' : 'FR';
+  const suffix = tx(!(language === 'en')).installAppSheet.languageCode;
 
   const [columnNode, setColumnNode] = useState<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
@@ -332,7 +303,7 @@ export const InstallAppSheet = ({
               onClick={handlePrevious}
               className="rounded-2xl bg-white/10 px-5 py-4 text-[0.9375rem] font-bold text-white transition active:scale-[0.98]"
             >
-              {language === 'fr' ? 'Retour' : 'Back'}
+              {tx(language === 'fr').installAppSheet.back}
             </button>
           )}
           <motion.button

@@ -11,6 +11,7 @@ import { journeyOperatorBrand } from '../utils/journeyOperator';
 import { resolveRouteLine } from '../utils/routeLineResolver';
 import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
+import { t, tx } from '../i18n';
 
 const PIXELS_PER_MINUTE = 6;
 const MAX_PIXELS_PER_MINUTE = 22;
@@ -136,9 +137,9 @@ function formatClock(ms: number): string {
 function departureLabel(start: number, language: 'fr' | 'en'): string {
   const isFr = language === 'fr';
   const minutes = Math.round((start - Date.now()) / MINUTE);
-  if (minutes <= 0) return isFr ? 'Maintenant' : 'Now';
-  if (minutes < 60) return isFr ? `Dans ${minutes} min` : `In ${minutes} min`;
-  return isFr ? `À ${formatClock(start)}` : `At ${formatClock(start)}`;
+  if (minutes <= 0) return tx(isFr).journeyTimelineList.now;
+  if (minutes < 60) return tx(isFr).journeyTimelineList.inMinutesMin(minutes);
+  return tx(isFr).journeyTimelineList.atFormatclock(formatClock(start));
 }
 
 function buildTimelineModel(journeys: RouteItinerary[]) {
@@ -319,11 +320,13 @@ export function JourneyTimelineList({
               >
                 <div className="relative h-full" style={gridStyle}>
                   <span
-                    className={`absolute top-0 whitespace-nowrap text-sm font-bold ${journey.tight ? 'text-amber-400' : 'text-emerald-400'}`}
+                    className={`absolute top-0 whitespace-nowrap text-sm font-bold ${journey.rush ? 'text-red-400' : journey.tight ? 'text-amber-400' : 'text-emerald-400'}`}
                     style={{ left: barLeft }}
-                    title={journey.tight ? (language === 'fr' ? 'Il faut presser le pas pour l’avoir' : 'Walk briskly to catch it') : undefined}
+                    title={journey.tight ? t(language).journey.tightHint : undefined}
                   >
-                    {departure}{journey.tight ? (language === 'fr' ? ' · Serré' : ' · Tight') : ''}
+                    {departure}
+                    {journey.rush ? ` · ${t(language).journey.rushShort}` : journey.tight ? ` · ${t(language).journey.tightShort}` : ''}
+                    {journey.busDelayMinutes && journey.busDelayMinutes > 0 ? ` · +${journey.busDelayMinutes} min` : ''}
                   </span>
                   <span
                     className={`absolute top-0 whitespace-nowrap text-sm font-extrabold ${
@@ -372,7 +375,7 @@ export function JourneyTimelineList({
                           <span
                             className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
                             style={{ backgroundColor: BIKE_COLOR }}
-                            aria-label={language === 'fr' ? 'À vélo' : 'By bike'}
+                            aria-label={tx(language === 'fr').journeyTimelineList.byBike}
                           >
                             <MdDirectionsBike size={18} color="#ffffff" />
                           </span>

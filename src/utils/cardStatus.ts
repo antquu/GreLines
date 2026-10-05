@@ -1,13 +1,14 @@
 import { cardBlockedBy, type OuraCard } from '../services/ouraCard';
+import { tx } from '../i18n';
 
 export function cardStatusLabel(card: OuraCard, language: 'fr' | 'en'): string | null {
   const isFr = language === 'fr';
   switch (cardBlockedBy(card)) {
     case 'grelines':
     case 'network':
-      return isFr ? 'Désactivée' : 'Disabled';
+      return tx(isFr).cardStatus.disabled;
     case 'expired':
-      return isFr ? 'Expirée' : 'Expired';
+      return tx(isFr).cardStatus.expired;
     default:
       return null;
   }
@@ -25,17 +26,11 @@ export function cardStatusSentence(card: OuraCard, language: 'fr' | 'en'): strin
   const isFr = language === 'fr';
   switch (cardBlockedBy(card)) {
     case 'grelines':
-      return isFr
-        ? "Cette carte a été désactivée par GreLines. Elle ne permet plus de l'intégrer à GreLines."
-        : 'This card was disabled by GreLines. It can no longer be added to GreLines.';
+      return tx(isFr).cardStatus.thisCardWasDisabled;
     case 'network':
-      return isFr
-        ? 'Cette carte a été désactivée par M réso. Elle ne permet plus de voyager.'
-        : 'This card was disabled by M réso. It no longer allows travel.';
+      return tx(isFr).cardStatus.thisCardWasDisabled2;
     case 'expired':
-      return isFr
-        ? "L'abonnement de cette carte est expiré. Elle ne permet plus de voyager."
-        : 'The pass on this card has expired. It no longer allows travel.';
+      return tx(isFr).cardStatus.thePassOnThis;
     default:
       return null;
   }

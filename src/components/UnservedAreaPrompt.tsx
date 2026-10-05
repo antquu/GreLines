@@ -5,6 +5,7 @@ import { IS_NANCY } from '../site';
 import { CITIES } from '../utils/cities';
 import { haversineMeters } from '../utils/geo';
 import { onDevCommand } from '../utils/devCommands';
+import { tx } from '../i18n';
 
 const SERVED_RADIUS_METERS = 40_000;
 const SETTLE_MS = 1000;
@@ -70,17 +71,13 @@ export function UnservedAreaPrompt({
     <div className={`px-6 ${isMobile ? 'pt-7' : 'pt-7 pb-8'}`}>
       <MapPinIcon className="h-12 w-12" style={{ color: ink }} aria-hidden="true" />
       <p role="heading" aria-level={2} className="pt-6 text-[1.625rem] font-medium leading-[1.15]" style={{ color: ink }}>
-        {isFr ? 'Zone pas encore desservie' : 'Area not covered yet'}
+        {tx(isFr).unservedAreaPrompt.areaNotCoveredYet}
       </p>
       <p className="pt-3 text-[1.0625rem] leading-snug" style={{ color: soft }}>
-        {isFr
-          ? 'GreLines n’affiche pas encore les transports de l’endroit où vous vous trouvez. Désolé pour le dérangement.'
-          : 'GreLines does not show public transport where you are yet. Sorry for the inconvenience.'}
+        {tx(isFr).unservedAreaPrompt.grelinesDoesNotShow}
       </p>
       <p className="pt-3 text-[1.0625rem] leading-snug" style={{ color: soft }}>
-        {isFr
-          ? 'De nouvelles villes arrivent régulièrement, la vôtre en fera peut-être bientôt partie. En attendant, GreLines vous suit à Grenoble, Lyon, Saint-Étienne, Clermont-Ferrand, Annecy et dans bien d’autres villes.'
-          : 'New cities are added regularly, and yours may be next. Meanwhile, GreLines covers Grenoble, Lyon, Saint-Étienne, Clermont-Ferrand, Annecy and many other cities.'}
+        {tx(isFr).unservedAreaPrompt.newCitiesAreAdded}
       </p>
       <button
         type="button"
@@ -88,7 +85,7 @@ export function UnservedAreaPrompt({
         className="mt-8 block w-full rounded-2xl py-4 text-center text-[1.0625rem] font-semibold transition active:scale-[0.98]"
         style={isLight ? { backgroundColor: '#000000', color: '#ffffff' } : { backgroundColor: '#ffffff', color: '#000000' }}
       >
-        {isFr ? 'Continuer' : 'Continue'}
+        {tx(isFr).unservedAreaPrompt.continue}
       </button>
     </div>
   );

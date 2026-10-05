@@ -5,6 +5,7 @@ import { BellAlertIcon, CheckCircleIcon, CreditCardIcon } from '@heroicons/react
 import { AddCardSheet } from './AddCardSheet';
 import { notificationPermission } from '../services/tripNotifications';
 import type { OuraCard } from '../services/ouraCard';
+import { tx } from '../i18n';
 
 type Step = 'notifications' | 'card';
 
@@ -74,11 +75,9 @@ export function OnboardingFlow({
   }> = {
     notifications: {
       Icon: BellAlertIcon,
-      title: isFr ? 'Être prévenu pendant le trajet' : 'Be warned during your trip',
-      body: isFr
-        ? 'Le moment de partir, la correspondance à ne pas manquer, l’arrêt où descendre. Rien d’autre : ni promotion, ni rappel, ni nouveauté.'
-        : 'When to leave, the connection not to miss, the stop to get off at. Nothing else: no promotions, no reminders, no news.',
-      action: isFr ? 'Activer les notifications' : 'Turn on notifications',
+      title: tx(isFr).onboardingFlow.beWarnedDuringYour,
+      body: tx(isFr).onboardingFlow.whenToLeaveThe,
+      action: tx(isFr).onboardingFlow.turnOnNotifications,
       onAction: () => {
         setBusy(true);
         void Promise.resolve(onEnableNotifications()).finally(() => {
@@ -90,18 +89,14 @@ export function OnboardingFlow({
     card: {
       Icon: hasCard ? CheckCircleIcon : CreditCardIcon,
       title: hasCard
-        ? isFr ? 'Votre carte OURA est là' : 'Your OURA card is here'
-        : isFr ? 'Votre carte OURA dans le GreLines Wallet' : 'Your OURA card in the GreLines Wallet',
+        ? tx(isFr).onboardingFlow.yourOuraCardIs
+        : tx(isFr).onboardingFlow.yourOuraCardIn,
       body: hasCard
-        ? isFr
-          ? 'Elle vous suit dans le portefeuille : vous la montrez au contrôle sans sortir le carton.'
-          : 'It lives in your wallet: show it to an inspector without digging out the card.'
-        : isFr
-          ? 'Votre carte de transport OURA, sans inscription, juste un scan. L’appareil photo lit les dix chiffres au dos de la carte, et elle est là.'
-          : 'Your OURA transport card, no sign-up, just a scan. The camera reads the ten digits on the back of the card, and it is there.',
+        ? tx(isFr).onboardingFlow.itLivesInYour
+        : tx(isFr).onboardingFlow.yourOuraTransportCard,
       action: hasCard
-        ? isFr ? 'Continuer' : 'Continue'
-        : isFr ? 'Scanner ma carte OURA' : 'Scan my OURA card',
+        ? tx(isFr).onboardingFlow.continue
+        : tx(isFr).onboardingFlow.scanMyOuraCard,
       onAction: () => (hasCard ? next() : setIsAddCardOpen(true)),
     },
   };
@@ -117,7 +112,7 @@ export function OnboardingFlow({
         style={{ backgroundColor: '#0b0b0b' }}
         role="dialog"
         aria-modal="true"
-        aria-label={isFr ? 'Configuration' : 'Setup'}
+        aria-label={tx(isFr).onboardingFlow.setup}
       >
         <motion.div
           className="flex h-[100dvh] min-h-[30rem] flex-col px-8 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-[calc(var(--gl-safe-top)+20px)]"
@@ -162,7 +157,7 @@ export function OnboardingFlow({
               className="py-1 text-[0.875rem] font-normal transition active:opacity-70"
               style={{ color: '#737373' }}
             >
-              {isFr ? 'Passer' : 'Skip'}
+              {tx(isFr).onboardingFlow.skip}
             </button>
           </div>
         </motion.div>

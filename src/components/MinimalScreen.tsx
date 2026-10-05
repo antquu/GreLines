@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronLeftIcon, EllipsisVerticalIcon } from '@heroicons/react/24/solid';
+import { tx } from '../i18n';
+import { appLanguage } from '../utils/appLanguage';
 
 export interface MinimalScreenAction {
   label: string;
@@ -71,7 +73,7 @@ export function MinimalScreen({
           {menuOpen && (
             <button
               type="button"
-              aria-label="Fermer"
+              aria-label={tx(appLanguage() === 'fr').common.close}
               onClick={() => setMenuOpen(false)}
               className="absolute inset-0 z-10"
             />

@@ -46,6 +46,8 @@ export interface Departure {
   theoretical?: boolean;
   train?: string;
   trainKind?: string;
+  delayMinutes?: number;
+  cancelled?: boolean;
   type: 'BUS' | 'TRAM' | 'RAIL' | 'METRO' | 'OTHER';
   occupancy?: 'EMPTY' | 'LIGHT' | 'MODERATE' | 'CROWDED';
 }

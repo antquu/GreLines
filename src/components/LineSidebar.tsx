@@ -25,6 +25,7 @@ import {
   setFavoriteLineAndNotify,
   subscribeFavoriteLines,
 } from '../services/favoriteLines';
+import { tx } from '../i18n';
 
 interface LineSidebarProps {
   line: AllLinesLine | null;
@@ -46,28 +47,28 @@ interface LineSidebarProps {
 const getSidebarText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
-    lineDetails: isFr ? 'Détails de la ligne' : 'Line details',
-    timetable: isFr ? 'Fiche horaire' : 'Timetable',
-    lineMap: isFr ? 'Plan de la ligne' : 'Line map',
-    destination: isFr ? 'Destination' : 'Destination',
-    stops: isFr ? 'Arrêts' : 'Stops',
-    stop: isFr ? 'Arrêt' : 'Stop',
-    noStops: isFr ? 'Impossible de charger les arrêts de cette ligne.' : 'Unable to load stops for this line.',
-    noDepartures: isFr ? 'Aucun départ disponible pour cette ligne.' : 'No departures available for this line.',
-    loading: isFr ? 'Chargement…' : 'Loading…',
-    openStop: isFr ? 'Voir l\'arrêt' : 'View stop',
-    favorite: isFr ? 'Favori' : 'Favorite',
-    addFavorite: isFr ? 'Ajouter aux favoris' : 'Add to favorites',
-    removeFavorite: isFr ? 'Retirer des favoris' : 'Remove from favorites',
-    estimatedEnd: isFr ? 'Fin estimée' : 'Estimated end',
-    departures: isFr ? 'Départs' : 'Departures',
-    direction: isFr ? 'Direction' : 'Direction',
-    trafficInfo: isFr ? 'Info trafic' : 'Traffic info',
-    line: isFr ? 'Ligne' : 'Line',
-    terminus: isFr ? 'Terminus' : 'Terminus',
-    next: isFr ? 'Prochains' : 'Next',
-    towards: isFr ? 'Vers' : 'Towards',
-    exceptionalBranch: isFr ? 'Desserte exceptionnelle' : 'Exceptional branch',
+    lineDetails: tx(isFr).lineSidebar.lineDetails,
+    timetable: tx(isFr).lineSidebar.timetable,
+    lineMap: tx(isFr).lineSidebar.lineMap,
+    destination: tx(isFr).lineSidebar.destination,
+    stops: tx(isFr).lineSidebar.stops,
+    stop: tx(isFr).lineSidebar.stop,
+    noStops: tx(isFr).lineSidebar.unableToLoadStops,
+    noDepartures: tx(isFr).lineSidebar.noDeparturesAvailableFor,
+    loading: tx(isFr).lineSidebar.loading,
+    openStop: tx(isFr).lineSidebar.viewStop,
+    favorite: tx(isFr).lineSidebar.favorite,
+    addFavorite: tx(isFr).lineSidebar.addToFavorites,
+    removeFavorite: tx(isFr).lineSidebar.removeFromFavorites,
+    estimatedEnd: tx(isFr).lineSidebar.estimatedEnd,
+    departures: tx(isFr).lineSidebar.departures,
+    direction: tx(isFr).lineSidebar.direction,
+    trafficInfo: tx(isFr).lineSidebar.trafficInfo,
+    line: tx(isFr).lineSidebar.line,
+    terminus: tx(isFr).lineSidebar.terminus,
+    next: tx(isFr).lineSidebar.next,
+    towards: tx(isFr).lineSidebar.towards,
+    exceptionalBranch: tx(isFr).lineSidebar.exceptionalBranch,
   };
 };
 
@@ -696,7 +697,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
           <button
             onClick={onClose}
             className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-800 transition hover:bg-slate-700"
-            aria-label={language === 'fr' ? 'Fermer la ligne' : 'Close line details'}
+            aria-label={tx(language === 'fr').lineSidebar.closeLineDetails}
           >
             <XMarkIcon className="w-4 h-4 text-white" />
           </button>

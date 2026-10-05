@@ -16,6 +16,7 @@ import {
   uploadAccountAvatar,
   type Account,
 } from '../services/account';
+import { tx } from '../i18n';
 
 
 type Step = 'card' | 'photo' | 'pseudo';
@@ -160,16 +161,12 @@ export function AccountSetupScreen({
   const cardStep = (
     <div className="space-y-3 px-4">
       <p className={`px-1 text-sm ${muted}`}>
-        {isFr
-          ? 'Quelle carte portera votre compte ? Votre prénom et votre nom en seront repris.'
-          : 'Which card should carry your account? Your first and last name come from it.'}
+        {tx(isFr).accountSetupScreen.whichCardShouldCarry}
       </p>
 
       {cards.length === 0 && (
         <p className={`rounded-2xl border px-4 py-6 text-center text-sm ${surface} ${muted}`}>
-          {isFr
-            ? 'Aucune carte dans votre portefeuille. Ajoutez-en une pour créer un compte.'
-            : 'No card in your wallet yet. Add one to create an account.'}
+          {tx(isFr).accountSetupScreen.noCardInYour}
         </p>
       )}
 
@@ -206,9 +203,7 @@ export function AccountSetupScreen({
   const photoStep = picked && (
     <div className="flex flex-1 flex-col px-4">
       <p className={`px-1 text-center text-sm ${muted}`}>
-        {isFr
-          ? 'Elle vous représentera auprès des autres voyageurs.'
-          : 'This is how other riders will see you.'}
+        {tx(isFr).accountSetupScreen.thisIsHowOther}
       </p>
 
       <div className="flex flex-1 items-center justify-center py-10">
@@ -216,7 +211,7 @@ export function AccountSetupScreen({
           type="button"
           onClick={() => fileRef.current?.click()}
           className="relative aspect-square w-[min(66vw,17rem)] transition active:scale-[0.98]"
-          aria-label={isFr ? 'Choisir une photo' : 'Choose a photo'}
+          aria-label={tx(isFr).accountSetupScreen.chooseAPhoto}
         >
           <span
             className={`absolute inset-0 flex items-center justify-center overflow-hidden rounded-full border-2 ${
@@ -283,7 +278,7 @@ export function AccountSetupScreen({
           >
             <ArrowPathIcon className="h-4 w-4" />
           </motion.span>
-          {isFr ? 'Un émoji' : 'An emoji'}
+          {tx(isFr).accountSetupScreen.anEmoji}
         </button>
 
         {(photo || avatar) && picked.photoUrl && (
@@ -295,21 +290,19 @@ export function AccountSetupScreen({
             }}
             className={`text-sm font-semibold ${muted}`}
           >
-            {isFr ? 'Photo de la carte' : 'Card photo'}
+            {tx(isFr).accountSetupScreen.cardPhoto}
           </button>
         )}
       </div>
 
-      {footer(isFr ? 'Continuer' : 'Continue', () => goTo('pseudo', 1))}
+      {footer(tx(isFr).accountSetupScreen.continue, () => goTo('pseudo', 1))}
     </div>
   );
 
   const pseudoStep = picked && (
     <div className="flex flex-1 flex-col px-4">
       <p className={`px-1 text-center text-sm ${muted}`}>
-        {isFr
-          ? 'C’est le nom sous lequel les autres vous verront.'
-          : 'This is the name others will see you under.'}
+        {tx(isFr).accountSetupScreen.thisIsTheName}
       </p>
 
       <div className="flex flex-1 flex-col items-center justify-center py-10">
@@ -333,29 +326,23 @@ export function AccountSetupScreen({
             autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
-            aria-label={isFr ? 'Votre pseudonyme' : 'Your nickname'}
-            placeholder={isFr ? 'pseudonyme' : 'nickname'}
+            aria-label={tx(isFr).accountSetupScreen.yourNickname}
+            placeholder={tx(isFr).accountSetupScreen.nickname}
             className="min-w-0 flex-1 bg-transparent text-2xl font-bold outline-none"
           />
         </div>
 
         <p className={`mt-3 h-5 text-center text-xs ${taken ? 'text-rose-400' : muted}`}>
           {taken
-            ? isFr
-              ? 'Ce pseudonyme est déjà pris.'
-              : 'That nickname is taken.'
+            ? tx(isFr).accountSetupScreen.thatNicknameIsTaken
             : `${pseudoTrimmed.length} / ${PSEUDO_MAX}`}
         </p>
       </div>
 
       {footer(
         saving
-          ? isFr
-            ? 'Création…'
-            : 'Creating…'
-          : isFr
-            ? 'Créer mon compte'
-            : 'Create my account',
+          ? tx(isFr).accountSetupScreen.creating
+          : tx(isFr).accountSetupScreen.createMyAccount,
         () => void confirm(),
         saving || !pseudoValid || checkingExistingAccount,
       )}
@@ -364,16 +351,10 @@ export function AccountSetupScreen({
 
   const title =
     step === 'card'
-      ? isFr
-        ? 'Connecter son compte'
-        : 'Connect your account'
+      ? tx(isFr).accountSetupScreen.connectYourAccount
       : step === 'photo'
-        ? isFr
-          ? 'Choisissez votre photo'
-          : 'Choose your photo'
-        : isFr
-          ? 'Choisissez votre pseudonyme'
-          : 'Choose your nickname';
+        ? tx(isFr).accountSetupScreen.chooseYourPhoto
+        : tx(isFr).accountSetupScreen.chooseYourNickname;
 
   return (
     <MinimalScreen
@@ -391,9 +372,7 @@ export function AccountSetupScreen({
         <OfflinePanel
           language={language}
           isLight={isLight}
-          detail={language === 'fr'
-            ? 'La connexion d’un compte a besoin du réseau. Vous pourrez la faire dès son retour.'
-            : 'Connecting an account needs the network. You can do it as soon as you are back online.'}
+          detail={tx(language === 'fr').accountSetupScreen.connectingAnAccountNeeds}
         />
       ) : (
       <>

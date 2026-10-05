@@ -9,6 +9,7 @@ import {
 import { SHARED_OPERATOR_LABELS } from '../services/sharedMobility';
 import { openExternal } from '../utils/openExternal';
 import { PASS_SHOP_URL } from '../services/config';
+import { tx } from '../i18n';
 
 function TransitFareBlock({
   fare,
@@ -18,14 +19,12 @@ function TransitFareBlock({
   language: 'fr' | 'en';
 }) {
   const isFr = language === 'fr';
-  const ticketLabel = isFr
-    ? `${fare.tickets} titre${fare.tickets > 1 ? 's' : ''} · ticket 1 voyage`
-    : `${fare.tickets} ticket${fare.tickets > 1 ? 's' : ''} · single ride`;
+  const ticketLabel = tx(isFr).journeyFare.ticketsTicketValueSingle(fare.tickets, fare.tickets > 1 ? 's' : '');
 
   return (
     <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-3">
       <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-        {isFr ? 'Tarif' : 'Fare'}
+        {tx(isFr).journeyFare.fare}
       </p>
       <div className="mt-2 flex items-baseline justify-between gap-3">
         <span className="text-sm text-slate-400">{ticketLabel}</span>
@@ -33,7 +32,7 @@ function TransitFareBlock({
       </div>
       <div className="mt-1 flex items-baseline justify-between gap-3">
         <span className="text-xs text-slate-500">
-          {isFr ? 'Avec un carnet 10 voyages' : 'With a 10-ride carnet'}
+          {tx(isFr).journeyFare.withA10Ride}
         </span>
         <span className="text-xs font-semibold text-slate-300">
           {formatEuro(fare.carnetTotal, language)}
@@ -41,7 +40,7 @@ function TransitFareBlock({
       </div>
       {fare.dayPassPrice !== null && (
         <div className="mt-1 flex items-baseline justify-between gap-3">
-          <span className="text-xs text-slate-500">{isFr ? 'Pass 1 jour' : 'Day pass'}</span>
+          <span className="text-xs text-slate-500">{tx(isFr).journeyFare.dayPass}</span>
           <span className="text-xs font-semibold text-emerald-400">
             {formatEuro(fare.dayPassPrice, language)}
           </span>
@@ -49,9 +48,9 @@ function TransitFareBlock({
       )}
       {fare.uncoveredNetworks.length > 0 && (
         <p className="mt-2 text-[0.6875rem] leading-snug text-amber-400">
-          {isFr ? 'Hors ' : 'Excludes '}
+          {tx(isFr).journeyFare.excludes}
           {fare.uncoveredNetworks.map(networkLabel).join(', ')}
-          {isFr ? ' : titre à acheter séparément.' : ': separate ticket required.'}
+          {tx(isFr).journeyFare.separateTicketRequired}
         </p>
       )}
 
@@ -61,7 +60,7 @@ function TransitFareBlock({
         className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-500"
       >
         <TicketIcon className="h-4 w-4" />
-        {isFr ? 'Acheter mon titre de transport' : 'Buy a travel pass'}
+        {tx(isFr).journeyFare.buyATravelPass}
       </button>
     </div>
   );
@@ -76,7 +75,7 @@ function SharedFareBlock({ journey, language }: { journey: RouteItinerary; langu
   const rows: Array<{ label: string; value: string }> = [];
   if (price.unlock !== null) {
     rows.push({
-      label: isFr ? 'Déverrouillage' : 'Unlock',
+      label: tx(isFr).journeyFare.unlock,
       value: formatEuro(price.unlock, language),
     });
   }
@@ -94,7 +93,7 @@ function SharedFareBlock({ journey, language }: { journey: RouteItinerary; langu
   if (price.perKmRate !== null) {
     const km = shared.rideMeters / 1000;
     rows.push({
-      label: `${formatEuro(price.perKmRate, language)} / km × ${km.toFixed(1).replace('.', isFr ? ',' : '.')} km`,
+      label: `${formatEuro(price.perKmRate, language)} / km × ${km.toFixed(1).replace('.', tx(isFr).journeyFare.text)} km`,
       value: formatEuro(Math.round(price.perKmRate * km * 100) / 100, language),
     });
   }
@@ -102,10 +101,10 @@ function SharedFareBlock({ journey, language }: { journey: RouteItinerary; langu
   return (
     <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-3">
       <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-        {isFr ? 'Course estimée' : 'Estimated ride'} · {SHARED_OPERATOR_LABELS[shared.operator]}
+        {tx(isFr).journeyFare.estimatedRide} · {SHARED_OPERATOR_LABELS[shared.operator]}
       </p>
       <div className="mt-2 flex items-baseline justify-between gap-3">
-        <span className="text-sm text-slate-400">{isFr ? 'Total' : 'Total'}</span>
+        <span className="text-sm text-slate-400">{tx(isFr).journeyFare.total}</span>
         <span className="text-lg font-bold text-white">{formatEuro(price.total, language)}</span>
       </div>
       <div className="mt-2 flex flex-col gap-1">
@@ -117,9 +116,7 @@ function SharedFareBlock({ journey, language }: { journey: RouteItinerary; langu
         ))}
       </div>
       <p className="mt-2 text-[0.6875rem] leading-snug text-slate-500">
-        {isFr
-          ? 'Estimation sur la durée du trajet calculé, hors abonnement et hors stationnement.'
-          : 'Based on the computed ride time, excluding passes and parking.'}
+        {tx(isFr).journeyFare.basedOnTheComputed}
       </p>
     </div>
   );
@@ -136,17 +133,15 @@ function UberFareBlock({ journey, language }: { journey: RouteItinerary; languag
   return (
     <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-3">
       <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-        {isFr ? 'Course' : 'Ride'}
+        {tx(isFr).journeyFare.ride}
         {uber.productName ? ` · ${uber.productName}` : ''}
       </p>
       <div className="mt-2 flex items-baseline justify-between gap-3">
-        <span className="text-sm text-slate-400">{isFr ? 'Estimation Uber' : 'Uber estimate'}</span>
+        <span className="text-sm text-slate-400">{tx(isFr).journeyFare.uberEstimate}</span>
         <span className="text-lg font-bold text-white">{label}</span>
       </div>
       <p className="mt-2 text-[0.6875rem] leading-snug text-slate-500">
-        {isFr
-          ? 'Fourchette annoncée par Uber, hors majoration au moment de la commande.'
-          : 'Range quoted by Uber, before surge pricing at booking time.'}
+        {tx(isFr).journeyFare.rangeQuotedByUber}
       </p>
     </div>
   );
@@ -159,13 +154,13 @@ function TaxiFareBlock({ journey, language }: { journey: RouteItinerary; languag
   return (
     <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-3">
       <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-        {isFr ? 'Course estimée' : 'Estimated ride'} · {taxi.company}
+        {tx(isFr).journeyFare.estimatedRide} · {taxi.company}
       </p>
       <div className="mt-2 flex items-baseline justify-between gap-3">
         <span className="text-sm text-slate-400">
           {taxi.nightRate
-            ? isFr ? 'Tarif de nuit / dimanche' : 'Night / Sunday rate'
-            : isFr ? 'Tarif de jour' : 'Day rate'}
+            ? tx(isFr).journeyFare.nightSundayRate
+            : tx(isFr).journeyFare.dayRate}
         </span>
         <span className="text-lg font-bold text-white">
           {taxi.lowEstimate}–{taxi.highEstimate} €
@@ -173,16 +168,14 @@ function TaxiFareBlock({ journey, language }: { journey: RouteItinerary; languag
       </div>
       <div className="mt-1 flex items-baseline justify-between gap-3">
         <span className="text-xs text-slate-500">
-          {isFr ? 'Approche' : 'Pickup'}
+          {tx(isFr).journeyFare.pickup}
         </span>
         <span className="text-xs font-semibold text-slate-300">
           ~{taxi.pickupDelayMinutes} min
         </span>
       </div>
       <p className="mt-2 text-[0.6875rem] leading-snug text-slate-500">
-        {isFr
-          ? 'Estimation d’après la grille tarifaire publiée ; le montant dû reste celui du compteur.'
-          : 'Estimated from the published rate card; the meter sets the final fare.'}
+        {tx(isFr).journeyFare.estimatedFromThePublished}
       </p>
       <div className="mt-3 flex gap-2">
         <a
@@ -191,14 +184,14 @@ function TaxiFareBlock({ journey, language }: { journey: RouteItinerary; languag
           style={{ color: '#0f172a' }}
         >
           <PhoneIcon className="h-4 w-4" />
-          {isFr ? 'Appeler' : 'Call'}
+          {tx(isFr).journeyFare.call}
         </a>
         <button
           type="button"
           onClick={() => openExternal(taxi.bookingUrl)}
           className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500"
         >
-          {isFr ? 'Réserver' : 'Book'}
+          {tx(isFr).journeyFare.book}
         </button>
       </div>
     </div>

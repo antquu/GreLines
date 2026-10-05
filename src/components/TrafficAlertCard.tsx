@@ -7,6 +7,7 @@ import { useTranslated } from '../hooks/useTranslated';
 import { useOnScreen } from '../hooks/useOnScreen';
 import { sortLinesByPriority } from '../utils/lineOrder';
 import type { Line, TrafficDetail } from '../types';
+import { t, tx } from '../i18n';
 
 export interface TrafficAlertCardProps {
   detail: TrafficDetail;
@@ -22,10 +23,10 @@ function readableEnd(raw: string, language: 'fr' | 'en'): string {
   if (!/^\d{4}-\d{2}-\d{2}T/.test(raw)) return raw;
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return raw;
-  const locale = language === 'fr' ? 'fr-FR' : 'en-GB';
+  const locale = tx(language === 'fr').trafficAlertCard.locale;
   const day = date.toLocaleDateString(locale, { day: 'numeric', month: 'long' });
   const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-  return language === 'fr' ? `${day} à ${time}` : `${day} at ${time}`;
+  return t(language).traffic.dayAtTime(day, time);
 }
 
 export function TrafficAlertCard({
@@ -44,9 +45,9 @@ export function TrafficAlertCard({
   const rawTitle = stripHtml(detail.titre ?? '').trim();
   const rawDescription = stripHtml(detail.description ?? '').trim();
   const [cardRef, onScreen] = useOnScreen<HTMLDivElement>();
-  const title = useTranslated(rawTitle, language, onScreen) || (isFr ? 'Perturbation' : 'Disruption');
+  const title = useTranslated(rawTitle, language, onScreen) || (tx(isFr).trafficAlertCard.disruption);
   const description = useTranslated(rawDescription, language, onScreen && expanded);
-  const headingLabel = heading ?? (isFr ? 'Perturbation en cours' : 'Ongoing disruption');
+  const headingLabel = heading ?? (tx(isFr).trafficAlertCard.ongoingDisruption);
   const sortedLines = lines && lines.length > 0 ? [...lines].sort(sortLinesByPriority) : [];
   const hasMore = Boolean(description) || Boolean(detail.dateFin) || sortedLines.length > 0;
 
@@ -110,13 +111,13 @@ export function TrafficAlertCard({
           )}
           {detail.dateFin && (
             <p className={`mt-1 text-xs ${isLight ? 'text-amber-700/70' : 'text-amber-400/60'}`}>
-              {isFr ? 'Fin estimée' : 'Estimated end'} {readableEnd(detail.dateFin, language)}
+              {t(language).traffic.estimatedEnd} {readableEnd(detail.dateFin, language)}
             </p>
           )}
           {sortedLines.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className={`text-xs ${isLight ? 'text-amber-700/70' : 'text-amber-300/60'}`}>
-                {isFr ? 'Lignes' : 'Lines'}
+                {tx(isFr).trafficAlertCard.lines}
               </span>
               {sortedLines.map(line => (
                 <LineBadge

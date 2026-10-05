@@ -1,3 +1,4 @@
+import { tx } from '../i18n';
 const ENABLED_KEY = 'greLines_tripNotifications';
 
 export function notificationsEnabled(): boolean {
@@ -43,47 +44,37 @@ function wording(moment: TripMoment, isFr: boolean): { title: string; body?: str
   switch (moment.kind) {
     case 'leave':
       return {
-        title: isFr ? '🚶 Partez maintenant' : '🚶 Leave now',
-        body: isFr
-          ? 'C’est le moment de vous mettre en route.'
-          : 'Time to set off.',
+        title: tx(isFr).tripNotifications.leaveNow,
+        body: tx(isFr).tripNotifications.timeToSetOff,
       };
     case 'boarding':
       return {
-        title: isFr ? `🚏 Votre ${moment.line} arrive` : `🚏 Your ${moment.line} is arriving`,
+        title: tx(isFr).tripNotifications.yourLineIsArriving(moment.line),
         body: moment.stop
-          ? isFr
-            ? `À ${moment.stop}.`
-            : `At ${moment.stop}.`
+          ? tx(isFr).tripNotifications.atStop(moment.stop)
           : undefined,
       };
     case 'transfer':
       return {
-        title: isFr ? '🔁 Correspondance' : '🔁 Transfer',
+        title: tx(isFr).tripNotifications.transfer,
         body: moment.headsign
-          ? isFr
-            ? `Prenez la ${moment.line} direction ${moment.headsign}.`
-            : `Take the ${moment.line} toward ${moment.headsign}.`
-          : isFr
-          ? `Prenez la ${moment.line}.`
-          : `Take the ${moment.line}.`,
+          ? tx(isFr).tripNotifications.takeTheLineToward(moment.line, moment.headsign)
+          : tx(isFr).tripNotifications.takeTheLine(moment.line),
       };
     case 'getOff':
       return {
-        title: isFr ? '🚪 Descendez au prochain arrêt' : '🚪 Get off at the next stop',
+        title: tx(isFr).tripNotifications.getOffAtThe,
         body: moment.stop ?? undefined,
       };
     case 'arrived':
       return {
-        title: isFr ? '🏁 Vous êtes arrivé' : '🏁 You have arrived',
+        title: tx(isFr).tripNotifications.youHaveArrived,
         body: moment.place ?? undefined,
       };
     case 'question':
       return {
-        title: isFr ? '💬 Une question sur ce trajet' : '💬 A question about this trip',
-        body: isFr
-          ? 'Deux secondes pour aider les voyageurs suivants.'
-          : 'Two seconds to help the next travellers.',
+        title: tx(isFr).tripNotifications.aQuestionAboutThis,
+        body: tx(isFr).tripNotifications.twoSecondsToHelp,
       };
   }
 }
@@ -144,7 +135,7 @@ export function speak(text: string, language: 'fr' | 'en'): void {
   if (!voiceEnabled() || !voiceSupported() || !text) return;
   try {
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = language === 'fr' ? 'fr-FR' : 'en-GB';
+    utterance.lang = tx(language === 'fr').tripNotifications.locale;
     utterance.rate = 0.95;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);

@@ -2,6 +2,7 @@ import { motion, type MotionValue } from 'framer-motion';
 import { useEffect, useRef } from 'react';
 import { Square3Stack3DIcon } from '@heroicons/react/24/solid';
 import { SHARED_OPERATORS, SHARED_OPERATOR_LABELS, type SharedOperator } from '../services/sharedMobility';
+import { tx } from '../i18n';
 
 interface MapLayersButtonProps {
   language: 'fr' | 'en';
@@ -117,7 +118,7 @@ export function MapLayersButton({
               onClick={() => onToggleLayer(operator)}
               aria-pressed={isVisible}
               aria-label={`${SHARED_OPERATOR_LABELS[operator]} · ${
-                isVisible ? (isFr ? 'affiché' : 'shown') : isFr ? 'masqué' : 'hidden'
+                isVisible ? (tx(isFr).mapLayersButton.shown) : tx(isFr).mapLayersButton.hidden
               }`}
               tabIndex={isOpen ? 0 : -1}
               className="flex w-full flex-shrink-0 items-center justify-center transition active:bg-slate-800"
@@ -140,7 +141,7 @@ export function MapLayersButton({
           type="button"
           onClick={onToggle}
           aria-expanded={isOpen}
-          aria-label={isFr ? 'Calques de la carte' : 'Map layers'}
+          aria-label={tx(isFr).mapLayersButton.mapLayers}
           className="relative flex flex-shrink-0 items-center justify-center transition active:bg-slate-800"
           style={{ width: WIDTH - 4, height: WIDTH - 4 }}
         >

@@ -24,6 +24,7 @@ import type { Stop } from '../types';
 import { findClosestStops } from '../utils/geo';
 import type { Favorite } from '../services/favorites';
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
+import { tx } from '../i18n';
 
 const HEADER_SWAP_HEIGHT = 76;
 
@@ -124,37 +125,31 @@ interface HomeSheetProps {
 }
 
 const getText = (language: 'fr' | 'en') => ({
-  nearPrefix: language === 'fr' ? 'Près de' : 'Near',
-  noStopsNearby: language === 'fr' ? 'Aucun arrêt à proximité' : 'No stops nearby',
+  nearPrefix: tx(language === 'fr').homeSheet.near,
+  noStopsNearby: tx(language === 'fr').homeSheet.noStopsNearby,
   noStopsNearbyHint:
-    language === 'fr'
-      ? 'Cette zone n’est pas encore desservie par GreLines.'
-      : 'This area is not covered by GreLines yet.',
-  noLocation: language === 'fr' ? 'Position non disponible' : 'Location unavailable',
+    tx(language === 'fr').homeSheet.thisAreaIsNot,
+  noLocation: tx(language === 'fr').homeSheet.locationUnavailable,
   noLocationHint:
-    language === 'fr'
-      ? 'Active la localisation pour voir les arrêts autour de toi.'
-      : 'Enable location to see stops around you.',
-  favoritesTitle: language === 'fr' ? 'Favoris' : 'Favorites',
-  noFavorites: language === 'fr'
-    ? 'Aucun favori pour le moment. Ajoute-en un en ouvrant un arrêt et en cliquant sur l’étoile.'
-    : 'No favorites yet. Add one by opening a stop and tapping the star.',
-  loading: language === 'fr' ? 'Chargement…' : 'Loading…',
-  noDepartures: language === 'fr' ? 'Aucun passage prévu' : 'No upcoming departures',
-  navHome: language === 'fr' ? 'Autour' : 'Nearby',
-  navRoute: language === 'fr' ? 'Itinéraire' : 'Route',
-  navFavorites: language === 'fr' ? 'Favoris' : 'Favorites',
-  navAccount: language === 'fr' ? 'Compte' : 'Account',
-  placesTitle: language === 'fr' ? 'Lieux' : 'Places',
-  homeLabel: language === 'fr' ? 'Domicile' : 'Home',
-  workLabel: language === 'fr' ? 'Bureau' : 'Work',
-  addLabel: language === 'fr' ? 'Ajouter' : 'Add',
-  nearbyLabel: language === 'fr' ? 'Autour de moi' : 'Nearby',
-  trafficLabel: language === 'fr' ? 'Infotrafic' : 'Traffic info',
-  itineraryLabel: language === 'fr' ? 'Itinéraire' : 'Itinerary',
-  settingsLabel: language === 'fr' ? 'Réglages' : 'Settings',
-  remove: language === 'fr' ? 'Retirer' : 'Remove',
-  direction: language === 'fr' ? 'Direction' : 'To',
+    tx(language === 'fr').homeSheet.enableLocationToSee,
+  favoritesTitle: tx(language === 'fr').homeSheet.favorites,
+  noFavorites: tx(language === 'fr').homeSheet.noFavoritesYetAdd,
+  loading: tx(language === 'fr').homeSheet.loading,
+  noDepartures: tx(language === 'fr').homeSheet.noUpcomingDepartures,
+  navHome: tx(language === 'fr').homeSheet.nearby,
+  navRoute: tx(language === 'fr').homeSheet.route,
+  navFavorites: tx(language === 'fr').homeSheet.favorites,
+  navAccount: tx(language === 'fr').homeSheet.account,
+  placesTitle: tx(language === 'fr').homeSheet.places,
+  homeLabel: tx(language === 'fr').homeSheet.home,
+  workLabel: tx(language === 'fr').homeSheet.work,
+  addLabel: tx(language === 'fr').homeSheet.add,
+  nearbyLabel: tx(language === 'fr').homeSheet.nearby2,
+  trafficLabel: tx(language === 'fr').homeSheet.trafficInfo,
+  itineraryLabel: tx(language === 'fr').homeSheet.itinerary,
+  settingsLabel: tx(language === 'fr').homeSheet.settings,
+  remove: tx(language === 'fr').homeSheet.remove,
+  direction: tx(language === 'fr').homeSheet.to,
 });
 
 export const HomeSheet = ({

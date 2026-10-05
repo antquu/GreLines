@@ -1,7 +1,7 @@
 {
   "name": "grelines",
   "private": true,
-  "version": "3.18.9",
+  "version": "3.18.11",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,8 @@
     "prebuild": "node scripts/tcl-timetables.mjs && node scripts/gtfs-networks.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "vitest run",
+    "i18n:report": "node scripts/i18n-report.mjs",
     "preview": "vite preview",
     "stops:accessibility": "node scripts/accessible-stops.mjs",
     "logos:tcl": "node scripts/tcl-logos.mjs",
@@ -53,6 +55,7 @@
     "tailwindcss": "^4.2.2",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",
-    "vite": "^8.0.1"
+    "vite": "^8.0.1",
+    "vitest": "^3.2.7"
   }
 }

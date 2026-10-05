@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { tx } from '../i18n';
 
 export type BlockKind = 'paragraph' | 'heading' | 'image' | 'quote' | 'list';
 
@@ -106,7 +107,7 @@ export async function getPost(lang: 'fr' | 'en', slug: string): Promise<BlogPost
 export function formatPostDate(iso: string, lang: 'fr' | 'en'): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', {
+  return date.toLocaleDateString(tx(lang === 'fr').blog.locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

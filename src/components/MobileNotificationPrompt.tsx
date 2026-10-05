@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUpIcon, BellAlertIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { tx } from '../i18n';
 
 interface MobileNotificationPromptProps {
   isOpen: boolean;
@@ -36,7 +37,7 @@ export function MobileNotificationPrompt({
       className="fixed inset-0 z-[1450] overflow-hidden bg-black text-white"
       role="dialog"
       aria-modal="true"
-      aria-label={isFr ? 'Activer les notifications' : 'Enable notifications'}
+      aria-label={tx(isFr).mobileNotificationPrompt.enableNotifications}
     >
       <motion.div
         className="flex h-[100dvh] min-h-[30rem] flex-col px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,var(--gl-safe-top))] text-center"
@@ -48,7 +49,7 @@ export function MobileNotificationPrompt({
           <button
             type="button"
             onClick={onDismiss}
-            aria-label={isFr ? 'Fermer' : 'Close'}
+            aria-label={tx(isFr).mobileNotificationPrompt.close}
             className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 text-white/80"
           >
             <XMarkIcon className="h-5 w-5" />
@@ -60,12 +61,10 @@ export function MobileNotificationPrompt({
             <BellAlertIcon className="h-8 w-8" />
           </div>
           <h1 className="mt-6 max-w-sm text-3xl font-black leading-tight" style={{ color: '#ffffff' }}>
-            {isFr ? 'Restez informe pendant votre trajet' : 'Stay informed during your trip'}
+            {tx(isFr).mobileNotificationPrompt.stayInformedDuringYour}
           </h1>
           <p className="mt-3 max-w-sm text-[0.9375rem] leading-relaxed text-white/65">
-            {isFr
-              ? 'Nous vous avertirons au moment de partir, de changer ou de descendre.'
-              : 'We will alert you when it is time to leave, transfer, or get off.'}
+            {tx(isFr).mobileNotificationPrompt.weWillAlertYou}
           </p>
         </div>
 
@@ -76,7 +75,7 @@ export function MobileNotificationPrompt({
             onClick={onEnable}
             className="rounded-full bg-white px-6 py-3 text-[0.9375rem] font-extrabold text-slate-950"
           >
-            {isFr ? 'Activer les notifications' : 'Enable notifications'}
+            {tx(isFr).mobileNotificationPrompt.enableNotifications}
           </motion.button>
 
           <ArrowUpIcon className="mt-5 h-14 w-14 animate-bounce text-white" aria-hidden="true" />
@@ -93,7 +92,7 @@ export function MobileNotificationPrompt({
                   transition={{ duration: 0.22 }}
                   className="text-[0.9375rem] font-semibold text-white/55"
                 >
-                  {isFr ? 'Continuer sans notifications' : 'Continue without notifications'}
+                  {tx(isFr).mobileNotificationPrompt.continueWithoutNotifications}
                 </motion.button>
               )}
             </AnimatePresence>

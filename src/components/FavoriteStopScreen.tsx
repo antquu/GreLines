@@ -5,6 +5,7 @@ import { formatWait, groupFavoriteDepartures } from '../utils/favoriteDepartures
 import { TheoreticalPill } from './TheoreticalPill';
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import type { AllLinesLine } from '../services/allLines';
+import { tx } from '../i18n';
 
 export function FavoriteStopScreen({
   detail,
@@ -29,8 +30,8 @@ export function FavoriteStopScreen({
   const groups = groupFavoriteDepartures(detail, lineLookup);
 
   const actions: MinimalScreenAction[] = [
-    { label: isFr ? 'Voir l’arrêt sur la carte' : 'Show stop on the map', onSelect: () => onOpenStop() },
-    { label: isFr ? 'Retirer des favoris' : 'Remove from favorites', onSelect: onRemove, destructive: true },
+    { label: tx(isFr).favoriteStopScreen.showStopOnThe, onSelect: () => onOpenStop() },
+    { label: tx(isFr).favoriteStopScreen.removeFromFavorites, onSelect: onRemove, destructive: true },
   ];
 
   const mutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
@@ -45,10 +46,10 @@ export function FavoriteStopScreen({
       onBack={onBack}
     >
       {detail?.loading && groups.length === 0 ? (
-        <p className={`px-6 py-4 text-sm ${mutedClass}`}>{isFr ? 'Chargement…' : 'Loading…'}</p>
+        <p className={`px-6 py-4 text-sm ${mutedClass}`}>{tx(isFr).favoriteStopScreen.loading}</p>
       ) : groups.length === 0 ? (
         <p className={`px-6 py-4 text-sm ${mutedClass}`}>
-          {isFr ? 'Aucun passage prévu' : 'No upcoming departures'}
+          {tx(isFr).favoriteStopScreen.noUpcomingDepartures}
         </p>
       ) : (
         groups.map((group, index) => (
@@ -85,14 +86,14 @@ export function FavoriteStopScreen({
               {group.theoretical && <div className="mt-1.5"><TheoreticalPill language={language} /></div>}
 
               <p className={`mt-4 text-[0.6875rem] font-bold uppercase tracking-[0.14em] ${mutedClass}`}>
-                {isFr ? 'Prochain' : 'Next'}
+                {tx(isFr).favoriteStopScreen.next}
               </p>
               <p className="tabular text-[2.125rem] font-semibold leading-none">
                 {formatWait(group.times[0], language)}
               </p>
 
               <p className={`mt-3 text-[0.6875rem] font-bold uppercase tracking-[0.14em] ${mutedClass}`}>
-                {isFr ? 'Suivant' : 'Following'}
+                {tx(isFr).favoriteStopScreen.following}
               </p>
               <p className="tabular text-[2.125rem] font-semibold leading-none text-slate-500">
                 {formatWait(group.times[1], language)}

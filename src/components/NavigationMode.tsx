@@ -55,6 +55,7 @@ import {
   saveWalkPreferences,
   type WalkPreferences,
 } from '../services/walkPreferences';
+import { tx } from '../i18n';
 
 const DARK_MAP_STYLE_URL =
   'https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl';
@@ -121,23 +122,21 @@ const CONFIDENCE_COLOR: Record<CrowdConfidence['level'], string> = {
 
 function confidenceLabel(confidence: CrowdConfidence, isFr: boolean): string {
   const count = confidence.sample;
-  const voices = isFr
-    ? `${count} avis${confidence.fresh ? ' récents' : ''}`
-    : `${count} report${count > 1 ? 's' : ''}${confidence.fresh ? ' just in' : ''}`;
+  const voices = tx(isFr).navigationMode.countReports(count, confidence.fresh);
 
   let reason: string;
   if (confidence.ghostRate !== null && confidence.ghostRate >= 0.34) {
-    reason = isFr ? 'passage annoncé parfois absent' : 'announced run sometimes missing';
+    reason = tx(isFr).navigationMode.announcedRunSometimesMissing;
   } else if (confidence.crowding !== null && confidence.crowding < 1.7) {
-    reason = isFr ? 'véhicule bondé' : 'packed vehicle';
+    reason = tx(isFr).navigationMode.packedVehicle;
   } else if (confidence.punctuality !== null && confidence.punctuality < 1.7) {
-    reason = isFr ? 'retard ressenti' : 'running late';
+    reason = tx(isFr).navigationMode.runningLate;
   } else if (confidence.accessible === false) {
-    reason = isFr ? 'accès en panne signalé' : 'access reported out of order';
+    reason = tx(isFr).navigationMode.accessReportedOutOf;
   } else if (confidence.level === 'good') {
-    reason = isFr ? 'rien à signaler' : 'nothing reported';
+    reason = tx(isFr).navigationMode.nothingReported;
   } else {
-    reason = isFr ? 'avis partagés' : 'mixed reports';
+    reason = tx(isFr).navigationMode.mixedReports;
   }
 
   return `${reason} · ${voices}`;
@@ -537,9 +536,9 @@ function buildSteps(
         kind: 'walk',
 
         instruction: cleanPlace(leg.to?.name)
-          ? `${isFr ? 'Rejoignez' : 'Walk to'} ${cleanPlace(leg.to?.name)}`
-          : (isFr ? 'À pied' : 'Walk'),
-        detail: cleanPlace(leg.to?.name) ? `${isFr ? 'jusqu’à' : 'to'} ${cleanPlace(leg.to?.name)}` : '',
+          ? `${tx(isFr).navigationMode.walkTo} ${cleanPlace(leg.to?.name)}`
+          : (tx(isFr).navigationMode.walk),
+        detail: cleanPlace(leg.to?.name) ? `${tx(isFr).navigationMode.to} ${cleanPlace(leg.to?.name)}` : '',
         durationMin,
         color: '#64748b',
         fromName: cleanPlace(leg.from?.name),
@@ -558,8 +557,8 @@ function buildSteps(
 
     return {
       kind: 'transit',
-      instruction: isFr ? `Prenez ${shortName}` : `Take ${shortName}`,
-      detail: leg.to?.name ? `${isFr ? 'descendez à' : 'get off at'} ${leg.to.name}` : '',
+      instruction: tx(isFr).navigationMode.takeShortname(shortName),
+      detail: leg.to?.name ? `${tx(isFr).navigationMode.getOffAt} ${leg.to.name}` : '',
       headsign: leg.headsign,
       durationMin,
       color: line?.color || '#3b82f6',
@@ -572,7 +571,7 @@ function buildSteps(
 
   steps.push({
     kind: 'arrival',
-    instruction: isFr ? 'Vous êtes arrivé' : 'You have arrived',
+    instruction: tx(isFr).navigationMode.youHaveArrived,
     detail: itinerary.arrName || '',
     durationMin: 0,
     color: '#16a34a',
@@ -1239,16 +1238,12 @@ export function NavigationMode({
   const compactSubtitle =
     step?.kind === 'transit'
       ? step.headsign || step.detail
-      : steps[index + 1]?.instruction || steps[index + 1]?.detail || (isFr ? 'Prochaines actions du voyage' : 'Next trip actions');
+      : steps[index + 1]?.instruction || steps[index + 1]?.detail || (tx(isFr).navigationMode.nextTripActions);
   const compactActionLabel =
     steps[index + 1]?.kind === 'walk'
-      ? isFr
-        ? 'Marche'
-        : 'Walk'
+      ? tx(isFr).navigationMode.walk2
       : steps[index + 1]?.kind === 'arrival'
-      ? isFr
-        ? 'Arrivée'
-        : 'Arrival'
+      ? tx(isFr).navigationMode.arrival
       : steps[index + 1]?.lineShortName || steps[index + 1]?.instruction || '';
 
   const compactTitle = '';
@@ -1388,7 +1383,7 @@ export function NavigationMode({
     <div className="-mx-3 mb-2.5 flex items-center gap-2 overflow-x-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <span className={chipClass}>
         <CreditCardIcon className="h-3.5 w-3.5 opacity-80" />
-        {isFr ? 'Sans contact' : 'Contactless'}
+        {tx(isFr).navigationMode.contactless}
       </span>
       <button
         type="button"
@@ -1396,15 +1391,13 @@ export function NavigationMode({
         className={`${chipClass} active:bg-black/30`}
       >
         <TicketIcon className="h-3.5 w-3.5 opacity-80" />
-        {isFr ? 'Acheter un ticket' : 'Buy a ticket'}
+        {tx(isFr).navigationMode.buyATicket}
       </button>
       {isCurrent && reputation?.rating != null && (
         <span
           className={chipClass}
           title={
-            isFr
-              ? `Moyenne de ${reputation.sampleSize} avis de voyageurs`
-              : `Average of ${reputation.sampleSize} traveller reviews`
+            tx(isFr).navigationMode.averageOfSamplesizeTraveller(reputation.sampleSize)
           }
         >
           <StarIcon className="h-3.5 w-3.5 opacity-90" />
@@ -1415,9 +1408,7 @@ export function NavigationMode({
         <span
           className={chipClass}
           title={
-            isFr
-              ? `Trajets jugés à l'heure sur ${reputation.sampleSize} avis`
-              : `Trips judged on time out of ${reputation.sampleSize} reviews`
+            tx(isFr).navigationMode.tripsJudgedOnTime(reputation.sampleSize)
           }
         >
           <ClockIcon className="h-3.5 w-3.5 opacity-80" />
@@ -1607,7 +1598,7 @@ export function NavigationMode({
             transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
           >
             <p className="mb-1 text-[0.625rem] font-semibold uppercase tracking-[0.14em]" style={{ color: skin.muted }}>
-              {isFr ? "Heure d'arrivée" : 'Arrival time'}
+              {tx(isFr).navigationMode.arrivalTime}
             </p>
             <p className="text-[1.75rem] font-black leading-none tabular-nums text-white">
               {arriveLabel}
@@ -1620,7 +1611,7 @@ export function NavigationMode({
             type="button"
             onClick={() => setIsHelpedSheetOpen(true)}
             className="pointer-events-auto -mt-1 flex items-center gap-2 rounded-b-xl px-2.5 pb-1.5 pt-2 shadow-[0_8px_20px_rgba(0,0,0,0.18)]"
-            aria-label={isFr ? 'Voir les utilisateurs aidés' : 'View helped travellers'}
+            aria-label={tx(isFr).navigationMode.viewHelpedTravellers}
             style={{ backgroundColor: skin.background, color: skin.ink }}
             layout
             initial={{ opacity: 0, height: 0, y: -8 }}
@@ -1660,7 +1651,7 @@ export function NavigationMode({
             onClick={handleClose}
             className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
             style={{ color: '#ffffff' }}
-            aria-label={isFr ? 'Quitter la navigation' : 'Exit navigation'}
+            aria-label={tx(isFr).navigationMode.exitNavigation}
           >
             <XMarkIcon className="h-6 w-6" />
           </button>
@@ -1671,7 +1662,7 @@ export function NavigationMode({
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-800 shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
-            aria-label={isFr ? 'Réglages du guidage' : 'Navigation settings'}
+            aria-label={tx(isFr).navigationMode.navigationSettings}
           >
             <Cog6ToothIcon className="h-5 w-5" />
           </button>
@@ -1680,7 +1671,7 @@ export function NavigationMode({
             <button
               onClick={() => openExternal(PASS_SHOP_URL)}
               className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-800 shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
-              aria-label={isFr ? 'Mon titre' : 'My ticket'}
+              aria-label={tx(isFr).navigationMode.myTicket}
             >
               <TicketIcon className="h-5 w-5" />
             </button>
@@ -1700,7 +1691,7 @@ export function NavigationMode({
                 setIsFollowing(true);
               }}
               className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-800 shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
-              aria-label={isFr ? 'Recentrer' : 'Recenter'}
+              aria-label={tx(isFr).navigationMode.recenter}
             >
               <PaperAirplaneIcon className="h-5 w-5 -rotate-45" />
             </motion.button>
@@ -1731,16 +1722,12 @@ export function NavigationMode({
                 style={{ color: skin.ink }}
               >
                 {departureLabel
-                  ? isFr
-                    ? `Quitter à ${departureLabel}`
-                    : `Leave at ${departureLabel}`
-                  : isFr
-                  ? 'Partez maintenant'
-                  : 'Leave now'}
+                  ? tx(isFr).navigationMode.leaveAtDeparturelabel(departureLabel)
+                  : tx(isFr).navigationMode.leaveNow}
               </p>
               <div className="mt-1.5 flex items-baseline justify-between gap-3">
                 <p className="text-sm" style={{ color: skin.muted }}>
-                  {isFr ? 'Arrivée à' : 'Arriving at'}{' '}
+                  {tx(isFr).navigationMode.arrivingAt}{' '}
                   <span className="tabular font-semibold" style={{ color: skin.ink }}>
                     {arriveLabel}
                   </span>
@@ -1980,9 +1967,7 @@ export function NavigationMode({
                                 {empty
                                   ? ''
                                   : asClock
-                                  ? isFr
-                                    ? `dans ${mins} min`
-                                    : `in ${mins} min`
+                                  ? tx(isFr).navigationMode.inMinsMin(mins)
                                   : mins! > 1
                                   ? 'minutes'
                                   : 'minute'}
@@ -2014,7 +1999,7 @@ export function NavigationMode({
                                       : 'rgba(255,255,255,0.15)',
                                   }}
                                 >
-                                  {isFr ? 'En direct' : 'Live'}
+                                  {tx(isFr).navigationMode.live}
                                 </span>
                               ) : (
                                 !empty && (
@@ -2026,7 +2011,7 @@ export function NavigationMode({
                                         : 'rgba(255,255,255,0.15)',
                                     }}
                                   >
-                                    {isFr ? 'Planifié' : 'Scheduled'}
+                                    {tx(isFr).navigationMode.scheduled}
                                   </span>
                                 )
                               )}
@@ -2076,7 +2061,7 @@ export function NavigationMode({
                       </span>
                       {isCurrent && (
                         <span className="flex-shrink-0 rounded-full bg-black/20 px-2 py-1 text-[0.625rem] font-bold uppercase tracking-wide">
-                          {isFr ? 'À bord' : 'On board'}
+                          {tx(isFr).navigationMode.onBoard}
                         </span>
                       )}
                     </div>
@@ -2134,9 +2119,7 @@ export function NavigationMode({
                                     expanded ? 'rotate-180' : ''
                                   }`}
                                 />
-                                {isFr
-                                  ? `Encore ${stopsBefore} arrêt${stopsBefore > 1 ? 's' : ''} avant…`
-                                  : `${stopsBefore} more stop${stopsBefore > 1 ? 's' : ''}…`}
+                                {tx(isFr).navigationMode.stopsbeforeMoreStopValue(stopsBefore, stopsBefore > 1 ? 's' : '')}
                               </span>
                               <AnimatePresence initial={false}>
                                 {expanded && (
@@ -2183,18 +2166,12 @@ export function NavigationMode({
                         <span
                           className="tabular mt-2.5 inline-block rounded-full bg-black/20 px-2 py-0.5 text-[0.6875rem] font-bold"
                           title={
-                            isFr
-                              ? `D'après ${lineDelay!.sampleSize} observations de voyageurs`
-                              : `Based on ${lineDelay!.sampleSize} traveller observations`
+                            tx(isFr).navigationMode.basedOnSamplesizeTraveller(lineDelay!.sampleSize)
                           }
                         >
                           {delayMinutes > 0
-                            ? isFr
-                              ? `+${delayMinutes} min constatées`
-                              : `+${delayMinutes} min observed`
-                            : isFr
-                            ? `${Math.abs(delayMinutes)} min d'avance`
-                            : `${Math.abs(delayMinutes)} min early`}
+                            ? tx(isFr).navigationMode.delayminutesMinObserved(delayMinutes)
+                            : tx(isFr).navigationMode.absMinEarly(Math.abs(delayMinutes))}
                         </span>
                       )}
                     </div>
@@ -2214,7 +2191,7 @@ export function NavigationMode({
         >
               <div className="flex-1 overflow-y-auto px-5 pb-6">
                 <h2 className="mb-4 text-lg font-black" style={{ color: skin.ink }}>
-                  {isFr ? 'Réglages du guidage' : 'Navigation settings'}
+                  {tx(isFr).navigationMode.navigationSettings}
                 </h2>
                 {index < steps.length - 1 && (
                   <button
@@ -2226,7 +2203,7 @@ export function NavigationMode({
                     style={{ backgroundColor: skin.chip, color: skin.ink }}
                   >
                     <span className="text-sm font-bold" style={{ color: skin.ink }}>
-                      {isFr ? "Passer à l'étape suivante" : 'Skip to next step'}
+                      {tx(isFr).navigationMode.skipToNextStep}
                     </span>
                     <span className="truncate pl-3 text-xs text-slate-400">
                       {steps[index + 1]?.kind === 'transit'
@@ -2252,12 +2229,10 @@ export function NavigationMode({
                 >
                   <span className="min-w-0">
                     <span className="block text-sm font-bold" style={{ color: skin.ink }}>
-                      {isFr ? 'Avis pendant le trajet' : 'Trip alerts'}
+                      {tx(isFr).navigationMode.tripAlerts}
                     </span>
                     <span className="mt-0.5 block text-xs text-slate-400">
-                      {isFr
-                        ? 'Partez maintenant, votre bus arrive, correspondance…'
-                        : 'Leave now, your bus is arriving, transfer…'}
+                      {tx(isFr).navigationMode.leaveNowYourBus}
                     </span>
                   </span>
                   <span
@@ -2281,9 +2256,7 @@ export function NavigationMode({
                       setVoiceOn(next);
                       if (next) {
                         speak(
-                          isFr
-                            ? 'Les consignes seront annoncées à voix haute.'
-                            : 'Directions will be spoken aloud.',
+                          tx(isFr).navigationMode.directionsWillBeSpoken,
                           language
                         );
                       }
@@ -2293,12 +2266,10 @@ export function NavigationMode({
                   >
                     <span className="min-w-0">
                       <span className="block text-sm font-bold" style={{ color: skin.ink }}>
-                        {isFr ? 'Annonces à voix haute' : 'Spoken directions'}
+                        {tx(isFr).navigationMode.spokenDirections}
                       </span>
                       <span className="mt-0.5 block text-xs text-slate-400">
-                        {isFr
-                          ? '« Prenez la C1 direction Grand’place »'
-                          : '“Take the C1 toward Grand’place”'}
+                        {tx(isFr).navigationMode.takeTheC1Toward}
                       </span>
                     </span>
                     <span
@@ -2316,14 +2287,14 @@ export function NavigationMode({
                 )}
 
                 <p className="signal-label mb-1 text-slate-500">
-                  {isFr ? 'Priorité à la marche' : 'Walking priority'}
+                  {tx(isFr).navigationMode.walkingPriority}
                 </p>
                 <StepSlider
                   count={WALK_PRIORITIES.length}
                   value={walkPrefs.priorityIndex}
                   emoji={WALK_PRIORITIES[walkPrefs.priorityIndex].emoji}
                   color="#3b82f6"
-                  ariaLabel={isFr ? 'Priorité à la marche' : 'Walking priority'}
+                  ariaLabel={tx(isFr).navigationMode.walkingPriority}
                   onChange={(priorityIndex) => updateWalkPrefs({ ...walkPrefs, priorityIndex })}
                 />
                 <p className="mt-2 text-center text-sm font-bold" style={{ color: skin.ink }}>
@@ -2334,14 +2305,14 @@ export function NavigationMode({
                 </p>
 
                 <p className="signal-label mb-1 text-slate-500">
-                  {isFr ? 'Vitesse de marche' : 'Walking speed'}
+                  {tx(isFr).navigationMode.walkingSpeed}
                 </p>
                 <StepSlider
                   count={WALK_SPEEDS.length}
                   value={walkPrefs.speedIndex}
                   emoji={WALK_SPEEDS[walkPrefs.speedIndex].emoji}
                   color="#22c55e"
-                  ariaLabel={isFr ? 'Vitesse de marche' : 'Walking speed'}
+                  ariaLabel={tx(isFr).navigationMode.walkingSpeed}
                   onChange={(speedIndex) => updateWalkPrefs({ ...walkPrefs, speedIndex })}
                 />
                 <p className="mt-2 text-center text-sm font-bold text-white">
@@ -2355,9 +2326,7 @@ export function NavigationMode({
                 </p>
 
                 <p className="pb-2 text-center text-[0.6875rem] leading-snug text-slate-500">
-                  {isFr
-                    ? 'Ces réglages sont conservés sur cet appareil et servent au calcul de vos prochains itinéraires.'
-                    : 'These settings stay on this device and shape your next journeys.'}
+                  {tx(isFr).navigationMode.theseSettingsStayOn}
                 </p>
               </div>
         </MapSheet>
@@ -2403,9 +2372,7 @@ export function NavigationMode({
               <AnimatedCount value={travellersHelpedNow} />
             </motion.p>
             <p className="mt-5 max-w-sm text-[0.9375rem] leading-relaxed" style={{ color: skin.muted }}>
-              {isFr
-                ? "Voici les personnes que vous avez aidées durant votre trajet. Merci d'utiliser GreLines."
-                : 'These are the travellers you have helped during your trip. Thank you for using GreLines.'}
+              {tx(isFr).navigationMode.theseAreTheTravellers}
             </p>
           </div>
         </MapSheet>
@@ -2428,17 +2395,13 @@ export function NavigationMode({
                 onClick={e => e.stopPropagation()}
               >
                 <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-white/40">
-                  {isFr ? 'Voyage en cours' : 'Trip in progress'}
+                  {tx(isFr).navigationMode.tripInProgress}
                 </p>
                 <h3 className="mt-2 text-[1.375rem] font-black leading-tight">
-                  {isFr
-                    ? 'Voulez-vous terminer le voyage ?'
-                    : 'Do you want to end the trip?'}
+                  {tx(isFr).navigationMode.doYouWantTo}
                 </h3>
                 <p className="mt-2 text-sm leading-relaxed text-white/65">
-                  {isFr
-                    ? 'Le guidage sera arrete et vous reviendrez a la carte.'
-                    : 'Guidance will stop and you will return to the map.'}
+                  {tx(isFr).navigationMode.guidanceWillStopAnd}
                 </p>
                 <div className="mt-5">
                   <button
@@ -2449,7 +2412,7 @@ export function NavigationMode({
                     }}
                     className="w-full rounded-2xl bg-red-500 px-4 py-3 text-sm font-black text-white shadow-[0_10px_30px_rgba(239,68,68,0.28)]"
                   >
-                    {isFr ? 'Terminer le voyage' : 'End trip'}
+                    {tx(isFr).navigationMode.endTrip}
                   </button>
                 </div>
                 <button
@@ -2457,7 +2420,7 @@ export function NavigationMode({
                   onClick={() => setIsExitDialogOpen(false)}
                   className="mt-3 w-full text-center text-xs font-semibold text-white/45"
                 >
-                  {isFr ? 'Annuler' : 'Cancel'}
+                  {tx(isFr).navigationMode.cancel}
                 </button>
               </motion.div>
             </motion.div>
@@ -2482,12 +2445,12 @@ export function NavigationMode({
               type="button"
               onClick={onRestore}
               className="pointer-events-auto w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-4 text-left text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)]"
-              aria-label={isFr ? 'Rouvrir le guidage' : 'Reopen navigation'}
+              aria-label={tx(isFr).navigationMode.reopenNavigation}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-white/45">
-                    {isFr ? 'Voyage minimisé' : 'Navigation minimized'}
+                    {tx(isFr).navigationMode.navigationMinimized}
                   </p>
                   <h3 className="mt-1 truncate text-[1.125rem] font-black leading-tight">
                     {compactTitle}
@@ -2497,17 +2460,15 @@ export function NavigationMode({
                   </p>
                 </div>
                 <span className="rounded-full bg-white/8 px-3 py-1 text-[0.6875rem] font-bold text-white/80">
-                  {isFr ? 'Touchez pour rouvrir' : 'Tap to reopen'}
+                  {tx(isFr).navigationMode.tapToReopen}
                 </span>
               </div>
 
               <div className="mt-4 rounded-2xl bg-slate-900 px-3 py-3">
                 <div className="mb-2 flex items-center justify-between text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-white/45">
-                  <span>{isFr ? 'Prochaines actions' : 'Next actions'}</span>
+                  <span>{tx(isFr).navigationMode.nextActions}</span>
                   <span className="tabular-nums">
-                    {isFr
-                      ? `Étape ${Math.min(index + 1, steps.length)} / ${steps.length}`
-                      : `Step ${Math.min(index + 1, steps.length)} / ${steps.length}`}
+                    {tx(isFr).navigationMode.stepMinLength(Math.min(index + 1, steps.length), steps.length)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -2518,9 +2479,9 @@ export function NavigationMode({
                       miniStep.kind === 'transit'
                         ? (miniStep.lineShortName ?? 'Transit')
                         : miniStep.kind === 'walk'
-                        ? (isFr ? 'Marche' : 'Walk')
+                        ? (tx(isFr).navigationMode.walk2)
                         : miniStep.kind === 'arrival'
-                        ? (isFr ? 'Arrivée' : 'Arrival')
+                        ? (tx(isFr).navigationMode.arrival)
                         : miniStep.instruction;
                     const time =
                       miniStep.kind === 'transit'
@@ -2541,7 +2502,7 @@ export function NavigationMode({
                         <div className="min-w-0">
                           <div className="truncate text-sm font-bold">{label}</div>
                           <div className="text-[0.6875rem] text-white/55">
-                            {time || compactActionLabel || (isFr ? 'À venir' : 'Upcoming')}
+                            {time || compactActionLabel || (tx(isFr).navigationMode.upcoming)}
                           </div>
                         </div>
                       </div>

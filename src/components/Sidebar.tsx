@@ -2,10 +2,11 @@ import { stripHtml } from '../utils/stripHtml';
 import { DepartureCard, DepartureList, MotionTime, useExitMode, useFirstPaint, useGroupMotion } from './DepartureMotion';
 import { ScrollingText } from './ScrollingText';
 import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
+import { tx } from '../i18n';
 ﻿import { motion } from 'framer-motion';
 import type { StopDetail, Departure } from '../types';
 import { RealtimeWifi } from './RealtimeWifi';
-import { DepartureTags } from './TrainPill';
+import { DepartureStatusLabel, DepartureTags, departureTimeTone } from './TrainPill';
 import { sortLinesByPriority, tclDeparturePriority } from '../utils/lineOrder';
 import { TrafficAlertCard } from './TrafficAlertCard';
 import { CarpoolStopPanel, isCarpoolStop, isCarpoolLine } from './CarpoolStopPanel';
@@ -65,41 +66,41 @@ const getDepartureDisplay = (departure: Departure, language: 'fr' | 'en'): strin
 const getSidebarText = (language: 'fr' | 'en') => {
   const isFr = language === 'fr';
   return {
-    lines: isFr ? 'Lignes' : 'Lines',
-    filter: isFr ? 'Filtrer :' : 'Filter:',
-    showAll: isFr ? 'Afficher tout' : 'Show all',
-    exportConfiguration: isFr ? 'Exporter la configuration' : 'Export configuration',
-    exportedConfiguration: isFr ? 'Configuration exportée' : 'Exported configuration',
-    shareLink: isFr ? 'Lien de partage' : 'Share link',
-    copy: isFr ? 'Copier' : 'Copy',
-    copied: isFr ? 'Copié' : 'Copied',
-    nextDepartures: isFr ? 'Prochains départs' : 'Next departures',
-    tramway: isFr ? 'Tramway' : 'Tramway',
-    train: isFr ? 'Train' : 'Train',
-    metro: isFr ? 'Métro' : 'Metro',
+    lines: tx(isFr).sidebar.lines,
+    filter: tx(isFr).sidebar.filter,
+    showAll: tx(isFr).sidebar.showAll,
+    exportConfiguration: tx(isFr).sidebar.exportConfiguration,
+    exportedConfiguration: tx(isFr).sidebar.exportedConfiguration,
+    shareLink: tx(isFr).sidebar.shareLink,
+    copy: tx(isFr).sidebar.copy,
+    copied: tx(isFr).sidebar.copied,
+    nextDepartures: tx(isFr).sidebar.nextDepartures,
+    tramway: tx(isFr).sidebar.tramway,
+    train: tx(isFr).sidebar.train,
+    metro: tx(isFr).sidebar.metro,
     bus: 'Bus',
-    live: isFr ? 'Direct' : 'Live',
-    nextDeparture: isFr ? 'Second passage' : 'Second departure',
-    time: isFr ? 'Heure' : 'TIME',
-    occupancy: isFr ? 'Affluence' : 'OCCUPANCY',
-    realTimeData: isFr ? 'Données en temps réel' : 'Real-time data',
-    disruptedTraffic: isFr ? 'Trafic perturbé sur la ligne' : 'Disrupted traffic on line',
-    noDeparturesAvailable: isFr ? 'Aucun départ disponible' : 'No departures available',
-    detailsUnavailable: isFr ? 'Détails non disponibles' : 'Details unavailable',
-    ongoingDisruption: isFr ? 'Perturbation en cours' : 'Ongoing disruption',
-    estimatedEnd: isFr ? 'Fin estimée :' : 'Estimated end:',
-    nextLabel: isFr ? 'PROCHAIN' : 'NEXT',
-    moreDepartures: (count: number) => isFr ? `+${count} départs supplémentaires` : `+${count} more departures`,
-    calculateItinerary: isFr ? 'Calculer un itinéraire' : 'Plan a journey',
-    direction: isFr ? 'Direction' : 'Direction',
-    stopAlerts: isFr ? 'Cet arrêt est concerné' : 'Affecting this stop',
-    stopAlertsCount: (n: number) => isFr ? `${n} info${n > 1 ? 's' : ''} trafic` : `${n} alert${n > 1 ? 's' : ''}`,
-    seeMore: isFr ? 'Voir plus' : 'See more',
-    seeLess: isFr ? 'Voir moins' : 'See less',
-    planRouteFromStop: isFr ? 'Planifier un trajet depuis cet arrêt' : 'Plan a trip from this stop',
-    timetable: isFr ? 'Fiche horaire' : 'Timetable',
-    seeLine: isFr ? 'Voir la ligne' : 'View line',
-    planRoute: isFr ? 'Itinéraire' : 'Directions',
+    live: tx(isFr).sidebar.live,
+    nextDeparture: tx(isFr).sidebar.secondDeparture,
+    time: tx(isFr).sidebar.time,
+    occupancy: tx(isFr).sidebar.occupancy,
+    realTimeData: tx(isFr).sidebar.realTimeData,
+    disruptedTraffic: tx(isFr).sidebar.disruptedTrafficOnLine,
+    noDeparturesAvailable: tx(isFr).sidebar.noDeparturesAvailable,
+    detailsUnavailable: tx(isFr).sidebar.detailsUnavailable,
+    ongoingDisruption: tx(isFr).sidebar.ongoingDisruption,
+    estimatedEnd: tx(isFr).sidebar.estimatedEnd,
+    nextLabel: tx(isFr).sidebar.next,
+    moreDepartures: (count: number) => tx(isFr).sidebar.countMoreDepartures(count),
+    calculateItinerary: tx(isFr).sidebar.planAJourney,
+    direction: tx(isFr).sidebar.direction,
+    stopAlerts: tx(isFr).sidebar.affectingThisStop,
+    stopAlertsCount: (n: number) => tx(isFr).sidebar.nAlertValue(n, n > 1 ? 's' : ''),
+    seeMore: tx(isFr).sidebar.seeMore,
+    seeLess: tx(isFr).sidebar.seeLess,
+    planRouteFromStop: tx(isFr).sidebar.planATripFrom,
+    timetable: tx(isFr).sidebar.timetable,
+    seeLine: tx(isFr).sidebar.viewLine,
+    planRoute: tx(isFr).sidebar.directions,
   };
 };
 
@@ -467,8 +468,8 @@ export const Sidebar = ({
                 {stopIsAccessible && (
                   <FaWheelchair
                     className="ml-2 inline-block h-[0.7em] w-[0.7em] align-baseline text-blue-400"
-                    title={language === 'fr' ? 'Arrêt accessible en fauteuil' : 'Wheelchair accessible stop'}
-                    aria-label={language === 'fr' ? 'Arrêt accessible en fauteuil' : 'Wheelchair accessible stop'}
+                    title={tx(language === 'fr').sidebar.wheelchairAccessibleStop}
+                    aria-label={tx(language === 'fr').sidebar.wheelchairAccessibleStop}
                   />
                 )}
               </h2>
@@ -505,8 +506,8 @@ export const Sidebar = ({
                 className="w-9 h-9 flex items-center justify-center bg-slate-800 border border-slate-700 rounded-full transition hover:bg-slate-700"
                 aria-label={
                   isFav
-                    ? language === 'fr' ? 'Retirer des favoris' : 'Remove from favourites'
-                    : language === 'fr' ? 'Ajouter aux favoris' : 'Add to favourites'
+                    ? tx(language === 'fr').sidebar.removeFromFavourites
+                    : tx(language === 'fr').sidebar.addToFavourites
                 }
               >
                 {isFav
@@ -707,7 +708,8 @@ export const Sidebar = ({
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                             <div className="text-right">
-                              <MotionTime className={`text-lg font-bold ${isLastRun ? LAST_RUN_TEXT : 'text-white'}`} value={renderDepartureTime(displayTime)} valueKey={displayTime} change={cardMotion?.change ?? null} />
+                              <DepartureStatusLabel departure={departure} language={language} />
+                              <MotionTime className={`text-lg font-bold ${departureTimeTone(departure) ?? (isLastRun ? LAST_RUN_TEXT : 'text-white')}`} value={renderDepartureTime(displayTime)} valueKey={displayTime} change={cardMotion?.change ?? null} />
                               {!compactMode && (isTram || isChrono) && <OccupancyDisplay occupancy={departure.occupancy} />}
                             </div>
                             {isExpanded ? <ChevronUpIcon className="w-4 h-4 text-slate-400" /> : <ChevronDownIcon className="w-4 h-4 text-slate-400" />}
@@ -742,7 +744,8 @@ export const Sidebar = ({
                           <div className="grid grid-cols-2 gap-2">
                             <div className="bg-slate-900/70 rounded-xl p-3">
                               <p className="text-xs text-slate-400 font-medium mb-1">{text.time}</p>
-                              <p className="text-2xl font-bold text-white">{renderDepartureTime(getDepartureDisplay(second, language))}</p>
+                              <DepartureStatusLabel departure={second} language={language} />
+                              <p className={`text-2xl font-bold ${departureTimeTone(second) ?? 'text-white'}`}>{renderDepartureTime(getDepartureDisplay(second, language))}</p>
                             </div>
                             {(isTram || isChrono) && (
                               <div className="bg-slate-900/70 rounded-xl p-3">
@@ -803,8 +806,8 @@ export const Sidebar = ({
 
             {perf.devMode && currentStopDetail.lastUpdate && (
               <p className="tabular px-1 pt-4 text-center text-[0.6875rem] text-slate-500">
-                {language === 'fr' ? 'Dernière requête effectuée à ' : 'Last request at '}
-                {currentStopDetail.lastUpdate.toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-GB', {
+                {tx(language === 'fr').sidebar.lastRequestAt}
+                {currentStopDetail.lastUpdate.toLocaleTimeString(tx(language === 'fr').sidebar.locale, {
                   hour: '2-digit',
                   minute: '2-digit',
                   second: '2-digit',

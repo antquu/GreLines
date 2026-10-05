@@ -12,6 +12,7 @@ import { LineBadge } from './LineBadge';
 import { sortStopPreviewLines } from '../utils/lineOrder';
 import { useAccessibleStops } from '../hooks/useAccessibleStops';
 import { isStopAccessible } from '../services/stopAccessibility';
+import { tx } from '../i18n';
 
 interface AddressSidebarProps {
   address: AddressResult | null;
@@ -30,21 +31,19 @@ const MAX_WALK_METERS = 2000;
 const walkMinutes = (meters: number): number => Math.max(1, Math.ceil(meters / WALK_METRES_PER_MINUTE));
 
 const getText = (language: 'fr' | 'en') => ({
-  title: language === 'fr' ? 'Adresse' : 'Address',
-  subtitle: language === 'fr' ? 'Les arrêts les plus proches, à pied' : 'The nearest stops, on foot',
-  tag: language === 'fr' ? 'Adresse' : 'Address',
-  onFoot: language === 'fr' ? 'Arrêts à pied' : 'Stops on foot',
-  closest: language === 'fr' ? 'Le plus proche' : 'Closest',
-  accessible: language === 'fr' ? 'Arrêt accessible en fauteuil' : 'Wheelchair-accessible stop',
+  title: tx(language === 'fr').addressSidebar.address,
+  subtitle: tx(language === 'fr').addressSidebar.theNearestStopsOn,
+  tag: tx(language === 'fr').addressSidebar.address,
+  onFoot: tx(language === 'fr').addressSidebar.stopsOnFoot,
+  closest: tx(language === 'fr').addressSidebar.closest,
+  accessible: tx(language === 'fr').addressSidebar.wheelchairAccessibleStop,
   minute: 'min',
   stopsCount: (n: number) =>
-    language === 'fr' ? `${n} arrêt${n > 1 ? 's' : ''}` : `${n} stop${n > 1 ? 's' : ''}`,
+    tx(language === 'fr').addressSidebar.nStopValue(n, n > 1 ? 's' : ''),
   noStops:
-    language === 'fr'
-      ? 'Aucun arrêt trouvé autour de cette adresse. Déplacez le repère ou cherchez une autre adresse.'
-      : 'No stop found around this address. Move the pin or search another address.',
-  close: language === 'fr' ? 'Fermer' : 'Close',
-  goThere: language === 'fr' ? 'Y aller' : 'Go there',
+    tx(language === 'fr').addressSidebar.noStopFoundAround,
+  close: tx(language === 'fr').addressSidebar.close,
+  goThere: tx(language === 'fr').addressSidebar.goThere,
 });
 
 const MAX_BADGES = 5;

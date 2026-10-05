@@ -13,6 +13,7 @@ import {
   type OuraCard,
 } from '../services/ouraCard';
 import { IS_NANCY } from '../site';
+import { tx } from '../i18n';
 
 interface AccountScreenProps {
   isOpen: boolean;
@@ -93,7 +94,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
             <div className="min-h-0 overflow-hidden">
               <div className="mb-4 flex items-center justify-between gap-3 px-1">
                 <h2 className={`text-[1.75rem] font-extrabold leading-none ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {isFr ? 'Compte' : 'Account'}
+                  {tx(isFr).accountScreen.account}
                 </h2>
                 {!IS_NANCY && isSupabaseConfigured && !offline && (
                   <button
@@ -102,7 +103,7 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
                     className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border transition active:scale-90 ${
                       isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-800 bg-slate-900 text-slate-200'
                     }`}
-                    aria-label={isFr ? 'Ajouter une carte' : 'Add a card'}
+                    aria-label={tx(isFr).accountScreen.addACard}
                   >
                     <PlusIcon className="h-5 w-5" />
                   </button>
@@ -117,10 +118,10 @@ export function AccountScreen({ isOpen, language, theme = 'dark', settings, onCa
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                 <IoWifi className="h-12 w-12 text-white drop-shadow" aria-hidden="true" />
                 <span className="text-center text-sm font-semibold text-white drop-shadow">
-                  {isFr ? 'Pas de connexion' : 'No connection'}
+                  {tx(isFr).accountScreen.noConnection}
                 </span>
                 <span className="px-6 text-center text-xs text-white/80 drop-shadow">
-                  {isFr ? 'Vos cartes s’afficheront au retour du réseau.' : 'Your cards will show once you are back online.'}
+                  {tx(isFr).accountScreen.yourCardsWillShow}
                 </span>
               </div>
             </div>

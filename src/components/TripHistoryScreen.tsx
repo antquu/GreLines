@@ -4,6 +4,7 @@ import MapLibreMap, { Source, Layer, Marker } from 'react-map-gl/maplibre';
 import { MinimalScreen } from './MinimalScreen';
 import { isRoundLine } from './LineBadge';
 import type { AccountTrip } from '../services/account';
+import { tx } from '../i18n';
 
 function readableOn(background: string): string {
   const hex = background.replace('#', '');
@@ -80,7 +81,7 @@ export function TripHistoryScreen({
   return (
     <MinimalScreen
       isOpen={trip !== null}
-      title={trip?.destination || (isFr ? 'Trajet' : 'Trip')}
+      title={trip?.destination || (tx(isFr).tripHistoryScreen.trip)}
       isLight={isLight}
       onBack={onBack}
     >
@@ -112,24 +113,24 @@ export function TripHistoryScreen({
               </MapLibreMap>
             ) : (
               <div className={`flex h-full items-center justify-center text-sm ${tile} ${muted}`}>
-                {isFr ? 'Tracé non enregistré' : 'No route recorded'}
+                {tx(isFr).tripHistoryScreen.noRouteRecorded}
               </div>
             )}
           </div>
 
           <div className={`mt-4 rounded-2xl px-4 py-3 ${tile}`}>
             <div className="flex items-baseline justify-between gap-3">
-              <span className={`text-sm ${muted}`}>{isFr ? 'Départ' : 'Departure'}</span>
+              <span className={`text-sm ${muted}`}>{tx(isFr).tripHistoryScreen.departure}</span>
               <span className={`tabular text-sm font-bold ${ink}`}>{clock(trip.startedAt)}</span>
             </div>
             <div className="mt-1.5 flex items-baseline justify-between gap-3">
-              <span className={`text-sm ${muted}`}>{isFr ? 'Arrivée' : 'Arrival'}</span>
+              <span className={`text-sm ${muted}`}>{tx(isFr).tripHistoryScreen.arrival}</span>
               <span className={`tabular text-sm font-bold ${ink}`}>{clock(trip.endedAt)}</span>
             </div>
             {trip.travellersHelped > 0 && (
               <div className="mt-1.5 flex items-baseline justify-between gap-3">
                 <span className={`text-sm ${muted}`}>
-                  {isFr ? 'Voyageurs renseignés' : 'Travellers informed'}
+                  {tx(isFr).tripHistoryScreen.travellersInformed}
                 </span>
                 <span className="tabular text-sm font-bold text-emerald-400">
                   {trip.travellersHelped}

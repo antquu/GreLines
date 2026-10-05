@@ -1,42 +1,41 @@
+import { tx } from '../i18n';
 const STORAGE_KEY = 'greLines_walkPreferences';
 
 export const WALK_SPEEDS = [
-  { kmh: 3.0, label: (fr: boolean) => (fr ? 'Lente' : 'Slow'), emoji: '🐢' },
-  { kmh: 3.6, label: (fr: boolean) => (fr ? 'Tranquille' : 'Relaxed'), emoji: '🚶' },
-  { kmh: 4.0, label: (fr: boolean) => (fr ? 'Normale' : 'Normal'), emoji: '🥾' },
-  { kmh: 4.3, label: (fr: boolean) => (fr ? 'Dynamique' : 'Brisk'), emoji: '👞' },
-  { kmh: 5.0, label: (fr: boolean) => (fr ? 'Rapide' : 'Fast'), emoji: '🏃' },
+  { kmh: 3.0, label: (fr: boolean) => (tx(fr).walkPreferences.slow), emoji: '🐢' },
+  { kmh: 3.6, label: (fr: boolean) => (tx(fr).walkPreferences.relaxed), emoji: '🚶' },
+  { kmh: 4.0, label: (fr: boolean) => (tx(fr).walkPreferences.normal), emoji: '🥾' },
+  { kmh: 4.3, label: (fr: boolean) => (tx(fr).walkPreferences.brisk), emoji: '👞' },
+  { kmh: 5.0, label: (fr: boolean) => (tx(fr).walkPreferences.fast), emoji: '🏃' },
 ];
 
 export const WALK_PRIORITIES = [
   {
     reluctance: 9,
-    label: (fr: boolean) => (fr ? 'Le moins possible' : 'As little as possible'),
+    label: (fr: boolean) => (tx(fr).walkPreferences.asLittleAsPossible),
     hint: (fr: boolean) =>
-      fr ? 'Préférer attendre plutôt que marcher' : 'Prefer waiting over walking',
+      tx(fr).walkPreferences.preferWaitingOverWalking,
     emoji: '🚌',
   },
   {
     reluctance: 5,
-    label: (fr: boolean) => (fr ? 'Équilibrée' : 'Balanced'),
+    label: (fr: boolean) => (tx(fr).walkPreferences.balanced),
     hint: (fr: boolean) =>
-      fr ? 'Laisser le calculateur trancher' : 'Let the planner decide',
+      tx(fr).walkPreferences.letThePlannerDecide,
     emoji: '⚖️',
   },
   {
     reluctance: 3,
-    label: (fr: boolean) => (fr ? "Si c'est plus rapide" : 'If it is faster'),
+    label: (fr: boolean) => (tx(fr).walkPreferences.ifItIsFaster),
     hint: (fr: boolean) =>
-      fr
-        ? "Suggérer la marche en premier si c'est plus rapide qu'en transport"
-        : 'Suggest walking first when it beats transit',
+      tx(fr).walkPreferences.suggestWalkingFirstWhen,
     emoji: '🚶',
   },
   {
     reluctance: 1.5,
-    label: (fr: boolean) => (fr ? 'Marcher volontiers' : 'Happy to walk'),
+    label: (fr: boolean) => (tx(fr).walkPreferences.happyToWalk),
     hint: (fr: boolean) =>
-      fr ? 'Accepter de longs trajets à pied' : 'Accept long walks',
+      tx(fr).walkPreferences.acceptLongWalks,
     emoji: '🥾',
   },
 ];

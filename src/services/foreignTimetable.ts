@@ -1,5 +1,6 @@
 import type { Departure } from '../types';
 import type { Timetable, TimetableDirection } from './timetable';
+import { idbGet, idbSet } from './persistentCache';
 
 const ficheBase = (network: string) =>
   network === 'TCL' ? '/data/tcl-fiches' : network && /^[A-Z0-9]+$/.test(network) ? `/data/networks/${network}/fiches` : null;
@@ -59,13 +60,37 @@ export function getForeignTimetable(lineId: string, stopId?: string | null, stop
 
 const fiches = new Map<string, Promise<Fiche | null>>();
 
+const SNCF_FICHE_KEY = 'sncfFiche_v1_';
+const SNCF_FICHE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+
+const downloadFiche = (network: string, code: string): Promise<Fiche | null> =>
+  fetch(ficheUrl(network, code))
+    .then(response => (response.ok && (response.headers.get('content-type') ?? '').includes('json') ? response.json() as Promise<Fiche> : null))
+    .catch(() => null);
+
+async function loadSncfFiche(code: string): Promise<Fiche | null> {
+  const key = `${SNCF_FICHE_KEY}${code}`;
+  const fresh = await downloadFiche('SNC', code);
+  if (fresh) {
+    void idbSet(key, fresh, SNCF_FICHE_TTL_MS).catch(() => {});
+    return fresh;
+  }
+  const stored = await idbGet<Fiche>(key, { allowStale: true }).catch(() => null);
+  return stored?.value ?? null;
+}
+
+export async function keepSncfFicheOffline(lineId: string): Promise<void> {
+  const { network, code } = splitLineId(lineId);
+  if (network !== 'SNC') return;
+  const stored = await idbGet<Fiche>(`${SNCF_FICHE_KEY}${code}`).catch(() => null);
+  if (!stored) await getLineFiche(lineId);
+}
+
 export function getLineFiche(lineId: string): Promise<Fiche | null> {
   const { network, code } = splitLineId(lineId);
   if (network !== 'SNC' && !ficheBase(network)) return Promise.resolve(null);
   if (!fiches.has(lineId)) {
-    const pending = fetch(ficheUrl(network, code))
-      .then(response => (response.ok && (response.headers.get('content-type') ?? '').includes('json') ? response.json() as Promise<Fiche> : null))
-      .catch(() => null);
+    const pending = network === 'SNC' ? loadSncfFiche(code) : downloadFiche(network, code);
     fiches.set(lineId, pending);
     pending.then(fiche => { if (!fiche) fiches.delete(lineId); });
   }
@@ -115,7 +140,7 @@ async function loadFiche(lineId: string, day: Date): Promise<Timetable | null> {
 type TrainCall = { id: string; name: string; at: number };
 type TrainRun = { calls: TrainCall[]; label: string };
 
-function trainDirections(lineId: string, fiche: Fiche, bit: number): Timetable | null {
+export function trainDirections(lineId: string, fiche: Fiche, bit: number): Timetable | null {
   const seen = new Set<string>();
   const runs: TrainRun[] = [];
   for (const direction of fiche.directions) {

@@ -11,6 +11,7 @@ import {
   prefetchFullImages,
   type PlaceImageSet,
 } from '../services/placeImages';
+import { tx } from '../i18n';
 
 export function PlacesCarousel({
   language,
@@ -174,7 +175,7 @@ function PlaceViewer({
       <button
         type="button"
         onClick={detailsOpen ? () => setDetailsOpen(false) : onClose}
-        aria-label={fr ? 'Fermer' : 'Close'}
+        aria-label={tx(fr).placesCarousel.close}
         className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white/90 transition active:scale-90"
       >
         <XMarkIcon className="h-6 w-6 text-slate-900" />
@@ -238,7 +239,7 @@ function PlaceViewer({
           <button
             type="button"
             onClick={() => setDetailsOpen(true)}
-            aria-label={fr ? 'Voir les informations' : 'Show the details'}
+            aria-label={tx(fr).placesCarousel.showTheDetails}
             className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white transition active:scale-90"
           >
             <ChevronUpIcon className="h-8 w-8 text-slate-900" />
@@ -296,7 +297,7 @@ function PlaceViewer({
 
           <div className="mt-12">
           <p className="text-[0.8125rem] leading-relaxed text-white/40">
-            {fr ? 'Photo : ' : 'Photo: '}
+            {tx(fr).placesCarousel.photo}
             {place.credit.author},{' '}
             <a
               href={place.credit.licenseUrl}
@@ -328,7 +329,7 @@ function PlaceViewer({
                 className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-blue-600 text-[1.0625rem] font-bold text-white transition active:scale-[0.98]"
               >
                 <MapPinIcon className="h-5 w-5" />
-                {fr ? 'Y aller' : 'Take me there'}
+                {tx(fr).placesCarousel.takeMeThere}
               </button>
             </div>
           </div>

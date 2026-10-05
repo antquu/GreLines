@@ -5,6 +5,7 @@ import { submitTripSurvey, submitStopSurvey, type TripSurveyLeg } from '../servi
 import { publishSignal, type SignalKind, type SignalValue } from '../services/crowdSignals';
 import { getSurveyConsent } from './TripSurvey';
 import { notifyTripMoment, speak } from '../services/tripNotifications';
+import { tx } from '../i18n';
 
 
 const CHOICE_KEY = 'greLines_surveyMoreQuestions';
@@ -32,9 +33,9 @@ function writeAppetite(choice: Appetite, scope: string) {
 }
 
 const ANSWERS = [
-  { value: 1, slot: 0, label: (fr: boolean) => (fr ? 'Mauvais' : 'Poor') },
-  { value: 3, slot: 1, label: (fr: boolean) => (fr ? 'Moyen' : 'Okay') },
-  { value: 5, slot: 2, label: (fr: boolean) => (fr ? 'Bien' : 'Good') },
+  { value: 1, slot: 0, label: (fr: boolean) => (tx(fr).tripQuestions.poor) },
+  { value: 3, slot: 1, label: (fr: boolean) => (tx(fr).tripQuestions.okay) },
+  { value: 5, slot: 2, label: (fr: boolean) => (tx(fr).tripQuestions.good) },
 ];
 
 interface Question {
@@ -48,54 +49,54 @@ interface Question {
 const VEHICLE_QUESTIONS = (fr: boolean): Question[] => [
   {
     key: 'crowding',
-    question: fr ? 'Reste-t-il de la place à bord ?' : 'Any room left on board?',
+    question: tx(fr).tripQuestions.anyRoomLeftOn,
     emojis: ['🥵', '🧍', '💺'],
-    labels: fr ? ['Bondé', 'Debout', 'Assis'] : ['Packed', 'Standing', 'Seats free'],
+    labels: tx(fr).tripQuestions.packed,
     signal: 'crowding',
   },
   {
     key: 'punctuality',
-    question: fr ? 'Ce véhicule est-il à l’heure ?' : 'Is this vehicle on time?',
+    question: tx(fr).tripQuestions.isThisVehicleOn,
     emojis: ['🐢', '⏱️', '✅'],
-    labels: fr ? ['En retard', 'Un peu', 'À l’heure'] : ['Late', 'A bit', 'On time'],
+    labels: tx(fr).tripQuestions.late,
     signal: 'delay',
   },
   {
     key: 'cleanliness',
-    question: fr ? 'Le véhicule est-il propre ?' : 'Is the vehicle clean?',
+    question: tx(fr).tripQuestions.isTheVehicleClean,
     emojis: ['💩', '🧻', '✨'],
   },
   {
     key: 'accessibility',
-    question: fr ? 'La rampe et le plancher bas fonctionnent-ils ?' : 'Do the ramp and low floor work?',
+    question: tx(fr).tripQuestions.doTheRampAnd,
     emojis: ['🚫', '😬', '♿'],
-    labels: fr ? ['Hors service', 'Difficile', 'Praticable'] : ['Broken', 'Awkward', 'Works'],
+    labels: tx(fr).tripQuestions.broken,
     signal: 'access',
   },
   {
     key: 'comfort',
-    question: fr ? 'Le trajet est-il confortable ?' : 'Is the ride comfortable?',
+    question: tx(fr).tripQuestions.isTheRideComfortable,
     emojis: ['🤢', '😐', '😌'],
   },
   {
     key: 'temperature',
-    question: fr ? 'La température est-elle supportable ?' : 'Is the temperature bearable?',
+    question: tx(fr).tripQuestions.isTheTemperatureBearable,
     emojis: ['🥶', '😐', '👌'],
   },
   {
     key: 'onboardInfo',
-    question: fr ? 'Les annonces et écrans marchent-ils ?' : 'Do announcements and screens work?',
+    question: tx(fr).tripQuestions.doAnnouncementsAndScreens,
     emojis: ['🙈', '😐', '📣'],
-    labels: fr ? ['Rien', 'Partiel', 'Clair'] : ['Nothing', 'Partial', 'Clear'],
+    labels: tx(fr).tripQuestions.nothing,
   },
   {
     key: 'quiet',
-    question: fr ? 'Le trajet est-il calme ?' : 'Is the ride quiet?',
+    question: tx(fr).tripQuestions.isTheRideQuiet,
     emojis: ['🔊', '😐', '🤫'],
   },
   {
     key: 'feelsSafeOnboard',
-    question: fr ? 'Vous sentez-vous à l’aise à bord ?' : 'Do you feel at ease on board?',
+    question: tx(fr).tripQuestions.doYouFeelAt,
     emojis: ['😟', '😐', '🙂'],
   },
 ];
@@ -103,54 +104,54 @@ const VEHICLE_QUESTIONS = (fr: boolean): Question[] => [
 const STOP_QUESTIONS = (fr: boolean): Question[] => [
   {
     key: 'ghost',
-    question: fr ? 'Le passage annoncé est-il bien passé ?' : 'Did the announced run actually show up?',
+    question: tx(fr).tripQuestions.didTheAnnouncedRun,
     emojis: ['👻', '🐢', '✅'],
-    labels: fr ? ['Jamais venu', 'En retard', 'Bien passé'] : ['Never came', 'Late', 'Showed up'],
+    labels: tx(fr).tripQuestions.neverCame,
     signal: 'ghost',
   },
   {
     key: 'waitingCrowd',
-    question: fr ? 'Combien de monde attend ici ?' : 'How many people are waiting here?',
+    question: tx(fr).tripQuestions.howManyPeopleAre,
     emojis: ['👨‍👩‍👧‍👦', '🧍', '🙋'],
-    labels: fr ? ['La foule', 'Quelques-uns', 'Presque personne'] : ['A crowd', 'A few', 'Almost nobody'],
+    labels: tx(fr).tripQuestions.aCrowd,
     signal: 'crowding',
   },
   {
     key: 'displayReadable',
-    question: fr ? "L'affichage des horaires est-il lisible ?" : 'Is the departure display readable?',
+    question: tx(fr).tripQuestions.isTheDepartureDisplay,
     emojis: ['🚫', '🔍', '📟'],
   },
   {
     key: 'stopAccess',
-    question: fr ? "L'accès au quai est-il praticable ?" : 'Is the platform reachable?',
+    question: tx(fr).tripQuestions.isThePlatformReachable,
     emojis: ['🚧', '😬', '♿'],
-    labels: fr ? ['Bloqué', 'Difficile', 'Praticable'] : ['Blocked', 'Awkward', 'Fine'],
+    labels: tx(fr).tripQuestions.blocked,
     signal: 'access',
   },
   {
     key: 'shelterCondition',
-    question: fr ? "L'abri et le mobilier sont-ils en bon état ?" : 'Is the shelter in good shape?',
+    question: tx(fr).tripQuestions.isTheShelterIn,
     emojis: ['🧹', '🪑', '✨'],
   },
   {
     key: 'feelsSafe',
-    question: fr ? 'Vous sentez-vous à l’aise à cet arrêt ?' : 'Do you feel at ease at this stop?',
+    question: tx(fr).tripQuestions.doYouFeelAt2,
     emojis: ['😟', '😐', '🙂'],
   },
   {
     key: 'lighting',
-    question: fr ? "L'éclairage est-il suffisant ?" : 'Is the lighting good enough?',
+    question: tx(fr).tripQuestions.isTheLightingGood,
     emojis: ['🌑', '🔅', '💡'],
   },
   {
     key: 'seating',
-    question: fr ? 'Y a-t-il de quoi s’asseoir ?' : 'Is there anywhere to sit?',
+    question: tx(fr).tripQuestions.isThereAnywhereTo,
     emojis: ['🚫', '🪑', '🛋️'],
-    labels: fr ? ['Rien', 'Une assise', 'De la place'] : ['Nothing', 'One perch', 'Plenty'],
+    labels: tx(fr).tripQuestions.nothing2,
   },
   {
     key: 'stopCleanliness',
-    question: fr ? 'Le quai est-il propre ?' : 'Is the platform clean?',
+    question: tx(fr).tripQuestions.isThePlatformClean,
     emojis: ['💩', '🧻', '✨'],
   },
 ];
@@ -218,12 +219,8 @@ export function TripQuestions({
 
   const subjectLabel =
     subject === 'stop'
-      ? isFr
-        ? 'cet arrêt'
-        : 'this stop'
-      : isFr
-      ? 'ce trajet'
-      : 'this trip';
+      ? tx(isFr).tripQuestions.thisStop
+      : tx(isFr).tripQuestions.thisTrip;
 
   useEffect(() => {
     if (!open || step !== 0 || asked !== 0) return;
@@ -234,12 +231,8 @@ export function TripQuestions({
     if (!open) return;
     const line = done
       ? exhausted
-        ? isFr
-          ? 'Merci, c’est tout pour cet arrêt.'
-          : 'Thanks, that’s everything here.'
-        : isFr
-        ? `Encore des questions sur ${subjectLabel} ?`
-        : `More questions about ${subjectLabel}?`
+        ? tx(isFr).tripQuestions.thanksThatSEverything
+        : tx(isFr).tripQuestions.moreQuestionsAboutSubjectlabel(subjectLabel)
       : round[step]?.question;
     if (line) speak(line, language);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -340,23 +333,17 @@ export function TripQuestions({
               <div>
                 <p className="mb-2.5 text-sm font-bold leading-snug text-white">
                   {thanked
-                    ? isFr
-                      ? 'Merci, on continue.'
-                      : 'Thanks, let’s continue.'
+                    ? tx(isFr).tripQuestions.thanksLetSContinue
                     : exhausted
-                    ? isFr
-                      ? 'Merci — on a fait le tour.'
-                      : 'Thanks — that’s everything.'
-                    : isFr
-                    ? `Encore des questions sur ${subjectLabel} ?`
-                    : `More questions about ${subjectLabel}?`}
+                    ? tx(isFr).tripQuestions.thanksThatSEverything2
+                    : tx(isFr).tripQuestions.moreQuestionsAboutSubjectlabel(subjectLabel)}
                 </p>
                 {!thanked && !exhausted && (
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { choice: 'no' as const, emoji: '🙅', label: isFr ? 'Non merci' : 'No thanks' },
-                      { choice: 'later' as const, emoji: '⏳', label: isFr ? 'Plus tard' : 'Later' },
-                      { choice: 'yes' as const, emoji: '🙋', label: isFr ? 'Continuer' : 'Continue' },
+                      { choice: 'no' as const, emoji: '🙅', label: tx(isFr).tripQuestions.noThanks },
+                      { choice: 'later' as const, emoji: '⏳', label: tx(isFr).tripQuestions.later },
+                      { choice: 'yes' as const, emoji: '🙋', label: tx(isFr).tripQuestions.continue },
                     ].map((door) => (
                       <button
                         key={door.choice}
@@ -381,7 +368,7 @@ export function TripQuestions({
                   <button
                     onClick={() => setDismissed(true)}
                     className="-mt-0.5 flex-shrink-0 rounded-full p-1 text-slate-500 active:text-white"
-                    aria-label={isFr ? 'Masquer' : 'Dismiss'}
+                    aria-label={tx(isFr).tripQuestions.dismiss}
                   >
                     <XMarkIcon className="h-4 w-4" />
                   </button>

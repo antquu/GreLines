@@ -5,6 +5,7 @@ import { IS_NANCY } from '../site';
 import { locateByIp } from '../services/ipLocation';
 import { haversineMeters } from '../utils/geo';
 import { onDevCommand } from '../utils/devCommands';
+import { tx } from '../i18n';
 
 const NANCY_CENTER = { lat: 48.6921, lon: 6.1844 };
 const AREA_RADIUS_METERS = 35_000;
@@ -78,24 +79,20 @@ export function NancyAreaPrompt({
     <div className={`px-6 ${isMobile ? 'pt-7' : 'pt-7 pb-8'}`}>
       <MapPinIcon className="h-12 w-12" style={{ color: ink }} aria-hidden="true" />
       <p role="heading" aria-level={2} className="pt-6 text-[1.625rem] font-medium leading-[1.15]" style={{ color: ink }}>
-        {isFr ? 'Vous n’êtes pas à Nancy ?' : 'Not in Nancy?'}
+        {tx(isFr).nancyAreaPrompt.notInNancy}
       </p>
       <p className="pt-3 text-[1.0625rem] leading-snug" style={{ color: soft }}>
-        {isFr
-          ? 'Vous êtes sur GreLines Nancy, mais vous semblez être en dehors de la zone desservie par le réseau Stan.'
-          : 'You are on GreLines Nancy, but you seem to be outside the area served by the Stan network.'}
+        {tx(isFr).nancyAreaPrompt.youAreOnGrelines}
       </p>
       <p className="pt-3 text-[1.0625rem] leading-snug" style={{ color: soft }}>
-        {isFr
-          ? 'GreLines vous suit aussi à Grenoble, Lyon, Saint-Étienne, Clermont-Ferrand, Annecy et dans bien d’autres villes.'
-          : 'GreLines also covers Grenoble, Lyon, Saint-Étienne, Clermont-Ferrand, Annecy and many other cities.'}
+        {tx(isFr).nancyAreaPrompt.grelinesAlsoCoversGrenoble}
       </p>
       <a
         href={GRELINES_URL}
         className="mt-8 block w-full rounded-2xl py-4 text-center text-[1.0625rem] font-semibold transition active:scale-[0.98]"
         style={isLight ? { backgroundColor: '#000000', color: '#ffffff' } : { backgroundColor: '#ffffff', color: '#000000' }}
       >
-        {isFr ? 'Continuer sur grelines.fr' : 'Continue on grelines.fr'}
+        {tx(isFr).nancyAreaPrompt.continueOnGrelinesFr}
       </a>
       <button
         type="button"
@@ -103,7 +100,7 @@ export function NancyAreaPrompt({
         className="mt-3 w-full py-1 text-[0.875rem] underline-offset-4 transition hover:underline active:opacity-70"
         style={{ color: faint }}
       >
-        {isFr ? 'Rester sur GreLines Nancy' : 'Stay on GreLines Nancy'}
+        {tx(isFr).nancyAreaPrompt.stayOnGrelinesNancy}
       </button>
     </div>
   );

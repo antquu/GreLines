@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowDownTrayIcon } from '@heroicons/react/24/solid';
 import { LineBadge } from './LineBadge';
 import { idbGet, idbSet } from '../services/persistentCache';
+import { tx } from '../i18n';
 
 interface LineMapViewerProps {
   isOpen: boolean;
@@ -55,17 +56,15 @@ type RasterCache = { pages: PlanPage[] };
 const getText = (language: 'fr' | 'en') => {
   const fr = language === 'fr';
   return {
-    title: fr ? 'Plan de la ligne' : 'Line map',
-    close: fr ? 'Fermer' : 'Close',
-    zoomIn: fr ? 'Agrandir' : 'Zoom in',
-    zoomOut: fr ? 'Réduire' : 'Zoom out',
-    reset: fr ? 'Ajuster' : 'Fit',
-    download: fr ? 'Télécharger' : 'Download',
-    loading: fr ? 'Chargement du plan…' : 'Loading map…',
-    failed: fr
-      ? 'Le plan n’a pas pu être chargé. Il est peut-être indisponible pour cette ligne.'
-      : 'The map could not be loaded. It may be unavailable for this line.',
-    hint: fr ? 'Pincez pour zoomer' : 'Pinch to zoom',
+    title: tx(fr).lineMapViewer.lineMap,
+    close: tx(fr).lineMapViewer.close,
+    zoomIn: tx(fr).lineMapViewer.zoomIn,
+    zoomOut: tx(fr).lineMapViewer.zoomOut,
+    reset: tx(fr).lineMapViewer.fit,
+    download: tx(fr).lineMapViewer.download,
+    loading: tx(fr).lineMapViewer.loadingMap,
+    failed: tx(fr).lineMapViewer.theMapCouldNot,
+    hint: tx(fr).lineMapViewer.pinchToZoom,
   };
 };
 
