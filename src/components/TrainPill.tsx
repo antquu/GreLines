@@ -1,13 +1,13 @@
 import type { Departure } from '../types';
-import { SNCF_TER_COLOR } from '../utils/lineColors';
+import { SNCF_BRAND_COLORS, SNCF_TER_COLOR } from '../utils/lineColors';
 import { TheoreticalPill } from './TheoreticalPill';
 
 const KIND_STYLES: Record<string, { label: string; background: string }> = {
   TER: { label: 'TER', background: SNCF_TER_COLOR },
-  TGV: { label: 'TGV INOUI', background: '#9B2743' },
-  IC: { label: 'Intercités', background: '#1F3A93' },
+  TGV: { label: 'TGV INOUI', background: SNCF_BRAND_COLORS.TGV },
+  IC: { label: 'Intercités', background: SNCF_BRAND_COLORS.IC },
   LEX: { label: 'Léman Express', background: '#C8102E' },
-  OUIGO: { label: 'OUIGO', background: '#E3006A' },
+  OUIGO: { label: 'OUIGO', background: SNCF_BRAND_COLORS.OUIGO },
 };
 
 export function TrainPill({ number, kind, language }: { number: string; kind?: string; language: 'fr' | 'en' }) {

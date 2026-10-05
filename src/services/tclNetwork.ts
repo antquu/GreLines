@@ -185,8 +185,7 @@ export async function getTclLinesForStop(stopId: string): Promise<Line[]> {
 }
 
 export async function getTclStopDetail(stopId: string): Promise<StopDetail | null> {
-  const { withTrainsNearby } = await import('./sncfNetwork');
-  return withTrainsNearby(await loadTclStopDetail(stopId));
+  return loadTclStopDetail(stopId);
 }
 
 async function loadTclStopDetail(stopId: string): Promise<StopDetail | null> {

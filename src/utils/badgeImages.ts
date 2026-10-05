@@ -7,6 +7,7 @@ export const tclTabImageUrl = (code: string) => `/assets/lignes/${encodeURICompo
 const BADGE_IMAGE_URLS = [
   '/assets/ter.png',
   '/assets/ouigo.svg',
+  '/assets/sncf-reseau.svg',
   '/assets/bus_relais.svg',
   '/assets/flixbus.png',
   '/assets/blablabus.png',

@@ -16,7 +16,8 @@ import type { LineGeometry, ServedStopPoint } from '../services/lineShapes';
 import { stopIsNearAny, snapStopToLines } from '../services/lineShapes';
 import { getCachedStopLines, getStopLines } from '../services/api';
 import { getGtfsLinesForStopSync } from '../services/gtfsNetwork';
-import { isSncfStopId, sncfDisruptedLinesNear, sncfLinesNear } from '../services/sncfNetwork';
+import { isSncfStopId } from '../services/sncfNetwork';
+import { badgeImage } from '../utils/badgeImages';
 import { consumeLocationPick } from '../utils/devLocation';
 import { resolveLineBackgroundColor } from '../utils/lineColors';
 import type { JourneyBadge } from '../utils/journeyGeometry';
@@ -639,38 +640,6 @@ const MapComponentBase = (
     const toStart = Math.min(BADGE_CONCURRENCY - badgeWorkersRef.current, missing.length);
     for (let i = 0; i < toStart; i += 1) void worker();
   }, [badgeCandidateIds]);
-
-  const sncfCheckedRef = useRef(new Set<string>());
-  useEffect(() => {
-    if (IS_NANCY) return;
-    const byId = new globalThis.Map(visibleStops.map(stop => [stop.id, stop]));
-    const targets = Object.keys(stopLinesById)
-      .filter(id => !sncfCheckedRef.current.has(id) && !isSncfStopId(id))
-      .map(id => byId.get(id))
-      .filter((stop): stop is Stop => Boolean(stop));
-    if (targets.length === 0) return;
-    targets.forEach(stop => sncfCheckedRef.current.add(stop.id));
-    void Promise.all(targets.map(async stop => {
-      const lines = await sncfLinesNear(stop).catch(() => [] as Line[]);
-      if (lines.length === 0) return [stop.id, lines] as const;
-      const disrupted = await sncfDisruptedLinesNear(stop).catch(() => new Set<string>());
-      return [stop.id, lines.map(line => (disrupted.has(line.id) ? { ...line, hasTraffic: true } : line))] as const;
-    }))
-      .then(results => {
-        const found = results.filter(([, lines]) => lines.length > 0);
-        if (found.length === 0) return;
-        setStopLinesById(prev => {
-          const next = { ...prev };
-          for (const [id, lines] of found) {
-            const current = next[id] ?? [];
-            const known = new Set(current.map(line => line.id));
-            const added = lines.filter(line => !known.has(line.id));
-            if (added.length > 0) next[id] = [...current, ...added];
-          }
-          return next;
-        });
-      });
-  }, [stopLinesById, visibleStops]);
 
   const renderStopLineBadges = useCallback((stopId: string) => {
     if (!perf.stopLineBadges) return null;
@@ -1819,6 +1788,9 @@ const MapComponentBase = (
               }}
             >
               <span className="inline-flex items-center gap-1.5">
+                {isSncfStopId(stop.id) && (
+                  <img src={badgeImage('/assets/sncf-reseau.svg')} alt="SNCF" className="h-[1.25em] w-auto flex-shrink-0" />
+                )}
                 <span>
                   {stop.name}
                   {accessible && !accessibilityMode && (

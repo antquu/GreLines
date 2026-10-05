@@ -60,6 +60,12 @@ export const isGrenobleNetworkLine = (value?: string | null): boolean => {
 
 export const SNCF_TER_COLOR = '#00337F';
 
+export const SNCF_BRAND_COLORS: Record<string, string> = {
+  TGV: '#9B2743',
+  OUIGO: '#E3006A',
+  IC: '#1F3A93',
+};
+
 export const isSncfLine = (value?: string | null): boolean => {
   const raw = String(value ?? '').trim().toUpperCase();
   if (raw.length < 4) return false;

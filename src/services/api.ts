@@ -23,7 +23,7 @@ import {
 import { isInGrenobleArea, planTransitousOtp } from './transitous';
 import { haversineMeters } from '../utils/geo';
 import { applySncfToItineraries } from './sncfLive';
-import { getSncfStopDetail, withNearbySncf } from './sncfNetwork';
+import { getSncfStationLines, getSncfStopDetail } from './sncfNetwork';
 
 const TAG_API_BASE = 'https://data.mobilites-m.fr/api/routers/default';
 
@@ -1619,6 +1619,7 @@ export async function getStopLines(stopId: string): Promise<Line[]> {
     const { getGtfsLinesForStop } = await import('./gtfsNetwork');
     return getGtfsLinesForStop(stopId);
   }
+  if (providerOf(stopId)?.id === 'sncf') return getSncfStationLines(stopId);
 
   const cached = getStopLinesCacheEntry(stopId);
   if (cached && cached.data.length > 0) return cached.data;
@@ -1739,12 +1740,12 @@ export async function getStopDetail(stopId: string, prefixes: string[] = activeM
       getStopLines(stop.id),
       getDepartures(stop.id),
     ]);
-    return await withNearbySncf({
+    return {
       ...stop,
       lines,
       departures,
       lastUpdate: new Date(),
-    });
+    };
   } catch (err) {    return null;
   }
 }
@@ -1765,12 +1766,11 @@ export async function refreshStopDepartures(stopDetail: StopDetail): Promise<Sto
   try {
     const departures = await getDepartures(stopDetail.id, true);
 
-    return await withNearbySncf({
+    return {
       ...stopDetail,
-      lines: stopDetail.lines.filter(line => providerOf(line.routeId || line.id)?.id !== 'sncf'),
       departures,
       lastUpdate: new Date(),
-    });
+    };
   } catch (err) {    return stopDetail;
   }
 }

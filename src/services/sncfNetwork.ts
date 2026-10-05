@@ -1,10 +1,8 @@
 import type { Departure, Line, Stop, StopDetail, TrafficDetail } from '../types';
-import { SNCF_TER_COLOR } from '../utils/lineColors';
-import { haversineMeters } from '../utils/geo';
+import { SNCF_BRAND_COLORS, SNCF_TER_COLOR } from '../utils/lineColors';
 import { idbGet, idbSet } from './persistentCache';
 import { rerLine } from '../utils/rer';
 import { appLanguage } from '../utils/appLanguage';
-import { IS_NANCY } from '../site';
 
 export interface SncfLineEntry {
   id: string;
@@ -72,7 +70,8 @@ const readableText = (hex: string) => {
 export function sncfLineStyle(id: string): { backgroundColor: string; color: string } {
   const rer = rerLine(id);
   if (rer) return rer.style;
-  const color = lineColors.get(String(id).replace(SNCF_PREFIX, ''));
+  const code = String(id).replace(SNCF_PREFIX, '');
+  const color = lineColors.get(code) ?? SNCF_BRAND_COLORS[code];
   return color ? { backgroundColor: color, color: readableText(color) } : { backgroundColor: SNCF_TER_COLOR, color: '#FFFFFF' };
 }
 const passages = new Map<string, { at: number; value: Promise<SncfPassage[] | null> }>();
@@ -160,7 +159,6 @@ export async function sncfStopsOfLine(lineId: string): Promise<Stop[]> {
     .map(station => ({ id: sncfStopId(station.uic), name: station.name, lat: station.lat, lon: station.lon, city: station.city ?? undefined }));
 }
 
-const NAME_MATCH_RADIUS_METERS = 2500;
 
 const GENERIC_WORDS = new Set(['gare', 'sncf', 'station', 'routiere']);
 
@@ -172,16 +170,6 @@ export function sameStationName(stopName: string, stationName: string): boolean 
   if (wanted.length === 0) return false;
   const available = new Set(significantWords(stationName));
   return wanted.every(word => available.has(word));
-}
-
-export function isMergedStation(station: { name: string; lat: number; lon: number }, stop: { name: string; lat: number; lon: number }, radiusMeters = 250): boolean {
-  const distance = haversineMeters(stop.lat, stop.lon, station.lat, station.lon);
-  return distance <= radiusMeters || (distance <= NAME_MATCH_RADIUS_METERS && sameStationName(stop.name, station.name));
-}
-
-export async function sncfStationsNear(lat: number, lon: number, radiusMeters: number, name?: string): Promise<SncfStationEntry[]> {
-  const data = await loadSncfCatalog();
-  return (data?.stations ?? []).filter(station => isMergedStation(station, { name: name ?? '', lat, lon }, radiusMeters));
 }
 
 const stationOf = (data: SncfCatalog | null, uic: string) =>
@@ -281,6 +269,18 @@ function alertDetail(entry: SncfPassage, code: string): TrafficDetail {
   };
 }
 
+export async function getSncfStationLines(stopId: string): Promise<Line[]> {
+  const uic = uicOfStop(stopId);
+  if (!uic) return [];
+  const data = await loadSncfCatalog();
+  const station = stationOf(data, uic);
+  const byCode = new Map((data?.lines ?? []).map(entry => [entry.id, entry]));
+  return (station?.lines ?? [])
+    .map(code => byCode.get(code))
+    .filter((entry): entry is SncfLineEntry => Boolean(entry))
+    .map(toLine);
+}
+
 export async function getSncfStopDetail(stopId: string): Promise<StopDetail | null> {
   const uic = uicOfStop(stopId);
   if (!uic) return null;
@@ -298,25 +298,6 @@ export async function getSncfStopDetail(stopId: string): Promise<StopDetail | nu
     departures,
     lastUpdate: new Date(),
   };
-}
-
-export async function withNearbySncf(detail: StopDetail, radiusMeters = 250): Promise<StopDetail> {
-  const near = await sncfStationsNear(detail.lat, detail.lon, radiusMeters, detail.name);
-  if (near.length === 0) return detail;
-  const extras = await Promise.all(near.map(station => sncfDeparturesAt(station.uic)));
-  const lineIds = new Set(detail.lines.map(line => line.id));
-  const lines = [...detail.lines];
-  for (const extra of extras) {
-    for (const line of extra.lines) {
-      if (!lineIds.has(line.id)) {
-        lineIds.add(line.id);
-        lines.push(line);
-      }
-    }
-  }
-  const departures = [...detail.departures, ...extras.flatMap(extra => extra.departures)]
-    .sort((a, b) => a.departureTime - b.departureTime);
-  return { ...detail, lines, departures };
 }
 
 const TRACE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -413,34 +394,4 @@ export async function sncfStationsLinkedTo<T extends { id: string }>(anchors: T[
   const linksOf = new Map(data.stations.map(station => [sncfStopId(station.uic), station.links ?? []]));
   const wanted = new Set(anchors.flatMap(anchor => linksOf.get(anchor.id) ?? []));
   return candidates.filter(candidate => (linksOf.get(candidate.id) ?? []).some(link => wanted.has(link)));
-}
-
-export async function withTrainsNearby(detail: StopDetail | null): Promise<StopDetail | null> {
-  if (!detail || IS_NANCY) return detail;
-  const { getActiveNetworks } = await import('./api');
-  if (!getActiveNetworks().includes('SNC')) return detail;
-  return withNearbySncf(detail).catch(() => detail);
-}
-
-export async function sncfLinesNear(stop: { lat: number; lon: number; name: string }, radiusMeters = 250): Promise<Line[]> {
-  if (IS_NANCY) return [];
-  const { getActiveNetworks } = await import('./api');
-  if (!getActiveNetworks().includes('SNC')) return [];
-  const data = await loadSncfCatalog();
-  const near = await sncfStationsNear(stop.lat, stop.lon, radiusMeters, stop.name);
-  const byCode = new Map((data?.lines ?? []).map(entry => [entry.id, entry]));
-  return [...new Set(near.flatMap(station => station.lines))]
-    .map(code => byCode.get(code))
-    .filter((entry): entry is SncfLineEntry => Boolean(entry))
-    .map(toLine);
-}
-
-export async function sncfDisruptedLinesNear(stop: { lat: number; lon: number; name: string }, radiusMeters = 250): Promise<Set<string>> {
-  if (IS_NANCY) return new Set();
-  const near = await sncfStationsNear(stop.lat, stop.lon, radiusMeters, stop.name);
-  const lists = await Promise.all(near.flatMap(station => [station.uic, ...(station.also ?? [])]).map(getPassages));
-  const now = Date.now();
-  return new Set(lists.flatMap(list => list ?? [])
-    .filter(item => item.alert && item.real >= now - 30_000)
-    .map(item => sncfLineId(item.line)));
 }

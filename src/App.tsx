@@ -37,7 +37,7 @@ import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
 import { NancyAreaPrompt } from './components/NancyAreaPrompt';
 import { UnservedAreaPrompt } from './components/UnservedAreaPrompt';
-import { getSncfLines, getSncfStopDetail, getSncfStops, isMergedStation, isSncfStopId, sncfLinesNear, sncfStationsLinkedTo, withNearbySncf } from './services/sncfNetwork';
+import { getSncfLines, getSncfStopDetail, getSncfStops, isSncfStopId, sncfStationsLinkedTo } from './services/sncfNetwork';
 import { DepartureLabOverlay } from './components/DepartureLabOverlay';
 import { closeLab, getLabState, openLab, setLabSelectedLines, subscribeLab } from './dev/departureLab';
 import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
@@ -158,26 +158,7 @@ import { setSavedPlace, type SavedPlaceKind } from './services/savedPlaces';
 
 export type MapPickTarget = 'from' | 'to' | SavedPlaceKind;
 
-const SNCF_MERGE_RADIUS_METERS = 250;
-
-const isSncfStopLine = (line: Line) => line.id.startsWith('SNC:');
-
-function mergeLines(base: Line[], extra: Line[]): Line[] {
-  const ids = new Set(base.map(line => line.id));
-  return [...base, ...extra.filter(line => !ids.has(line.id))];
-}
-
-const keepTrainLines = (lines: Line[], previous: Line[] | undefined) => mergeLines(lines, (previous ?? []).filter(isSncfStopLine));
 const SHARED_CITY_RADIUS_METERS = 12_000;
-
-function withoutSncfDuplicates(stops: Stop[], stations: Stop[], neighbours: Stop[] = stops): Stop[] {
-  const kept = stations.filter(station =>
-    !neighbours.some(stop =>
-      Math.abs(stop.lat - station.lat) < 0.03 &&
-      Math.abs(stop.lon - station.lon) < 0.04 &&
-      isMergedStation(station, stop, SNCF_MERGE_RADIUS_METERS)));
-  return [...stops, ...kept];
-}
 
 const MAP_PADDING_MAX_RATIO = 0.62;
 const MAP_PIN_MAGNET_PX = 28;
@@ -1524,7 +1505,7 @@ function App() {
         const linkedStations = await sncfStationsLinkedTo(anchorStations, allStations);
         const anchorIds = new Set(anchorStations.map(station => station.id));
         const shownStations = [...anchorStations, ...linkedStations.filter(station => !anchorIds.has(station.id))];
-        const deduplicated = withoutSncfDuplicates(merged, shownStations, [...merged, ...editedTclStops, ...gtfsStops]);
+        const deduplicated = [...merged, ...shownStations];
         setStops(editedTclStops.length > 0 || gtfsStops.length > 0 ? [...deduplicated, ...editedTclStops, ...gtfsStops] : deduplicated);
         setError(null);
       } catch (err) {
@@ -1648,26 +1629,18 @@ function App() {
 
       const showLinesFirst = (lines: Line[]) => {
         if (lines.length === 0) return;
-        setSelectedStop(prev => (prev && prev.id === stop.id && prev.lines.every(line => isSncfStopLine(line))
-          ? { ...prev, lines: mergeLines(lines, prev.lines) }
-          : prev));
+        setSelectedStop(prev => (prev && prev.id === stop.id && prev.lines.length === 0 ? { ...prev, lines } : prev));
       };
-      if (!IS_NANCY && !isSncfStopId(stop.id)) {
-        void sncfLinesNear(stop).then(trains => {
-          if (trains.length === 0) return;
-          setSelectedStop(prev => (prev && prev.id === stop.id ? { ...prev, lines: mergeLines(prev.lines, trains) } : prev));
-        }).catch(() => {});
-      }
       if (isTclId(stop.id)) {
         void getTclLinesForStop(stop.id).then(showLinesFirst);
         const detail = await getTclStopDetail(stop.id);
-        if (detail) setSelectedStop(prev => (prev?.id === detail.id ? { ...detail, lines: keepTrainLines(detail.lines, prev.lines) } : detail));
+        if (detail) setSelectedStop(detail);
         return;
       }
       if (isGtfsNetworkId(stop.id)) {
         void getGtfsLinesForStop(stop.id).then(showLinesFirst);
         const detail = await getGtfsStopDetail(stop.id);
-        if (detail) setSelectedStop(prev => (prev?.id === detail.id ? { ...detail, lines: keepTrainLines(detail.lines, prev.lines) } : detail));
+        if (detail) setSelectedStop(detail);
         return;
       }
       if (isSncfStopId(stop.id)) {
@@ -1685,13 +1658,7 @@ function App() {
       ]);
       const lines = linesResult.status === 'fulfilled' ? linesResult.value : cachedLines || [];
       const departures = departuresResult.status === 'fulfilled' ? departuresResult.value : [];
-      setSelectedStop(prev => prev ? { ...prev, lines: keepTrainLines(lines, prev.id === stop.id ? prev.lines : []), departures, lastUpdate: new Date() } : { ...placeholder, lines, departures, lastUpdate: new Date() });
-      void withNearbySncf({ ...placeholder, lines, departures, lastUpdate: new Date() }).then(withTrains => {
-        if (withTrains.departures.length === departures.length && withTrains.lines.length === lines.length) return;
-        setSelectedStop(prev => (prev && prev.id === stop.id
-          ? { ...prev, lines: mergeLines(withTrains.lines, prev.lines), departures: withTrains.departures }
-          : prev));
-      });
+      setSelectedStop(prev => prev ? { ...prev, lines, departures, lastUpdate: new Date() } : { ...placeholder, lines, departures, lastUpdate: new Date() });
       if (cachedLines) {
         void refreshStopLines(stop.id).then(({ lines: refreshedLines, changed }) => {
           if (!changed) return;
