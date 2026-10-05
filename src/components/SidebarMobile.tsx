@@ -18,6 +18,7 @@ import {
   collapsedNavPadding,
   readSafeAreaBottom,
   NAVBAR_SNAP,
+  SmoothSheetContent,
 } from './MapSheet';
 import { NAV_ITEM_WIDTH } from './MobileNavBar';
 import { XMarkIcon, EllipsisVerticalIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, MapIcon, ClockIcon, ArrowsRightLeftIcon, ExclamationTriangleIcon, CheckIcon, BookmarkIcon } from '@heroicons/react/24/solid';
@@ -465,7 +466,7 @@ export const SidebarMobile = ({ stop, closeSignal, isOpen, frozen = false, onClo
             <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
           </div>
         </Sheet.Header>
-        <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
+        <SmoothSheetContent>
           <MapSheetBody>
           {currentStopDetail && (
           <div className="overflow-y-auto [scrollbar-gutter:stable] flex-1 pb-24">
@@ -811,7 +812,7 @@ export const SidebarMobile = ({ stop, closeSignal, isOpen, frozen = false, onClo
           </div>
           )}
           </MapSheetBody>
-        </Sheet.Content>
+        </SmoothSheetContent>
       </MapSheetShell>
     </Sheet>
     <AddFavoriteModal

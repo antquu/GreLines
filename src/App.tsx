@@ -1012,7 +1012,7 @@ function App() {
       body.style.colorScheme = isDark ? 'dark' : 'light';
     };
 
-    const darkIsBlue = theme === 'blue' || (theme === 'auto' && isMobile);
+    const darkIsBlue = theme === 'blue';
 
     if (theme !== 'auto') {
       applyMode(theme !== 'light', darkIsBlue);
@@ -2439,7 +2439,7 @@ function App() {
 
       {!IS_NANCY && (
         <UnservedAreaPrompt
-          position={exploringMap && mapPin ? mapPin : currentLocation}
+          position={exploringMap && mapPin && !mapPickTarget ? mapPin : currentLocation}
           isMobile={isMobile}
           language={language}
           theme={effectiveTheme}
@@ -2745,7 +2745,7 @@ function App() {
         <>
 
           <AnimatePresence>
-            {isMobile && exploringMap && isNearbySheetOpen && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
+            {isMobile && exploringMap && !mapPickTarget && isNearbySheetOpen && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
               <motion.div
                 key="map-pin"
                 initial={{ opacity: 0, scale: 0.6 }}
@@ -3227,7 +3227,7 @@ function App() {
           lowerOnMapPanSignal={mapPanSignal}
           snapToMiniSignal={snapHomeToMiniSignal}
           stops={stops}
-          currentLocation={exploringMap && mapPin ? mapPin : currentLocation}
+          currentLocation={exploringMap && mapPin && !mapPickTarget ? mapPin : currentLocation}
           onStopClick={(stop, lineFilter) => {
             if (lineFilter && lineFilter.length > 0) {
               setInitialSelectedLines(new Set(lineFilter));

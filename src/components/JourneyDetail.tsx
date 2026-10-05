@@ -1,11 +1,10 @@
 import { formatDurationLabel, formatMinutesCompact } from '../utils/formatDuration';
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { FaWalking } from 'react-icons/fa';
 import { MdDirectionsBike } from 'react-icons/md';
 import { MinusCircleIcon, PlusCircleIcon } from '@heroicons/react/24/outline';
-import { ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/solid';
-import { TrafficAlertCard } from './TrafficAlertCard';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
+import { TrafficAlertHover, TrafficAlertSheet, type LineAlert } from './TrafficAlertPopups';
 import { resolveRouteLine } from '../utils/routeLineResolver';
 import type { RouteItinerary } from '../services/api';
 import type { AllLinesLine } from '../services/allLines';
@@ -23,6 +22,7 @@ interface JourneyDetailProps {
   lineLookup?: Map<string, AllLinesLine> | null;
   theme?: 'light' | 'dark';
   trafficInfo?: Map<string, TrafficDetail[]>;
+  isMobile?: boolean;
 }
 
 function trafficKey(value?: string | null): string | null {
@@ -48,11 +48,17 @@ export function JourneyDetail({
   lineLookup,
   theme,
   trafficInfo,
+  isMobile = false,
 }: JourneyDetailProps) {
   const fr = language === 'fr';
   const isLight = theme === 'light';
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [openAlert, setOpenAlert] = useState<{ line: string; details: TrafficDetail[] } | null>(null);
+  const [openAlert, setOpenAlert] = useState<LineAlert | null>(null);
+  const [hoverAlert, setHoverAlert] = useState<{ alert: LineAlert; point: { x: number; y: number } } | null>(null);
+  const showHover = (alert: LineAlert, target: HTMLElement) => {
+    const rect = target.getBoundingClientRect();
+    setHoverAlert({ alert, point: { x: rect.right, y: rect.bottom } });
+  };
 
   const toggle = (index: number) =>
     setExpanded(current => {
@@ -66,6 +72,16 @@ export function JourneyDetail({
   const ink = isLight ? 'text-slate-900' : 'text-white';
   const muted = isLight ? 'text-slate-500' : 'text-white/60';
   const boxClass = isLight ? 'bg-slate-100' : 'bg-white/[0.07]';
+
+  const isShownWalk = (leg: (typeof legs)[number]) => String(leg.mode ?? '').toUpperCase() === 'WALK' && Math.round(Number(leg.duration ?? 0) / 60) >= 1;
+  const followsTransit = (index: number) => {
+    for (let previous = index - 1; previous >= 0; previous -= 1) {
+      const mode = String(legs[previous].mode ?? '').toUpperCase();
+      if (mode === 'WALK' && !isShownWalk(legs[previous])) continue;
+      return mode !== 'WALK' && !BIKE_MODES.has(mode);
+    }
+    return false;
+  };
 
   return (
     <div>
@@ -143,7 +159,7 @@ export function JourneyDetail({
           const alerts = alertKey ? trafficInfo?.get(alertKey) ?? null : null;
 
           return (
-            <div key={`transit-${index}`} className="flex gap-5">
+            <div key={`transit-${index}`} className={`flex gap-5 ${followsTransit(index) ? 'mt-8' : ''}`}>
               <div className="flex w-6 flex-shrink-0 flex-col items-center">
                 <span
                   className="h-6 w-6 flex-shrink-0 rounded-full border-[3px]"
@@ -176,7 +192,15 @@ export function JourneyDetail({
                   {alerts && alerts.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setOpenAlert({ line: lineName, details: alerts })}
+                      onClick={event => {
+                        const alert = { line: lineName, details: alerts };
+                        if (isMobile) setOpenAlert(alert);
+                        else showHover(alert, event.currentTarget);
+                      }}
+                      onMouseEnter={event => { if (!isMobile) showHover({ line: lineName, details: alerts }, event.currentTarget); }}
+                      onMouseLeave={() => setHoverAlert(null)}
+                      onFocus={event => { if (!isMobile) showHover({ line: lineName, details: alerts }, event.currentTarget); }}
+                      onBlur={() => setHoverAlert(null)}
                       aria-label={tx(fr).journeyDetail.serviceInfoLineLinename(lineName)}
                       className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-amber-400 text-amber-950 transition active:scale-90"
                     >
@@ -243,52 +267,10 @@ export function JourneyDetail({
         })}
       </div>
 
-      {openAlert && createPortal(
-        <div className="fixed inset-0 z-[10030] flex flex-col justify-end">
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setOpenAlert(null)}
-            aria-hidden
-          />
-          <div
-            className={`relative max-h-[85dvh] overflow-y-auto rounded-t-[28px] px-5 pt-5 ${
-              isLight ? 'bg-white' : 'bg-[#161616]'
-            }`}
-            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
-            role="dialog"
-            aria-label={tx(fr).journeyDetail.serviceInfoLineLine(openAlert.line)}
-          >
-            <div className="flex items-start gap-3">
-              <p className={`min-w-0 flex-1 text-[1.3125rem] font-bold leading-tight ${ink}`}>
-                {tx(fr).journeyDetail.serviceInfoLineLine(openAlert.line)}
-              </p>
-              <button
-                type="button"
-                onClick={() => setOpenAlert(null)}
-                aria-label={tx(fr).journeyDetail.close}
-                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition active:scale-90 ${
-                  isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-white'
-                }`}
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="mt-5 flex flex-col gap-3">
-              {openAlert.details.map((detail, detailIndex) => (
-                <TrafficAlertCard
-                  key={`${detail.titre}-${detailIndex}`}
-                  detail={detail}
-                  language={language}
-                  isLight={isLight}
-                  defaultExpanded
-                  expandable={false}
-                />
-              ))}
-            </div>
-          </div>
-        </div>,
-        document.body,
+      {isMobile ? (
+        <TrafficAlertSheet alert={openAlert} language={language} isLight={isLight} onClose={() => setOpenAlert(null)} />
+      ) : hoverAlert && (
+        <TrafficAlertHover alert={hoverAlert.alert} point={hoverAlert.point} language={language} isLight={isLight} />
       )}
     </div>
   );

@@ -9,6 +9,7 @@ import {
   readSafeAreaBottom,
   useSnapValue,
   COMPACT_ITEM_WIDTH,
+  SmoothSheetContent,
 } from './MapSheet';
 import {
   MapPinIcon,
@@ -21,7 +22,7 @@ import { MobileNavBar, NAV_ITEM_WIDTH, type MobileNavItem } from './MobileNavBar
 import { NearbyDepartures } from './NearbyDepartures';
 
 import type { Stop } from '../types';
-import { findClosestStops } from '../utils/geo';
+import { findClosestStops, haversineMeters } from '../utils/geo';
 import type { Favorite } from '../services/favorites';
 import type { FavoriteDetail } from '../hooks/useFavoriteDetails';
 import { tx } from '../i18n';
@@ -30,6 +31,7 @@ const HEADER_SWAP_HEIGHT = 76;
 
 export const HOME_SHEET_ID = 'gl-home-sheet';
 const NEARBY_SETTLE_MS = 1000;
+const NEARBY_MOVE_METERS = 100;
 let nearbyAutoOpened = false;
 const NEARBY_MAX_METERS = 3000;
 const HOME_PEEK_SNAP = 2;
@@ -199,7 +201,7 @@ export const HomeSheet = ({
       setNearbyOrigin(currentLocation);
       return;
     }
-    if (nearbyOrigin.lat === currentLocation.lat && nearbyOrigin.lon === currentLocation.lon) {
+    if (haversineMeters(nearbyOrigin.lat, nearbyOrigin.lon, currentLocation.lat, currentLocation.lon) < NEARBY_MOVE_METERS) {
       setOriginSettling(false);
       return;
     }
@@ -422,7 +424,7 @@ export const HomeSheet = ({
             )}
 	          />
 	        </Sheet.Header>
-        <Sheet.Content disableDrag={state => state.scrollPosition !== 'top'}>
+        <SmoothSheetContent>
           <ProgressWatcher onSheetProgressRef={onSheetProgressRef} onHomeProgressRef={onHomeProgressRef} />
 	        <MapSheetBody peek>
 	          <div
@@ -454,7 +456,7 @@ export const HomeSheet = ({
                     mutedClass={mutedClass}
                     onStopClick={onStopClick}
                     onReady={openOnceNearbyReady}
-                    pending={originSettling}
+                    pending={originSettling && nearby.length === 0}
                   />
                 )}
               </section>
@@ -462,7 +464,7 @@ export const HomeSheet = ({
             </div>
           </div>
         </MapSheetBody>
-        </Sheet.Content>
+        </SmoothSheetContent>
       </MapSheetShell>
       <SheetBackdrop onTap={collapseToMini} snapIdx={snapIdx} />
 

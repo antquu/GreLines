@@ -208,24 +208,41 @@ export function MapSheetBody({ children, compact = false, peek = false }: { chil
   return <motion.div className="flex min-h-0 flex-1 flex-col" style={{ opacity }}>{children}</motion.div>;
 }
 
+export function SmoothSheetContent({
+  children,
+  style,
+  locked = false,
+}: {
+  children: React.ReactNode;
+  style?: React.ComponentProps<typeof Sheet.Content>['style'];
+  locked?: boolean;
+}) {
+  const { currentSnap, snapPoints } = Sheet.useContext();
+  const expanded = locked || currentSnap === undefined || currentSnap >= snapPoints.length - 1;
+  return (
+    <Sheet.Content
+      disableScroll={!expanded}
+      disableDrag={state => locked || (expanded && state.scrollPosition !== undefined && state.scrollPosition !== 'top')}
+      scrollStyle={expanded ? undefined : { touchAction: 'pan-x' }}
+      style={style}
+    >
+      {children}
+    </Sheet.Content>
+  );
+}
+
 function MapSheetContentArea({
-  compactSnap,
   fitVisible,
   children,
 }: {
-  compactSnap: boolean;
   fitVisible: boolean;
   children: React.ReactNode;
 }) {
   const hidden = useMapSheetBottomOffset();
   return (
-    <Sheet.Content
-      disableDrag={state => state.scrollPosition !== 'top'}
-      disableScroll={compactSnap ? state => (state.currentSnap ?? Infinity) <= COMPACT_SNAP_INDEX : undefined}
-      style={fitVisible && hidden ? { paddingBottom: hidden } : undefined}
-    >
+    <SmoothSheetContent style={fitVisible && hidden ? { paddingBottom: hidden } : undefined}>
       {children}
-    </Sheet.Content>
+    </SmoothSheetContent>
   );
 }
 
@@ -329,7 +346,7 @@ export function MapSheet({
             <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
           </div>
         </Sheet.Header>
-        <MapSheetContentArea compactSnap={compactSnap} fitVisible={Boolean(footer)}>
+        <MapSheetContentArea fitVisible={Boolean(footer)}>
           {compactSnap ? (
             <CompactProgressProvider>
               <MapSheetBody compact>{children}</MapSheetBody>

@@ -2218,6 +2218,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
               lineLookup={lineLookup}
               theme={panelTheme}
               trafficInfo={trafficInfo}
+              isMobile={isMobile}
             />
           </div>
         )

@@ -14,10 +14,12 @@ const REFRESH_MS = 30_000;
 const GROUPS_PER_STOP = 4;
 const TIMES_PER_GROUP = 2;
 
+const LOAD_TIMEOUT_MS = 8000;
+
 function loadDetail(stopId: string): Promise<StopDetail | null> {
-  if (isTclId(stopId)) return getTclStopDetail(stopId);
-  if (isGtfsNetworkId(stopId)) return getGtfsStopDetail(stopId);
-  return getStopDetail(stopId);
+  const request = isTclId(stopId) ? getTclStopDetail(stopId) : isGtfsNetworkId(stopId) ? getGtfsStopDetail(stopId) : getStopDetail(stopId);
+  const timeout = new Promise<null>(resolve => window.setTimeout(() => resolve(null), LOAD_TIMEOUT_MS));
+  return Promise.race([request, timeout]);
 }
 
 interface DepartureGroup {
@@ -110,7 +112,7 @@ export function NearbyDepartures({
     const refresh = () => {
       for (const id of ids) {
         loadDetail(id)
-          .then(detail => { if (!cancelled) setDetails(previous => ({ ...previous, [id]: detail })); })
+          .then(detail => { if (!cancelled) setDetails(previous => ({ ...previous, [id]: detail ?? previous[id] ?? null })); })
           .catch(() => { if (!cancelled) setDetails(previous => ({ ...previous, [id]: previous[id] ?? null })); });
       }
     };
@@ -122,7 +124,7 @@ export function NearbyDepartures({
     };
   }, [active, idsKey]);
 
-  const ready = ids.length > 0 && ids.every(id => details[id] !== undefined);
+  const ready = ids.length > 0 && ids.some(id => details[id] !== undefined);
   useEffect(() => {
     if (ready) onReady?.();
   }, [ready, onReady]);
