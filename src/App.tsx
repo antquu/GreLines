@@ -3213,7 +3213,7 @@ function App() {
 
       {isMobile && (
         <HomeSheet
-          isOpen={isNearbySheetOpen && !isCardFocused && !(isMobile && (isSidebarOpen || sharedSelection !== null)) && !isRouteSidebarOpen}
+          isOpen={isNearbySheetOpen && !isCardFocused && !(isMobile && (isSidebarOpen || sharedSelection !== null)) && !isRouteSidebarOpen && !isNavigationOpen && !mapPickTarget}
           locked={isAccountOpen || isFavoritesOpen || isRouteSidebarOpen}
           lockedScreen={isAccountOpen ? 'account' : isFavoritesOpen ? 'favorites' : isRouteSidebarOpen ? 'route' : undefined}
           layerAbove={isRouteSidebarOpen}

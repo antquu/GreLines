@@ -9,6 +9,7 @@ import { LineBadge } from './LineBadge';
 import { MapSheet, MapSheetBottomSpacer } from './MapSheet';
 import { getOptedOutIds, markOptedOut } from '../utils/optedOutPopups';
 import { tx } from '../i18n';
+import { formatTrafficEnd } from '../utils/trafficEnd';
 
 interface PopupOverlayProps {
   popups: CmsPopup[];
@@ -19,21 +20,6 @@ interface PopupOverlayProps {
 }
 
 const STACK_MAX = 4;
-
-function formatEnd(raw: string, language: 'fr' | 'en'): string | null {
-  const text = raw.trim();
-  if (!text) return null;
-  const frenchDate = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
-  const date = frenchDate
-    ? new Date(Number(frenchDate[3]), Number(frenchDate[2]) - 1, Number(frenchDate[1]), Number(frenchDate[4] ?? 0), Number(frenchDate[5] ?? 0))
-    : new Date(text);
-  if (Number.isNaN(date.getTime())) return text;
-  if (date.getFullYear() - new Date().getFullYear() > 3) return null;
-  const locale = tx(language === 'fr').popupOverlay.locale;
-  const day = date.toLocaleDateString(locale, { day: 'numeric', month: 'long' });
-  const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-  return tx(language === 'fr').popupOverlay.dayAtTime(day, time);
-}
 
 const asBadgeLine = (line: CmsPopupLine) => ({
   id: line.id,
@@ -154,7 +140,7 @@ function PopupLineRow({
   const ink = isLight ? '#000000' : '#ffffff';
   const soft = isLight ? '#525252' : '#a3a3a3';
   const first = traffic[0];
-  const end = first ? formatEnd(first.dateFin, language) : null;
+  const end = first ? formatTrafficEnd(first.dateFin, language) : null;
   return (
     <div className={`flex items-center gap-3 ${compact ? 'py-2' : 'py-3'}`}>
       <LineBadge line={asBadgeLine(line)} size={compact ? 'xs' : 'sm'} />

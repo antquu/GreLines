@@ -193,13 +193,13 @@ export function JourneyDetail({
                     <button
                       type="button"
                       onClick={event => {
-                        const alert = { line: lineName, details: alerts };
+                        const alert = { line: lineName, details: alerts, badge: line ?? undefined };
                         if (isMobile) setOpenAlert(alert);
                         else showHover(alert, event.currentTarget);
                       }}
-                      onMouseEnter={event => { if (!isMobile) showHover({ line: lineName, details: alerts }, event.currentTarget); }}
+                      onMouseEnter={event => { if (!isMobile) showHover({ line: lineName, details: alerts, badge: line ?? undefined }, event.currentTarget); }}
                       onMouseLeave={() => setHoverAlert(null)}
-                      onFocus={event => { if (!isMobile) showHover({ line: lineName, details: alerts }, event.currentTarget); }}
+                      onFocus={event => { if (!isMobile) showHover({ line: lineName, details: alerts, badge: line ?? undefined }, event.currentTarget); }}
                       onBlur={() => setHoverAlert(null)}
                       aria-label={tx(fr).journeyDetail.serviceInfoLineLinename(lineName)}
                       className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-amber-400 text-amber-950 transition active:scale-90"
