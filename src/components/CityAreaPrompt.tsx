@@ -1,16 +1,19 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { MapPinIcon } from '@heroicons/react/24/solid';
 import { useEffect, useState } from 'react';
-import { IS_NANCY } from '../site';
+import { CITY_SITE, CITY_SITES, SITE_CENTER } from '../site';
 import { locateByIp } from '../services/ipLocation';
 import { haversineMeters } from '../utils/geo';
 import { onDevCommand } from '../utils/devCommands';
 import { tx } from '../i18n';
 
-const NANCY_CENTER = { lat: 48.6921, lon: 6.1844 };
-const AREA_RADIUS_METERS = 35_000;
-const STAY_KEY = 'greLines_nancyStayOutside';
+const STAY_KEY = `greLines_${CITY_SITE?.id ?? 'city'}StayOutside`;
 const GRELINES_URL = 'https://grelines.fr/app';
+
+function otherCities(): string {
+  const names = ['Grenoble', ...Object.values(CITY_SITES).filter(site => site.id !== CITY_SITE?.id).map(site => site.name), 'Annecy'];
+  return names.join(', ');
+}
 
 function hasChosenToStay(): boolean {
   try {
@@ -21,10 +24,10 @@ function hasChosenToStay(): boolean {
 }
 
 function isInsideArea(point: { lat: number; lon: number }): boolean {
-  return haversineMeters(point.lat, point.lon, NANCY_CENTER.lat, NANCY_CENTER.lon) <= AREA_RADIUS_METERS;
+  return haversineMeters(point.lat, point.lon, SITE_CENTER.lat, SITE_CENTER.lon) <= (CITY_SITE?.areaRadiusMeters ?? 35_000);
 }
 
-export function NancyAreaPrompt({
+export function CityAreaPrompt({
   position,
   isMobile,
   language,
@@ -40,7 +43,7 @@ export function NancyAreaPrompt({
   const [forced, setForced] = useState(false);
 
   useEffect(() => {
-    if (!IS_NANCY) return;
+    if (!CITY_SITE) return;
     return onDevCommand('show.outside', () => {
       setStayed(false);
       setForced(true);
@@ -48,13 +51,13 @@ export function NancyAreaPrompt({
   }, []);
 
   useEffect(() => {
-    if (!IS_NANCY || stayed) return;
+    if (!CITY_SITE || stayed) return;
     let alive = true;
     void locateByIp().then(area => { if (alive) setIpArea(area); });
     return () => { alive = false; };
   }, [stayed]);
 
-  if (!IS_NANCY || stayed) return null;
+  if (!CITY_SITE || stayed) return null;
 
   const known = position ?? ipArea;
   const open = forced || (known !== null && !isInsideArea(known));
@@ -79,20 +82,20 @@ export function NancyAreaPrompt({
     <div className={`px-6 ${isMobile ? 'pt-7' : 'pt-7 pb-8'}`}>
       <MapPinIcon className="h-12 w-12" style={{ color: ink }} aria-hidden="true" />
       <p role="heading" aria-level={2} className="pt-6 text-[1.625rem] font-medium leading-[1.15]" style={{ color: ink }}>
-        {tx(isFr).nancyAreaPrompt.notInNancy}
+        {tx(isFr).cityAreaPrompt.notInCity(CITY_SITE.name)}
       </p>
       <p className="pt-3 text-[1.0625rem] leading-snug" style={{ color: soft }}>
-        {tx(isFr).nancyAreaPrompt.youAreOnGrelines}
+        {tx(isFr).cityAreaPrompt.youAreOnGrelines(CITY_SITE.name, CITY_SITE.networkLabel)}
       </p>
       <p className="pt-3 text-[1.0625rem] leading-snug" style={{ color: soft }}>
-        {tx(isFr).nancyAreaPrompt.grelinesAlsoCoversGrenoble}
+        {tx(isFr).cityAreaPrompt.grelinesAlsoCovers(otherCities())}
       </p>
       <a
         href={GRELINES_URL}
         className="mt-8 block w-full rounded-2xl py-4 text-center text-[1.0625rem] font-semibold transition active:scale-[0.98]"
         style={isLight ? { backgroundColor: '#000000', color: '#ffffff' } : { backgroundColor: '#ffffff', color: '#000000' }}
       >
-        {tx(isFr).nancyAreaPrompt.continueOnGrelinesFr}
+        {tx(isFr).cityAreaPrompt.continueOnGrelinesFr}
       </a>
       <button
         type="button"
@@ -100,7 +103,7 @@ export function NancyAreaPrompt({
         className="mt-3 w-full py-1 text-[0.875rem] underline-offset-4 transition hover:underline active:opacity-70"
         style={{ color: faint }}
       >
-        {tx(isFr).nancyAreaPrompt.stayOnGrelinesNancy}
+        {tx(isFr).cityAreaPrompt.stayOnSite(CITY_SITE.name)}
       </button>
     </div>
   );
@@ -110,7 +113,7 @@ export function NancyAreaPrompt({
       <AnimatePresence>
         {open && (
           <motion.div
-            key="nancy-area"
+            key="city-area"
             className="fixed inset-0 z-[10050] flex flex-col justify-end bg-black/50"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -142,7 +145,7 @@ export function NancyAreaPrompt({
     <AnimatePresence>
       {open && (
         <motion.div
-          key="nancy-area"
+          key="city-area"
           className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

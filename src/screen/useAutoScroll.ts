@@ -14,15 +14,18 @@ export function useAutoScroll<T extends HTMLElement>(options?: {
   holdTopMs?: number;
   holdBottomMs?: number;
   speed?: number;
+  enabled?: boolean;
 }) {
   const ref = useRef<T>(null);
   const holdTop = options?.holdTopMs ?? HOLD_TOP_MS;
   const holdBottom = options?.holdBottomMs ?? HOLD_BOTTOM_MS;
   const speed = options?.speed ?? SPEED_PX_PER_SEC;
+  // the scrolled element may only appear later (after loading), so restart when it does
+  const enabled = options?.enabled ?? true;
 
   useEffect(() => {
     const node = ref.current;
-    if (!node) return;
+    if (!enabled || !node) return;
 
     let frame = 0;
     let previous = performance.now();
@@ -82,7 +85,7 @@ export function useAutoScroll<T extends HTMLElement>(options?: {
 
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [holdTop, holdBottom, speed]);
+  }, [holdTop, holdBottom, speed, enabled]);
 
   return ref;
 }

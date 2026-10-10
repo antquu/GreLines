@@ -1,6 +1,6 @@
 import { ScrollingText } from './ScrollingText';
 import { DepartureCard, DepartureList, MotionTime, useExitMode, useFirstPaint, useGroupMotion } from './DepartureMotion';
-import { IS_NANCY } from '../site';
+import { IS_CITY_SITE } from '../site';
 import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
 import { tx } from '../i18n';
 ﻿import { motion } from 'framer-motion';
@@ -492,7 +492,7 @@ export const SidebarMobile = ({ stop, closeSignal, isOpen, frozen = false, onClo
                 {currentStopDetail.city && <p className="text-sm text-slate-400 mt-0.5">{currentStopDetail.city}</p>}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-                {!IS_NANCY && (
+                {!IS_CITY_SITE && (
                   <button
                     type="button"
                     onClick={() => onPlanRouteFromStop?.(currentStopDetail)}

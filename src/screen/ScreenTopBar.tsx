@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 const twoDigits = (value: number) => String(value).padStart(2, '0');
 
-export function ScreenTopBar({ stopName }: { stopName?: string }) {
+export function ScreenTopBar({ stopName, subtitle, isStation = false }: { stopName?: string; subtitle?: string; isStation?: boolean }) {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -11,30 +11,26 @@ export function ScreenTopBar({ stopName }: { stopName?: string }) {
   }, []);
 
   return (
-    <header className="flex h-14 flex-shrink-0 items-center gap-3 bg-[#0f172a] px-4 text-white 2xl:h-16 2xl:gap-4 2xl:px-6">
-      <a href="/app" className="flex flex-shrink-0 items-center no-underline" title="Ouvrir GreLines">
-        {
-
-}
-        <img src="/assets/GreLinesWordmark.png" alt="GreLines" className="h-4 w-auto 2xl:h-6" />
-      </a>
-
-      {
-}
-      {
-
-}
-      <div className="min-w-0 flex-1 text-center text-xl font-bold leading-tight 2xl:text-3xl">
-        {stopName && <h1 className="truncate text-white">{stopName}</h1>}
+    <header className="flex flex-shrink-0 items-end gap-6 px-8 pb-5 pt-7 2xl:px-12 2xl:pb-7 2xl:pt-10">
+      <div className="min-w-0 flex-1">
+        {stopName ? (
+          <>
+            <p className="flex items-center gap-2 text-base font-medium text-neutral-500 2xl:text-xl">
+              {isStation && <img src="/assets/sncf-reseau.svg" alt="" className="h-4 w-auto 2xl:h-5" />}
+              <span className="truncate">{subtitle}</span>
+            </p>
+            <p role="heading" aria-level={1} className="truncate pt-1 text-[2.75rem] font-semibold leading-[1.05] tracking-tight text-black 2xl:text-[4.25rem]">
+              {stopName}
+            </p>
+          </>
+        ) : null}
       </div>
 
-      <div className="flex flex-shrink-0 items-baseline gap-1">
-        <span className="tabular text-xl font-bold text-white 2xl:text-3xl">
+      <div className="flex flex-shrink-0 items-baseline gap-1.5">
+        <span className="tabular text-[2.75rem] font-semibold leading-none tracking-tight text-black 2xl:text-[4.25rem]">
           {twoDigits(now.getHours())}:{twoDigits(now.getMinutes())}
         </span>
-        <span className="tabular text-sm font-semibold text-slate-500 2xl:text-lg">
-          {twoDigits(now.getSeconds())}
-        </span>
+        <span className="tabular w-8 text-xl font-medium text-neutral-400 2xl:w-12 2xl:text-3xl">{twoDigits(now.getSeconds())}</span>
       </div>
     </header>
   );

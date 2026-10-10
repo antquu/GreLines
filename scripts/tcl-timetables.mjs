@@ -2,9 +2,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFiches, downloadGtfs, eachRow, parisToday, readAgencyContacts, writeFiches } from './lib/gtfs.mjs';
+import { SITE, SITE_NETWORK } from './lib/site.mjs';
 
-if (process.env.VITE_SITE === 'nancy') {
-  console.log('tcl-timetables : site de Nancy, rien à générer.');
+if (SITE_NETWORK && SITE_NETWORK !== 'TCL') {
+  console.log(`tcl-timetables : site ${SITE}, rien à générer.`);
   process.exit(0);
 }
 

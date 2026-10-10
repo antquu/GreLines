@@ -1,6 +1,6 @@
 import allNetworks from './gtfsNetworks.json';
-import { IS_NANCY } from '../site';
+import { SITE_NETWORK } from '../site';
 
-const siteNetworks = IS_NANCY ? allNetworks.filter(network => network.code === 'STAN') : allNetworks;
+const siteNetworks = SITE_NETWORK ? allNetworks.filter(network => network.code === SITE_NETWORK) : allNetworks;
 
 export default siteNetworks;

@@ -298,18 +298,85 @@ export async function getSncfStopDetail(stopId: string): Promise<StopDetail | nu
 
 const TRACE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-async function sncfTrace(code: string): Promise<[number, number][][]> {
-  const cacheKey = `${TRACE_KEY}${code}`;
-  const cached = await idbGet<[number, number][][]>(cacheKey, { allowStale: true });
-  if (cached && !cached.stale) return cached.value;
-  const fresh = await fetch(`/api/sncf?ressource=trace&ligne=${encodeURIComponent(code)}`)
-    .then(response => (response.ok ? (response.json() as Promise<{ segments?: [number, number][][] }>) : null))
-    .catch(() => null);
-  if (fresh?.segments) {
-    void idbSet(cacheKey, fresh.segments, TRACE_TTL_MS);
-    return fresh.segments;
+type Segments = [number, number][][];
+
+const TRACE_WAIT_MS = 1200;
+const traceMemory = new Map<string, Segments>();
+const traceInflight = new Map<string, Promise<Segments | null>>();
+const traceListeners = new Set<() => void>();
+
+// called when a slow trace finally arrives, so the map can redraw it
+export function onSncfTraceReady(listener: () => void): () => void {
+  traceListeners.add(listener);
+  return () => { traceListeners.delete(listener); };
+}
+
+function fetchTrace(code: string): Promise<Segments | null> {
+  const known = traceInflight.get(code);
+  if (known) return known;
+  const promise = fetch(`/api/sncf?ressource=trace&ligne=${encodeURIComponent(code)}`)
+    .then(response => (response.ok ? (response.json() as Promise<{ segments?: Segments }>) : null))
+    .then(payload => {
+      const segments = payload?.segments ?? null;
+      if (segments && segments.length > 0) {
+        traceMemory.set(code, segments);
+        void idbSet(`${TRACE_KEY}${code}`, segments, TRACE_TTL_MS);
+      }
+      return segments;
+    })
+    .catch(() => null)
+    .finally(() => traceInflight.delete(code));
+  traceInflight.set(code, promise);
+  return promise;
+}
+
+// straight lines linking each station to its nearest one on the line, drawn while the real trace loads
+async function stationTrace(code: string): Promise<Segments> {
+  const data = await loadSncfCatalog();
+  const points = (data?.stations ?? [])
+    .filter(station => station.lines.includes(code))
+    .map(station => [station.lon, station.lat] as [number, number]);
+  if (points.length < 2) return [];
+  const squared = (a: [number, number], b: [number, number]) => {
+    const x = (a[0] - b[0]) * Math.cos((a[1] * Math.PI) / 180);
+    const y = a[1] - b[1];
+    return x * x + y * y;
+  };
+  const linked = new Set([0]);
+  const best = points.map(point => ({ distance: squared(point, points[0]), from: 0 }));
+  const segments: Segments = [];
+  while (linked.size < points.length) {
+    let next = -1;
+    for (let index = 0; index < points.length; index += 1) {
+      if (!linked.has(index) && (next < 0 || best[index].distance < best[next].distance)) next = index;
+    }
+    linked.add(next);
+    segments.push([points[best[next].from], points[next]]);
+    for (let index = 0; index < points.length; index += 1) {
+      if (linked.has(index)) continue;
+      const distance = squared(points[index], points[next]);
+      if (distance < best[index].distance) best[index] = { distance, from: next };
+    }
   }
-  return cached?.value ?? [];
+  return segments;
+}
+
+async function sncfTrace(code: string): Promise<Segments> {
+  const remembered = traceMemory.get(code);
+  if (remembered) return remembered;
+  const cached = await idbGet<Segments>(`${TRACE_KEY}${code}`, { allowStale: true });
+  if (cached && cached.value.length > 0) {
+    traceMemory.set(code, cached.value);
+    if (cached.stale) void fetchTrace(code);
+    return cached.value;
+  }
+  const fresh = fetchTrace(code);
+  const quick = await Promise.race([fresh, new Promise<undefined>(resolve => window.setTimeout(resolve, TRACE_WAIT_MS))]);
+  if (quick !== undefined) return quick ?? [];
+  void fresh.then(segments => {
+    if (segments && segments.length > 0) traceListeners.forEach(listener => listener());
+  });
+  return stationTrace(code);
 }
 
 export async function getSncfLineGeometries(

@@ -26,6 +26,19 @@ import {
   subscribeFavoriteLines,
 } from '../services/favoriteLines';
 import { tx } from '../i18n';
+import { getTclStopDetail, isTclId } from '../services/tclNetwork';
+import { getGtfsStopDetail, isGtfsNetworkId } from '../services/gtfsNetwork';
+
+// departures of any stop, whatever its network
+async function departuresAt(stopId: string): Promise<Departure[]> {
+  if (/^SNC:/.test(stopId)) {
+    const { getSncfStopDetail } = await import('../services/sncfNetwork');
+    return (await getSncfStopDetail(stopId))?.departures ?? [];
+  }
+  if (isTclId(stopId)) return (await getTclStopDetail(stopId))?.departures ?? [];
+  if (isGtfsNetworkId(stopId)) return (await getGtfsStopDetail(stopId))?.departures ?? [];
+  return getDepartures(stopId);
+}
 
 interface LineSidebarProps {
   line: AllLinesLine | null;
@@ -393,7 +406,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
     }
     let active = true;
     setSpurBranchActive(null);
-    getDepartures(spurBranchProbeStopId)
+    departuresAt(spurBranchProbeStopId)
       .then(results => {
         if (!active) return;
         setSpurBranchActive(results.some(dep => matchDepartureToLine(line, dep)));
@@ -410,7 +423,7 @@ export const LineSidebar = ({ line, isOpen, onClose, stops, trafficInfo, languag
       setStopDepartures(prev => new Map(prev).set(stop.id, { departures: [], loading: true, error: false }));
     }
     try {
-      const results = await getDepartures(stop.id);
+      const results = await departuresAt(stop.id);
       const filtered = results.filter(dep => matchDepartureToLine(line, dep));
       setStopDepartures(prev => new Map(prev).set(stop.id, { departures: filtered, loading: false, error: false }));
     } catch {

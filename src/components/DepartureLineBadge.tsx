@@ -96,6 +96,16 @@ export function DepartureLineBadge({
     );
   }
 
+  if (isSncfLine(routeRef) && /^IC$|INTERCIT/i.test(label)) {
+    return (
+      <div className={`relative flex flex-shrink-0 flex-col items-center justify-center gap-[2px] rounded-2xl bg-white px-1 ${sizeClass}`}>
+        <img src={badgeImage('/assets/intercites-sncf.svg')} alt="SNCF" className="h-auto w-[72%] object-contain" />
+        <span className="text-[0.4375rem] font-bold leading-none tracking-tight" style={{ color: '#404042' }}>Intercités</span>
+        {hasTraffic && <TrafficMark />}
+      </div>
+    );
+  }
+
   if (isSncfLine(routeRef) && /TGV/i.test(label)) {
     return (
       <div className={`relative flex flex-shrink-0 items-center justify-center rounded-2xl bg-white px-1 ${sizeClass}`}>

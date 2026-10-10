@@ -16,12 +16,12 @@ function siteHtml(): Plugin {
   return {
     name: 'grelines-site-html',
     configResolved(config) {
-      site = config.env.VITE_SITE === 'nancy' ? 'nancy' : 'grenoble';
+      site = ['nancy', 'lyon', 'saint-etienne', 'clermont'].includes(config.env.VITE_SITE) ? config.env.VITE_SITE : 'grenoble';
     },
     transformIndexHtml: {
       order: 'pre',
       handler(html) {
-        return site === 'nancy' ? readFileSync('site/nancy/index.html', 'utf8') : html;
+        return site === 'grenoble' ? html : readFileSync(`site/${site}/index.html`, 'utf8');
       },
     },
   };

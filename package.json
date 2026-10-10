@@ -1,11 +1,17 @@
 {
   "name": "grelines",
   "private": true,
-  "version": "3.18.11",
+  "version": "3.18.14",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:nancy": "vite --mode nancy --port 5190 --strictPort",
+    "dev:lyon": "vite --mode lyon --port 5191 --strictPort",
+    "dev:saint-etienne": "vite --mode saint-etienne --port 5192 --strictPort",
+    "dev:clermont": "vite --mode clermont --port 5193 --strictPort",
+    "dev:lyon": "vite --mode lyon --port 5191 --strictPort",
+    "dev:saint-etienne": "vite --mode saint-etienne --port 5192 --strictPort",
+    "dev:clermont": "vite --mode clermont --port 5193 --strictPort",
     "prebuild": "node scripts/tcl-timetables.mjs && node scripts/gtfs-networks.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

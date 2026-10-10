@@ -1,5 +1,5 @@
 import { haversineMeters } from './geo';
-import { IS_NANCY } from '../site';
+import { IS_CITY_SITE, SITE_CENTER, SITE_NETWORK } from '../site';
 import gtfsNetworks from '../data/siteNetworks';
 
 export interface City {
@@ -10,10 +10,8 @@ export interface City {
 }
 
 export const CITIES: City[] = [
-  ...(IS_NANCY ? [] : [
-    { id: 'grenoble', lat: 45.1885, lon: 5.7245, network: null },
-    { id: 'lyon', lat: 45.7578, lon: 4.832, network: 'TCL' },
-  ]),
+  ...(IS_CITY_SITE ? [] : [{ id: 'grenoble', lat: 45.1885, lon: 5.7245, network: null }]),
+  ...(!SITE_NETWORK || SITE_NETWORK === 'TCL' ? [{ id: 'lyon', lat: SITE_NETWORK ? SITE_CENTER.lat : 45.7578, lon: SITE_NETWORK ? SITE_CENTER.lon : 4.832, network: 'TCL' }] : []),
   ...(gtfsNetworks as Array<{ code: string; city: string; center: number[] }>).map(network => ({
     id: network.city,
     lat: network.center[0],
@@ -25,7 +23,7 @@ export const CITIES: City[] = [
 export function cityOfNetwork(code: string): City | null {
   const own = CITIES.find(city => city.network === code);
   if (own) return own;
-  if (IS_NANCY) return null;
+  if (IS_CITY_SITE) return null;
   return CITIES.find(city => city.id === 'grenoble') ?? null;
 }
 

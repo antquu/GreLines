@@ -1,4 +1,4 @@
-import { IS_NANCY } from '../site';
+import { SITE_CENTER } from '../site';
 
 export interface AddressResult {
 
@@ -22,8 +22,8 @@ export interface AddressResult {
 const BAN_ENDPOINT = 'https://api-adresse.data.gouv.fr/search/';
 const BAN_REVERSE_ENDPOINT = 'https://api-adresse.data.gouv.fr/reverse/';
 
-const GRENOBLE_LAT = IS_NANCY ? 48.6921 : 45.1885;
-const GRENOBLE_LON = IS_NANCY ? 6.1844 : 5.7245;
+const GRENOBLE_LAT = SITE_CENTER.lat;
+const GRENOBLE_LON = SITE_CENTER.lon;
 
 let focus = { lat: GRENOBLE_LAT, lon: GRENOBLE_LON };
 

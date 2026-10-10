@@ -3,12 +3,13 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFiches, downloadGtfs, eachRow, parisToday, writeFiches, readAgencyContacts } from './lib/gtfs.mjs';
 import { PLATFORM_RADIUS_M, distanceM, platformGroups } from './lib/stations.mjs';
+import { SITE_NETWORK } from './lib/site.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = join(ROOT, 'public/data/networks');
 const ALL_NETWORKS = JSON.parse(readFileSync(join(ROOT, 'src/data/gtfsNetworks.json'), 'utf8'));
-const NETWORKS = process.env.VITE_SITE === 'nancy'
-  ? ALL_NETWORKS.filter(network => network.code === 'STAN')
+const NETWORKS = SITE_NETWORK
+  ? ALL_NETWORKS.filter(network => network.code === SITE_NETWORK)
   : ALL_NETWORKS;
 
 const MERGE_RADIUS_M = 250;

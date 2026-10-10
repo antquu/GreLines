@@ -1,5 +1,7 @@
 import type { Departure, Line, StopDetail } from '../types';
 import { normalizeMode } from '../utils/transportMode';
+import { appLanguage } from '../utils/appLanguage';
+import { tx } from '../i18n';
 
 export const TIMES_PER_DIRECTION = 2;
 
@@ -73,7 +75,7 @@ export function groupDeparturesForScreen(detail: StopDetail): ScreenLineGroup[] 
       groups.set(lineRef, group);
     }
 
-    const destination = departure.destination?.trim() || 'Direction inconnue';
+    const destination = departure.destination?.trim() || tx(appLanguage() === 'fr').screenBoard.unknownDirection;
     let direction = group.directions.find(d => d.destination === destination);
     if (!direction) {
       direction = { destination, departures: [] };
@@ -96,6 +98,26 @@ export function groupDeparturesForScreen(detail: StopDetail): ScreenLineGroup[] 
   }
   result.sort(compareLines);
   return result;
+}
+
+export const TRAIN_ROWS = 14;
+
+// trains of a station, in departure order, like a station board
+export function trainBoard(detail: StopDetail, now: number = Date.now()): Departure[] {
+  return (detail.departures ?? [])
+    .filter(departure => (departure.at ?? now + departure.departureTime * 60_000) >= now - 60_000)
+    .sort((a, b) => scheduledAt(a, now) - scheduledAt(b, now))
+    .slice(0, TRAIN_ROWS);
+}
+
+function scheduledAt(departure: Departure, now: number): number {
+  return (departure.at ?? now + departure.departureTime * 60_000) - (departure.delayMinutes ?? 0) * 60_000;
+}
+
+export function scheduledClock(departure: Departure, now: Date = new Date()): string {
+  const at = departure.at ?? now.getTime() + departure.departureTime * 60_000;
+  const base = at - (departure.delayMinutes ?? 0) * 60_000;
+  return new Date(base).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
 }
 
 export function departureClockTime(minutes: number, now: Date = new Date()): string {
@@ -131,9 +153,26 @@ export function parseScreenLayout(search: string): ScreenLayout {
   return new URLSearchParams(search).get('vue') === ROWS_QUERY_VALUE ? 'rows' : 'cards';
 }
 
-export function buildScreenUrl(stopId: string, layout: ScreenLayout): string {
-  const path = `${SCREEN_BASE}/${stopId}`;
-  return layout === 'rows' ? `${path}?vue=${ROWS_QUERY_VALUE}` : path;
+export interface ScreenPlace {
+  name: string;
+  city?: string;
+}
+
+// the stop name rides along in the link, so the screen can find its stop again if an id ever changes
+export function buildScreenUrl(stopId: string, layout: ScreenLayout, place?: ScreenPlace | null): string {
+  const params = new URLSearchParams();
+  if (layout === 'rows') params.set('vue', ROWS_QUERY_VALUE);
+  if (place?.name) params.set('nom', place.name);
+  if (place?.city) params.set('ville', place.city);
+  const query = params.toString();
+  return `${SCREEN_BASE}/${stopId}${query ? `?${query}` : ''}`;
+}
+
+export function parseScreenPlace(search: string): ScreenPlace | null {
+  const params = new URLSearchParams(search);
+  const name = params.get('nom')?.trim();
+  if (!name) return null;
+  return { name, city: params.get('ville')?.trim() || undefined };
 }
 
 export const SCREEN_BASE = '/app/screen';

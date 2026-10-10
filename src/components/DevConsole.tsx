@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePerfSettings, type PerfSettings } from '../hooks/usePerfSettings';
 import { emitDevCommand } from '../utils/devCommands';
-import { IS_NANCY } from '../site';
+import { IS_CITY_SITE } from '../site';
 import { clearOptedOutPopups } from '../utils/optedOutPopups';
 import { isSimulatedOffline, setSimulatedOffline } from '../services/networkSimulation';
 import { isOffline } from '../services/offlineSchedule';
@@ -125,9 +125,9 @@ const COMMANDS: ConsoleCommand[] = [
       return 'Test stop opened. Drag the DEPARTURE LAB panel by its title.';
     },
   },
-  ...(IS_NANCY ? [{
+  ...(IS_CITY_SITE ? [{
     name: 'show.outside',
-    description: 'Show the "not in Nancy" prompt, even after "Stay on GreLines Nancy"',
+    description: 'Show the "not in this city" prompt, even after "Stay"',
     run: () => {
       emitDevCommand('show.outside');
       return 'Outside-area prompt shown.';

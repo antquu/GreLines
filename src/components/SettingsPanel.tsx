@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { IS_NANCY } from '../site';
+import { CITY_SITE, IS_CITY_SITE, IS_NANCY, SITE_HAS_SNCF, SITE_NETWORK } from '../site';
 import { MapSheet } from './MapSheet';
 import { LegalSheet } from './LegalSheet';
 import {
@@ -297,7 +297,18 @@ const NANCY_DATA_SOURCES: Array<{ what: keyof Messages['settingsPanel']['sources
   { what: 'map', who: 'MapTiler, OpenStreetMap' },
 ];
 
-const DATA_SOURCES = IS_NANCY ? NANCY_DATA_SOURCES : GRENOBLE_DATA_SOURCES;
+const CITY_DATA_SOURCES: Array<{ what: keyof Messages['settingsPanel']['sources']; who: string }> = [
+  {
+    what: 'timetables',
+    who: SITE_NETWORK === 'TCL' ? 'TCL · SYTRAL Mobilités, data.grandlyon.com' : `${CITY_SITE?.networkLabel ?? ''} · transport.data.gouv.fr (GTFS, GTFS-RT)`,
+  },
+  ...(SITE_HAS_SNCF ? [{ what: 'terTrains' as const, who: 'SNCF' }] : []),
+  { what: 'routes', who: 'Transitous (MOTIS)' },
+  { what: 'addresses', who: 'Base Adresse Nationale (api-adresse.data.gouv.fr)' },
+  { what: 'map', who: 'MapTiler, OpenStreetMap' },
+];
+
+const DATA_SOURCES = IS_NANCY ? NANCY_DATA_SOURCES : IS_CITY_SITE ? CITY_DATA_SOURCES : GRENOBLE_DATA_SOURCES;
 
 export function SettingsPanel({
   variant = 'panel',
@@ -511,7 +522,7 @@ export function SettingsPanel({
         <Row label={text.labels.autoLocation}>
           <Toggle value={autoLocation} onChange={() => setAutoLocation(!autoLocation)} />
         </Row>
-        {!IS_NANCY && (
+        {!IS_CITY_SITE && (
           <Row label={text.labels.atmoFollowMap}>
             <Toggle value={atmoFollowMap} onChange={() => setAtmoFollowMap(!atmoFollowMap)} />
           </Row>
@@ -733,7 +744,7 @@ export function SettingsPanel({
         </Row>
       </Group>
 
-      {!IS_NANCY && (
+      {!IS_CITY_SITE && (
         <>
       <Group title={tx(language === 'fr').settingsPanel.grenobleArea}>
         <NetworkTiles
@@ -757,9 +768,11 @@ export function SettingsPanel({
         </>
       )}
 
-      <Group title={IS_NANCY ? (tx(language === 'fr').settingsPanel.network) : tx(language === 'fr').settingsPanel.otherNetworks}>
+      <Group title={IS_CITY_SITE ? (tx(language === 'fr').settingsPanel.network) : tx(language === 'fr').settingsPanel.otherNetworks}>
         <NetworkTiles
-          tiles={(IS_NANCY ? CITY_TILES : [LYON_TILE, SNCF_TILE, ...CITY_TILES]).map(tile => ({ ...tile, key: tile.codes.join('+') }))}
+          tiles={(IS_CITY_SITE
+            ? [...(SITE_NETWORK === 'TCL' ? [LYON_TILE] : CITY_TILES), ...(SITE_HAS_SNCF ? [SNCF_TILE] : [])]
+            : [LYON_TILE, SNCF_TILE, ...CITY_TILES]).map(tile => ({ ...tile, key: tile.codes.join('+') }))}
           isActive={key => key.split('+').every(code => perf.networks.includes(code))}
           onToggle={key => toggleNetwork(key.split('+'))}
         />

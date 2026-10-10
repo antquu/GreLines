@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { MapPinIcon } from '@heroicons/react/24/solid';
 import { useEffect, useRef, useState } from 'react';
-import { IS_NANCY } from '../site';
+import { IS_CITY_SITE } from '../site';
 import { CITIES } from '../utils/cities';
 import { haversineMeters } from '../utils/geo';
 import { onDevCommand } from '../utils/devCommands';
@@ -45,14 +45,14 @@ export function UnservedAreaPrompt({
   }, [position?.lat, position?.lon]);
 
   useEffect(() => {
-    if (IS_NANCY) return;
+    if (IS_CITY_SITE) return;
     return onDevCommand('show.unserved', () => {
       setDismissed(false);
       setForced(true);
     });
   }, []);
 
-  if (IS_NANCY) return null;
+  if (IS_CITY_SITE) return null;
 
   const open = forced || (!dismissed && settled !== null && !isServed(settled));
 

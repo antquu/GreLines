@@ -1,11 +1,14 @@
-import { getGtfsStops, GTFS_NETWORKS } from '../services/gtfsNetwork';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MagnifyingGlassIcon, MapPinIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
+import { MagnifyingGlassIcon } from '@heroicons/react/24/solid';
+import { TbBusStop } from 'react-icons/tb';
 import type { Line, Stop } from '../types';
-import { getActiveNetworks, getCachedStopLines, getStopLines, getStopsByPrefixes } from '../services/api';
-import { getTclStops, TCL_NETWORK } from '../services/tclNetwork';
+import { getCachedStopLines, getStopLines } from '../services/api';
+import { isSncfStopId } from '../services/sncfNetwork';
+import { appLanguage } from '../utils/appLanguage';
+import { tx } from '../i18n';
 import { ScreenTopBar } from './ScreenTopBar';
 import { ScreenLineBadge } from './ScreenLineBadge';
+import { loadScreenStops } from './screenData';
 import type { ScreenLayout } from './screenUtils';
 
 const MAX_RESULTS = 8;
@@ -14,14 +17,10 @@ const normalize = (value: string) =>
   value
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-const LAYOUT_OPTIONS: Array<{ id: ScreenLayout; label: string; hint: string }> = [
-  { id: 'cards', label: 'Cartes', hint: 'Grands chiffres, lisible de loin' },
-  { id: 'rows', label: 'Lignes', hint: 'Tableau dense, tout tient à l\'écran' },
-];
+    .replace(/[̀-ͯ]/g, '');
 
 export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: ScreenLayout) => void }) {
+  const text = tx(appLanguage() === 'fr').screenBoard;
   const [stops, setStops] = useState<Stop[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -30,22 +29,19 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
   const [layout, setLayout] = useState<ScreenLayout>('cards');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const layoutOptions: Array<{ id: ScreenLayout; label: string; hint: string }> = [
+    { id: 'cards', label: text.layoutCards, hint: text.layoutCardsHint },
+    { id: 'rows', label: text.layoutRows, hint: text.layoutRowsHint },
+  ];
+
   useEffect(() => {
     let active = true;
-    void (async () => {
-      const networks = getActiveNetworks();
-      const [mtag, tcl, stan] = await Promise.all([
-        getStopsByPrefixes(networks).catch(() => [] as Stop[]),
-        networks.includes(TCL_NETWORK) ? getTclStops().catch(() => [] as Stop[]) : Promise.resolve([] as Stop[]),
-        Promise.all(GTFS_NETWORKS.filter(network => networks.includes(network.code))
-          .map(network => getGtfsStops(network.code).catch(() => [] as Stop[])))
-          .then(lists => lists.flat()),
-      ]);
+    void loadScreenStops().then(list => {
       if (!active) return;
-      setStops([...mtag, ...tcl, ...stan]);
+      setStops(list);
       setLoading(false);
-      inputRef.current?.focus();
-    })();
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+    });
     return () => {
       active = false;
     };
@@ -94,7 +90,7 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
     return () => {
       active = false;
     };
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -112,84 +108,79 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
   };
 
   return (
-    <div className="gl-screen flex h-dvh w-full flex-col bg-[#eef2f7] text-slate-900">
+    <div className="gl-screen flex h-dvh w-full flex-col bg-white text-black">
       <ScreenTopBar />
 
-      <main className="flex min-h-0 flex-1 flex-col items-center justify-center px-4">
+      <main className="flex min-h-0 flex-1 flex-col items-center justify-center px-6">
         <div className="w-full max-w-3xl">
-          <div className="mb-10 flex items-baseline justify-center gap-4">
-            {
-}
-            <img
-              src="/assets/GreLinesWordmark.png"
-              alt="GreLines"
-              className="h-12 w-auto 2xl:h-16"
-              style={{ filter: 'brightness(0)' }}
-            />
-            <span className="text-4xl font-bold leading-none text-slate-900 2xl:text-5xl">Screen</span>
+          <div className="mb-8 flex items-center justify-center gap-4">
+            <img src="/assets/GreLinesWordmark.png" alt="GreLines" className="h-11 w-auto 2xl:h-14" style={{ filter: 'brightness(0)' }} />
+            <span className="text-[2.75rem] font-semibold leading-none tracking-tight text-black 2xl:text-[3.5rem]">Screen</span>
           </div>
 
-          <p className="mb-6 text-center text-lg text-slate-500 2xl:text-xl">
-            Choisissez un arrêt : l'écran affichera ses prochains passages, en continu.
-          </p>
+          <p className="mb-8 text-center text-xl text-neutral-500 2xl:text-2xl">{text.searchHint}</p>
 
           <div className="relative">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-6 top-1/2 h-6 w-6 -translate-y-1/2 text-neutral-500" />
             <input
               ref={inputRef}
               value={query}
               onChange={event => setQuery(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={loading ? 'Chargement des arrêts…' : 'Rechercher un arrêt…'}
+              placeholder={loading ? text.loadingStops : text.searchPlaceholder}
               disabled={loading}
-              className="w-full rounded-2xl border border-slate-200 bg-white py-5 pl-14 pr-5 text-xl font-medium text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15 disabled:opacity-60"
+              className="w-full rounded-[22px] border border-black/10 bg-[#f5f5f7] py-5 pl-16 pr-6 text-xl font-medium text-black outline-none placeholder:text-neutral-400 focus:border-black/30 disabled:opacity-60"
             />
-            {loading && (
-              <ArrowPathIcon className="absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-slate-400" />
-            )}
           </div>
 
           {results.length > 0 && (
-            <ul className="mt-3 max-h-[45vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-              {results.map((stop, index) => (
-                <li key={stop.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(stop, layout)}
-                    onMouseEnter={() => setHighlight(index)}
-                    className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
-                      index === highlight ? 'bg-blue-50' : 'bg-transparent'
-                    }`}
-                  >
-                    <MapPinIcon className="h-5 w-5 flex-shrink-0 text-blue-600" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-lg font-semibold text-slate-900">
-                        {stop.name}
-                      </span>
-                      {stop.city && (
-                        <span className="block truncate text-sm text-slate-500">{stop.city}</span>
+            <ul className="mt-3 max-h-[45vh] overflow-y-auto rounded-[22px] border border-black/10 bg-[#f5f5f7] p-1.5">
+              {results.map((stop, index) => {
+                const isStation = isSncfStopId(stop.id);
+                return (
+                  <li key={stop.id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(stop, layout)}
+                      onMouseEnter={() => setHighlight(index)}
+                      className={`flex w-full items-center gap-4 rounded-2xl px-4 py-3 text-left transition-colors ${
+                        index === highlight ? 'bg-black/[0.05]' : 'bg-transparent'
+                      }`}
+                    >
+                      {isStation ? (
+                        <img src="/assets/sncf-reseau.svg" alt="SNCF" className="h-5 w-6 flex-shrink-0 object-contain" />
+                      ) : (
+                        <TbBusStop className="h-6 w-6 flex-shrink-0 text-neutral-400" aria-hidden="true" />
                       )}
-                    </span>
-                    <span className="flex flex-shrink-0 items-center gap-1">
-                      {(linesByStop[stop.id] ?? []).slice(0, 5).map(line => (
-                        <ScreenLineBadge
-                          key={line.routeId || line.id}
-                          size="sm"
-                          lineId={line.routeId || line.id}
-                          label={line.shortName || line.id}
-                          color={line.color}
-                          textColor={line.textColor}
-                        />
-                      ))}
-                    </span>
-                  </button>
-                </li>
-              ))}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-lg font-medium text-black">{stop.name}</span>
+                        {(isStation || stop.city) && (
+                          <span className="block truncate text-sm text-neutral-500">
+                            {isStation ? [text.station, stop.city].filter(Boolean).join(' · ') : stop.city}
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex flex-shrink-0 items-center gap-1">
+                        {(linesByStop[stop.id] ?? []).slice(0, 5).map(line => (
+                          <ScreenLineBadge
+                            key={line.routeId || line.id}
+                            size="sm"
+                            lineId={line.routeId || line.id}
+                            label={line.shortName || line.id}
+                            color={line.color}
+                            textColor={line.textColor}
+                          />
+                        ))}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
 
-          <div className="mt-6 flex items-center justify-center gap-2">
-            {LAYOUT_OPTIONS.map(option => {
+          <div className="mt-8 flex items-center justify-center gap-2">
+            {layoutOptions.map(option => {
               const isActive = layout === option.id;
               return (
                 <button
@@ -197,12 +188,10 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
                   type="button"
                   onClick={() => setLayout(option.id)}
                   title={option.hint}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
-
-                    isActive
-                      ? 'border-[#0f172a] bg-[#0f172a] text-white'
-                      : 'border-slate-200 bg-white text-slate-500'
+                  className={`rounded-full px-5 py-2.5 text-base font-semibold transition-colors ${
+                    isActive ? 'bg-black text-white' : 'bg-black/[0.05] text-neutral-500'
                   }`}
+                  style={isActive ? { color: '#ffffff' } : undefined}
                 >
                   {option.label}
                 </button>
@@ -211,11 +200,10 @@ export function ScreenSearch({ onSelect }: { onSelect: (stop: Stop, layout: Scre
           </div>
 
           {!loading && query.trim() !== '' && results.length === 0 && (
-            <p className="mt-4 text-center text-slate-500">Aucun arrêt ne correspond à cette recherche.</p>
+            <p className="mt-6 text-center text-lg text-neutral-500">{text.noMatch}</p>
           )}
         </div>
       </main>
-
     </div>
   );
 }

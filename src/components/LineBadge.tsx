@@ -226,6 +226,22 @@ export function LineBadge({
         </div>
       );
     }
+    if (sncfCode === 'IC') {
+      const icText = size === 'xs' ? null : size === 'sm' ? 'text-[0.375rem]' : size === 'lg' ? 'text-[0.5rem]' : 'text-[0.4375rem]';
+      return (
+        <div
+          className={`${dim} relative flex flex-shrink-0 flex-col items-center justify-center gap-[2px] rounded-lg bg-white px-1 ${activeClass} ${opacityClass}`}
+        >
+          <img src={badgeImage('/assets/intercites-sncf.svg')} alt="SNCF" className="h-auto w-[78%] object-contain" />
+          {icText && <span className={`font-bold leading-none tracking-tight ${icText}`} style={{ color: '#404042' }}>Intercités</span>}
+          {line.hasTraffic && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400/90 text-amber-900 border border-amber-200 shadow-sm">
+              <ExclamationTriangleIcon className="w-2.5 h-2.5" />
+            </span>
+          )}
+        </div>
+      );
+    }
     if (sncfCode === 'TGV') {
       return (
         <div

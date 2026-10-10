@@ -5,21 +5,36 @@
   letter-spacing: inherit;
 }
 
+.gl-screen {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+}
+
 html:not(.dark) .gl-screen .text-white {
   color: #ffffff;
 }
 
 @keyframes screen-arrival {
-  0%, 100% { color: #0f172a; }
-  50% { color: #cbd5e1; }
+  0%, 100% { color: #000000; }
+  50% { color: #c4c4c4; }
 }
 
 .gl-screen .screen-arrival {
   animation: screen-arrival 1.4s ease-in-out infinite;
 }
 
+@keyframes screen-loading {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.gl-screen .screen-loading {
+  animation: screen-loading 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .gl-screen .screen-arrival {
+  .gl-screen .screen-arrival,
+  .gl-screen .screen-loading {
     animation-duration: 4s;
   }
 }

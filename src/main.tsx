@@ -5,7 +5,8 @@ import './index.css'
 
 import './light-theme.css'
 import { PerfSettingsProvider } from './hooks/usePerfSettings.tsx'
-import { IS_NANCY } from './site'
+import { ScreenErrorBoundary, ScreenMaintenance } from './screen/ScreenMaintenance'
+import { IS_CITY_SITE } from './site'
 import { installNetworkSimulation } from './services/networkSimulation'
 import { preloadBadgeImages } from './utils/badgeImages'
 import { Analytics } from '@vercel/analytics/react'
@@ -38,21 +39,21 @@ function deviceLang(): 'fr' | 'en' {
   return 'fr';
 }
 
-const landingLang = (IS_NANCY ? undefined : /^\/(fr|en)\/?$/.exec(window.location.pathname)?.[1]) as
+const landingLang = (IS_CITY_SITE ? undefined : /^\/(fr|en)\/?$/.exec(window.location.pathname)?.[1]) as
   | 'fr'
   | 'en'
   | undefined;
 
 const legalRoute = /^\/(fr|en)\/legals\/([a-z-]+)\/?$/.exec(window.location.pathname);
 
-const blogRoute = IS_NANCY ? null : /^\/(fr|en)\/(?:newsroom|blog)\/?$/.exec(window.location.pathname);
-const docsRoute = IS_NANCY ? null : /^\/(fr|en)\/docs(?:\/([a-z0-9-]+))?(?:\/([a-z0-9-]+))?\/?$/.exec(
+const blogRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/(?:newsroom|blog)\/?$/.exec(window.location.pathname);
+const docsRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/docs(?:\/([a-z0-9-]+))?(?:\/([a-z0-9-]+))?\/?$/.exec(
   window.location.pathname,
 );
-const solutionRoute = IS_NANCY ? null : /^\/(fr|en)\/solutions(?:\/([a-z0-9-]+))?\/?$/.exec(
+const solutionRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/solutions(?:\/([a-z0-9-]+))?\/?$/.exec(
   window.location.pathname,
 );
-const postRoute = IS_NANCY ? null : /^\/(fr|en)\/(?:newsroom|blog)\/([A-Za-z0-9-]+)\/?$/.exec(window.location.pathname);
+const postRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/(?:newsroom|blog)\/([A-Za-z0-9-]+)\/?$/.exec(window.location.pathname);
 
 const LANDING_LANG_KEY = 'greLines_landingLang';
 
@@ -132,7 +133,7 @@ if (solutionRoute) {
       </StrictMode>,
     )
   })
-} else if (!IS_NANCY && /^\/(?:trafic|traffic)\/?$/.test(window.location.pathname)) {
+} else if (!IS_CITY_SITE && /^\/(?:trafic|traffic)\/?$/.test(window.location.pathname)) {
   void import('./traffic/TrafficPage').then(({ TrafficPage }) => {
     root.render(
       <StrictMode>
@@ -143,15 +144,25 @@ if (solutionRoute) {
     )
   })
 } else if (window.location.pathname.startsWith('/app/screen')) {
-  void import('./screen/ScreenApp').then(({ ScreenApp }) => {
-    root.render(
-      <StrictMode>
-        <ScreenApp />
-        <Analytics />
-        <SpeedInsights />
-      </StrictMode>,
-    )
+  // after a deploy, old code files may be gone: show maintenance, never a blank screen
+  window.addEventListener('vite:preloadError', event => {
+    event.preventDefault()
+    root.render(<ScreenMaintenance reloadWhenReachable />)
   })
+  root.render(<ScreenMaintenance />)
+  void import('./screen/ScreenApp')
+    .then(({ ScreenApp }) => {
+      root.render(
+        <StrictMode>
+          <ScreenErrorBoundary>
+            <ScreenApp />
+          </ScreenErrorBoundary>
+          <Analytics />
+          <SpeedInsights />
+        </StrictMode>,
+      )
+    })
+    .catch(() => root.render(<ScreenMaintenance reloadWhenReachable />))
 } else {
   void import('./App.tsx').then(({ default: App }) => {
     root.render(

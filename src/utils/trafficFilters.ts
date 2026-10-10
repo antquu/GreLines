@@ -3,7 +3,7 @@ import gtfsNetworks from '../data/siteNetworks';
 import { gtfsCodeOf } from '../services/gtfsNetworkIds';
 import { gtfsLineMode, gtfsShortName } from '../services/gtfsNetwork';
 import { tclCode, tclLogoEntry } from './tclLogos';
-import { IS_NANCY } from '../site';
+import { CITY_SITE, IS_NANCY } from '../site';
 import { tx } from '../i18n';
 
 export type MetroFamily = 'tram' | 'chrono' | 'proximo' | 'flexo';
@@ -102,6 +102,15 @@ export function trafficFilters(
       ...STAN_FAMILIES.filter(family => present.has(family)).map(family => ({
         key: family,
         label: tx(isFr).trafficFilters.families[family],
+      })),
+    ];
+  }
+  if (CITY_SITE) {
+    return [
+      { key: 'all', label: tx(isFr).trafficFilters.all },
+      ...NETWORK_FILTERS.filter(entry => present.has(entry.code)).map(entry => ({
+        key: entry.code,
+        label: entry.code === CITY_SITE?.network ? CITY_SITE.networkLabel : entry.label,
       })),
     ];
   }

@@ -328,7 +328,7 @@ async function traceOfBranch(branch, coach) {
   });
   const response = await fetch(`${TRANSITOUS}?${params}`, {
     headers: { 'User-Agent': 'GreLines (grelines.fr)' },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(10_000),
   }).catch(() => null);
   if (!response?.ok) return null;
   const data = await response.json().catch(() => null);
@@ -366,7 +366,7 @@ async function buildTrace(lineId, key) {
     branches.push(best.branch);
     for (const stop of best.branch.stops) covered.add(`${stop.lat.toFixed(3)},${stop.lon.toFixed(3)}`);
   }
-  const traces = await mapLimit(branches, 2, async branch =>
+  const traces = await mapLimit(branches, 4, async branch =>
     (await traceOfBranch(branch, coach)) ?? branch.stops.map(stop => [stop.lon, stop.lat]));
   return { line: lineId, segments: traces.filter(trace => trace && trace.length >= 2) };
 }

@@ -1,5 +1,5 @@
 import { formatDurationLabel } from '../utils/formatDuration';
-import { IS_NANCY } from '../site';
+import { CITY_SITE, SITE_CENTER } from '../site';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
 import MapLibreMap, { Marker, Source, Layer } from 'react-map-gl/maplibre';
@@ -1471,7 +1471,7 @@ export function NavigationMode({
         <div className="absolute inset-0">
           <MapLibreMap
             ref={mapRef}
-            initialViewState={{ longitude: fullPath[0]?.[0] ?? (IS_NANCY ? 6.1844 : 5.74892), latitude: fullPath[0]?.[1] ?? (IS_NANCY ? 48.6921 : 45.18501), zoom: 15 }}
+            initialViewState={{ longitude: fullPath[0]?.[0] ?? (CITY_SITE ? SITE_CENTER.lon : 5.74892), latitude: fullPath[0]?.[1] ?? (CITY_SITE ? SITE_CENTER.lat : 45.18501), zoom: 15 }}
             mapStyle={theme === 'dark' ? DARK_MAP_STYLE_URL : LIGHT_MAP_STYLE_URL}
             style={{ width: '100%', height: '100%' }}
             attributionControl={false}

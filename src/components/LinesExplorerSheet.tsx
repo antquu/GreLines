@@ -1,5 +1,5 @@
 import { XMarkIcon } from '@heroicons/react/24/solid';
-import { IS_NANCY } from '../site';
+import { CITY_SITE, IS_NANCY } from '../site';
 import { MapSheet } from './MapSheet';
 import { LineBadge } from './LineBadge';
 import type { AllLinesLine } from '../services/allLines';
@@ -21,8 +21,8 @@ const GRENOBLE_GROUPS: { key: string; label: string; networks: string[] }[] = [
   { key: 'cars',   label: 'Cars Région',  networks: ['C38'] },
 ];
 
-const NETWORK_GROUPS: { key: string; label: string; networks: string[] }[] = IS_NANCY
-  ? [{ key: 'stan', label: 'Stan', networks: ['STAN'] }]
+const NETWORK_GROUPS: { key: string; label: string; networks: string[] }[] = CITY_SITE
+  ? [{ key: CITY_SITE.network.toLowerCase(), label: CITY_SITE.networkLabel, networks: [CITY_SITE.network] }]
   : GRENOBLE_GROUPS;
 
 const OTHERS_GROUP_KEY = 'other';
@@ -39,6 +39,13 @@ function sortLines(lines: AllLinesLine[]): AllLinesLine[] {
       if (n === 'COROL') return 1;
       if (/^CIT\d$/.test(n)) return 2;
       if (/^\d+E?$/.test(n)) return 3;
+      return 4;
+    }
+    if (CITY_SITE) {
+      if (/^[A-F]$/.test(n) || n === 'M' || /^M\d$/.test(n)) return 0;
+      if (/^T\d+$/.test(n)) return 1;
+      if (/^C\d+$/.test(n)) return 2;
+      if (/^\d+/.test(n)) return 3;
       return 4;
     }
     if (['A', 'B', 'C', 'D', 'E'].includes(n)) return 0;

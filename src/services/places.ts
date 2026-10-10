@@ -1,4 +1,4 @@
-import { IS_NANCY } from '../site';
+import { IS_CITY_SITE, IS_NANCY } from '../site';
 import { tx } from '../i18n';
 
 export interface PlaceSection {
@@ -207,5 +207,6 @@ function nancyPlaces(language: 'fr' | 'en'): Place[] {
 export const PLACE_LINES: Record<string, { id: string; color: string; textColor: string }> = IS_NANCY ? NANCY_PLACE_LINES : {};
 
 export function cityPlaces(language: 'fr' | 'en'): Place[] {
-  return IS_NANCY ? nancyPlaces(language) : grenoblePlaces(language);
+  if (IS_NANCY) return nancyPlaces(language);
+  return IS_CITY_SITE ? [] : grenoblePlaces(language);
 }

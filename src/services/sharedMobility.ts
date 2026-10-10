@@ -1,5 +1,5 @@
 import { idbGet, idbSet } from './persistentCache';
-import { IS_NANCY } from '../site';
+import { IS_CITY_SITE, IS_NANCY } from '../site';
 import { tx, type Messages } from '../i18n';
 
 const GBFS_BASE = 'https://data.mobilites-m.fr/api/gbfs';
@@ -51,7 +51,10 @@ export interface SharedMobilityData {
 
 export const EMPTY_SHARED_MOBILITY: SharedMobilityData = { citiz: [], voi: [], velostan: [] };
 
-export const SHARED_OPERATORS: SharedOperator[] = IS_NANCY ? ['citiz', 'velostan'] : ['citiz', 'voi', 'velostan'];
+// lyon, saint-etienne, clermont: no shared mobility feed yet
+const NO_SHARED_MOBILITY = IS_CITY_SITE && !IS_NANCY;
+
+export const SHARED_OPERATORS: SharedOperator[] = NO_SHARED_MOBILITY ? [] : IS_NANCY ? ['citiz', 'velostan'] : ['citiz', 'voi', 'velostan'];
 
 export const SHARED_OPERATOR_COLORS: Record<SharedOperator, string> = {
   citiz: '#2563eb',
@@ -449,6 +452,7 @@ async function fetchVoi(signal?: AbortSignal): Promise<SharedVehiclePoint[]> {
 export async function fetchSharedMobility(
   options: { signal?: AbortSignal } = {},
 ): Promise<SharedMobilityData> {
+  if (NO_SHARED_MOBILITY) return EMPTY_SHARED_MOBILITY;
   const [citiz, voi, velostan] = await Promise.all([
     loadOperator('citiz', options.signal),
     IS_NANCY ? Promise.resolve([]) : loadOperator('voi', options.signal),
@@ -560,7 +564,7 @@ function zoneKind(rules: GbfsZoneRule[]): VoiZoneKind | null {
 }
 
 export function getVoiZones(): Promise<GeoJSON.FeatureCollection | null> {
-  if (IS_NANCY) return Promise.resolve(null);
+  if (IS_CITY_SITE) return Promise.resolve(null);
   if (voiZones && Date.now() - voiZones.at < VOI_ZONES_TTL_MS) return voiZones.value;
   const value = fetchJson<{ data?: { geofencing_zones?: GeoJSON.FeatureCollection } }>(`${GBFS_BASE}/voi_grenoble/geofencing_zones`)
     .then(payload => {

@@ -1,5 +1,5 @@
 import { cityNear, cityOfNetwork } from './utils/cities';
-import { GUIDANCE_ENABLED, IS_NANCY } from './site';
+import { GUIDANCE_ENABLED, IS_CITY_SITE, SITE_NETWORK } from './site';
 import { locateByIp } from './services/ipLocation';
 import { getLocatedCity, setIpArea, setMapArea, setUserArea, subscribeCurrentCity } from './utils/currentArea';
 import { getFakeLocation, subscribeFakeLocation } from './utils/devLocation';
@@ -37,9 +37,9 @@ import { TrafficPanelMobile } from './components/TrafficPanelMobile';
 import { TrafficAlertCard } from './components/TrafficAlertCard';
 import { useWheelScroll } from './hooks/useWheelScroll';
 import { InstallAppSheet } from './components/InstallAppSheet';
-import { NancyAreaPrompt } from './components/NancyAreaPrompt';
+import { CityAreaPrompt } from './components/CityAreaPrompt';
 import { UnservedAreaPrompt } from './components/UnservedAreaPrompt';
-import { getSncfLines, getSncfStopDetail, getSncfStops, isSncfStopId, sncfStationsLinkedTo } from './services/sncfNetwork';
+import { getSncfLines, getSncfStopDetail, getSncfStops, isSncfStopId, onSncfTraceReady, sncfStationsLinkedTo } from './services/sncfNetwork';
 import { DepartureLabOverlay } from './components/DepartureLabOverlay';
 import { closeLab, getLabState, openLab, setLabSelectedLines, subscribeLab } from './dev/departureLab';
 import { MobileNotificationPrompt } from './components/MobileNotificationPrompt';
@@ -497,11 +497,11 @@ function App() {
     return () => { alive = false; };
   }, []);
   const locatedPopups = useMemo(() => activePopups.filter(popup => {
-    if (IS_NANCY) {
+    if (SITE_NETWORK) {
       if (!popup.target_network) {
-        return (popup.target_lines ?? []).every(line => line.id.toUpperCase().startsWith('STAN:'));
+        return (popup.target_lines ?? []).every(line => line.id.toUpperCase().startsWith(`${SITE_NETWORK}:`));
       }
-      if (popup.target_network !== 'STAN') return false;
+      if (popup.target_network !== SITE_NETWORK) return false;
       if (!locatedArea.city) return true;
       return cityOfNetwork(popup.target_network)?.id === locatedArea.city.id;
     }
@@ -518,13 +518,13 @@ function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   useEffect(() => {
-    if (IS_NANCY) return;
+    if (IS_CITY_SITE) return;
     void loadAccount().then(setAccount);
   }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
-    if (IS_NANCY) return;
+    if (IS_CITY_SITE) return;
     void listOuraCards().then(setWalletCards);
   }, []);
   const [surveyContext, setSurveyContext] = useState<
@@ -830,8 +830,10 @@ function App() {
 
   useEffect(() => {
     Promise.all([
-      IS_NANCY
-        ? getGtfsLines('STAN').then(list => list.map(line => foreignAsCatalogLine(line))).catch(() => [] as AllLinesLine[])
+      SITE_NETWORK
+        ? (SITE_NETWORK === TCL_NETWORK ? getTclLines() : getGtfsLines(SITE_NETWORK))
+            .then(list => list.map(line => foreignAsCatalogLine(line)))
+            .catch(() => [] as AllLinesLine[])
         : getAllSemLines(),
       getLineOverrides(),
     ]).then(([lines, overrides]) => {
@@ -868,6 +870,8 @@ function App() {
     });
   }, [cmsRevision]);
   const allLinesLookup = useMemo(() => buildLineLookup(allLines), [allLines]);
+  const [sncfTraceRevision, setSncfTraceRevision] = useState(0);
+  useEffect(() => onSncfTraceReady(() => setSncfTraceRevision(revision => revision + 1)), []);
 
   useEffect(() => {
     if (!selectedStop) {
@@ -996,7 +1000,7 @@ function App() {
       setServedStopPoints(served);
     });
     return () => { active = false; };
-  }, [selectedStop?.id, selectedStop?.lines, selectedLines, allLinesLookup, selectedLine, isMobile]);
+  }, [selectedStop?.id, selectedStop?.lines, selectedLines, allLinesLookup, selectedLine, isMobile, sncfTraceRevision]);
 
   useLayoutEffect(() => {
     localStorage.setItem('greLines_theme', theme);
@@ -1059,7 +1063,7 @@ function App() {
   const isAtmoPanelOpen = isAtmoBtnHovered || isAtmoPanelHovered;
 
   useEffect(() => {
-    if (IS_NANCY) return;
+    if (IS_CITY_SITE) return;
     if (atmoCommune) localStorage.setItem('greLines_atmoCommune', JSON.stringify(atmoCommune));
     else localStorage.setItem('greLines_atmoPostalCode', atmoPostalCode);
 
@@ -1096,7 +1100,7 @@ function App() {
 
   const [walletLoaded, setWalletLoaded] = useState(false);
   useEffect(() => {
-    if (IS_NANCY || isMobile || walletLoaded || !isSupabaseConfigured) return;
+    if (IS_CITY_SITE || isMobile || walletLoaded || !isSupabaseConfigured) return;
     let active = true;
     void listOuraCards().then(async list => {
       if (!active) return;
@@ -1114,7 +1118,7 @@ function App() {
       void listOuraCards().then(setWalletCards);
     });
   }, [isMobile, walletLoaded]);
-  const { notice: cardNotice, dismiss: dismissCardNotice } = useCardNotices(isMobile && !IS_NANCY);
+  const { notice: cardNotice, dismiss: dismissCardNotice } = useCardNotices(isMobile && !IS_CITY_SITE);
   const disruptedLineCodes = useMemo(() => new Set(trafficInfo.keys()), [trafficInfo]);
   const firstFavoriteLoading = favoritesList.length > 0 && (favoritesDetails[0]?.loading ?? true);
 
@@ -1413,7 +1417,7 @@ function App() {
   useEffect(() => {
     const loadCmsContent = () => {
       getActivePopups().then(setActivePopups);
-      getFooterConfig().then(config => setFooterConfig(IS_NANCY ? { ...config, message: null } : config));
+      getFooterConfig().then(config => setFooterConfig(IS_CITY_SITE ? { ...config, message: null } : config));
     };
 
     loadCmsContent();
@@ -1434,9 +1438,9 @@ function App() {
         const gtfsCodes = GTFS_NETWORKS.map(network => network.code).filter(code => appliedNetworks.includes(code));
         if (wantsTcl) void getTclLines({ includeSchool: true });
 
-        const wantsSncf = !IS_NANCY && appliedNetworks.includes('SNC');
+        const wantsSncf = appliedNetworks.includes('SNC');
         const [data, overrides, tclStops, gtfsStopLists, sncfStops] = await Promise.all([
-          IS_NANCY ? Promise.resolve([] as Stop[]) : getStopsByPrefixes(appliedNetworks),
+          IS_CITY_SITE ? Promise.resolve([] as Stop[]) : getStopsByPrefixes(appliedNetworks),
           getStopOverrides(),
           wantsTcl ? getTclStops() : Promise.resolve([] as Stop[]),
           Promise.all(gtfsCodes.map(code => getGtfsStops(code).catch(() => [] as Stop[]))),
@@ -1546,13 +1550,13 @@ function App() {
 
   useEffect(() => {
     let active = true;
-    const codes = GTFS_NETWORKS.map(network => network.code).filter(code => appliedNetworks.includes(code));
+    const codes = GTFS_NETWORKS.map(network => network.code).filter(code => appliedNetworks.includes(code) && code !== SITE_NETWORK);
     void Promise.all([
-      appliedNetworks.includes(TCL_NETWORK) ? getTclLines().catch(() => []) : Promise.resolve([]),
+      appliedNetworks.includes(TCL_NETWORK) && SITE_NETWORK !== TCL_NETWORK ? getTclLines().catch(() => []) : Promise.resolve([]),
       ...codes.map(code => getGtfsLines(code).catch(() => [])),
       appliedNetworks.includes('SNC') ? getSncfLines().catch(() => []) : Promise.resolve([]),
     ]).then(lists => {
-      if (active) setForeignCatalog(IS_NANCY ? [] : lists.flat().map(line => foreignAsCatalogLine(line)));
+      if (active) setForeignCatalog(lists.flat().map(line => foreignAsCatalogLine(line)));
     });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1563,7 +1567,7 @@ function App() {
     const fetchTraffic = async () => {
       try {
         const [data, foreign] = await Promise.all([
-          IS_NANCY ? Promise.resolve(new Map<string, TrafficDetail[]>()) : getTrafficLines(),
+          IS_CITY_SITE ? Promise.resolve(new Map<string, TrafficDetail[]>()) : getTrafficLines(),
           getForeignTraffic(appliedNetworks).catch(() => new Map<string, TrafficDetail[]>()),
         ]);
         setTrafficInfo(foreign.size > 0 ? new Map([...data, ...foreign]) : data);
@@ -2437,7 +2441,7 @@ function App() {
         />
       )}
 
-      {!IS_NANCY && (
+      {!IS_CITY_SITE && (
         <UnservedAreaPrompt
           position={exploringMap && mapPin && !mapPickTarget ? mapPin : currentLocation}
           isMobile={isMobile}
@@ -2446,8 +2450,8 @@ function App() {
         />
       )}
 
-      {IS_NANCY && (
-        <NancyAreaPrompt
+      {IS_CITY_SITE && (
+        <CityAreaPrompt
           position={currentLocation}
           isMobile={isMobile}
           language={language}
@@ -2631,7 +2635,7 @@ function App() {
         uiTheme={effectiveTheme}
         accountPseudo={account?.pseudo ?? null}
         accountAvatar={account?.avatarEmoji ?? null}
-        onOpenAccount={IS_NANCY ? undefined : () =>
+        onOpenAccount={IS_CITY_SITE ? undefined : () =>
         account ? setIsProfileOpen(true) : setIsAccountSetupOpen(true)
         }
       />
@@ -3042,7 +3046,7 @@ function App() {
               </div>
 
 
-              {!IS_NANCY && (
+              {!IS_CITY_SITE && (
               <div
                 onMouseEnter={() => setIsAtmoBtnHovered(true)}
                 onMouseLeave={() => setIsAtmoBtnHovered(false)}
@@ -3474,7 +3478,7 @@ function App() {
               uiTheme={effectiveTheme}
               accountPseudo={account?.pseudo ?? null}
               accountAvatar={account?.avatarEmoji ?? null}
-              onOpenAccount={IS_NANCY ? undefined : () =>
+              onOpenAccount={IS_CITY_SITE ? undefined : () =>
               account ? setIsProfileOpen(true) : setIsAccountSetupOpen(true)
               }
               contentRef={settingsContentRef}

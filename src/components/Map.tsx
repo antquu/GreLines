@@ -1,5 +1,5 @@
 import { sortStopPreviewLines } from '../utils/lineOrder';
-import { IS_NANCY } from '../site';
+import { CITY_SITE, SITE_CENTER } from '../site';
 import { appLanguage } from '../utils/appLanguage';
 import { useReconnectCount } from '../hooks/useIsOffline';
 import { tx } from '../i18n';
@@ -234,7 +234,7 @@ interface MapState {
   zoom: number;
 }
 
-const GRENOBLE_CENTER: [number, number] = IS_NANCY ? [48.6921, 6.1844] : [45.18501, 5.74892];
+const GRENOBLE_CENTER: [number, number] = CITY_SITE ? [SITE_CENTER.lat, SITE_CENTER.lon] : [45.18501, 5.74892];
 
 const throttle = <T extends (...args: any[]) => void>(fn: T, delay: number): T => {
   let lastCall = 0;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { IS_NANCY } from '../site';
+import { CITY_SITE } from '../site';
 import { appLanguage } from '../utils/appLanguage';
 import { tx } from '../i18n';
 
@@ -112,12 +112,12 @@ export function LaunchScreen({
           style={{ transform: 'translateY(-2.5%)' }}
           draggable={false}
         />
-        {IS_NANCY && (
+        {CITY_SITE && (
           <img
-            src={light ? '/assets/stan-logo.svg' : '/assets/stan-logo-white.svg'}
-            alt="Stan"
-            className="absolute left-1/2 w-28 -translate-x-1/2"
-            style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4rem)' }}
+            src={light ? CITY_SITE.logo.light : CITY_SITE.logo.dark}
+            alt={CITY_SITE.networkLabel}
+            className="absolute left-1/2 h-auto -translate-x-1/2"
+            style={{ width: CITY_SITE.logo.width, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4rem)' }}
             draggable={false}
           />
         )}
