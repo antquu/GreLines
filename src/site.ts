@@ -38,7 +38,7 @@ export const CITY_SITES: Record<CitySite['id'], CitySite> = {
   'saint-etienne': {
     id: 'saint-etienne',
     name: 'Saint-Étienne',
-    host: 'sainte.grelines.fr',
+    host: 'stetienne.grelines.fr',
     network: 'STAS',
     networkLabel: 'STAS',
     center: [45.4397, 4.3872],
@@ -49,7 +49,7 @@ export const CITY_SITES: Record<CitySite['id'], CitySite> = {
   clermont: {
     id: 'clermont',
     name: 'Clermont-Ferrand',
-    host: 'clermont.grelines.fr',
+    host: 'clermontferrand.grelines.fr',
     network: 'T2C',
     networkLabel: 'T2C',
     center: [45.7772, 3.087],

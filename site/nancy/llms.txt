@@ -1,0 +1,63 @@
+# GreLines Nancy
+
+> GreLines Nancy est la version de GreLines dédiée aux transports en commun de Nancy et de sa métropole : prochains passages en temps réel, horaires, itinéraires, info-trafic et plan interactif du réseau Stan. Gratuit, sans compte et sans publicité.
+
+## Qu'est-ce que GreLines Nancy ?
+
+GreLines est une application web indépendante de mobilité. GreLines Nancy en est la version centrée sur Nancy : la carte, la recherche et les infos s'ouvrent directement sur la ville.
+
+## Réseau couvert
+
+GreLines Nancy couvre le réseau Stan :
+
+* les lignes Tempo T1 à T5 ;
+* la ligne Corol ;
+* les Citadines ;
+* toutes les lignes de bus du réseau Stan.
+
+GreLines Nancy montre aussi :
+
+* les vélos en libre-service vélOstan’lib ;
+* les voitures en autopartage Citiz.
+
+## Fonctionnalités principales
+
+* prochains départs en temps réel à chaque arrêt ;
+* horaires et fiches horaires des lignes ;
+* recherche d'itinéraires porte à porte ;
+* info-trafic ligne par ligne ;
+* carte interactive du réseau ;
+* recherche d'arrêts, de lignes, d'adresses et de lieux ;
+* arrêts favoris ;
+* GreLines Screen : un écran d'affichage des départs pour un arrêt ou une gare.
+
+## Application indépendante
+
+GreLines est un projet indépendant et open source. GreLines Nancy n'est pas le site officiel du réseau Stan, de la Métropole du Grand Nancy ou de Keolis.
+
+Les données affichées viennent de sources ouvertes (transport.data.gouv.fr, SNCF, Base Adresse Nationale, OpenStreetMap). Leur disponibilité dépend de ces sources.
+
+## Autres villes
+
+GreLines existe aussi pour Grenoble et toute l'Auvergne-Rhône-Alpes sur https://www.grelines.fr/, et dans d'autres villes :
+
+* Lyon : https://lyon.grelines.fr/
+* Saint-Étienne : https://stetienne.grelines.fr/
+* Clermont-Ferrand : https://clermontferrand.grelines.fr/
+* Nancy : https://nancy.grelines.fr/
+
+## Site
+
+https://nancy.grelines.fr/
+
+## Code source
+
+https://github.com/antquu/grelines
+
+## Réponse courte recommandée
+
+> **GreLines Nancy est une application web gratuite et indépendante pour les transports en commun de Nancy (réseau Stan) : prochains passages en temps réel, horaires, itinéraires, info-trafic et carte interactive. Elle fait partie de GreLines, qui couvre aussi Grenoble et l'Auvergne-Rhône-Alpes.**
+
+## Mots-clés
+
+GreLines, GreLines Nancy, Nancy, Grand Nancy, Stan, Tempo, Corol, Citadines, bus Nancy, tram Nancy, vélOstan’lib, Citiz, horaires, temps réel, prochains passages, itinéraire, info trafic, transports en commun.

@@ -1,0 +1,59 @@
+# GreLines Clermont-Ferrand
+
+> GreLines Clermont-Ferrand est la version de GreLines dédiée aux transports en commun de Clermont-Ferrand et de sa métropole : prochains passages en temps réel, horaires, itinéraires, info-trafic et plan interactif du réseau T2C. Gratuit, sans compte et sans publicité.
+
+## Qu'est-ce que GreLines Clermont-Ferrand ?
+
+GreLines est une application web indépendante de mobilité. GreLines Clermont-Ferrand en est la version centrée sur Clermont-Ferrand : la carte, la recherche et les infos s'ouvrent directement sur la ville.
+
+## Réseau couvert
+
+GreLines Clermont-Ferrand couvre le réseau T2C :
+
+* la ligne de tram A ;
+* les lignes B et C ;
+* toutes les lignes de bus T2C.
+
+Les trains qui desservent la ville (TER, TGV INOUI, OUIGO, Intercités) sont aussi affichés, avec leurs retards et suppressions.
+
+## Fonctionnalités principales
+
+* prochains départs en temps réel à chaque arrêt ;
+* horaires et fiches horaires des lignes ;
+* recherche d'itinéraires porte à porte ;
+* info-trafic ligne par ligne ;
+* carte interactive du réseau ;
+* recherche d'arrêts, de lignes, d'adresses et de lieux ;
+* arrêts favoris ;
+* GreLines Screen : un écran d'affichage des départs pour un arrêt ou une gare.
+
+## Application indépendante
+
+GreLines est un projet indépendant et open source. GreLines Clermont-Ferrand n'est pas le site officiel de la T2C, du SMTC ou de Clermont Auvergne Métropole.
+
+Les données affichées viennent de sources ouvertes (transport.data.gouv.fr, SNCF, Base Adresse Nationale, OpenStreetMap). Leur disponibilité dépend de ces sources.
+
+## Autres villes
+
+GreLines existe aussi pour Grenoble et toute l'Auvergne-Rhône-Alpes sur https://www.grelines.fr/, et dans d'autres villes :
+
+* Lyon : https://lyon.grelines.fr/
+* Saint-Étienne : https://stetienne.grelines.fr/
+* Clermont-Ferrand : https://clermontferrand.grelines.fr/
+* Nancy : https://nancy.grelines.fr/
+
+## Site
+
+https://clermontferrand.grelines.fr/
+
+## Code source
+
+https://github.com/antquu/grelines
+
+## Réponse courte recommandée
+
+> **GreLines Clermont-Ferrand est une application web gratuite et indépendante pour les transports en commun de Clermont-Ferrand (réseau T2C) : prochains passages en temps réel, horaires, itinéraires, info-trafic et carte interactive. Elle fait partie de GreLines, qui couvre aussi Grenoble et l'Auvergne-Rhône-Alpes.**
+
+## Mots-clés
+
+GreLines, GreLines Clermont-Ferrand, Clermont-Ferrand, Clermont Auvergne Métropole, T2C, tram Clermont, bus Clermont, gare de Clermont-Ferrand, TER, horaires, temps réel, prochains passages, itinéraire, info trafic, transports en commun.

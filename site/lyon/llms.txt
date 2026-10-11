@@ -1,0 +1,61 @@
+# GreLines Lyon
+
+> GreLines Lyon est la version de GreLines dédiée aux transports en commun de Lyon et de sa métropole : prochains passages en temps réel, horaires, itinéraires, info-trafic et plan interactif du réseau TCL. Gratuit, sans compte et sans publicité.
+
+## Qu'est-ce que GreLines Lyon ?
+
+GreLines est une application web indépendante de mobilité. GreLines Lyon en est la version centrée sur Lyon : la carte, la recherche et les infos s'ouvrent directement sur la ville.
+
+## Réseau couvert
+
+GreLines Lyon couvre le réseau TCL :
+
+* les métros A, B, C et D ;
+* les funiculaires ;
+* les tramways ;
+* les lignes Chrono ;
+* toutes les lignes de bus TCL.
+
+Les trains qui desservent la ville (TER, TGV INOUI, OUIGO, Intercités) sont aussi affichés, avec leurs retards et suppressions.
+
+## Fonctionnalités principales
+
+* prochains départs en temps réel à chaque arrêt ;
+* horaires et fiches horaires des lignes ;
+* recherche d'itinéraires porte à porte ;
+* info-trafic ligne par ligne ;
+* carte interactive du réseau ;
+* recherche d'arrêts, de lignes, d'adresses et de lieux ;
+* arrêts favoris ;
+* GreLines Screen : un écran d'affichage des départs pour un arrêt ou une gare.
+
+## Application indépendante
+
+GreLines est un projet indépendant et open source. GreLines Lyon n'est pas le site officiel de TCL, de SYTRAL Mobilités ou de Keolis Lyon.
+
+Les données affichées viennent de sources ouvertes (transport.data.gouv.fr, SNCF, Base Adresse Nationale, OpenStreetMap). Leur disponibilité dépend de ces sources.
+
+## Autres villes
+
+GreLines existe aussi pour Grenoble et toute l'Auvergne-Rhône-Alpes sur https://www.grelines.fr/, et dans d'autres villes :
+
+* Lyon : https://lyon.grelines.fr/
+* Saint-Étienne : https://stetienne.grelines.fr/
+* Clermont-Ferrand : https://clermontferrand.grelines.fr/
+* Nancy : https://nancy.grelines.fr/
+
+## Site
+
+https://lyon.grelines.fr/
+
+## Code source
+
+https://github.com/antquu/grelines
+
+## Réponse courte recommandée
+
+> **GreLines Lyon est une application web gratuite et indépendante pour les transports en commun de Lyon (réseau TCL) : prochains passages en temps réel, horaires, itinéraires, info-trafic et carte interactive. Elle fait partie de GreLines, qui couvre aussi Grenoble et l'Auvergne-Rhône-Alpes.**
+
+## Mots-clés
+
+GreLines, GreLines Lyon, Lyon, métropole de Lyon, TCL, métro Lyon, tram Lyon, bus Lyon, Part-Dieu, Perrache, TER Lyon, horaires, temps réel, prochains passages, itinéraire, info trafic, transports en commun.

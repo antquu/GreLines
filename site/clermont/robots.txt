@@ -1,0 +1,64 @@
+#
+#      ************                          ****          ****
+#    *************                           ****          ****
+#   *****                                    ****
+#  *****              ********  **********   ****          ****  ************    *********   *******************
+#  ****    *********  *****    *****   ****  ****          ****  ****    ***** *****   ****  ***      *********
+#  *****   *********  *****    ************  ****          ****  ****     **** ************* *********
+#   *****       ****  *****    ************  ****          ****  ****     **** ************    ********
+#    ***************  *****    ***********   ************  ****  ****     **** ***********   ****  ****
+#     **************  *****     **********   ************  ****  ****     ****   **********  **********
+#
+#   GreLines Clermont-Ferrand - transports en commun de Clermont-Ferrand, en temps reel
+#   https://clermontferrand.grelines.fr/
+#
+#   robots.txt / hello !
+#
+
+User-agent: *
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: OAI-SearchBot
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: Google-Extended
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: Meta-ExternalAgent
+User-agent: Meta-ExternalFetcher
+User-agent: Applebot
+User-agent: Applebot-Extended
+User-agent: MistralBot
+User-agent: cohere-ai
+User-agent: Amazonbot
+User-agent: DuckAssistBot
+User-agent: CCBot
+User-agent: YouBot
+User-agent: Diffbot
+User-agent: GrokBot
+User-agent: xAIBot
+User-agent: Twitterbot
+Allow: /
+Disallow: /api/
+Disallow: /sw.js
+Disallow: /grelines.json
+Disallow: /*?*T1=
+Disallow: /*?*from=
+Disallow: /*?*to=
+Disallow: /*?*sharedJourney=
+
+Sitemap: https://clermontferrand.grelines.fr/sitemap.xml
+
+#
+#              _
+#   __ _ _ __ | |_ __ _ _ _
+#  / _` | '_ \| __/ _` | | | |
+# | (_| | | | | || (_| | |_| |
+#  \__,_|_| |_|\__\__, |\__,_|
+#                    |_|
+#
+# made by antqu - github.com/antquu
+#

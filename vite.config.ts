@@ -1,7 +1,8 @@
 import { defineConfig, loadEnv } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { readFileSync } from 'node:fs'
+import { copyFileSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 
 
@@ -10,6 +11,12 @@ import { readFileSync } from 'node:fs'
 
 
 
+
+const SITE_FILES: Record<string, string> = {
+  'robots.txt': 'text/plain; charset=utf-8',
+  'sitemap.xml': 'application/xml; charset=utf-8',
+  'llms.txt': 'text/plain; charset=utf-8',
+};
 
 function siteHtml(): Plugin {
   let site = 'grenoble';
@@ -23,6 +30,19 @@ function siteHtml(): Plugin {
       handler(html) {
         return site === 'grenoble' ? html : readFileSync(`site/${site}/index.html`, 'utf8');
       },
+    },
+    // each city serves its own robots.txt, sitemap.xml and llms.txt instead of the grenoble ones in public/
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const file = (req.url ?? '').split('?')[0].slice(1);
+        if (site === 'grenoble' || !SITE_FILES[file]) return next();
+        res.setHeader('content-type', SITE_FILES[file]);
+        res.end(readFileSync(`site/${site}/${file}`, 'utf8'));
+      });
+    },
+    writeBundle(options) {
+      if (site === 'grenoble' || !options.dir) return;
+      for (const file of Object.keys(SITE_FILES)) copyFileSync(`site/${site}/${file}`, join(options.dir, file));
     },
   };
 }
