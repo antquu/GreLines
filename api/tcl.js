@@ -404,6 +404,24 @@ export default async function handler(request, response) {
     return;
   }
 
+  // health check for the status page: asks the feed but never sends its megabytes back
+  if (url.searchParams.has('sante') && feed && ALLOWED_FEEDS.has(feed)) {
+    const health = await cached(`sante:${feed}`, 50_000, async () => {
+      try {
+        const upstream = await fetch(`${SIRI_BASE}/${feed}.json`, {
+          headers: { Authorization: credentialsHeader, Accept: 'application/json' },
+          signal: AbortSignal.timeout(10_000),
+        });
+        await upstream.body?.cancel();
+        return { ok: upstream.ok, status: upstream.status };
+      } catch {
+        return { ok: false, status: 0 };
+      }
+    });
+    sendJson(response, health.ok ? 200 : 502, health, { 'Cache-Control': 'public, s-maxage=50' });
+    return;
+  }
+
   let target;
   let cacheKey;
 

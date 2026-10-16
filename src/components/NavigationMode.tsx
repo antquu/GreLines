@@ -289,6 +289,7 @@ const ISLAND_SIDE = 10;
 const NOTCH_MIN_SAFE_TOP = 40;
 const ISLAND_GAP = 12;
 const ISLAND_SHEET_GAP = 76;
+const STATUS_FADE_PX = 28;
 const ISLAND_SIDE_COMPACT = 30;
 const ISLAND_SWIPE_PX = 24;
 const ISLAND_SWIPE_SPEED = 300;
@@ -2275,8 +2276,21 @@ export function NavigationMode({
           className={`pointer-events-none inset-x-0 top-0 ${notch ? 'fixed z-[10020]' : 'absolute z-20 px-2 pt-[max(0.5rem,var(--gl-safe-top))]'}`}
           style={notch ? { paddingTop: cutout.top } : undefined}
         >
+          {notch && (
+            <motion.div
+              aria-hidden="true"
+              className="absolute inset-x-0 top-0"
+              style={{
+                height: safeTop + STATUS_FADE_PX,
+                background: `linear-gradient(to bottom, #000 0, #000 ${safeTop}px, rgba(0,0,0,0) ${safeTop + STATUS_FADE_PX}px)`,
+              }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: islandClosing ? 0 : 1 }}
+              transition={{ duration: 0.35 }}
+            />
+          )}
           <motion.div
-            className={notch ? 'touch-none' : undefined}
+            className={notch ? 'relative touch-none' : undefined}
             style={
               notch
                 ? {
