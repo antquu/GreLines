@@ -38,30 +38,35 @@ export const GuidanceSheet = forwardRef<
   }
 >(function GuidanceSheet({ isLight, zIndex, header, children, onOpenEnd, onSnap }, ref) {
   const snapPoints = useMemo(() => [0, COLLAPSED_SHEET_PX, 0.6, 1], []);
+  const [snapIdx, setSnapIdx] = useState(2);
   return (
     <Sheet
       ref={ref}
+      style={{ zIndex }}
       isOpen
       onClose={() => undefined}
       snapPoints={snapPoints}
       initialSnap={2}
-      disableDismiss
-      avoidKeyboard={false}
       onOpenEnd={onOpenEnd}
-      onSnap={onSnap}
-      style={{ zIndex }}
+      disableDismiss
+      onSnap={index => {
+        setSnapIdx(index);
+        onSnap?.(index);
+      }}
     >
-      <MapSheetShell isLight={isLight} bottomInset={0} collapsedPadding={SHEET_PADDING} zIndex={zIndex} solid>
-        <Sheet.Header>
+      <MapSheetShell isLight={isLight} bottomInset={0} collapsedPadding={SHEET_PADDING} zIndex={zIndex}>
+        <Sheet.Header style={{ position: 'relative', zIndex: 30 }}>
           <div className="flex justify-center pb-1 pt-2">
             <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
           </div>
           {header}
         </Sheet.Header>
-        <SmoothSheetContent locked>
+        <SmoothSheetContent>
           <MapSheetBody>
-            {children}
-            <MapSheetBottomSpacer />
+            <div className={`flex-1 pb-12 ${snapIdx === snapPoints.length - 1 ? 'overflow-y-auto' : 'overflow-hidden'}`}>
+              {children}
+              <MapSheetBottomSpacer />
+            </div>
           </MapSheetBody>
         </SmoothSheetContent>
       </MapSheetShell>

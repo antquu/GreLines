@@ -287,8 +287,6 @@ const NOTCH_DEBUG_KEY = 'greLines_debugNotch';
 const ISLAND_SIDE = 10;
 const NOTCH_MIN_SAFE_TOP = 40;
 const ISLAND_GAP = 12;
-const ISLAND_SHEET_GAP = 76;
-const SHEET_TOP_OFFSET = 34;
 const ISLAND_SIDE_COMPACT = 30;
 const ISLAND_SWIPE_PX = 24;
 const ISLAND_SWIPE_SPEED = 300;
@@ -2069,8 +2067,7 @@ export function NavigationMode({
     </Card>
   );
 
-  const sheetFull = sheetSnap === GUIDANCE_SNAP.full;
-  const compactIsland = notch && ((islandCompact && !banner.big) || sheetFull);
+  const compactIsland = notch && islandCompact && !banner.big;
   const islandShut = `inset(0px calc(50% - ${cutout.width / 2}px) calc(100% - ${cutout.height}px) calc(50% - ${cutout.width / 2}px) round ${cutout.height / 2}px)`;
   const showQuestions = !banner.big && !compactIsland && questionsHiddenFor !== questionsKey && (phase === 'ride' || phase === 'wait');
 
@@ -2203,14 +2200,7 @@ export function NavigationMode({
 
   const sheetHeader = (
     <div className="px-6 pb-4 pt-2">
-    {notch && (
-      <motion.div
-        aria-hidden="true"
-        initial={false}
-        animate={{ height: sheetSnap === GUIDANCE_SNAP.full ? ISLAND_SHEET_GAP - SHEET_TOP_OFFSET : 0 }}
-        transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
-      />
-    )}
+
     <div className="flex items-center gap-3">
       <div className="min-w-0 flex-1">
         <p role="heading" aria-level={2} className="truncate text-[1.625rem] font-medium leading-[1.15]" style={{ color: palette.ink }}>
@@ -2648,10 +2638,7 @@ export function NavigationMode({
         zIndex={10010}
         header={sheetHeader}
         onOpenEnd={() => sheetRef.current?.snapTo(GUIDANCE_SNAP.middle)}
-        onSnap={index => {
-          if (notch && (index === GUIDANCE_SNAP.full) !== (sheetSnap === GUIDANCE_SNAP.full)) morphIsland();
-          setSheetSnap(index);
-        }}
+        onSnap={setSheetSnap}
       >
         <div className="px-6 pb-14">
           {phaseContent && <div className="border-t pb-1" style={{ borderColor: palette.rule }}>{phaseContent}</div>}

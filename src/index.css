@@ -494,7 +494,3 @@ html.gl-theme-fade::view-transition-new(root) {
   animation-duration: 0.5s;
   animation-timing-function: ease-in-out;
 }
-
-.gl-native-scroll {
-  touch-action: pan-y !important;
-}
