@@ -488,3 +488,9 @@ html.text-size-large { font-size: 115%; }
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+html.gl-theme-fade::view-transition-old(root),
+html.gl-theme-fade::view-transition-new(root) {
+  animation-duration: 0.5s;
+  animation-timing-function: ease-in-out;
+}

@@ -13,6 +13,7 @@ import { useIsOffline, useReconnectCount } from './hooks/useIsOffline';
 import { OfflinePanel } from './components/OfflinePanel';
 import { tx } from './i18n';
 ﻿import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useSyncExternalStore, lazy } from 'react';
+import { flushSync } from 'react-dom';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, MotionConfig } from 'framer-motion';
 import { MagnifyingGlassIcon, ExclamationTriangleIcon, MapIcon, MapPinIcon, Cog6ToothIcon, XMarkIcon, StarIcon, CloudIcon, BellAlertIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { PlaceIcon } from './components/PlaceIcon';
@@ -175,6 +176,8 @@ const MAP_PIN_COLOR = '#c026d3';
 const MAP_PIN_MIN_MOVE_METERS = 30;
 
 const BOOT_TIMEOUT_MS = 15000;
+
+const THEME_FADE_FALLBACK_MS = 800;
 
 function App() {
   const [startedFromShare] = useState(() => Boolean(followTokenFromSession()));
@@ -695,6 +698,7 @@ function App() {
     if (theme === 'dark' || theme === 'blue') return 'dark';
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
+  const [guidanceDark, setGuidanceDark] = useState(false);
   const [fontSize, setFontSize] = useState<'small' | 'normal' | 'large'>(() => {
     return (localStorage.getItem('greLines_fontSize') as any) || 'normal';
   });
@@ -1081,6 +1085,12 @@ function App() {
 
     const darkIsBlue = theme === 'blue';
 
+    if (guidanceDark) {
+      applyMode(true, false);
+      setEffectiveTheme('dark');
+      return;
+    }
+
     if (theme !== 'auto') {
       applyMode(theme !== 'light', darkIsBlue);
       setEffectiveTheme(theme === 'light' ? 'light' : 'dark');
@@ -1095,7 +1105,35 @@ function App() {
     sync();
     query.addEventListener('change', sync);
     return () => query.removeEventListener('change', sync);
-  }, [theme, isMobile]);
+  }, [theme, isMobile, guidanceDark]);
+
+  // guidance always runs in dark, with a cross-fade in and out
+  useEffect(() => {
+    if (guidanceDark === isNavigationOpen) return;
+    const next = isNavigationOpen;
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
+    if (!doc.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setGuidanceDark(next);
+      return;
+    }
+    let swapped = false;
+    const swap = () => {
+      if (swapped) return;
+      swapped = true;
+      flushSync(() => setGuidanceDark(next));
+    };
+    const root = document.documentElement;
+    root.classList.add('gl-theme-fade');
+    const transition = doc.startViewTransition(swap) as { finished?: Promise<void> } | undefined;
+    void transition?.finished?.catch(() => undefined).finally(() => root.classList.remove('gl-theme-fade'));
+    const fallback = window.setTimeout(() => {
+      if (swapped) return;
+      swapped = true;
+      root.classList.remove('gl-theme-fade');
+      setGuidanceDark(next);
+    }, THEME_FADE_FALLBACK_MS);
+    return () => window.clearTimeout(fallback);
+  }, [isNavigationOpen, guidanceDark]);
 
   const handleSidebarClose = useCallback(() => {
     setSidebarState('closed');
