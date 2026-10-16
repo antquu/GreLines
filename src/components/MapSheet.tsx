@@ -115,6 +115,8 @@ export function MapSheetShell({
   zIndex = 10,
   compact = false,
   peek = false,
+  floatingCollapsed = false,
+  solid = false,
   id,
   children,
 }: {
@@ -124,6 +126,8 @@ export function MapSheetShell({
   zIndex?: number;
   compact?: boolean;
   peek?: boolean;
+  floatingCollapsed?: boolean;
+  solid?: boolean;
   id?: string;
   children: React.ReactNode;
 }) {
@@ -148,11 +152,18 @@ export function MapSheetShell({
     SHEET_PADDING + bottomInset,
   );
   const borderBottomRadius = useSnapValue(
-    perSnap([SHEET_RADIUS, SHEET_RADIUS, SHEET_FLOATING_BOTTOM_RADIUS, 0], compact, undefined, peek),
+    perSnap(
+      floatingCollapsed
+        ? [SHEET_FLOATING_BOTTOM_RADIUS, SHEET_FLOATING_BOTTOM_RADIUS, SHEET_FLOATING_BOTTOM_RADIUS, 0]
+        : [SHEET_RADIUS, SHEET_RADIUS, SHEET_FLOATING_BOTTOM_RADIUS, 0],
+      compact,
+      undefined,
+      peek,
+    ),
     SHEET_RADIUS,
   );
 
-  const surfaceAlpha = useTransform(yProgress, [0.7, 1], [0.72, 0.98]);
+  const surfaceAlpha = useTransform(yProgress, [0.7, 1], [solid ? 0.97 : 0.72, 0.98]);
   const backgroundColor = useMotionTemplate`rgba(${isLight ? '255, 255, 255' : 'var(--gl-sheet-rgb)'}, ${surfaceAlpha})`;
 
   const borderAlpha = useTransform(yProgress, [0.7, 1], [isLight ? 0.7 : 0.16, 0]);
@@ -191,7 +202,7 @@ export function MapSheetShell({
         borderStyle: 'solid',
         borderBottom: 'none',
         boxShadow: 'none',
-        backdropFilter: 'saturate(150%) blur(10px)',
+        backdropFilter: solid ? undefined : 'saturate(150%) blur(10px)',
         backgroundColor,
         borderColor,
         clipPath,

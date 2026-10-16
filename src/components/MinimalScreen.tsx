@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronLeftIcon, EllipsisVerticalIcon } from '@heroicons/react/24/solid';
 import { tx } from '../i18n';
 import { appLanguage } from '../utils/appLanguage';
+import { useSwipeBack } from '../hooks/useSwipeBack';
 
 export interface MinimalScreenAction {
   label: string;
@@ -27,18 +28,23 @@ export function MinimalScreen({
   children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { screenRef, dim, swipeHandlers } = useSwipeBack({ isOpen, onBack, disabled: menuOpen });
 
   useEffect(() => {
     if (!isOpen) setMenuOpen(false);
   }, [isOpen]);
 
   return (
+    <>
+    {dim('z-[899]')}
     <div
+      ref={screenRef}
       className={`fixed inset-0 z-[900] flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
         isOpen ? 'translate-x-0' : 'translate-x-full'
       } ${isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-white'}`}
-      style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
+      style={{ pointerEvents: isOpen ? 'auto' : 'none', touchAction: 'pan-y' }}
       aria-hidden={!isOpen}
+      {...swipeHandlers}
     >
       <header
         className="flex flex-shrink-0 items-center gap-1 px-4 pb-5"
@@ -127,5 +133,6 @@ export function MinimalScreen({
         </>
       )}
     </div>
+    </>
   );
 }

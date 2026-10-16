@@ -6,6 +6,9 @@ type Entry<T> = { value: T; expires: number };
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 
+const OPEN_TIMEOUT_MS = 3000;
+const OPERATION_TIMEOUT_MS = 4000;
+
 function openDb(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise;
 
@@ -14,6 +17,15 @@ function openDb(): Promise<IDBDatabase | null> {
       resolve(null);
       return;
     }
+    // give up on indexeddb when it hangs on first launch of the ios home screen app
+    const timer = window.setTimeout(() => {
+      dbPromise = null;
+      resolve(null);
+    }, OPEN_TIMEOUT_MS);
+    const done = (db: IDBDatabase | null) => {
+      window.clearTimeout(timer);
+      resolve(db);
+    };
     try {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
@@ -22,11 +34,11 @@ function openDb(): Promise<IDBDatabase | null> {
           db.createObjectStore(STORE);
         }
       };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => resolve(null);
-      request.onblocked = () => resolve(null);
+      request.onsuccess = () => done(request.result);
+      request.onerror = () => done(null);
+      request.onblocked = () => done(null);
     } catch {
-      resolve(null);
+      done(null);
     }
   });
 
@@ -40,7 +52,12 @@ async function withStore<T>(
   const db = await openDb();
   if (!db) return null;
 
-  return new Promise<T | null>((resolve) => {
+  return new Promise<T | null>((settle) => {
+    const timer = window.setTimeout(() => settle(null), OPERATION_TIMEOUT_MS);
+    const resolve = (value: T | null) => {
+      window.clearTimeout(timer);
+      settle(value);
+    };
     try {
       const tx = db.transaction(STORE, mode);
       const request = run(tx.objectStore(STORE));

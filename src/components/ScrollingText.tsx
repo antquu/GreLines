@@ -41,6 +41,7 @@ export function ScrollingText({ text, className = '' }: { text: string; classNam
     update();
     const observer = new ResizeObserver(update);
     observer.observe(container);
+    observer.observe(inner);
     return () => {
       observer.disconnect();
       animation?.cancel();

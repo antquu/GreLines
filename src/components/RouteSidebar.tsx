@@ -1,4 +1,5 @@
 import { OfflinePanel } from './OfflinePanel';
+import { useSwipeBack } from '../hooks/useSwipeBack';
 import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
 import { isOffline } from '../services/offlineSchedule';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -6,7 +7,6 @@ import { motion } from 'framer-motion';
 import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
 import { PlaceIcon } from './PlaceIcon';
 import { TbBusStop } from 'react-icons/tb';
-import { ArrowUpOnSquareIcon } from '@heroicons/react/24/outline';
 import { JourneyDetail } from './JourneyDetail';
 import { MapSheet, NAVBAR_LIFT_PX, NAVBAR_SNAP_PX, SHEET_PADDING } from './MapSheet';
 import { StepSlider } from './StepSlider';
@@ -1339,66 +1339,6 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     [currentResults, _selectedItinerary, language],
   );
 
-  const buildShareUrl = () => {
-    const url = new URL('/app', window.location.origin);
-    url.searchParams.set('route', '1');
-    url.searchParams.set('sharedJourney', '1');
-
-    const writeLocation = (prefix: 'from' | 'to', location: RouteLocation | null) => {
-      if (!location) return;
-      url.searchParams.set(`${prefix}Id`, location.id);
-      url.searchParams.set(`${prefix}Label`, location.label);
-      url.searchParams.set(`${prefix}Lat`, String(location.lat));
-      url.searchParams.set(`${prefix}Lon`, String(location.lon));
-      url.searchParams.set(`${prefix}Kind`, location.kind);
-    };
-
-    writeLocation('from', fromSelection);
-    writeLocation('to', toSelection);
-    url.searchParams.set('mode', scheduleMode);
-    url.searchParams.set('date', scheduleDate);
-    url.searchParams.set('time', scheduleTime);
-    url.searchParams.set('now', scheduleIsNow ? '1' : '0');
-    url.searchParams.set('walkPreference', walkPreference);
-    url.searchParams.set('walkSpeed', String(walkSpeed));
-    if (_selectedItinerary) {
-      url.searchParams.set('journeyDep', _selectedItinerary.dep);
-      url.searchParams.set('journeyArr', _selectedItinerary.arr);
-      url.searchParams.set('journeyDur', _selectedItinerary.dur);
-    }
-    const lastLegWithEndTime = [...(_selectedItinerary?.allLegs || [])].reverse().find((leg: any) => leg?.endTime);
-    const expiresAt = lastLegWithEndTime?.endTime || _selectedItinerary?.rawArr;
-    if (expiresAt) {
-      url.searchParams.set('expiresAt', String(new Date(expiresAt).getTime()));
-    }
-    return url.toString();
-  };
-
-  const copyShareUrl = async () => {
-    const shareUrl = buildShareUrl();
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = shareUrl;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-    }
-
-    setShareToastVisible(true);
-    if (shareToastTimerRef.current) {
-      window.clearTimeout(shareToastTimerRef.current);
-    }
-    shareToastTimerRef.current = window.setTimeout(() => {
-      setShareToastVisible(false);
-    }, 2200);
-  };
-
   useEffect(() => {
     return () => {
       if (shareToastTimerRef.current) {
@@ -1522,23 +1462,13 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             <button
               type="button"
               onClick={onStartNavigation}
-              className="flex h-11 flex-shrink-0 items-center gap-1.5 rounded-full bg-blue-600 px-4 text-[0.9375rem] font-bold text-white transition active:scale-95 active:bg-blue-700"
+              className="flex h-11 flex-shrink-0 items-center gap-1.5 rounded-full px-4 text-[0.9375rem] font-bold transition active:scale-95"
+              style={isLight ? { backgroundColor: '#000000', color: '#ffffff' } : { backgroundColor: '#ffffff', color: '#000000' }}
             >
               <PlayIcon className="h-4 w-4" />
               Go
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={copyShareUrl}
-            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition active:scale-95 ${
-              isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-white'
-            }`}
-            aria-label={text.shareJourney}
-          >
-            <ArrowUpOnSquareIcon className="h-5 w-5" />
-          </button>
 
           <button
             type="button"
@@ -1582,15 +1512,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             <div className={`text-sm font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
               {tx(language === 'fr').routeSidebar.journey}
             </div>
-            <button
-              type="button"
-              onClick={copyShareUrl}
-              className={`flex ${isMobile ? 'h-11 w-11' : 'h-10 w-10'} items-center justify-center transition ${isLight ? 'text-slate-600 hover:text-blue-600' : 'text-slate-300 hover:text-blue-300'}`}
-              aria-label={text.shareJourney}
-              title={text.shareJourney}
-            >
-              <ArrowUpOnSquareIcon className="h-5 w-5" />
-            </button>
+            <div className={isMobile ? 'h-11 w-11' : 'h-10 w-10'} aria-hidden="true" />
           </>
         ) : (
           <>
@@ -2227,6 +2149,11 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   );
 
   const creditNode = null;
+  const { screenRef: pickerRef, dim: pickerDim, swipeHandlers: pickerSwipe } = useSwipeBack({
+    isOpen: isOpen && isPicker,
+    onBack: onClose,
+    disabled: !isPicker,
+  });
 
   if (isMobile) {
     const isPicking = Boolean(pickMode) && !isPicker;
@@ -2386,7 +2313,10 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             </div>
           )}
 
+        {isPicker && pickerDim('z-[999]')}
         <div
+          ref={pickerRef}
+          {...pickerSwipe}
           className={`fixed inset-0 z-[1000] flex flex-col origin-bottom transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
             isPicker
               ? isPanelVisible
@@ -2398,6 +2328,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           } ${isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-white'}`}
           style={{
             pointerEvents: isPanelVisible ? 'auto' : 'none',
+            touchAction: isPicker ? 'pan-y' : undefined,
             transform: dragY > 0 && !isPicker ? `translateY(${dragY}px)` : undefined,
             transition: dragY > 0 && !isPicker
               ? 'none'

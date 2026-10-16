@@ -1,5 +1,5 @@
 import { cityNear, cityOfNetwork } from './utils/cities';
-import { GUIDANCE_ENABLED, IS_CITY_SITE, SITE_NETWORK } from './site';
+import { GUIDANCE_ENABLED, IS_CITY_SITE, SITE_CENTER, SITE_NETWORK } from './site';
 import { locateByIp } from './services/ipLocation';
 import { getLocatedCity, setIpArea, setMapArea, setUserArea, subscribeCurrentCity } from './utils/currentArea';
 import { getFakeLocation, subscribeFakeLocation } from './utils/devLocation';
@@ -137,7 +137,10 @@ import { isCarpoolStop, isCarpoolLine } from './components/CarpoolStopPanel';
 import { getMcoLines, type McoLine } from './services/mcoLines';
 import { compareTrafficLines, matchesTrafficFilter, trafficCategory, trafficFilters, trafficSubFilters } from './utils/trafficFilters';
 import { TrafficFilterBar } from './components/TrafficFilterBar';
-import { getCachedStopLines, getStopDetail, getStopLines, getStopsByPrefixes, getTrafficLines, getDepartures, refreshStopLines, setActiveNetworks, type RouteLocation, type RouteItinerary } from './services/api';
+import { getCachedStopLines, getStopDetail, getStopLines, getStopsByPrefixes, getTrafficLines, getDepartures, planItineraries, refreshStopLines, setActiveNetworks, type RouteLocation, type RouteItinerary } from './services/api';
+import { startNavSimulation, stopNavSimulation } from './utils/devNavSim';
+import { FollowOverlay } from './components/FollowOverlay';
+import { followTokenFromSession, forgetFollowToken, type SharePayload } from './services/tripShare';
 import { getTclLines, getTclLinesForStop, getTclStopDetail, getTclStops, isTclId, TCL_NETWORK } from './services/tclNetwork';
 import { getGtfsLines, getGtfsLinesForStop, getGtfsStopDetail, getGtfsStops, gtfsStopMembers, GTFS_NETWORKS, isGtfsNetworkId } from './services/gtfsNetwork';
 import { foreignAsCatalogLine, foreignSolidStyle, isForeignLineId } from './utils/foreignNetworks';
@@ -171,7 +174,10 @@ const STOP_TAP_GUARD_MS = 700;
 const MAP_PIN_COLOR = '#c026d3';
 const MAP_PIN_MIN_MOVE_METERS = 30;
 
+const BOOT_TIMEOUT_MS = 15000;
+
 function App() {
+  const [startedFromShare] = useState(() => Boolean(followTokenFromSession()));
   const isOffline = useIsOffline();
   const reconnects = useReconnectCount();
   const [stops, setStops] = useState<Stop[]>([]);
@@ -532,7 +538,6 @@ function App() {
   >(null);
 
   useEffect(() => {
-    if (!isMobile || !GUIDANCE_ENABLED) return;
     const resumed = loadNavigationSession();
     if (!resumed) return;
     setSelectedRouteItinerary(resumed);
@@ -619,9 +624,67 @@ function App() {
       }),
       onDevCommand('bypass.install', () => setIsInstallSheetOpen(false)),
       onDevCommand('bypass.popup', () => setActivePopups([])),
+      onDevCommand('show.tripcomplete', () => {
+        setTripAward({ points: 25, travellersHelped: 14, total: { points: 340, trips: 12, travellersHelped: 80 } });
+      }),
     ];
     return () => { for (const off of offs) off(); };
   }, [language]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const offs = [
+      onDevCommand('nav.stop', () => stopNavSimulation()),
+      onDevCommand('nav.random', async args => {
+        const speed = Number(args[0]) || 1;
+        const center = SITE_CENTER;
+        const pool = stops.filter(stop =>
+          Number.isFinite(stop.lat) && Number.isFinite(stop.lon) && haversineMeters(center.lat, center.lon, stop.lat, stop.lon) < 4000);
+        if (pool.length < 2) return;
+        for (let attempt = 0; attempt < 10 && !cancelled; attempt++) {
+          const from = pool[Math.floor(Math.random() * pool.length)];
+          const targets = pool.filter(stop => {
+            const metres = haversineMeters(from.lat, from.lon, stop.lat, stop.lon);
+            return metres > 1500 && metres < 6000;
+          });
+          const to = targets[Math.floor(Math.random() * targets.length)];
+          if (!to) continue;
+          let options: RouteItinerary[] = [];
+          try {
+            options = await planItineraries({
+              fromLatitude: from.lat,
+              fromLongitude: from.lon,
+              toLatitude: to.lat,
+              toLongitude: to.lon,
+              fromName: from.name,
+              toName: to.name,
+              departNow: true,
+            });
+          } catch {
+            continue;
+          }
+          if (cancelled) return;
+          const soon = Date.now() + 25 * 60 * 1000;
+          const picked = options.find(option => {
+            const ride = (option.allLegs ?? []).find((leg: any) => leg?.mode && leg.mode !== 'WALK');
+            const boardAt = ride ? new Date(ride.startTime).getTime() : NaN;
+            return Number.isFinite(boardAt) && boardAt < soon;
+          });
+          if (!picked) continue;
+          setRouteItineraryOptions(options);
+          setSelectedRouteItinerary(picked);
+          saveNavigationSession(picked);
+          setIsNavigationOpen(true);
+          startNavSimulation(picked, speed);
+          return;
+        }
+      }),
+    ];
+    return () => {
+      cancelled = true;
+      for (const off of offs) off();
+    };
+  }, [stops]);
 
   const [theme, setTheme] = useState<'light' | 'dark' | 'blue' | 'auto'>(() => {
     const stored = localStorage.getItem('greLines_theme');
@@ -1500,7 +1563,7 @@ function App() {
   useEffect(() => { localStorage.setItem('greLines_autoLocation', autoLocation ? 'true' : 'false'); }, [autoLocation]);
 
   useEffect(() => {
-    if (!autoOpenInstallGuide) return;
+    if (!autoOpenInstallGuide || startedFromShare) return;
     if (hasSeenInstallGuide()) return;
     const timer = window.setTimeout(() => {
       markInstallGuideSeen();
@@ -1510,9 +1573,8 @@ function App() {
   }, [autoOpenInstallGuide]);
 
   useEffect(() => {
-    if (!shouldRunOnboarding()) return;
+    if (startedFromShare || !shouldRunOnboarding()) return;
     const timer = window.setTimeout(() => {
-      markOnboardingDone();
       markMobileNotificationPromptDismissed();
       setIsOnboardingOpen(true);
     }, 900);
@@ -2083,6 +2145,10 @@ function App() {
   useEffect(() => {
     if (!isLoading && !firstFavoriteLoading) setHasBooted(true);
   }, [isLoading, firstFavoriteLoading]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHasBooted(true), BOOT_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
   const popupsReleased = hasBooted;
 
   const normalizeRouteRef = useCallback((value: string | undefined | null): string | null => {
@@ -2237,9 +2303,89 @@ function App() {
     return findClosestStops(stops, selectedAddress.lat, selectedAddress.lon, 8).map(entry => entry.stop.id);
   }, [selectedAddress, stops]);
 
-  const routeLineGeoJSON = journeyGeometry?.lines ?? null;
-  const routeStopsGeoJSON = journeyGeometry?.points ?? null;
-  const routeLineBadges = journeyGeometry?.badges ?? null;
+  const [followToken, setFollowToken] = useState<string | null>(() => followTokenFromSession());
+  const [followState, setFollowState] = useState<{ payload: SharePayload | null; ended: boolean }>({ payload: null, ended: false });
+  const followFramedRef = useRef(false);
+  const [followMinimized, setFollowMinimized] = useState(false);
+  const [homeSnap, setHomeSnap] = useState(0);
+  const followPayload = followToken ? followState.payload : null;
+
+  const followLegs = followPayload?.legs;
+  const followLegsKey = useMemo(
+    () =>
+      JSON.stringify(
+        (followLegs ?? []).map(leg => [leg.color, leg.walk, leg.path.length, leg.path[0], leg.path[leg.path.length - 1], leg.stops.length]),
+      ),
+    [followLegs],
+  );
+  const followLegsRef = useRef(followLegs);
+  followLegsRef.current = followLegs;
+
+  const followGeometry = useMemo(() => {
+    const legs = followLegsRef.current ?? [];
+    if (legs.length === 0) return null;
+    const lines: GeoJSON.Feature[] = [];
+    const points: GeoJSON.Feature[] = [];
+    const badges: Array<{ lon: number; lat: number; lineKey: string; color: string; legIndex: number }> = [];
+    legs.forEach((leg, legIndex) => {
+      if (leg.path.length > 1) {
+        lines.push({
+          type: 'Feature',
+          properties: { color: leg.color, isWalk: leg.walk, routeShortName: leg.line?.shortName ?? '' },
+          geometry: { type: 'LineString', coordinates: leg.path },
+        });
+      }
+      if (!leg.walk && leg.line) {
+        const middle = leg.path[Math.floor(leg.path.length / 2)];
+        if (middle) badges.push({ lon: middle[0], lat: middle[1], lineKey: leg.line.shortName, color: leg.line.color, legIndex });
+        leg.stops.forEach((stop, stopIndex) => {
+          const edge = stopIndex === 0 || stopIndex === leg.stops.length - 1;
+          points.push({
+            type: 'Feature',
+            properties: { kind: edge ? 'transfer' : 'stop', color: leg.color },
+            geometry: { type: 'Point', coordinates: stop },
+          });
+        });
+      }
+    });
+    const first = legs[0]?.path[0];
+    const lastLeg = legs[legs.length - 1];
+    const last = lastLeg?.path[lastLeg.path.length - 1];
+    if (first) points.push({ type: 'Feature', properties: { kind: 'endpoint', color: '#0f172a' }, geometry: { type: 'Point', coordinates: first } });
+    if (last) points.push({ type: 'Feature', properties: { kind: 'endpoint', color: '#0f172a' }, geometry: { type: 'Point', coordinates: last } });
+    return {
+      lines: { type: 'FeatureCollection', features: lines } as GeoJSON.FeatureCollection,
+      points: { type: 'FeatureCollection', features: points } as GeoJSON.FeatureCollection,
+      badges,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followLegsKey]);
+
+  const showFollow = Boolean(followGeometry) && !selectedRouteItinerary;
+  const followMarker =
+    followPayload && !followState.ended && followPayload.lat != null && followPayload.lon != null
+      ? { lat: followPayload.lat, lon: followPayload.lon, avatar: followPayload.avatar || '🙂', color: followPayload.lineColor || '#3b82f6' }
+      : null;
+
+  useEffect(() => {
+    if (!followGeometry || followFramedRef.current) return;
+    const coordinates = (followGeometry.lines.features as GeoJSON.Feature<GeoJSON.LineString>[]).flatMap(feature => feature.geometry.coordinates);
+    if (coordinates.length === 0) return;
+    followFramedRef.current = true;
+    const lons = coordinates.map(point => point[0]);
+    const lats = coordinates.map(point => point[1]);
+    mapRef.current?.fitBounds(
+      [
+        [Math.min(...lons), Math.min(...lats)],
+        [Math.max(...lons), Math.max(...lats)],
+      ],
+      { padding: 90, duration: 900 },
+    );
+  }, [followGeometry]);
+
+  const routeLineGeoJSON = showFollow ? followGeometry!.lines : journeyGeometry?.lines ?? null;
+  const routeStopsGeoJSON = showFollow ? followGeometry!.points : journeyGeometry?.points ?? null;
+  const routeLineBadges = showFollow ? followGeometry!.badges : journeyGeometry?.badges ?? null;
 
   const isDarkMode = effectiveTheme === 'dark';
 
@@ -2291,6 +2437,10 @@ function App() {
       routeLine={routeLineGeoJSON}
       routeStops={routeStopsGeoJSON}
       routeLineBadges={routeLineBadges}
+      showRouteIntermediates={showFollow}
+      stopsOpacity={followToken && !followMinimized ? 0 : 1}
+      routeOpacity={showFollow && followMinimized ? 0.5 : 1}
+      liveMarker={followToken ? followMarker : null}
       lineGeometries={lineGeometries}
       carpoolLines={carpoolMapLines}
       onCenterChange={handleMapCenterChange}
@@ -2342,7 +2492,7 @@ function App() {
       ) : servedStopPoints}
       isDarkMode={isDarkMode}
     />
-  ), [stops, selectedStop, currentLocation, handleStopClick, selectedAddress, addressNearbyStopIds, lineGeometries, servedStopPoints, routeFrom, routeTo, routeLineGeoJSON, routeStopsGeoJSON, routeLineBadges, selectedRouteItinerary, mapPickTarget, isDarkMode, visibleSharedMobility, sharedSelection, highlightedVehicleId]);
+  ), [stops, selectedStop, currentLocation, handleStopClick, selectedAddress, addressNearbyStopIds, lineGeometries, servedStopPoints, routeFrom, routeTo, routeLineGeoJSON, routeStopsGeoJSON, routeLineBadges, selectedRouteItinerary, mapPickTarget, isDarkMode, visibleSharedMobility, sharedSelection, highlightedVehicleId, showFollow, followToken, followMinimized, followMarker?.lat, followMarker?.lon]);
 
   useEffect(() => {
     if (!selectedRouteItinerary || !routeLineGeoJSON) return;
@@ -2427,11 +2577,29 @@ function App() {
       <OfflineLaunchScreen language={language} />
 
       <DevConsole />
+      {followToken && (
+        <FollowOverlay
+          token={followToken}
+          language={language}
+          isLight={!isDarkMode}
+          isMobile={isMobile}
+          onPayload={(payload, ended) => setFollowState({ payload, ended })}
+          onMinimizedChange={setFollowMinimized}
+          hidden={isMobile && homeSnap !== 1}
+          onClose={() => {
+            forgetFollowToken();
+            followFramedRef.current = false;
+            setFollowMinimized(false);
+            setFollowState({ payload: null, ended: false });
+            setFollowToken(null);
+          }}
+        />
+      )}
       <NetOverlay />
       <DepartureLabOverlay />
 
 
-      {popupsReleased && (
+      {popupsReleased && !startedFromShare && (
         <PopupOverlay
           popups={locatedPopups}
           language={language}
@@ -2441,7 +2609,7 @@ function App() {
         />
       )}
 
-      {!IS_CITY_SITE && (
+      {!IS_CITY_SITE && !startedFromShare && (
         <UnservedAreaPrompt
           position={exploringMap && mapPin && !mapPickTarget ? mapPin : currentLocation}
           isMobile={isMobile}
@@ -2450,7 +2618,7 @@ function App() {
         />
       )}
 
-      {IS_CITY_SITE && (
+      {IS_CITY_SITE && !startedFromShare && (
         <CityAreaPrompt
           position={currentLocation}
           isMobile={isMobile}
@@ -2466,7 +2634,12 @@ function App() {
           isOpen={isNavigationOpen}
           onClose={() => {
             clearNavigationSession();
+            stopNavSimulation();
             setIsNavigationOpen(false);
+            if (!isRouteSidebarOpen) {
+              setSelectedRouteItinerary(null);
+              setRouteItineraryOptions([]);
+            }
           }}
           language={language}
           stops={stops}
@@ -2533,6 +2706,7 @@ function App() {
         award={tripAward}
         showPoints={account !== null}
         language={language}
+        theme={effectiveTheme}
         origin={selectedRouteItinerary?.depName}
         destination={selectedRouteItinerary?.arrName}
         account={account}
@@ -2749,7 +2923,7 @@ function App() {
         <>
 
           <AnimatePresence>
-            {isMobile && exploringMap && !mapPickTarget && isNearbySheetOpen && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
+            {isMobile && exploringMap && !followToken && !mapPickTarget && isNearbySheetOpen && !isSidebarOpen && !isSettingsOpen && !isTrafficPanelOpenMobile && (
               <motion.div
                 key="map-pin"
                 initial={{ opacity: 0, scale: 0.6 }}
@@ -3227,6 +3401,7 @@ function App() {
             setHasUserClosedHome(true);
           }}
           onSheetProgress={(p) => sheetProgress.set(p)}
+          onSnapChange={setHomeSnap}
           onHomeProgress={(p) => homeSheetProgress.set(p)}
           lowerOnMapPanSignal={mapPanSignal}
           snapToMiniSignal={snapHomeToMiniSignal}
@@ -3533,7 +3708,10 @@ function App() {
           setNotificationsEnabled(granted);
         }}
         onCardsChange={setWalletCards}
-        onDone={() => setIsOnboardingOpen(false)}
+        onDone={() => {
+          markOnboardingDone();
+          setIsOnboardingOpen(false);
+        }}
       />
 
       <MobileNotificationPrompt

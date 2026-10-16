@@ -449,6 +449,62 @@ http://localhost:5173/fr/newsroom la salle de presse`,
             },
           ],
         },
+        {
+          id: 'sites-de-ville',
+          icon: 'globe',
+          title: 'Sites de ville',
+          note: 'Nancy, Lyon, Saint-Étienne, Clermont-Ferrand : le même code, une variable de plus.',
+          body: [
+            {
+              kind: 'p',
+              text: "Grenoble est le site par défaut. Les autres villes sont la même application, construite avec la variable `VITE_SITE` réglée sur l'identifiant de la ville : `nancy`, `lyon`, `saint-etienne` ou `clermont`. La carte s'ouvre sur la ville, seul son réseau est chargé, et les pages statiques (titre, `robots.txt`, `sitemap.xml`, `llms.txt`) viennent de `site/<ville>/`.",
+            },
+            {
+              kind: 'code',
+              lang: 'bash',
+              text: `npm run dev:nancy
+VITE_SITE=nancy npm run build`,
+            },
+            {
+              kind: 'p',
+              text: "En local, `npm run dev:nancy` lance `vite --mode nancy`, et la configuration de Vite en déduit la ville : il n'y a pas de fichier `.env` par ville. Pour construire, `VITE_SITE` doit être une vraie variable d'environnement, parce que les scripts lancés avant la construction la lisent aussi pour ne télécharger que le réseau concerné.",
+            },
+            {
+              kind: 'p',
+              text: "Pour ajouter une ville, le réseau doit d'abord exister dans `src/data/gtfsNetworks.json`. On ajoute ensuite son entrée dans `CITY_SITES` :",
+            },
+            {
+              kind: 'code',
+              lang: 'ts',
+              file: 'src/site.ts',
+              text: `annecy: {
+  id: 'annecy',
+  name: 'Annecy',
+  host: 'annecy.grelines.fr',
+  network: 'SIBRA',
+  networkLabel: 'Sibra',
+  center: [45.8992, 6.1294],
+  areaRadiusMeters: 25_000,
+  sncf: true,
+  logo: { light: '/assets/sibra-logo.svg', dark: '/assets/sibra-logo-white.svg', width: 96 },
+},`,
+            },
+            {
+              kind: 'steps',
+              items: [
+                "Ajouter l'identifiant au type `SiteId` et l'entrée ci-dessus dans `CITY_SITES`. `network` est le code du réseau, `center` est en `[lat, lon]`, `areaRadiusMeters` dit jusqu'où on considère l'utilisateur en ville.",
+                "Ajouter la ville dans `SITE_NETWORKS` de `scripts/lib/site.mjs` et dans `CITY_IDS` de `vite.config.ts`.",
+                "Ajouter un script `dev:<ville>` dans `package.json`, sur un port libre.",
+                "Copier `site/nancy/` vers `site/<ville>/` et réécrire les quatre fichiers : titre, adresse canonique, plan du site, description.",
+                "Créer un projet sur l'hébergeur, sur le même dépôt, avec `VITE_SITE` dans ses variables et le domaine de la ville.",
+              ],
+            },
+            {
+              kind: 'note',
+              text: "Quelques réglages sont encore écrits pour Nancy seulement : mobilités partagées, lieux à visiter, sources de données. Cherchez `IS_NANCY` si la nouvelle ville en a besoin. Le détail est dans le fichier `CITY.md` du dépôt.",
+            },
+          ],
+        },
       ],
     },
 
@@ -1489,6 +1545,62 @@ http://localhost:5173/en/newsroom the newsroom`,
             {
               kind: 'note',
               text: 'On a host that runs no functions the app still deploys: the two networks that go through them disappear, everything else holds.',
+            },
+          ],
+        },
+        {
+          id: 'sites-de-ville',
+          icon: 'globe',
+          title: 'City sites',
+          note: 'Nancy, Lyon, Saint-Étienne, Clermont-Ferrand: same code, one more variable.',
+          body: [
+            {
+              kind: 'p',
+              text: "Grenoble is the default site. The other cities are the same app, built with `VITE_SITE` set to the city id: `nancy`, `lyon`, `saint-etienne` or `clermont`. The map opens on the city, only its network is loaded, and the static pages (title, `robots.txt`, `sitemap.xml`, `llms.txt`) come from `site/<city>/`.",
+            },
+            {
+              kind: 'code',
+              lang: 'bash',
+              text: `npm run dev:nancy
+VITE_SITE=nancy npm run build`,
+            },
+            {
+              kind: 'p',
+              text: "Locally, `npm run dev:nancy` runs `vite --mode nancy` and the Vite config picks the city from the mode, so there is no `.env` file per city. To build, `VITE_SITE` has to be a real environment variable, because the prebuild scripts read it too and only download that city's network.",
+            },
+            {
+              kind: 'p',
+              text: "To add a city, its network has to be in `src/data/gtfsNetworks.json` first. Then add it to `CITY_SITES`:",
+            },
+            {
+              kind: 'code',
+              lang: 'ts',
+              file: 'src/site.ts',
+              text: `annecy: {
+  id: 'annecy',
+  name: 'Annecy',
+  host: 'annecy.grelines.fr',
+  network: 'SIBRA',
+  networkLabel: 'Sibra',
+  center: [45.8992, 6.1294],
+  areaRadiusMeters: 25_000,
+  sncf: true,
+  logo: { light: '/assets/sibra-logo.svg', dark: '/assets/sibra-logo-white.svg', width: 96 },
+},`,
+            },
+            {
+              kind: 'steps',
+              items: [
+                "Add the id to the `SiteId` type and the entry above to `CITY_SITES`. `network` is the network code, `center` is `[lat, lon]`, `areaRadiusMeters` is how far from the center the user still counts as in town.",
+                "Add the city to `SITE_NETWORKS` in `scripts/lib/site.mjs` and to `CITY_IDS` in `vite.config.ts`.",
+                "Add a `dev:<city>` script to `package.json`, on a free port.",
+                "Copy `site/nancy/` to `site/<city>/` and rewrite the four files: title, canonical URL, sitemap, description.",
+                "Create a project on your host, on the same repo, with `VITE_SITE` in its variables and the city domain.",
+              ],
+            },
+            {
+              kind: 'note',
+              text: "A few things are still written for Nancy only: shared mobility, places to visit, data sources. Search for `IS_NANCY` if the new city needs them. The full walkthrough is in `CITY.md` in the repo.",
             },
           ],
         },

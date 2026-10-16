@@ -118,6 +118,48 @@ const COMMANDS: ConsoleCommand[] = [
   showOnMobile('show.notifications', 'Show the "turn on notifications" prompt (mobile view only)'),
   showOnMobile('show.install', 'Show the "add to home screen" guide (mobile view only)'),
   {
+    name: 'nav.random',
+    usage: '[speed]',
+    description: 'Start the guidance on a random trip and fake the walk and the ride (speed 1 = default)',
+    run: args => {
+      const speed = args[0] === undefined ? 1 : Number(args[0].replace(',', '.'));
+      if (!Number.isFinite(speed) || speed <= 0) return `Invalid speed "${args[0]}". Use a number like 1, 2 or 5.`;
+      emitDevCommand('nav.random', [String(speed)]);
+      return 'Looking for a random trip…';
+    },
+  },
+  {
+    name: 'nav.notch',
+    usage: '[px|off]',
+    description: 'Pretend the phone has a notch of this height for the guidance top bar (off to undo)',
+    run: args => {
+      const value = args[0];
+      try {
+        if (!value || value === 'off') localStorage.removeItem('greLines_debugNotch');
+        else localStorage.setItem('greLines_debugNotch', String(Math.max(0, Number(value) || 0)));
+      } catch {
+      }
+      emitDevCommand('nav.notch');
+      return !value || value === 'off' ? 'Notch simulation off.' : `Notch simulated: ${value} px.`;
+    },
+  },
+  {
+    name: 'nav.stop',
+    description: 'Stop the fake trip movement and give back the real location',
+    run: () => {
+      emitDevCommand('nav.stop');
+      return 'Trip simulation stopped.';
+    },
+  },
+  {
+    name: 'show.tripcomplete',
+    description: 'Show the end of trip screen with sample numbers',
+    run: () => {
+      emitDevCommand('show.tripcomplete');
+      return 'End of trip screen shown.';
+    },
+  },
+  {
     name: 'show.teststop',
     description: 'Open a frozen test stop (Chavant) with a draggable panel to replay departure animations',
     run: () => {

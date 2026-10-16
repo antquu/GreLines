@@ -55,6 +55,12 @@ const solutionRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/solutions(?:\/([a-z0-9-
 );
 const postRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/(?:newsroom|blog)\/([A-Za-z0-9-]+)\/?$/.exec(window.location.pathname);
 
+const followRoute = /^\/(share|suivre|follow)\/([a-z0-9]{6,16})\/?$/.exec(window.location.pathname);
+if (followRoute) {
+  try { localStorage.setItem('greLines_followToken', JSON.stringify({ token: followRoute[2], at: Date.now() })) } catch { }
+  window.history.replaceState(window.history.state, '', '/app');
+}
+
 const LANDING_LANG_KEY = 'greLines_landingLang';
 
 if (solutionRoute) {
@@ -144,7 +150,7 @@ if (solutionRoute) {
     )
   })
 } else if (window.location.pathname.startsWith('/app/screen')) {
-  // after a deploy, old code files may be gone: show maintenance, never a blank screen
+  // show the maintenance page when old code files are gone after a deploy
   window.addEventListener('vite:preloadError', event => {
     event.preventDefault()
     root.render(<ScreenMaintenance reloadWhenReachable />)

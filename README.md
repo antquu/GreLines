@@ -2,11 +2,17 @@
 
 [![Note de maj](.screenshots/update_note.png)](https://grelines.fr/fr/newsroom)
 
-* **Version** : `3.17.8`
+* **Version** : `3.19.3`
 * **Principales nouveautés** :
 
+  * Nouveau guidage : sheet comme le reste du site, timeline complète du trajet, caméra qui suit en douceur
+  * Bandeau du guidage fondu dans la Dynamic Island ou l'encoche, compactable d'un geste
+  * Partage de trajet en direct : un lien `/share/…` pour suivre la position d'un proche
+  * Voyageurs en direct : qui attend à l'arrêt, qui est déjà à bord
+  * Tracés des lignes plus fidèles, sans pics ni raccourcis en ligne droite
+  * Retour en arrière en glissant le doigt vers la droite, sur tous les écrans qui s'empilent
+  * Sites de ville Nancy, Lyon, Saint-Étienne et Clermont-Ferrand, construits depuis le même code (voir [`CITY.md`](CITY.md))
   * 27 réseaux en Auvergne-Rhône-Alpes : TCL à Lyon, STAS, T2C, Sibra, Synchro Bus et les autres
-  * GreLines Nancy sur `nancy.grelines.fr`, construit depuis le même code (`VITE_SITE=nancy`)
   * API publique sur `api.grelines.fr`, avec clés et documentation sur `/fr/docs/api`
   * Temps réel GTFS-RT pour les réseaux qui le publient
   * Mobilités partagées : Citiz, Voi et vélOstan’lib, avec un bouton de calques par ville
@@ -57,6 +63,9 @@ src/
 │   ├── Map.tsx          # Composant MapLibre
 │   ├── HomeSheet.tsx    # Feuille d'accueil mobile
 │   ├── RouteSidebar.tsx # Recherche et résultats d'itinéraires
+│   ├── NavigationMode.tsx # Le guidage
+│   ├── FollowOverlay.tsx  # Suivi d'un trajet partagé
+│   ├── navigation/      # Briques du guidage : sheet, timeline, couleurs
 │   └── index.ts         # Exports des composants
 ├── landing/             # Le site public, servi sur /fr et /en
 │   ├── LandingApp.tsx   # Page d'accueil
@@ -69,6 +78,8 @@ src/
 ├── services/            # Accès aux données
 │   ├── api.ts           # Arrêts, passages, itinéraires
 │   ├── supabase.ts      # Base de données
+│   ├── tripShare.ts     # Partage de trajet en direct
+│   ├── livePresence.ts  # Voyageurs présents à l'arrêt et à bord
 │   └── blog.ts          # Communiqués
 ├── hooks/               # Hooks partagés
 ├── utils/               # Utilitaires
@@ -82,6 +93,7 @@ api/                     # Fonctions serveur
 └── uber.js              # Estimations VTC
 
 supabase/                # Schéma de la base, un fichier par sujet
+site/                    # Pages statiques propres à chaque ville
 public/                  # Assets statiques
 ```
 
@@ -146,6 +158,7 @@ Pour toute question concernant le projet, sa licence ou son utilisation :
 * Consultation des lignes du réseau
 * Affichage des informations détaillées d'une ligne
 * Visualisation du parcours d'une ligne
+* Tracé choisi entre celui du calculateur et celui de la ligne, selon celui qui suit vraiment les rues
 * Recherche d'un itinéraire
 * Affichage des différentes étapes d'un trajet
 * Prévisualisation d'un trajet avant le lancement de la navigation
@@ -165,6 +178,23 @@ après une actualisation de la page ou une interruption du navigateur.
 * Marqueur de position transformé progressivement en avatar coloré bus/tram
 * Tracé de transport conservé dans la couleur de sa ligne
 * Portions à pied et points du trajet toujours visibles
+* Sheet de guidage identique aux autres sheets du site, avec la timeline complète du trajet
+* Arrêts déjà passés grisés au fil du trajet, petite timeline horizontale quand la sheet est réduite
+* Caméra qui glisse avec la position au lieu de sauter d'un point à l'autre
+* Sur iPhone à Dynamic Island ou à encoche, bandeau noir qui sort de la caméra, compacté en le poussant vers le haut
+* Textes trop longs du bandeau qui défilent puis reviennent au début
+* Questionnaire masqué au bout d'une minute sans réponse
+* Écran de fin de trajet dans le même style que les popups du site
+* Commande `nav.random` dans la console de dev (touche `²`) et bouton dans les réglages pour lancer un trajet de test
+
+### Partage de trajet et voyageurs en direct
+
+* Lien de suivi `/share/<jeton>` à envoyer à un proche, ouvert sans compte ni application
+* Position, timeline et heure d'arrivée mises à jour chaque seconde
+* Panneau à droite sur ordinateur, sheet sur mobile, réductible en barre au-dessus de la navigation
+* Lien vérifié dans Supabase : un lien inconnu ou terminé l'affiche clairement
+* Partage arrêté tout seul à l'arrivée
+* Voyageurs qui attendent à l'arrêt et voyageurs à bord, visibles en direct
 
 ### Réglages et thèmes
 
@@ -176,6 +206,7 @@ conservées localement.
 * Contraste corrigé des boutons, titres et sélections en mode clair
 * Cartes et groupes de réglages sans fond sombre superflu en mode clair
 * Connexion au compte et notifications disponibles uniquement sur mobile
+* Retour à l'écran précédent en glissant le doigt vers la droite, la page suit le doigt
 * Interface disponible en français et en anglais
 
 ### Recherche
@@ -223,6 +254,8 @@ conservées localement.
 * Réseaux à activer ou masquer depuis les réglages
 * GreLines Nancy : le réseau Stan, vélOstan’lib et Citiz Grand Est, sur
   `nancy.grelines.fr`
+* Sites de ville pour Lyon, Saint-Étienne et Clermont-Ferrand, réglés dans
+  `CITY_SITES` (`src/site.ts`). Ajouter une ville : [`CITY.md`](CITY.md)
 
 ### Mobilités partagées
 
@@ -274,6 +307,7 @@ conservées localement.
 ### Scripts disponibles
 
 * `npm run dev` - Démarre le serveur de développement sur le port 5173
+* `npm run dev:nancy`, `dev:lyon`, `dev:saint-etienne`, `dev:clermont` - Même chose pour un site de ville
 * `npm run build` - Vérifie les types puis construit le paquet de production
 * `npm run preview` - Aperçu du build de production
 * `npm run lint` - Lance ESLint sur le dépôt entier
@@ -339,6 +373,31 @@ Pour les problèmes ou questions concernant les technologies utilisées :
 * [Documentation API MTAG](https://data.mobilites-m.fr/donnees)
 
 ## Note de mise à jour
+
+### GreLines 3.17 → 3.19
+
+Le guidage a été refait. L'ancien empilait des cartes et des chiffres ; le
+nouveau reprend la sheet du reste du site et montre le trajet entier, du premier
+pas à l'arrivée, avec les arrêts déjà passés qui se grisent. La caméra glisse
+avec la position au lieu de sauter, et le bus ou le tram suit sa vraie ligne.
+
+Sur les iPhone à Dynamic Island ou à encoche, le bandeau du haut sort de la
+caméra et reste noir quel que soit le thème. On le pousse vers le haut pour le
+compacter, on le tire vers le bas pour le rouvrir. Sur les autres téléphones,
+c'est une carte arrondie aux couleurs du thème.
+
+Un trajet se partage maintenant en direct. Le lien `/share/…` s'ouvre dans
+n'importe quel navigateur : la personne voit la position, la timeline et l'heure
+d'arrivée, mises à jour chaque seconde. Le lien s'arrête à l'arrivée. Il faut
+avoir exécuté `supabase/trip-shares.sql` pour qu'il fonctionne.
+
+Les tracés ont été repris. L'ancien calcul tirait la ligne vers chaque arrêt, ce
+qui faisait des pics. Le tracé suit désormais les arrêts dans l'ordre, et on
+garde celui du calculateur d'itinéraire quand il suit déjà les rues.
+
+Plus petit, mais partout : on revient en arrière en glissant le doigt vers la
+droite, sur tous les écrans qui s'empilent. Et les sites de ville n'ont plus de
+fichier `.env` chacun, la marche à suivre est dans [`CITY.md`](CITY.md).
 
 ### GreLines 3.5 → 3.7
 

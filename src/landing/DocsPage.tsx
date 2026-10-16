@@ -321,9 +321,9 @@ export function DocsPage({
     const flat = copy.groups.flatMap(item =>
       item.entries.map(entry => ({ group: item, entry })),
     );
-    const index = flat.findIndex(item => item.entry.id === currentEntry.id);
+    const index = flat.findIndex(item => item.group.id === currentGroup?.id && item.entry.id === currentEntry.id);
     return [flat[index - 1], flat[index + 1]] as const;
-  }, [copy.groups, currentEntry]);
+  }, [copy.groups, currentGroup, currentEntry]);
 
   return (
     <div className="landing" data-theme={theme}>
@@ -419,7 +419,7 @@ export function DocsPage({
                           <li key={entry.id}>
                             <DocLink
                               to={{ group: item.id, entry: entry.id }}
-                              className={`docs-toc-link ${currentEntry?.id === entry.id ? 'is-active' : ''}`}
+                              className={`docs-toc-link ${currentGroup?.id === item.id && currentEntry?.id === entry.id ? 'is-active' : ''}`}
                             >
                               <DocIcon name={entry.icon} className="docs-toc-icon" />
                               <span>{entry.title}</span>

@@ -16,6 +16,12 @@ export function consumeLocationPick(lat: number, lon: number): boolean {
   return true;
 }
 
+export function setFakeLocation(lat: number, lon: number): void {
+  armed = false;
+  fake = { lat, lon };
+  notify();
+}
+
 export function resetFakeLocation(): void {
   armed = false;
   if (!fake) return;

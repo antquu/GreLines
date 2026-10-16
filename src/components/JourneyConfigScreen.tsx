@@ -1,4 +1,5 @@
 import { ArrowLeftIcon, ArrowRightIcon, PlusIcon, TrashIcon, CheckIcon } from '@heroicons/react/24/solid';
+import { useSwipeBack } from '../hooks/useSwipeBack';
 import { LineBadge } from './LineBadge';
 import {
   removeJourneyHistoryEntry,
@@ -65,14 +66,19 @@ export function JourneyConfigScreen({
   const mutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
 
   const savedIds = new Set(favorites.map(entry => entry.id));
+  const { screenRef, dim, swipeHandlers } = useSwipeBack({ isOpen, onBack: onClose });
 
   return (
+    <>
+    {dim('z-[899]')}
     <div
+      ref={screenRef}
       className={`fixed inset-0 z-[900] flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
         isOpen ? 'translate-x-0' : 'translate-x-full'
       } ${isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-white'}`}
-      style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
+      style={{ pointerEvents: isOpen ? 'auto' : 'none', touchAction: 'pan-y' }}
       aria-hidden={!isOpen}
+      {...swipeHandlers}
     >
       <header
         className="flex flex-shrink-0 items-center gap-1 px-2 pb-2"
@@ -191,5 +197,6 @@ export function JourneyConfigScreen({
         </button>
       </div>
     </div>
+    </>
   );
 }

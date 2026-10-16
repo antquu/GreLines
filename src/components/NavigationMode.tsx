@@ -1,25 +1,19 @@
-import { formatDurationLabel } from '../utils/formatDuration';
 import { CITY_SITE, SITE_CENTER } from '../site';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { motion, AnimatePresence, MotionConfig, animate, useMotionTemplate, useMotionValue, type PanInfo } from 'framer-motion';
 import MapLibreMap, { Marker, Source, Layer } from 'react-map-gl/maplibre';
 import type { MapRef } from 'react-map-gl/maplibre';
+import type { SheetRef } from 'react-modal-sheet';
 import {
+  ArrowUpOnSquareIcon,
+  MapPinIcon,
   XMarkIcon,
-  ChevronDownIcon,
-  FlagIcon,
-  TicketIcon,
-  StarIcon,
-  ClockIcon,
-  CreditCardIcon,
-  UserIcon,
   Cog6ToothIcon,
-  PaperAirplaneIcon,
-  ArrowRightCircleIcon,
+  CheckIcon,
 } from '@heroicons/react/24/solid';
+import { formatMinutesCompact } from '../utils/formatDuration';
 import { FaWalking } from 'react-icons/fa';
-import { TransportModeIcon } from './TransportModeIcon';
-import { AVATARS } from '../services/account';
+import { AVATARS, randomPseudo } from '../services/account';
 import { openExternal } from '../utils/openExternal';
 import { PASS_SHOP_URL } from '../services/config';
 import { getDepartures, getStopPointDepartures, type RouteItinerary } from '../services/api';
@@ -29,7 +23,6 @@ import { resolveRouteLine } from '../utils/routeLineResolver';
 import { publishObservation, getLineDelay, type LineDelay } from '../services/liveTiming';
 import { getCrowdConfidence, type CrowdConfidence } from '../services/crowdSignals';
 import { useWakeLock } from '../hooks/useWakeLock';
-import { getLineReputation, type LineReputation } from '../services/lineReputation';
 import { loadOccupancy, getOccupancyAt, occupancyLevel } from '../services/stopOccupancy';
 import { loadNavigationStep, saveNavigationStep } from '../services/navigationSession';
 import { getTimetable } from '../services/timetable';
@@ -46,8 +39,8 @@ import {
 } from '../services/tripNotifications';
 import { StepSlider } from './StepSlider';
 import { TripQuestions } from './TripQuestions';
+import { ScrollingText } from './ScrollingText';
 import type { TripSurveyLeg } from '../services/cms';
-import { MapSheet } from './MapSheet';
 import {
   WALK_SPEEDS,
   WALK_PRIORITIES,
@@ -55,14 +48,56 @@ import {
   saveWalkPreferences,
   type WalkPreferences,
 } from '../services/walkPreferences';
+import { EMPTY_LIVE, joinLiveLine, normalizeLiveStop, type LiveLine, type LiveSnapshot } from '../services/livePresence';
+import {
+  isShareAvailable,
+  loadShareName,
+  loadStoredShare,
+  openShareSender,
+  saveShareName,
+  shareUrl,
+  type ShareEvent,
+  type SharePayload,
+  type ShareSender,
+} from '../services/tripShare';
+import { DARK_NAV_MAP_STYLE_URL, LIGHT_NAV_MAP_STYLE_URL } from '../utils/navMapStyles';
+import type { ShareTimelineStep } from '../services/tripShare';
+import {
+  Avatars,
+  EndpointDot,
+  GuidancePopup,
+  MiniTimeline,
+  type MiniSegment,
+  Card,
+  GuidanceSheet,
+  LinePlate,
+  LiveIcon,
+  OptionRow,
+  StopTimeline,
+  Toggle,
+  VehicleTracker,
+  type NavLine,
+  type RunChip,
+} from './navigation/GuidanceParts';
+import { COLLAPSED_SHEET_PX, GUIDANCE_SNAP, navPalette } from './navigation/palette';
+import { readableTextColor } from './LineBadge';
 import { tx } from '../i18n';
-
-const DARK_MAP_STYLE_URL =
-  'https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl';
-const LIGHT_MAP_STYLE_URL =
-  'https://api.maptiler.com/maps/019f7c76-a3f8-751b-bedb-d7fe9d83d122/style.json?key=7TQErbyvEqFlis3QMmSl';
+import { onDevCommand } from '../utils/devCommands';
 
 const HELPED_STORAGE_PREFIX = 'greLines_navigationHelped:';
+
+const LIVE_AVATAR = (() => {
+  const key = 'greLines_liveAvatar';
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved && AVATARS.includes(saved)) return saved;
+    const picked = AVATARS[Math.floor(Math.random() * AVATARS.length)] ?? AVATARS[0];
+    localStorage.setItem(key, picked);
+    return picked;
+  } catch {
+    return AVATARS[0];
+  }
+})();
 
 function navigationHelpedStorageKey(itinerary: RouteItinerary): string {
   const firstLeg: any = itinerary.allLegs?.[0];
@@ -101,6 +136,8 @@ interface NavigationModeProps {
 
 type StepKind = 'walk' | 'transit' | 'arrival';
 
+type Phase = 'walk' | 'wait' | 'ride' | 'arrived';
+
 interface NavStep {
   kind: StepKind;
   instruction: string;
@@ -108,9 +145,12 @@ interface NavStep {
   headsign?: string;
   durationMin: number;
   color: string;
+  textColor: string;
+  lineId?: string;
   lineShortName?: string;
   mode?: string;
   fromName?: string;
+  toName?: string;
   path: Array<[number, number]>;
 }
 
@@ -146,20 +186,8 @@ const STOP_ARRIVAL_M = 4;
 
 const STOP_STILL_MPS = 0.7;
 
-const PANEL_BG = 'rgb(var(--gl-ink-rgb))';
-const PANEL_BG_LIGHT = '#f1f5f9';
+const WAIT_RADIUS_M = 30;
 
-function panelSkin(isLight: boolean) {
-  return {
-    background: isLight ? PANEL_BG_LIGHT : PANEL_BG,
-    ink: isLight ? '#0f172a' : '#ffffff',
-    muted: isLight ? '#475569' : '#94a3b8',
-    chip: isLight ? '#e2e8f0' : '#1e293b',
-    rule: isLight ? 'rgba(15,23,42,0.12)' : 'rgba(255,255,255,0.10)',
-    plate: isLight ? '#0f172a' : '#ffffff',
-    plateInk: (lineColor: string) => (isLight ? onDark(lineColor) : onWhite(lineColor)),
-  };
-}
 const WALK_COLOR = '#94a3b8';
 const ARRIVAL_COLOR = '#22c55e';
 
@@ -170,9 +198,9 @@ const FOLLOW_LOOK_AHEAD_METERS = 30;
 
 const FOLLOW_RESUME_MS = 8000;
 
-const RUN_CARD_WIDTH = 104;
-const RUN_CARD_GAP = 8;
-const RUN_CARD_PITCH = RUN_CARD_WIDTH + RUN_CARD_GAP;
+const SHEET_TOUCH_GRACE_MS = 20000;
+
+const SHARE_PUSH_MS = 1000;
 
 const METRES_PER_DEG_LAT = 111320;
 const METRES_PER_DEG_LON_AT_45 = 78710;
@@ -218,56 +246,162 @@ function snapToPath(
   return best;
 }
 
-const SMOOTHING_MS = 900;
+function alongPath(path: Array<[number, number]>, point: [number, number], maxOffMeters = 120): number | null {
+  if (path.length < 2) return null;
+  let bestDistance = Infinity;
+  let bestAlong = 0;
+  let travelled = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    const ax = (path[i][0] - point[0]) * METRES_PER_DEG_LON_AT_45;
+    const ay = (path[i][1] - point[1]) * METRES_PER_DEG_LAT;
+    const bx = (path[i + 1][0] - point[0]) * METRES_PER_DEG_LON_AT_45;
+    const by = (path[i + 1][1] - point[1]) * METRES_PER_DEG_LAT;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSq = dx * dx + dy * dy;
+    const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengthSq));
+    const cx = ax + t * dx;
+    const cy = ay + t * dy;
+    const distance = Math.sqrt(cx * cx + cy * cy);
+    const segment = Math.sqrt(lengthSq);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestAlong = travelled + t * segment;
+    }
+    travelled += segment;
+  }
+  return bestDistance <= maxOffMeters ? bestAlong : null;
+}
+
+function pathLength(path: Array<[number, number]>): number {
+  let total = 0;
+  for (let i = 1; i < path.length; i++) total += coordinateDistance(path[i - 1], path[i]);
+  return total;
+}
+
+const SMOOTHING_MIN_MS = 400;
+const SMOOTHING_MAX_MS = 3000;
 const SMOOTHING_TELEPORT_METERS = 300;
 
-function useSmoothedPosition(target: [number, number] | null): [number, number] | null {
-  const [smoothed, setSmoothed] = useState<[number, number] | null>(target);
-  const fromRef = useRef<[number, number] | null>(target);
+const NOTCH_DEBUG_KEY = 'greLines_debugNotch';
+const ISLAND_SIDE = 10;
+const NOTCH_MIN_SAFE_TOP = 40;
+const ISLAND_GAP = 12;
+const ISLAND_SIDE_COMPACT = 30;
+const ISLAND_SWIPE_PX = 24;
+const ISLAND_SWIPE_SPEED = 300;
+const ISLAND_MORPH_MS = 700;
+const ISLAND_CLOSE_MS = 420;
+const ISLAND_SPRING = { type: 'spring', stiffness: 380, damping: 36 } as const;
+const ISLAND_TITLE_PX = { compact: 17, full: 22 };
+const ISLAND_VALUE_PX = { compact: 17, full: 24 };
+
+interface Cutout {
+  top: number;
+  width: number;
+  height: number;
+  radius: number;
+}
+
+// estimate the camera cutout of this phone
+function cutoutFor(safeTop: number): Cutout {
+  let forced = false;
+  try {
+    forced = Boolean(localStorage.getItem(NOTCH_DEBUG_KEY));
+  } catch {
+  }
+  const apple =
+    forced ||
+    /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (apple && safeTop >= 51) return { top: 11, width: 126, height: 37, radius: 44 };
+  if (apple) return { top: 0, width: 164, height: Math.max(24, Math.min(32, safeTop - 14)), radius: 34 };
+  const top = Math.max(4, Math.round(safeTop * 0.2));
+  return { top, width: 40, height: Math.max(20, safeTop - top * 2), radius: 30 };
+}
+
+function useSafeAreaTop(): number {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none';
+    document.body.appendChild(probe);
+    const measure = () => {
+      let forced = 0;
+      try {
+        forced = Number(localStorage.getItem(NOTCH_DEBUG_KEY)) || 0;
+      } catch {
+      }
+      setValue(forced > 0 ? forced : probe.offsetHeight);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const offDev = onDevCommand('nav.notch', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      offDev();
+      probe.remove();
+    };
+  }, []);
+  return value;
+}
+
+function glideDuration(lastAtRef: { current: number }): number {
+  const at = performance.now();
+  const gap = lastAtRef.current ? at - lastAtRef.current : SMOOTHING_MIN_MS;
+  lastAtRef.current = at;
+  return Math.max(SMOOTHING_MIN_MS, Math.min(SMOOTHING_MAX_MS, gap));
+}
+
+function useGlideTiming(target: [number, number] | null, glideRef: { current: number }) {
+  const lastAtRef = useRef(0);
+  useEffect(() => {
+    glideRef.current = glideDuration(lastAtRef);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target?.[0], target?.[1]]);
+}
+
+// glide the position marker between location fixes
+function GlidingMarker({ target, children }: { target: [number, number]; children: ReactNode }) {
+  const [shown, setShown] = useState<[number, number]>(target);
+  const currentRef = useRef<[number, number]>(target);
+  const lastAtRef = useRef(0);
   const frameRef = useRef(0);
 
   useEffect(() => {
-    if (!target) {
-      setSmoothed(null);
-      fromRef.current = null;
+    const duration = glideDuration(lastAtRef);
+    const from = currentRef.current;
+    if (coordinateDistance(from, target) > SMOOTHING_TELEPORT_METERS) {
+      currentRef.current = target;
+      setShown(target);
       return;
     }
-
-    const from = fromRef.current;
-    if (!from) {
-      fromRef.current = target;
-      setSmoothed(target);
-      return;
-    }
-
-    const jump = coordinateDistance(from, target) * METRES_PER_DEG_LAT;
-    if (jump > SMOOTHING_TELEPORT_METERS) {
-      fromRef.current = target;
-      setSmoothed(target);
-      return;
-    }
-
     const start = performance.now();
     const tick = (now: number) => {
-      const linear = Math.min(1, (now - start) / SMOOTHING_MS);
-      const eased = 1 - Math.pow(1 - linear, 3);
+      const progress = Math.min(1, (now - start) / duration);
       const next: [number, number] = [
-        from[0] + (target[0] - from[0]) * eased,
-        from[1] + (target[1] - from[1]) * eased,
+        from[0] + (target[0] - from[0]) * progress,
+        from[1] + (target[1] - from[1]) * progress,
       ];
-      setSmoothed(next);
-      if (linear < 1) {
-        frameRef.current = requestAnimationFrame(tick);
-      } else {
-        fromRef.current = target;
-      }
+      currentRef.current = next;
+      setShown(next);
+      if (progress < 1) frameRef.current = requestAnimationFrame(tick);
     };
-
     frameRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameRef.current);
-  }, [target?.[0], target?.[1]]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target[0], target[1]]);
 
-  return smoothed;
+  return (
+    <Marker longitude={shown[0]} latitude={shown[1]}>
+      {children}
+    </Marker>
+  );
+}
+
+function angleGap(a: number, b: number): number {
+  const diff = Math.abs(((a - b) % 360) + 360) % 360;
+  return diff > 180 ? 360 - diff : diff;
 }
 
 function pointAheadOnPath(
@@ -302,61 +436,6 @@ function stepColor(step: NavStep): string {
   if (step.kind === 'arrival') return ARRIVAL_COLOR;
   if (step.kind === 'walk') return WALK_COLOR;
   return step.color;
-}
-
-function readableOn(background: string): string {
-  const hex = background.replace('#', '');
-  if (hex.length !== 6) return '#ffffff';
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? '#0f172a' : '#ffffff';
-}
-
-function shadeColor(hex: string, amount: number): string {
-  const clean = hex.replace('#', '');
-  if (clean.length !== 6) return hex;
-  const channels = [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16));
-  const light = (0.299 * channels[0] + 0.587 * channels[1] + 0.114 * channels[2]) / 255 > 0.55;
-  const target = light ? 0 : 255;
-  return (
-    '#' +
-    channels
-      .map((value) =>
-        Math.round(value + (target - value) * amount)
-          .toString(16)
-          .padStart(2, '0')
-      )
-      .join('')
-  );
-}
-
-function onWhite(hex: string): string {
-  const clean = hex.replace('#', '');
-  if (clean.length !== 6) return '#0f172a';
-  let channels = [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16));
-  const luminance = (rgb: number[]) =>
-    (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
-  let guard = 0;
-  while (luminance(channels) > 0.45 && guard < 6) {
-    channels = channels.map((value) => Math.round(value * 0.8));
-    guard += 1;
-  }
-  return '#' + channels.map((value) => value.toString(16).padStart(2, '0')).join('');
-}
-
-function onDark(hex: string): string {
-  const clean = hex.replace('#', '');
-  if (clean.length !== 6) return '#ffffff';
-  let channels = [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16));
-  const luminance = (rgb: number[]) =>
-    (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
-  let guard = 0;
-  while (luminance(channels) < 0.5 && guard < 8) {
-    channels = channels.map((value) => Math.min(255, Math.round(value + (255 - value) * 0.25)));
-    guard += 1;
-  }
-  return '#' + channels.map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
 function normalizeStopName(value: unknown): string {
@@ -481,6 +560,45 @@ function coordinateDistance(a: [number, number], b: [number, number]): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+const SPIKE_MIN_METERS = 40;
+const SPIKE_RATIO = 0.3;
+const SPIKE_MAX_ANGLE = 45;
+const SPIKE_MIN_ARM_METERS = 15;
+
+function turnAngle(a: [number, number], b: [number, number], c: [number, number]): number {
+  const ax = (a[0] - b[0]) * METRES_PER_DEG_LON_AT_45;
+  const ay = (a[1] - b[1]) * METRES_PER_DEG_LAT;
+  const cx = (c[0] - b[0]) * METRES_PER_DEG_LON_AT_45;
+  const cy = (c[1] - b[1]) * METRES_PER_DEG_LAT;
+  const lengths = Math.hypot(ax, ay) * Math.hypot(cx, cy);
+  if (lengths === 0) return 180;
+  const cos = Math.max(-1, Math.min(1, (ax * cx + ay * cy) / lengths));
+  return (Math.acos(cos) * 180) / Math.PI;
+}
+
+function despike(path: Array<[number, number]>): Array<[number, number]> {
+  if (path.length < 3) return path;
+  let current = path;
+  for (let pass = 0; pass < 3; pass++) {
+    const kept: Array<[number, number]> = [current[0]];
+    for (let i = 1; i < current.length - 1; i++) {
+      const a = kept[kept.length - 1];
+      const b = current[i];
+      const c = current[i + 1];
+      const ab = coordinateDistance(a, b);
+      const bc = coordinateDistance(b, c);
+      const out = ab + bc;
+      if (out > SPIKE_MIN_METERS && coordinateDistance(a, c) < out * SPIKE_RATIO) continue;
+      if (Math.min(ab, bc) > SPIKE_MIN_ARM_METERS && turnAngle(a, b, c) < SPIKE_MAX_ANGLE) continue;
+      kept.push(b);
+    }
+    kept.push(current[current.length - 1]);
+    if (kept.length === current.length) return kept;
+    current = kept;
+  }
+  return current;
+}
+
 function slicePathForCamera(path: Array<[number, number]>, kind: StepKind): Array<[number, number]> {
   if (path.length <= 2) return path;
   const maxMeters = kind === 'walk' ? 850 : 1800;
@@ -511,6 +629,15 @@ function getBoundsForPath(path: Array<[number, number]>): [[number, number], [nu
   ];
 }
 
+function downsamplePath(path: Array<[number, number]>, max = 180): Array<[number, number]> {
+  if (path.length <= max) return path.map(([lon, lat]) => [Number(lon.toFixed(5)), Number(lat.toFixed(5))]);
+  const stride = path.length / max;
+  const picked: Array<[number, number]> = [];
+  for (let i = 0; i < max; i++) picked.push(path[Math.floor(i * stride)]);
+  picked.push(path[path.length - 1]);
+  return picked.map(([lon, lat]) => [Number(lon.toFixed(5)), Number(lat.toFixed(5))]);
+}
+
 function buildSteps(
   itinerary: RouteItinerary,
   isFr: boolean,
@@ -528,20 +655,22 @@ function buildSteps(
 
   const steps: NavStep[] = legs.map((leg: any, legIndex: number) => {
     const durationMin = Math.max(1, Math.round((leg.duration ?? 0) / 60));
-    const path = legPaths?.get(legIndex)
-      ?? (leg?.legGeometry?.points ? decodePolyline(leg.legGeometry.points) : []);
+    const routed = leg?.legGeometry?.points ? decodePolyline(leg.legGeometry.points) : [];
+    const drawn = legPaths?.get(legIndex) ?? [];
+    const path = despike(leg.mode !== 'WALK' && drawn.length > 1 ? drawn : routed.length > 1 ? routed : drawn);
 
     if (leg.mode === 'WALK') {
       return {
         kind: 'walk',
-
         instruction: cleanPlace(leg.to?.name)
           ? `${tx(isFr).navigationMode.walkTo} ${cleanPlace(leg.to?.name)}`
           : (tx(isFr).navigationMode.walk),
         detail: cleanPlace(leg.to?.name) ? `${tx(isFr).navigationMode.to} ${cleanPlace(leg.to?.name)}` : '',
         durationMin,
         color: '#64748b',
+        textColor: '#ffffff',
         fromName: cleanPlace(leg.from?.name),
+        toName: cleanPlace(leg.to?.name) ?? cleanPlace(itinerary.arrName),
         path,
       };
     }
@@ -554,6 +683,7 @@ function buildSteps(
       stops,
     });
     const shortName = String(leg.routeShortName || leg.route || '').replace(/^SEM:/, '');
+    const color = line?.color || '#3b82f6';
 
     return {
       kind: 'transit',
@@ -561,10 +691,13 @@ function buildSteps(
       detail: leg.to?.name ? `${tx(isFr).navigationMode.getOffAt} ${leg.to.name}` : '',
       headsign: leg.headsign,
       durationMin,
-      color: line?.color || '#3b82f6',
+      color,
+      textColor: line?.textColor || readableTextColor(color),
+      lineId: line?.id || String(leg.routeId || shortName),
       lineShortName: shortName,
       mode: leg.mode,
       fromName: leg.from?.name,
+      toName: leg.to?.name,
       path,
     };
   });
@@ -575,17 +708,42 @@ function buildSteps(
     detail: itinerary.arrName || '',
     durationMin: 0,
     color: '#16a34a',
+    textColor: '#ffffff',
     path: [],
   });
 
   return steps;
 }
 
-function StepIcon({ step, className }: { step: NavStep; className: string }) {
-  if (step.kind === 'arrival') return <FlagIcon className={className} />;
-  if (step.kind === 'walk') return <FaWalking className={className} />;
-  return <TransportModeIcon mode={step.mode} className={className} />;
+function stopLabel(name: unknown): string {
+  const text = String(name ?? '').trim();
+  const comma = text.indexOf(', ');
+  return comma > 0 && comma < text.length - 2 ? text.slice(comma + 2) : text;
 }
+
+function navLineOf(step: NavStep | undefined): NavLine | null {
+  if (!step || step.kind !== 'transit' || !step.lineShortName) return null;
+  return {
+    id: step.lineId || step.lineShortName,
+    shortName: step.lineShortName,
+    color: step.color,
+    textColor: step.textColor,
+  };
+}
+
+interface BannerContent {
+  leading: ReactNode;
+  label?: string;
+  title: string;
+  subtitle?: string;
+  value?: string;
+  live?: boolean;
+  footer?: string;
+  accent?: string;
+  big?: boolean;
+}
+
+const HEADLINE = { fontSize: '1.875rem', lineHeight: 1.15, fontWeight: 500, margin: 0 } as const;
 
 export function NavigationMode({
   itinerary,
@@ -603,8 +761,21 @@ export function NavigationMode({
   theme = 'dark',
 }: NavigationModeProps) {
   const isFr = language === 'fr';
-  const skin = panelSkin(theme !== 'dark');
+  const t = tx(isFr).navigationMode;
+  const isLight = theme !== 'dark';
+  const palette = navPalette(isLight);
   const mapRef = useRef<MapRef>(null);
+  const sheetRef = useRef<SheetRef>(null);
+  const sheetTouchedRef = useRef(0);
+  const safeTop = useSafeAreaTop();
+  const cutout = useMemo(() => cutoutFor(safeTop), [safeTop]);
+  const [islandCompact, setIslandCompact] = useState(false);
+  const [questionsHiddenFor, setQuestionsHiddenFor] = useState<string | null>(null);
+  const [islandMorph, setIslandMorph] = useState(false);
+  const [islandClosing, setIslandClosing] = useState(false);
+  const islandMorphTimerRef = useRef(0);
+  const islandPull = useMotionValue(0);
+  const islandTail = useMotionTemplate`max(4px, calc(var(--island-pad) + ${islandPull}px))`;
   const helpedStorageKey = useMemo(() => navigationHelpedStorageKey(itinerary), [itinerary]);
   const steps = useMemo(
     () => buildSteps(itinerary, isFr, stops, lineLookup, legPaths),
@@ -612,19 +783,29 @@ export function NavigationMode({
   );
   const [index, setIndex] = useState(() => loadNavigationStep(itinerary));
   const [hasStarted, setHasStarted] = useState(false);
-  const [openLegs, setOpenLegs] = useState<Set<number>>(new Set());
   const [pickedRuns, setPickedRuns] = useState<Map<number, number>>(new Map());
   const [runs, setRuns] = useState<Departure[]>([]);
   const [scheduleRuns, setScheduleRuns] = useState<Map<number, number[]>>(new Map());
-  const scrollSettleRef = useRef<number>(0);
-  const scrollingRef = useRef(false);
+  const [upstreamStops, setUpstreamStops] = useState<Map<number, string[]>>(new Map());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isHelpedSheetOpen, setIsHelpedSheetOpen] = useState(false);
-  const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [sheetSnap, setSheetSnap] = useState<number>(GUIDANCE_SNAP.middle);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [shareStepDirection, setShareStepDirection] = useState(1);
+  const copiedTimerRef = useRef(0);
   const [answerCount, setAnswerCount] = useState(0);
   const [travellersHelpedNow, setTravellersHelpedNow] = useState(() => loadNavigationHelped(helpedStorageKey));
   const [notifyOn, setNotifyOn] = useState(() => notificationsEnabled() && notificationPermission() === 'granted');
   const [voiceOn, setVoiceOn] = useState(() => voiceEnabled());
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 10000);
+    return () => window.clearInterval(timer);
+  }, [isOpen]);
 
   useEffect(() => {
     setTravellersHelpedNow(loadNavigationHelped(helpedStorageKey));
@@ -671,51 +852,6 @@ export function NavigationMode({
     };
   }, [isOpen]);
 
-  const sheetY = useMotionValue(0);
-  const [viewportHeight, setViewportHeight] = useState(() =>
-    typeof window === 'undefined' ? 800 : window.innerHeight
-  );
-
-  useEffect(() => {
-    const onResize = () => setViewportHeight(window.innerHeight);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  const [contentHeight, setContentHeight] = useState(0);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const element = contentRef.current;
-    if (!element) return;
-    const measure = () => setContentHeight(element.scrollHeight);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [isOpen, index, openLegs, runs, scheduleRuns]);
-
-  const sheetHeight = Math.max(viewportHeight * 0.85, contentHeight + 96);
-  const sheetBounds = useMemo(() => {
-    const sheetTop = viewportHeight * 0.15;
-    return {
-      top: Math.min(0, viewportHeight - sheetTop - sheetHeight),
-      resting: viewportHeight * 0.45 - sheetTop,
-      bottom: viewportHeight * 0.84 - sheetTop,
-    };
-  }, [sheetHeight, viewportHeight]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    sheetY.set(sheetBounds.bottom);
-    const controls = animate(sheetY, sheetBounds.resting, {
-      type: 'spring',
-      stiffness: 250,
-      damping: 31,
-    });
-    return () => controls.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, itinerary]);
   const [isFollowing, setIsFollowing] = useState(true);
   const boardedTransitKeyRef = useRef<string | null>(null);
   const lastCameraLocationRef = useRef<[number, number] | null>(null);
@@ -727,13 +863,18 @@ export function NavigationMode({
     if (isOpen) {
       setIndex(Math.min(loadNavigationStep(itinerary), Math.max(0, steps.length - 1)));
       setHasStarted(true);
-      setOpenLegs(new Set());
       setPickedRuns(new Map());
       setAnswerCount(0);
+      setIslandClosing(false);
+      setIslandCompact(false);
       arrivedRef.current = false;
       notifiedRef.current.clear();
       boardedTransitKeyRef.current = null;
+      atStopRef.current = null;
     }
+    setIsShareOpen(false);
+    setShareNotice(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, itinerary]);
 
   useEffect(() => {
@@ -748,18 +889,20 @@ export function NavigationMode({
     return snapToPath(step?.path ?? [], here) ?? here;
   }, [currentLocation?.lat, currentLocation?.lon, step]);
 
-  const smoothedLocation = useSmoothedPosition(snappedLocation);
+  const glideRef = useRef(1000);
+  const cameraBearingRef = useRef<number | null>(null);
+  useGlideTiming(snappedLocation, glideRef);
 
   const lastFixRef = useRef<{ lat: number; lon: number; at: number } | null>(null);
   const [speedMps, setSpeedMps] = useState(0);
 
   useEffect(() => {
     if (!currentLocation) return;
-    const now = Date.now();
+    const fixAt = Date.now();
     const previous = lastFixRef.current;
-    lastFixRef.current = { lat: currentLocation.lat, lon: currentLocation.lon, at: now };
+    lastFixRef.current = { lat: currentLocation.lat, lon: currentLocation.lon, at: fixAt };
     if (!previous) return;
-    const elapsed = (now - previous.at) / 1000;
+    const elapsed = (fixAt - previous.at) / 1000;
     if (elapsed < 2 || elapsed > 60) return;
     const metres = coordinateDistance(
       [previous.lon, previous.lat],
@@ -805,7 +948,17 @@ export function NavigationMode({
       }
     }
 
-    if (best !== index && (currentDistance - bestDistance > 30 || steps[best]?.kind === 'transit')) setIndex(best);
+    const current = steps[index];
+    if (current && current.path.length > 1 && current.kind !== 'arrival') {
+      const end = current.path[current.path.length - 1];
+      const nextKind = steps[index + 1]?.kind;
+      if (nextKind === 'arrival' && coordinateDistance(here, end) < 25 && best === index) best = index + 1;
+      if (current.kind === 'transit' && nextKind === 'walk' && coordinateDistance(here, end) < 20 && speedMps < 2 && best === index) {
+        best = index + 1;
+      }
+    }
+
+    if (best !== index && (currentDistance - bestDistance > 30 || steps[best]?.kind !== 'walk' || best === index + 1)) setIndex(best);
   }, [isOpen, hasStarted, currentLocation?.lat, currentLocation?.lon, speedMps, steps, index]);
 
   useEffect(() => {
@@ -838,8 +991,8 @@ export function NavigationMode({
 
     map.fitBounds(bounds, {
       padding: {
-        top: isMobile ? 24 : 48,
-        bottom: isMobile ? 340 : 300,
+        top: isMobile ? 160 : 180,
+        bottom: Math.round(window.innerHeight * (isMobile ? 0.5 : 0.4)),
         left: isMobile ? 24 : 48,
         right: isMobile ? 24 : 48,
       },
@@ -850,27 +1003,34 @@ export function NavigationMode({
   }, [isOpen, index, step, isMobile]);
 
   useEffect(() => {
-    if (!isOpen || !hasStarted || !isFollowing || !smoothedLocation) return;
+    if (!isOpen || !hasStarted || !isFollowing || !snappedLocation) return;
     const map = mapRef.current;
     if (!map) return;
 
-    const here = smoothedLocation;
-    const previousCameraLocation = lastCameraLocationRef.current;
-    if (previousCameraLocation && coordinateDistance(previousCameraLocation, here) < 8) return;
-    lastCameraLocationRef.current = here;
-    const lookAhead = pointAheadOnPath(step.path, here, FOLLOW_LOOK_AHEAD_METERS);
-
+    const here = snappedLocation;
     const shouldAnimate = animateRecenterRef.current;
     animateRecenterRef.current = false;
+    const previousCameraLocation = lastCameraLocationRef.current;
+    if (!shouldAnimate && previousCameraLocation && coordinateDistance(previousCameraLocation, here) < 1.5) return;
+    lastCameraLocationRef.current = here;
+
+    const lookAhead = pointAheadOnPath(step.path, here, FOLLOW_LOOK_AHEAD_METERS);
+    const wanted = lookAhead && coordinateDistance(here, lookAhead) > 5 ? bearingBetween(here, lookAhead) : null;
+    const previousBearing = cameraBearingRef.current ?? map.getBearing();
+    const bearing = wanted !== null && angleGap(wanted, previousBearing) > 12 ? wanted : previousBearing;
+    cameraBearingRef.current = bearing;
+
     map.easeTo({
       center: here,
-      bearing: lookAhead ? bearingBetween(here, lookAhead) : map.getBearing(),
+      bearing,
       zoom: FOLLOW_ZOOM,
       pitch: FOLLOW_PITCH,
-      padding: { top: 0, right: 0, bottom: Math.round(window.innerHeight * 0.35), left: 0 },
-      duration: shouldAnimate ? 650 : 0,
+      padding: { top: 140, right: 0, bottom: Math.round(window.innerHeight * 0.42), left: 0 },
+      duration: shouldAnimate ? 800 : glideRef.current,
+      easing: shouldAnimate ? (t: number) => 1 - Math.pow(1 - t, 3) : (t: number) => t,
+      essential: true,
     });
-  }, [isOpen, hasStarted, isFollowing, smoothedLocation, step]);
+  }, [isOpen, hasStarted, isFollowing, snappedLocation, step]);
 
   useEffect(() => {
     if (!hasStarted || !onBoardVehicle) {
@@ -904,7 +1064,7 @@ export function NavigationMode({
       return;
     }
     const legs = itinerary.allLegs || [];
-    const now = new Date();
+    const observedAt = new Date();
 
     const observe = (legIndex: number, moment: 'boarding' | 'alighting') => {
       const leg: any = legs[legIndex];
@@ -930,8 +1090,8 @@ export function NavigationMode({
         fromStop,
         scheduledAt: departure.toISOString(),
         toStop: observedStop,
-        observedAt: now.toISOString(),
-        delaySeconds: (now.getTime() - reference.getTime()) / 1000,
+        observedAt: observedAt.toISOString(),
+        delaySeconds: (observedAt.getTime() - reference.getTime()) / 1000,
       });
     };
 
@@ -967,22 +1127,6 @@ export function NavigationMode({
     return () => {
       cancelled = true;
       window.clearInterval(timer);
-    };
-  }, [isOpen, currentLine]);
-
-  const [reputation, setReputation] = useState<LineReputation | null>(null);
-
-  useEffect(() => {
-    if (!isOpen || !currentLine) {
-      setReputation(null);
-      return;
-    }
-    let cancelled = false;
-    getLineReputation(currentLine).then((value) => {
-      if (!cancelled) setReputation(value);
-    });
-    return () => {
-      cancelled = true;
     };
   }, [isOpen, currentLine]);
 
@@ -1075,6 +1219,7 @@ export function NavigationMode({
   useEffect(() => {
     if (!isOpen) {
       setScheduleRuns(new Map());
+      setUpstreamStops(new Map());
       return;
     }
     const legs = (itinerary.allLegs as any[]) ?? [];
@@ -1082,6 +1227,7 @@ export function NavigationMode({
 
     void (async () => {
       const collected = new Map<number, number[]>();
+      const upstream = new Map<number, string[]>();
 
       for (let i = 0; i < legs.length; i++) {
         const leg = legs[i];
@@ -1094,44 +1240,43 @@ export function NavigationMode({
         if (controller.signal.aborted) return;
         if (!timetable) continue;
 
-        const now = new Date();
-        const midnight = new Date(now).setHours(0, 0, 0, 0);
+        const startOfDay = new Date();
+        const midnight = new Date(startOfDay).setHours(0, 0, 0, 0);
         const wantedName = normalizeStopName(leg.from?.name);
-        const minutes: number[] = [];
+        const toName = normalizeStopName(leg.to?.name);
 
-        for (const direction of timetable.directions) {
-          const stop =
-            direction.stops.find((entry) => entry.id === stopId) ??
-            (wantedName
-              ? direction.stops.find((entry) => normalizeStopName(entry.name) === wantedName)
-              : undefined);
-          if (!stop) continue;
-          for (const seconds of stop.times) {
+        const matches = timetable.directions.flatMap((direction) => {
+          const at = direction.stops.findIndex(
+            (entry) => entry.id === stopId || (wantedName !== '' && normalizeStopName(entry.name) === wantedName)
+          );
+          if (at < 0) return [];
+          const forward = direction.stops.slice(at + 1).some((entry) => normalizeStopName(entry.name) === toName);
+          return [{ direction, at, forward }];
+        });
+        const chosen = matches.some((match) => match.forward) ? matches.filter((match) => match.forward) : matches;
+
+        const minutes: number[] = [];
+        for (const { direction, at } of chosen) {
+          for (const seconds of direction.stops[at].times) {
             if (seconds === null) continue;
-            minutes.push(Math.round((midnight + seconds * 1000 - now.getTime()) / 60000));
+            minutes.push(Math.round((midnight + seconds * 1000 - startOfDay.getTime()) / 60000));
+          }
+          if (!upstream.has(i)) {
+            upstream.set(i, direction.stops.slice(Math.max(0, at - 4), at).map((entry) => entry.name));
           }
         }
 
         if (minutes.length > 0) collected.set(i, minutes.sort((a, b) => a - b));
       }
 
-      if (!controller.signal.aborted) setScheduleRuns(collected);
+      if (!controller.signal.aborted) {
+        setScheduleRuns(collected);
+        setUpstreamStops(upstream);
+      }
     })();
 
     return () => controller.abort();
   }, [isOpen, itinerary.allLegs]);
-
-  type RunCard = { minutes: number | null; scheduled: boolean; level: 0 | 1 | 2 | 3 };
-
-  const levelForRun = (legIndex: number, minutesFromNow: number | null): 0 | 1 | 2 | 3 => {
-    if (minutesFromNow === null) return 0;
-    void occupancyReady;
-    const leg: any = (itinerary.allLegs as any)?.[legIndex];
-    const at = new Date(Date.now() + minutesFromNow * 60000);
-    return occupancyLevel(
-      getOccupancyAt(leg?.from?.stopId, leg?.routeId ?? leg?.route, at, leg?.trip?.directionId)
-    );
-  };
 
   const surveyJourney = useMemo<TripSurveyLeg[]>(
     () =>
@@ -1148,23 +1293,29 @@ export function NavigationMode({
     [itinerary.allLegs]
   );
 
+  const arrivalInfoRef = useRef({ answerCount, travellersHelpedNow, helpedStorageKey, onArrived });
+  arrivalInfoRef.current = { answerCount, travellersHelpedNow, helpedStorageKey, onArrived };
+
+  const reachedArrival = isOpen && hasStarted && steps.length > 0 && index >= steps.length - 1;
+
   useEffect(() => {
-    if (!isOpen || !hasStarted || arrivedRef.current) return;
-    if (steps.length === 0 || index < steps.length - 1) return;
-    arrivedRef.current = true;
+    if (!reachedArrival || arrivedRef.current) return;
     const timer = window.setTimeout(() => {
+      if (arrivedRef.current) return;
+      arrivedRef.current = true;
+      const info = arrivalInfoRef.current;
       try {
-        localStorage.removeItem(helpedStorageKey);
+        localStorage.removeItem(info.helpedStorageKey);
       } catch {
       }
-      onArrived?.({
+      info.onArrived?.({
         observations: observedRef.current.size,
-        answers: answerCount,
-        travellersHelped: travellersHelpedNow,
+        answers: info.answerCount,
+        travellersHelped: info.travellersHelpedNow,
       });
-    }, 650);
+    }, 2400);
     return () => window.clearTimeout(timer);
-  }, [isOpen, hasStarted, index, steps.length, answerCount, travellersHelpedNow, helpedStorageKey, onArrived]);
+  }, [reachedArrival]);
 
   useEffect(() => {
     if (!isOpen || !hasStarted) return;
@@ -1200,29 +1351,30 @@ export function NavigationMode({
     }
   }, [isOpen, hasStarted, index, steps, language, itinerary.arrName]);
 
-  if (!isOpen || steps.length === 0) return null;
-
-  const delayMinutes = lineDelay ? Math.round(lineDelay.seconds / 60) : 0;
-  const showDelay = Boolean(lineDelay) && delayMinutes !== 0;
+  const legs = useMemo(() => (itinerary.allLegs as any[]) ?? [], [itinerary.allLegs]);
+  const nextStep = steps[index + 1];
+  const transitStep = activeTransitIndex >= 0 ? steps[activeTransitIndex] : undefined;
+  const transitLine = navLineOf(transitStep);
+  const boardingName = String(legs[activeTransitIndex]?.from?.name ?? transitStep?.fromName ?? '');
+  const boardingLabel = stopLabel(boardingName);
 
   const waitingStop = (() => {
     if (step?.kind !== 'walk') return null;
-    const next = steps[index + 1];
-    if (next?.kind !== 'transit') return null;
-    const leg: any = (itinerary.allLegs as any)?.[index + 1];
+    if (nextStep?.kind !== 'transit') return null;
+    const leg: any = legs[index + 1];
     const id = leg?.from?.stopId;
     if (!id) return null;
     const stop = {
       id: String(id),
       name: String(leg?.from?.name ?? ''),
-      lineId: next.lineShortName ?? null,
+      lineId: nextStep.lineShortName ?? null,
     };
 
     if (atStopRef.current === stop.id) return stop;
 
     const lat = Number(leg?.from?.lat);
     const lon = Number(leg?.from?.lon);
-    if (!currentLocation || !Number.isFinite(lat) || !Number.isFinite(lon)) return stop;
+    if (!currentLocation || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
     const metres = coordinateDistance([currentLocation.lon, currentLocation.lat], [lon, lat]);
     if (metres > STOP_ARRIVAL_M || speedMps > STOP_STILL_MPS) return null;
@@ -1231,27 +1383,297 @@ export function NavigationMode({
     return stop;
   })();
 
-  const handleClose = () => {
-    onClose();
+  const walkRemaining = (() => {
+    if (step?.kind !== 'walk' || !snappedLocation || step.path.length < 2) return null;
+    const along = alongPath(step.path, snappedLocation);
+    if (along === null) return coordinateDistance(snappedLocation, step.path[step.path.length - 1]);
+    return Math.max(0, pathLength(step.path) - along);
+  })();
+
+  const ride = useMemo(() => {
+    if (step?.kind !== 'transit') return null;
+    const leg: any = legs[index];
+    const onLeg = [...(leg?.intermediateStops ?? []), leg?.to]
+      .filter(Boolean)
+      .map((stop: any) => ({
+        name: String(stop?.name ?? ''),
+        lat: Number(stop?.lat),
+        lon: Number(stop?.lon),
+      }));
+    let remaining = onLeg;
+    let lastPassed = String(leg?.from?.name ?? '');
+    let passedAny = false;
+    let toFinal: number | null = null;
+    let travelled: number | null = null;
+    if (snappedLocation && step.path.length > 1) {
+      const userAlong = alongPath(step.path, snappedLocation);
+      if (userAlong !== null) {
+        travelled = userAlong;
+        const ahead: typeof onLeg = [];
+        for (const stop of onLeg) {
+          const stopAlong = Number.isFinite(stop.lat) && Number.isFinite(stop.lon)
+            ? alongPath(step.path, [stop.lon, stop.lat])
+            : null;
+          if (stopAlong === null || stopAlong > userAlong + 25) ahead.push(stop);
+          else {
+            lastPassed = stop.name;
+            passedAny = true;
+          }
+        }
+        remaining = ahead.length > 0 ? ahead : onLeg.slice(-1);
+      }
+      const final = onLeg[onLeg.length - 1];
+      if (final && Number.isFinite(final.lat) && Number.isFinite(final.lon)) {
+        toFinal = coordinateDistance(snappedLocation, [final.lon, final.lat]);
+      }
+    }
+    const upcoming = new Set(remaining);
+    const all = [
+      { name: String(leg?.from?.name ?? ''), passed: true },
+      ...onLeg.map((stop) => ({ name: stop.name, passed: !upcoming.has(stop) })),
+    ];
+    return { stops: remaining, all, lastPassed, passedAny, toFinal, travelled };
+  }, [step, index, legs, snappedLocation]);
+
+  const waitLatchRef = useRef<number | null>(null);
+  useEffect(() => {
+    waitLatchRef.current = null;
+  }, [itinerary]);
+  const departedFromStart = ride?.passedAny || (ride?.travelled ?? 0) > 60 || speedMps > 2.5;
+
+  const phase: Phase =
+    step?.kind === 'arrival'
+      ? 'arrived'
+      : step?.kind === 'transit'
+      ? index === 0 && !departedFromStart && Boolean(currentLocation)
+        ? 'wait'
+        : 'ride'
+      : nextStep?.kind === 'transit' && (waitLatchRef.current === index || waitingStop || (walkRemaining !== null && walkRemaining < WAIT_RADIUS_M))
+      ? 'wait'
+      : 'walk';
+  if (phase === 'wait' && step?.kind === 'walk') waitLatchRef.current = index;
+
+  const stopsLeft = ride?.stops.length ?? 0;
+  const preparing = phase === 'ride' && stopsLeft <= 1;
+  const alightNow = preparing && ride?.toFinal != null && ride.toFinal < 80;
+
+  const [live, setLive] = useState<LiveSnapshot>(EMPTY_LIVE);
+  const liveRef = useRef<LiveLine | null>(null);
+  const liveKey = isOpen && transitStep?.lineShortName ? `${transitStep.lineShortName}|${transitStep.headsign ?? ''}` : '';
+
+  useEffect(() => {
+    if (!liveKey || !transitStep?.lineShortName) {
+      setLive(EMPTY_LIVE);
+      return;
+    }
+    const handle = joinLiveLine(transitStep.lineShortName, transitStep.headsign, setLive);
+    liveRef.current = handle;
+    return () => {
+      handle.leave();
+      if (liveRef.current === handle) liveRef.current = null;
+      setLive(EMPTY_LIVE);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveKey]);
+
+  const liveStateKey =
+    phase === 'wait' ? `waiting|${boardingName}` : phase === 'ride' && ride ? `onboard|${ride.lastPassed}` : '';
+
+  useEffect(() => {
+    const handle = liveRef.current;
+    if (!handle) return;
+    if (phase === 'wait' && boardingName) handle.track({ role: 'waiting', stop: boardingName, avatar: LIVE_AVATAR });
+    else if (phase === 'ride' && ride) handle.track({ role: 'onboard', stop: ride.lastPassed, avatar: LIVE_AVATAR });
+    else handle.track(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveStateKey, liveKey]);
+
+  const lastPhaseRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen) {
+      lastPhaseRef.current = null;
+      return;
+    }
+    const signature = `${phase}:${preparing ? 'p' : ''}`;
+    const previous = lastPhaseRef.current;
+    lastPhaseRef.current = signature;
+    if (previous === null || previous === signature) return;
+
+    if (preparing && !previous.endsWith('p')) {
+      try {
+        navigator.vibrate?.([90, 70, 90]);
+      } catch {
+      }
+      if (ride?.stops[0]?.name) speak(`${t.nextStop}, ${ride.stops[0].name}. ${t.prepareToGetOff}.`, language);
+    }
+
+    if (Date.now() - sheetTouchedRef.current < SHEET_TOUCH_GRACE_MS) return;
+    const target =
+      phase === 'walk' || preparing ? GUIDANCE_SNAP.collapsed : GUIDANCE_SNAP.middle;
+    sheetRef.current?.snapTo(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, phase, preparing]);
+
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareName, setShareName] = useState(loadShareName);
+  const [fallbackName] = useState(() => randomPseudo());
+  const senderRef = useRef<ShareSender | null>(null);
+  const shareEventsRef = useRef<ShareEvent[]>([]);
+  const sharePayloadRef = useRef<(() => SharePayload) | null>(null);
+  const rideLegRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const stored = loadStoredShare(helpedStorageKey);
+    if (stored) {
+      const sender = openShareSender(helpedStorageKey, stored);
+      if (sender) {
+        senderRef.current = sender;
+        setShareToken(sender.token);
+      }
+    }
+    return () => {
+      senderRef.current?.close();
+      senderRef.current = null;
+      setShareToken(null);
+    };
+  }, [isOpen, helpedStorageKey]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      shareEventsRef.current = [];
+      rideLegRef.current = null;
+      return;
+    }
+    const events = shareEventsRef.current;
+    const at = Date.now();
+    if (events.length === 0) events.push({ at, text: t.shareEventLeft });
+    if (phase === 'ride' && rideLegRef.current !== index) {
+      rideLegRef.current = index;
+      events.push({ at, text: t.shareEventBoarded(step?.lineShortName ?? '', String(legs[index]?.from?.name ?? '')) });
+    }
+    if (phase !== 'ride' && rideLegRef.current !== null) {
+      events.push({ at, text: t.shareEventAlighted(String(legs[rideLegRef.current]?.to?.name ?? '')) });
+      rideLegRef.current = null;
+    }
+    if (events.length > 8) events.splice(0, events.length - 8);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, phase, index]);
+
+  useEffect(() => {
+    if (!shareToken) return;
+    const push = () => {
+      const sender = senderRef.current;
+      const build = sharePayloadRef.current;
+      if (sender && build) sender.send(build());
+    };
+    push();
+    const timer = window.setInterval(push, SHARE_PUSH_MS);
+    return () => window.clearInterval(timer);
+  }, [shareToken, phase, index]);
+
+  useEffect(() => {
+    if (phase !== 'arrived' || !senderRef.current) return;
+    const sender = senderRef.current;
+    const build = sharePayloadRef.current;
+    if (build) sender.send(build());
+    sender.end();
+    senderRef.current = null;
+    setShareToken(null);
+  }, [phase]);
+
+  if (!isOpen || steps.length === 0) return null;
+
+  const stopSharing = () => {
+    setShareStepDirection(-1);
+    senderRef.current?.end();
+    senderRef.current = null;
+    setShareToken(null);
+    setShareNotice(null);
   };
 
-  const compactSubtitle =
-    step?.kind === 'transit'
-      ? step.headsign || step.detail
-      : steps[index + 1]?.instruction || steps[index + 1]?.detail || (tx(isFr).navigationMode.nextTripActions);
-  const compactActionLabel =
-    steps[index + 1]?.kind === 'walk'
-      ? tx(isFr).navigationMode.walk2
-      : steps[index + 1]?.kind === 'arrival'
-      ? tx(isFr).navigationMode.arrival
-      : steps[index + 1]?.lineShortName || steps[index + 1]?.instruction || '';
+  const handleClose = () => {
+    stopSharing();
+    if (safeTop < NOTCH_MIN_SAFE_TOP) {
+      onClose();
+      return;
+    }
+    setIslandClosing(true);
+    window.setTimeout(onClose, ISLAND_CLOSE_MS);
+  };
 
-  const compactTitle = '';
-  const onRestore = () => undefined;
-  const showCompact = false;
+  const copyLink = async (token: string) => {
+    const url = shareUrl(token);
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareNotice(null);
+      setCopied(true);
+      window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setShareNotice(url);
+    }
+  };
+
+  const startShare = () => {
+    saveShareName(shareName);
+    if (senderRef.current) return;
+    const sender = openShareSender(helpedStorageKey);
+    if (!sender) {
+      setShareNotice(t.shareUnavailable);
+      return;
+    }
+    senderRef.current = sender;
+    setShareStepDirection(1);
+    setShareToken(sender.token);
+  };
+
+  const copyButton = (onClick: () => void) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-8 flex h-[3.5rem] w-full items-center justify-center rounded-2xl text-[1.0625rem] font-semibold transition active:scale-[0.98]"
+      style={primaryButton}
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        {copied ? (
+          <motion.span
+            key="copied"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.25 }}
+          >
+            <CheckIcon className="h-6 w-6" aria-label={t.linkCopied} />
+          </motion.span>
+        ) : (
+          <motion.span
+            key="label"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            {t.copyLink}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </button>
+  );
+
+  type RunCard = RunChip;
+
+  const levelForRun = (legIndex: number, minutesFromNow: number | null): 0 | 1 | 2 | 3 => {
+    if (minutesFromNow === null) return 0;
+    void occupancyReady;
+    const leg: any = legs[legIndex];
+    const at = new Date(Date.now() + minutesFromNow * 60000);
+    return occupancyLevel(
+      getOccupancyAt(leg?.from?.stopId, leg?.routeId ?? leg?.route, at, leg?.trip?.directionId)
+    );
+  };
 
   const boardingInMinutes = (legIndex: number): number => {
-    const legs = (itinerary.allLegs as any[]) ?? [];
     const leg = legs[legIndex];
 
     const own = leg?.startTime ? new Date(leg.startTime).getTime() : NaN;
@@ -1269,39 +1691,26 @@ export function NavigationMode({
     return cumulated;
   };
 
-  const cardsFor = (legIndex: number, extraMinutes: number): RunCard[] => {
-    const leg: any = (itinerary.allLegs as any)?.[legIndex];
-    const endAt = leg?.endTime ? new Date(leg.endTime).getTime() : NaN;
+  const cardsFor = (legIndex: number): RunCard[] => {
     const plannedMinutes = boardingInMinutes(legIndex);
+    const isActive = legIndex === activeTransitIndex;
 
-    const liveMinutes: number[] = [];
-    if (legIndex === activeTransitIndex) {
+    const cards: RunCard[] = [];
+    if (isActive) {
       for (const run of runs) {
-        liveMinutes.push(Math.max(0, Math.round(Number(run.departureTime) || 0)));
+        const minutes = Math.max(0, Math.round(Number(run.departureTime) || 0));
+        if (cards.some((card) => card.minutes === minutes)) continue;
+        cards.push({ minutes, scheduled: false, level: levelForRun(legIndex, minutes) });
       }
     }
 
-    const cards: RunCard[] = liveMinutes.map((minutes) => ({
-      minutes,
-      scheduled: false,
-      level: levelForRun(legIndex, minutes),
-    }));
-
     const schedule = scheduleRuns.get(legIndex) ?? [];
-    if (schedule.length > 0) {
-      const isActive = legIndex === activeTransitIndex;
-      const from = isActive ? 0 : Math.max(0, plannedMinutes - 30);
-      const until = isActive
-        ? Math.max(60, Math.round((endAt - Date.now()) / 60000)) + extraMinutes
-        : plannedMinutes + 50;
-
-      for (const minutes of schedule) {
-        if (minutes < from || minutes > until) continue;
-        if (cards.some((card) => card.minutes !== null && Math.abs(card.minutes - minutes) <= 1)) {
-          continue;
-        }
-        cards.push({ minutes, scheduled: true, level: levelForRun(legIndex, minutes) });
-      }
+    const from = isActive ? 0 : Math.max(0, plannedMinutes - 30);
+    const until = isActive ? 180 : plannedMinutes + 50;
+    for (const minutes of schedule) {
+      if (minutes < from || minutes > until) continue;
+      if (cards.some((card) => card.minutes !== null && Math.abs(card.minutes - minutes) <= 1)) continue;
+      cards.push({ minutes, scheduled: true, level: levelForRun(legIndex, minutes) });
     }
 
     if (cards.length === 0) {
@@ -1309,8 +1718,7 @@ export function NavigationMode({
       cards.push({ minutes, scheduled: true, level: levelForRun(legIndex, minutes) });
     }
 
-    if (cards.length === 0) return [{ minutes: null, scheduled: false, level: 0 }];
-    return cards.sort((a, b) => (a.minutes ?? 0) - (b.minutes ?? 0)).slice(0, 14);
+    return cards.sort((a, b) => (a.minutes ?? 0) - (b.minutes ?? 0)).slice(0, 8);
   };
 
   const closestTo = (cards: RunCard[], target: number): number => {
@@ -1327,155 +1735,546 @@ export function NavigationMode({
     return best;
   };
 
-  const plannedBoardingMinutes =
-    activeTransitIndex >= 0 ? boardingInMinutes(activeTransitIndex) : 0;
-
-  const baseCards = activeTransitIndex >= 0 ? cardsFor(activeTransitIndex, 0) : [];
-  const defaultRunIndex = closestTo(baseCards, plannedBoardingMinutes);
-  const activeRun = pickedRuns.get(activeTransitIndex) ?? defaultRunIndex;
-
-  const pickedShiftMinutes = (() => {
-    const chosen = baseCards[activeRun]?.minutes;
-    const reference = baseCards[defaultRunIndex]?.minutes;
-    if (chosen == null || reference == null) return 0;
-    return chosen - reference;
-  })();
-
-  const activeCards =
-    pickedShiftMinutes > 0 ? cardsFor(activeTransitIndex, pickedShiftMinutes) : baseCards;
-
-  const runsForLeg = (legIndex: number): RunCard[] =>
-    legIndex === activeTransitIndex ? activeCards : cardsFor(legIndex, 0);
-
-  const selectedIndexFor = (legIndex: number, cards: RunCard[]): number => {
-    const chosen = pickedRuns.get(legIndex);
-    if (chosen != null) return Math.min(chosen, Math.max(0, cards.length - 1));
-    return closestTo(cards, boardingInMinutes(legIndex));
-  };
-
-  const choose = (legIndex: number, run: number) => {
-    setPickedRuns((previous) => {
-      const next = new Map(previous);
-      next.set(legIndex, run);
-      return next;
-    });
-  };
-
-  const shiftFor = (legIndex: number): number => {
-    const cards = runsForLeg(legIndex);
-    const chosen = cards[selectedIndexFor(legIndex, cards)]?.minutes;
-    const reference = cards[closestTo(cards, boardingInMinutes(legIndex))]?.minutes;
+  const activeCards = activeTransitIndex >= 0 ? cardsFor(activeTransitIndex) : [];
+  const defaultRunIndex = closestTo(activeCards, activeTransitIndex >= 0 ? boardingInMinutes(activeTransitIndex) : 0);
+  const selectedRun = Math.min(pickedRuns.get(activeTransitIndex) ?? defaultRunIndex, Math.max(0, activeCards.length - 1));
+  const shiftMs = (() => {
+    const chosen = activeCards[selectedRun]?.minutes;
+    const reference = activeCards[defaultRunIndex]?.minutes;
     if (chosen == null || reference == null) return 0;
     return (chosen - reference) * 60000;
-  };
+  })();
+  const nextRunMinutes = activeCards[selectedRun]?.minutes ?? null;
 
   const shiftedClock = (value: unknown, legIndex: number): string => {
     const base = new Date(value as any).getTime();
     if (!Number.isFinite(base)) return '';
-    const shift = legIndex >= index ? shiftFor(legIndex) : 0;
+    const shift = legIndex >= index && legIndex >= activeTransitIndex && activeTransitIndex >= 0 ? shiftMs : 0;
     return formatClock(new Date(base + shift).toISOString());
   };
 
-  const chipClass =
-    'flex flex-shrink-0 items-center gap-1.5 rounded-xl bg-black/20 px-2.5 py-1.5 text-xs font-bold';
+  const lastLeg = legs[legs.length - 1];
+  const plannedEnd = lastLeg?.endTime ? new Date(lastLeg.endTime).getTime() : NaN;
+  const etaMs = Number.isFinite(plannedEnd) ? plannedEnd + shiftMs : null;
+  const etaClock = etaMs ? formatClock(new Date(etaMs).toISOString()) : itinerary.arr;
+  const remainingMinutes = phase === 'arrived' ? 0 : etaMs ? Math.max(0, Math.round((etaMs - now) / 60000)) : null;
+  const remainingMetres = (() => {
+    const currentPath = step?.path ?? [];
+    let current = pathLength(currentPath);
+    if (step?.kind === 'walk' && walkRemaining !== null) current = walkRemaining;
+    if (step?.kind === 'transit' && ride?.travelled != null) current = Math.max(0, current - ride.travelled);
+    return Math.round(current + steps.slice(index + 1).reduce((sum, item) => sum + pathLength(item.path), 0));
+  })();
 
-  const lineChips = (isCurrent: boolean) => (
-    <div className="-mx-3 mb-2.5 flex items-center gap-2 overflow-x-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <span className={chipClass}>
-        <CreditCardIcon className="h-3.5 w-3.5 opacity-80" />
-        {tx(isFr).navigationMode.contactless}
-      </span>
-      <button
-        type="button"
-        onClick={() => openExternal(PASS_SHOP_URL)}
-        className={`${chipClass} active:bg-black/30`}
-      >
-        <TicketIcon className="h-3.5 w-3.5 opacity-80" />
-        {tx(isFr).navigationMode.buyATicket}
-      </button>
-      {isCurrent && reputation?.rating != null && (
-        <span
-          className={chipClass}
-          title={
-            tx(isFr).navigationMode.averageOfSamplesizeTraveller(reputation.sampleSize)
-          }
-        >
-          <StarIcon className="h-3.5 w-3.5 opacity-90" />
-          <span className="tabular">{reputation.rating.toFixed(1)}</span>
-        </span>
-      )}
-      {isCurrent && reputation?.onTimeRate != null && (
-        <span
-          className={chipClass}
-          title={
-            tx(isFr).navigationMode.tripsJudgedOnTime(reputation.sampleSize)
-          }
-        >
-          <ClockIcon className="h-3.5 w-3.5 opacity-80" />
-          <span className="tabular">{Math.round(reputation.onTimeRate)} %</span>
-        </span>
-      )}
-    </div>
-  );
+  const liveWaitingHere = live.waiting.get(normalizeLiveStop(boardingName)) ?? [];
+  const upstream = upstreamStops.get(activeTransitIndex) ?? [];
+  const vehicleSighting = (() => {
+    const names = [...upstream, boardingName].map(normalizeLiveStop);
+    let at: number | null = null;
+    let freshest = 0;
+    let count = 0;
+    for (const peer of live.onboard) {
+      const position = names.lastIndexOf(peer.stop);
+      if (position < 0) continue;
+      count += 1;
+      freshest = Math.max(freshest, peer.at);
+      if (at === null || position > at) at = position;
+    }
+    return { at, count, seconds: freshest ? Math.max(0, Math.round((now - freshest) / 1000)) : 0 };
+  })();
 
   const fullPath: Array<[number, number]> = itinerary.routePath?.length
     ? itinerary.routePath
     : steps.flatMap((item) => item.path);
+
+  sharePayloadRef.current = () => {
+    const status: SharePayload['status'] =
+      phase === 'arrived' ? 'arrived' : phase === 'ride' ? 'onboard' : phase === 'wait' ? 'waiting' : 'walking';
+    const headline =
+      phase === 'arrived'
+        ? t.shareHeadlineArrived(itinerary.arrName || '')
+        : phase === 'ride'
+        ? t.shareHeadlineOnboard(step?.lineShortName ?? '', step?.headsign ?? '')
+        : phase === 'wait'
+        ? t.shareHeadlineWaiting(transitStep?.lineShortName ?? '', boardingName)
+        : t.shareHeadlineWalking(step?.toName || itinerary.arrName || '');
+    const shownLine = phase === 'ride' || phase === 'wait' ? transitLine : null;
+    return {
+      name: shareName.trim() || fallbackName,
+      avatar: LIVE_AVATAR,
+      lat: snappedLocation ? Number(snappedLocation[1].toFixed(6)) : null,
+      lon: snappedLocation ? Number(snappedLocation[0].toFixed(6)) : null,
+      arrivalAt: etaMs,
+      destination: itinerary.arrName || '',
+      status,
+      headline,
+      line: shownLine?.shortName ?? null,
+      lineColor: shownLine?.color ?? null,
+      lineText: shownLine?.textColor ?? null,
+      events: shareEventsRef.current.slice(),
+      path: downsamplePath(fullPath),
+      legs: steps
+        .filter((item) => item.kind !== 'arrival')
+        .map((item, i) => {
+          const leg: any = legs[i];
+          const line = navLineOf(item);
+          const stopsOnLeg = item.kind === 'transit'
+            ? [leg?.from, ...(leg?.intermediateStops ?? []), leg?.to].flatMap((stop: any) => {
+                const lat = Number(stop?.lat);
+                const lon = Number(stop?.lon);
+                return Number.isFinite(lat) && Number.isFinite(lon)
+                  ? [[Number(lon.toFixed(5)), Number(lat.toFixed(5))] as [number, number]]
+                  : [];
+              })
+            : [];
+          return {
+            walk: item.kind !== 'transit',
+            color: line?.color ?? '#94a3b8',
+            line,
+            path: downsamplePath(item.path, 400),
+            stops: stopsOnLeg,
+          };
+        }),
+      segments: miniSegments.map((segment) => ({ kind: segment.kind, share: Number(segment.share.toFixed(3)), line: segment.line })),
+      progress: Number(miniProgress.toFixed(3)),
+      timeline: tripSteps,
+      at: Date.now(),
+    };
+  };
+
   const stepGeoJSON = {
     type: 'FeatureCollection' as const,
     features: [{ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: step.path } }],
   };
   const futureRouteGeoJSON = {
     type: 'FeatureCollection' as const,
-    features: steps.slice(index + 1)
-      .filter(candidate => candidate.path.length > 1)
-      .map(candidate => ({
+    features: steps
+      .map((candidate, i) => ({ candidate, i }))
+      .filter(({ candidate, i }) => i !== index && candidate.path.length > 1)
+      .map(({ candidate, i }) => ({
         type: 'Feature' as const,
-        properties: { color: stepColor(candidate) },
+        properties: { color: stepColor(candidate), past: i < index },
         geometry: { type: 'LineString' as const, coordinates: candidate.path },
       })),
   };
   const futureStopsGeoJSON = {
     type: 'FeatureCollection' as const,
-    features: (itinerary.allLegs ?? []).slice(index + 1).flatMap((leg: any, offset: number) => {
+    features: legs.flatMap((leg: any, offset: number) => {
       if (!leg?.mode || leg.mode === 'WALK') return [];
-      const stepForLeg = steps[index + 1 + offset];
+      const stepForLeg = steps[offset];
       const color = stepForLeg ? stepColor(stepForLeg) : '#64748b';
-      return [leg.from, ...(leg.intermediateStops ?? []), leg.to]
-        .flatMap((stop: any) => {
-          const lat = Number(stop?.lat ?? stop?.latitude);
-          const lon = Number(stop?.lon ?? stop?.lng ?? stop?.longitude);
-          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return [];
-          return [{
-            type: 'Feature' as const,
-            properties: { color },
-            geometry: { type: 'Point' as const, coordinates: [lon, lat] as [number, number] },
-          }];
-        });
+      const list = [leg.from, ...(leg.intermediateStops ?? []), leg.to];
+      return list.flatMap((stop: any, position: number) => {
+        const lat = Number(stop?.lat ?? stop?.latitude);
+        const lon = Number(stop?.lon ?? stop?.lng ?? stop?.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return [];
+        return [{
+          type: 'Feature' as const,
+          properties: { color, edge: position === 0 || position === list.length - 1 },
+          geometry: { type: 'Point' as const, coordinates: [lon, lat] as [number, number] },
+        }];
+      });
     }),
   };
 
-  const arriveLabel = itinerary.arr;
-  const departureLabel = formatClock((itinerary.allLegs as any)?.[0]?.startTime);
+  const endpointsGeoJSON = (() => {
+    const first: any = legs[0]?.from;
+    const last: any = legs[legs.length - 1]?.to;
+    const points = [first, last].flatMap((stop: any) => {
+      const lat = Number(stop?.lat);
+      const lon = Number(stop?.lon);
+      return Number.isFinite(lat) && Number.isFinite(lon) ? [[lon, lat] as [number, number]] : [];
+    });
+    return {
+      type: 'FeatureCollection' as const,
+      features: points.map((coordinates) => ({
+        type: 'Feature' as const,
+        properties: {},
+        geometry: { type: 'Point' as const, coordinates },
+      })),
+    };
+  })();
+
+  const afterTransitText = (() => {
+    const after = steps[index + 1];
+    if (!after || after.kind === 'arrival') return t.thenArrive;
+    if (after.kind === 'walk') return t.thenWalk(after.durationMin);
+    return t.thenTake(after.lineShortName ?? '');
+  })();
+
+  const roundMetres = (value: number) => (value >= 1000 ? Math.round(value / 100) * 100 : Math.max(10, Math.round(value / 10) * 10));
+
+  const minutesText = (minutes: number) =>
+    minutes <= 0 ? t.dueNow : minutes > 59 ? formatClock(new Date(Date.now() + minutes * 60000).toISOString()) : t.minutes(minutes);
+
+  const notch = safeTop >= NOTCH_MIN_SAFE_TOP;
+  const questionsKey = `${phase}-${index}`;
+  const bp = notch ? navPalette(false) : palette;
+
+  const roundIcon = (child: ReactNode, background = bp.box, color = bp.ink) => (
+    <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: background, color }}>
+      {child}
+    </span>
+  );
+
+  const banner: BannerContent = (() => {
+    if (phase === 'arrived') {
+      return {
+        leading: <EndpointDot palette={palette} size={28} />,
+        title: t.youHaveArrived,
+        subtitle: stopLabel(itinerary.arrName) || undefined,
+      };
+    }
+    if (phase === 'ride' && transitLine) {
+      const alight = stopLabel(legs[index]?.to?.name ?? step.toName);
+      if (preparing) {
+        return {
+          leading: <LinePlate line={transitLine} size="sm" />,
+          label: t.nextStop,
+          title: alight,
+          subtitle: alightNow ? t.getOffHere : t.prepareToGetOff,
+          footer: afterTransitText,
+          accent: transitLine.color,
+          big: true,
+        };
+      }
+      return {
+        leading: <LinePlate line={transitLine} size="md" />,
+        title: alight,
+        subtitle: t.getOffIn(stopsLeft),
+        value: shiftedClock(legs[index]?.endTime, index) || undefined,
+      };
+    }
+    if (phase === 'wait' && transitLine) {
+      return {
+        leading: <LinePlate line={transitLine} size="md" />,
+        title: transitStep?.headsign ? t.toward(stopLabel(transitStep.headsign)) : transitLine.shortName,
+        subtitle: boardingLabel,
+        value: nextRunMinutes === null ? '–' : minutesText(nextRunMinutes),
+        live: activeCards[selectedRun] ? !activeCards[selectedRun].scheduled : false,
+      };
+    }
+    return {
+      leading: roundIcon(<FaWalking className="h-5 w-5" />),
+      title: stopLabel(step?.toName || itinerary.arrName),
+      subtitle:
+        transitLine && nextStep?.kind === 'transit'
+          ? `${t.thenTake(transitLine.shortName)}${nextRunMinutes !== null ? ` · ${minutesText(nextRunMinutes)}` : ''}`
+          : undefined,
+      value: walkRemaining !== null ? t.metres(roundMetres(walkRemaining)) : t.minutes(step?.durationMin ?? 0),
+    };
+  })();
+
+  const tripSteps: ShareTimelineStep[] = steps.map((item, i) => {
+    const leg: any = legs[i];
+    if (item.kind === 'walk') {
+      return {
+        kind: 'walk',
+        label: tx(isFr).journeyDetail.walkFormatminutescompact(formatMinutesCompact(item.durationMin)),
+        time: shiftedClock(leg?.startTime, i),
+        stops: [],
+        done: i < index,
+        current: i === index,
+      };
+    }
+    if (item.kind === 'arrival') {
+      return {
+        kind: 'arrival',
+        label: stopLabel(itinerary.arrName) || t.youHaveArrived,
+        time: etaClock,
+        stops: [],
+        done: false,
+        current: i === index,
+      };
+    }
+    const names = [leg?.from, ...(leg?.intermediateStops ?? []), leg?.to].filter(Boolean).map((stop: any) => stopLabel(stop?.name));
+    const passedFlags =
+      i < index
+        ? names.map(() => true)
+        : i === index && ride && ride.all.length === names.length
+        ? ride.all.map((stop) => stop.passed)
+        : names.map(() => false);
+    return {
+      kind: 'transit',
+      label: item.headsign ? t.toward(stopLabel(item.headsign)) : '',
+      time: shiftedClock(leg?.startTime, i),
+      line: navLineOf(item) ?? undefined,
+      stops: names.map((name: string, position: number) => ({
+        name,
+        time: position === 0 ? shiftedClock(leg?.startTime, i) : position === names.length - 1 ? shiftedClock(leg?.endTime, i) : '',
+        passed: passedFlags[position] ?? false,
+      })),
+      done: i < index,
+      current: i === index,
+    };
+  });
+
+  const markSheetTouched = () => {
+    sheetTouchedRef.current = Date.now();
+  };
+
+  const delayMinutes = lineDelay ? Math.round(lineDelay.seconds / 60) : 0;
+  const delayText =
+    lineDelay && delayMinutes !== 0
+      ? delayMinutes > 0
+        ? t.delayminutesMinObserved(delayMinutes)
+        : t.absMinEarly(Math.abs(delayMinutes))
+      : null;
+
+  const crowdWarning =
+    delayText || (confidence && confidence.level === 'poor') ? (
+      <p className="mt-3 flex items-center gap-2 text-sm" style={{ color: palette.muted }}>
+        {confidence && (
+          <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: CONFIDENCE_COLOR[confidence.level] }} />
+        )}
+        <span className="truncate">
+          {[confidence?.level === 'poor' ? confidenceLabel(confidence, isFr) : '', delayText ?? ''].filter(Boolean).join(' · ')}
+        </span>
+      </p>
+    ) : null;
+
+  const timelineView = <StopTimeline steps={tripSteps} palette={palette} moreLabel={t.moreStops} />;
+
+  const timelineCard = (
+    <Card palette={palette} className="pt-1">
+      {timelineView}
+      {crowdWarning}
+      {phase === 'wait' && transitLine && (
+        <div className="mt-5 border-t pt-4" style={{ borderColor: palette.rule }}>
+          {vehicleSighting.at !== null && upstream.length > 0 && (
+            <>
+              <p className="flex items-center gap-2 text-sm" style={{ color: palette.ink }}>
+                <LiveIcon label={t.live} />
+                {t.seenOnboard(vehicleSighting.count, vehicleSighting.seconds)} · {t.stopsAway(upstream.length - vehicleSighting.at)}
+              </p>
+              <VehicleTracker
+                stops={upstream.map(stopLabel)}
+                here={boardingLabel}
+                vehicleAt={vehicleSighting.at}
+                line={transitLine}
+                palette={palette}
+                hereLabel={boardingLabel}
+              />
+            </>
+          )}
+          <div className={`flex items-center gap-3 ${vehicleSighting.at !== null && upstream.length > 0 ? 'mt-4' : ''}`}>
+            <Avatars faces={[LIVE_AVATAR, ...liveWaitingHere]} />
+            <p className="min-w-0 flex-1 text-sm leading-snug" style={{ color: palette.muted }}>
+              {t.waitingHere(liveWaitingHere.length)}
+            </p>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+
+  const compactIsland = notch && islandCompact && !banner.big;
+  const islandShut = `inset(0px calc(50% - ${cutout.width / 2}px) calc(100% - ${cutout.height}px) calc(50% - ${cutout.width / 2}px) round ${cutout.height / 2}px)`;
+  const showQuestions = !banner.big && !compactIsland && questionsHiddenFor !== questionsKey && (phase === 'ride' || phase === 'wait');
+
+  const pullIsland = (_: PointerEvent, info: PanInfo) => {
+    const pull = info.offset.y;
+    islandPull.set(pull < 0 ? Math.max(-14, pull * 0.18) : Math.min(14, pull * 0.18));
+  };
+
+  const releaseIsland = (_: PointerEvent, info: PanInfo) => {
+    void animate(islandPull, 0, { type: 'spring', stiffness: 500, damping: 32 });
+    const up = info.offset.y < -ISLAND_SWIPE_PX || info.velocity.y < -ISLAND_SWIPE_SPEED;
+    const down = info.offset.y > ISLAND_SWIPE_PX || info.velocity.y > ISLAND_SWIPE_SPEED;
+    const next = up ? true : down ? false : islandCompact;
+    if (next === islandCompact) return;
+    setIslandMorph(true);
+    window.clearTimeout(islandMorphTimerRef.current);
+    islandMorphTimerRef.current = window.setTimeout(() => setIslandMorph(false), ISLAND_MORPH_MS);
+    setIslandCompact(next);
+    if (next && showQuestions) setQuestionsHiddenFor(questionsKey);
+  };
+
+  const islandFade = (delay = 0) =>
+    islandMorph
+      ? {
+          layout: 'position' as const,
+          initial: { opacity: 0, y: -6 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.28, delay: 0.12 + delay, ease: [0.32, 0.72, 0, 1] as const },
+        }
+      : { layout: 'position' as const };
+
+  const islandText = (sizes: { compact: number; full: number }, compact: boolean) => ({
+    layout: 'position' as const,
+    initial: islandMorph ? { fontSize: compact ? sizes.full : sizes.compact } : false,
+    animate: { fontSize: compact ? sizes.compact : sizes.full },
+    transition: ISLAND_SPRING,
+  });
+
+  const questionsCard = (subject: 'vehicle' | 'stop') => {
+    const onAnswered = () => {
+      setAnswerCount((n) => n + 1);
+      setTravellersHelpedNow((current) => current + 1);
+    };
+    if (subject === 'vehicle' && step?.kind === 'transit' && step.lineShortName) {
+      return (
+        <TripQuestions
+          key={`vehicle-${step.lineShortName}-${index}`}
+          subject="vehicle"
+          targetId={step.lineShortName}
+          boardingStop={step.fromName ?? null}
+          boardingTime={legs[index]?.startTime ? new Date(legs[index].startTime).toISOString() : null}
+          journey={surveyJourney}
+          language={language}
+          onAnswered={onAnswered}
+          tone={notch || !isLight ? 'night' : 'light'}
+          bare
+        />
+      );
+    }
+    if (subject === 'stop' && waitingStop) {
+      return (
+        <TripQuestions
+          key={`stop-${waitingStop.id}`}
+          subject="stop"
+          targetId={waitingStop.id}
+          targetName={waitingStop.name}
+          lineId={waitingStop.lineId}
+          language={language}
+          onAnswered={onAnswered}
+          tone={notch || !isLight ? 'night' : 'light'}
+          bare
+        />
+      );
+    }
+    return null;
+  };
+
+  const phaseContent = (() => {
+    if (phase === 'ride' && transitLine && ride) {
+      return (
+        <>
+          <Card palette={palette}>
+            <div>
+              <StopTimeline steps={tripSteps.slice(index)} palette={palette} moreLabel={t.moreStops} />
+            </div>
+          </Card>
+        </>
+      );
+    }
+    if (phase === 'wait' || phase === 'walk') return timelineCard;
+    return null;
+  })();
+
+  const miniSegments: MiniSegment[] = (() => {
+    const moving = steps.filter((item) => item.kind !== 'arrival');
+    const total = moving.reduce((sum, item) => sum + Math.max(1, item.durationMin), 0) || 1;
+    const raw = moving.map((item) => Math.max(0.08, Math.max(1, item.durationMin) / total));
+    const sum = raw.reduce((a, b) => a + b, 0);
+    return moving.map((item, i) => ({
+      kind: item.kind === 'transit' ? 'transit' : 'walk',
+      share: raw[i] / sum,
+      line: navLineOf(item) ?? undefined,
+      done: i < index,
+    }));
+  })();
+
+  const miniProgress = (() => {
+    let before = 0;
+    for (let i = 0; i < Math.min(index, miniSegments.length); i++) before += miniSegments[i].share;
+    const current = miniSegments[index];
+    if (!current) return 1;
+    const length = pathLength(step?.path ?? []);
+    let fraction = 0;
+    if (phase === 'wait') fraction = step?.kind === 'walk' ? 1 : 0;
+    else if (step?.kind === 'walk' && walkRemaining !== null && length > 0) fraction = 1 - walkRemaining / length;
+    else if (step?.kind === 'transit' && ride?.travelled != null && length > 0) fraction = ride.travelled / length;
+    return before + current.share * Math.max(0, Math.min(1, fraction));
+  })();
+
+  const remainingText = [
+    remainingMinutes !== null ? formatMinutesCompact(remainingMinutes) : itinerary.dur,
+    remainingMetres > 0 ? t.metres(roundMetres(remainingMetres)) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const sheetHeader = (
+    <div className="px-6 pb-4 pt-2" onPointerDown={markSheetTouched}>
+    <div className="flex items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <p role="heading" aria-level={2} className="truncate text-[1.625rem] font-medium leading-[1.15]" style={{ color: palette.ink }}>
+          {t.arrivingAt} {etaClock}
+        </p>
+        <p className="mt-1 truncate text-[1.0625rem] tabular-nums" style={{ color: palette.soft }}>
+          {remainingText}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => openOverlay('share')}
+        className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition active:scale-95"
+        style={{ backgroundColor: palette.box, color: palette.ink }}
+        aria-label={t.shareTrip}
+      >
+        <ArrowUpOnSquareIcon className="h-5 w-5" />
+        {shareToken && <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-white bg-green-400" />}
+      </button>
+      <button
+        type="button"
+        onClick={handleClose}
+        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-red-500 text-white transition active:scale-95"
+        style={{ color: '#ffffff' }}
+        aria-label={t.exitNavigation}
+      >
+        <XMarkIcon className="h-6 w-6" />
+      </button>
+    </div>
+    <AnimatePresence initial={false}>
+      {sheetSnap === GUIDANCE_SNAP.collapsed && (
+        <motion.div
+          key="mini-timeline"
+          className="overflow-hidden"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+        >
+          <div className="pt-4">
+            <MiniTimeline segments={miniSegments} progress={miniProgress} palette={palette} />
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </div>
+  );
+
+  function openOverlay(kind: 'share' | 'settings') {
+    sheetRef.current?.snapTo(GUIDANCE_SNAP.collapsed);
+    if (kind === 'share') setIsShareOpen(true);
+    else setIsSettingsOpen(true);
+  }
+
+  const primaryButton = isLight
+    ? { backgroundColor: '#000000', color: '#ffffff' }
+    : { backgroundColor: '#ffffff', color: '#000000' };
 
   return (
-    <AnimatePresence>
+    <MotionConfig reducedMotion="user">
       <motion.div
-        className="fixed inset-0 z-[10001] overflow-hidden bg-[#0a1420]"
+        className="fixed inset-0 z-[10001] overflow-hidden"
+        style={{ backgroundColor: isLight ? '#e5e7eb' : '#0a1420' }}
         initial={{ opacity: 0 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-        style={{ fontFamily: "Inter, 'Helvetica Neue', sans-serif" }}
       >
         <div className="absolute inset-0">
           <MapLibreMap
             ref={mapRef}
             initialViewState={{ longitude: fullPath[0]?.[0] ?? (CITY_SITE ? SITE_CENTER.lon : 5.74892), latitude: fullPath[0]?.[1] ?? (CITY_SITE ? SITE_CENTER.lat : 45.18501), zoom: 15 }}
-            mapStyle={theme === 'dark' ? DARK_MAP_STYLE_URL : LIGHT_MAP_STYLE_URL}
+            mapStyle={theme === 'dark' ? DARK_NAV_MAP_STYLE_URL : LIGHT_NAV_MAP_STYLE_URL}
             style={{ width: '100%', height: '100%' }}
             attributionControl={false}
-            onDragStart={() => setIsFollowing(false)}
+            onDragStart={() => {
+              setIsFollowing(false);
+              if (sheetSnap !== GUIDANCE_SNAP.collapsed) sheetRef.current?.snapTo(GUIDANCE_SNAP.collapsed);
+            }}
             onRotateStart={() => setIsFollowing(false)}
             onZoomStart={(event: { originalEvent?: unknown }) => {
               if (event?.originalEvent) setIsFollowing(false);
@@ -1486,13 +2285,13 @@ export function NavigationMode({
                 <Layer
                   id="nav-future-routes-casing"
                   type="line"
-                  paint={{ 'line-color': ['get', 'color'], 'line-width': 13, 'line-opacity': 0.18 }}
+                  paint={{ 'line-color': ['get', 'color'], 'line-width': 13, 'line-opacity': ['case', ['get', 'past'], 0.08, 0.18] as any }}
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                 />
                 <Layer
                   id="nav-future-routes-layer"
                   type="line"
-                  paint={{ 'line-color': ['get', 'color'], 'line-width': 7, 'line-opacity': 0.45 }}
+                  paint={{ 'line-color': ['get', 'color'], 'line-width': 6, 'line-opacity': ['case', ['get', 'past'], 0.3, 0.6] as any }}
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                 />
               </Source>
@@ -1504,12 +2303,25 @@ export function NavigationMode({
                   id="nav-future-stops-layer"
                   type="circle"
                   paint={{
-                    'circle-radius': 4,
-                    'circle-color': ['get', 'color'],
-                    'circle-opacity': 0.7,
-                    'circle-stroke-color': '#ffffff',
-                    'circle-stroke-width': 1.5,
-                    'circle-stroke-opacity': 0.75,
+                    'circle-radius': ['case', ['get', 'edge'], 6.5, 4] as any,
+                    'circle-color': isLight ? '#ffffff' : '#0a0a0a',
+                    'circle-stroke-color': ['get', 'color'],
+                    'circle-stroke-width': ['case', ['get', 'edge'], 3.5, 2.5] as any,
+                  }}
+                />
+              </Source>
+            )}
+
+            {endpointsGeoJSON.features.length > 0 && (
+              <Source id="nav-endpoints" type="geojson" data={endpointsGeoJSON}>
+                <Layer
+                  id="nav-endpoints-layer"
+                  type="circle"
+                  paint={{
+                    'circle-radius': 8,
+                    'circle-color': isLight ? '#ffffff' : '#e2e8f0',
+                    'circle-stroke-color': isLight ? '#0f172a' : '#0a0a0a',
+                    'circle-stroke-width': 4,
                   }}
                 />
               </Source>
@@ -1521,50 +2333,45 @@ export function NavigationMode({
                   id="nav-step-route-layer"
                   type="line"
                   paint={{
-                    'line-color': stepColor(step),
-                    'line-width': step.kind === 'walk' ? 7 : 11,
-                    'line-opacity': 0.98,
-                    'line-dasharray': step.kind === 'walk' ? [0.1, 1.4] : [1, 0],
+                    'line-color': step.kind === 'walk' ? (isLight ? '#0f172a' : '#ffffff') : stepColor(step),
+                    'line-width': step.kind === 'walk' ? 5 : 8,
+                    'line-opacity': 0.95,
+                    'line-dasharray': step.kind === 'walk' ? [0.1, 1.8] : [1, 0],
                   }}
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                 />
               </Source>
             )}
 
-            {step.path.length > 1 && (
-              <>
-                <Marker longitude={step.path[0][0]} latitude={step.path[0][1]}>
-                  <div className="h-5 w-5 rounded-full border-[4px] border-white shadow-[0_4px_16px_rgba(0,0,0,0.35)]" style={{ backgroundColor: stepColor(step) }} />
-                </Marker>
-                <Marker longitude={step.path[step.path.length - 1][0]} latitude={step.path[step.path.length - 1][1]}>
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 18 }}
-                    className="flex h-11 w-11 items-center justify-center rounded-full border-[4px] border-white shadow-[0_8px_22px_rgba(0,0,0,0.38)]"
-                    style={{ backgroundColor: stepColor(step) }}
-                  >
-                    <StepIcon step={step} className="h-5 w-5 text-white" />
-                  </motion.div>
-                </Marker>
-              </>
+            {step.path.length > 1 && step.kind === 'walk' && phase !== 'wait' && navLineOf(nextStep) && (
+              <Marker longitude={step.path[step.path.length - 1][0]} latitude={step.path[step.path.length - 1][1]}>
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+                  className="block"
+                  style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }}
+                >
+                  <LinePlate line={navLineOf(nextStep)!} size="sm" />
+                </motion.span>
+              </Marker>
             )}
 
-            {smoothedLocation && (
-              <Marker longitude={smoothedLocation[0]} latitude={smoothedLocation[1]}>
+            {snappedLocation && (
+              <GlidingMarker target={snappedLocation}>
                 <AnimatePresence initial={false} mode="wait">
-                  {step.kind === 'transit' ? (
-                    <motion.div
+                  {phase === 'ride' && transitLine ? (
+                    <motion.span
                       key="vehicle-sprite"
                       initial={{ opacity: 0, scale: 0.72 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.72 }}
                       transition={{ duration: 0.24, ease: 'easeOut' }}
-                      className="flex h-11 w-11 items-center justify-center rounded-full border-[4px] border-white shadow-[0_6px_18px_rgba(0,0,0,0.4)]"
-                      style={{ backgroundColor: stepColor(step) }}
+                      className="block"
+                      style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }}
                     >
-                      <TransportModeIcon mode={step.mode ?? 'BUS'} className="h-6 w-6 text-white" />
-                    </motion.div>
+                      <LinePlate line={transitLine} size="sm" />
+                    </motion.span>
                   ) : (
                     <motion.div
                       key="walking-sprite"
@@ -1574,967 +2381,412 @@ export function NavigationMode({
                       transition={{ duration: 0.24, ease: 'easeOut' }}
                       className="relative flex items-center justify-center"
                     >
-                      <span className="absolute h-8 w-8 animate-ping rounded-full bg-blue-500/40" />
+                      <span className="absolute h-8 w-8 animate-ping rounded-full bg-blue-500/30" />
                       <span className="relative h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-lg" />
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </Marker>
+              </GlidingMarker>
             )}
           </MapLibreMap>
         </div>
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-transparent" />
-
         <div
-          className="pointer-events-none absolute left-1/2 top-[max(1rem,var(--gl-safe-top))] z-0 flex -translate-x-1/2 flex-col items-center"
-          style={{ fontFamily: "Inter, 'Helvetica Neue', sans-serif" }}
+          className={`pointer-events-none absolute inset-x-0 top-0 z-20 ${notch ? '' : 'px-2 pt-[max(0.5rem,var(--gl-safe-top))]'}`}
+          style={notch ? { paddingTop: cutout.top } : undefined}
         >
           <motion.div
-            className="w-fit rounded-2xl px-4 py-2.5 text-center shadow-[0_10px_28px_rgba(0,0,0,0.22)]"
-            style={{ backgroundColor: skin.background, color: skin.ink }}
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+            className={notch ? 'touch-none' : undefined}
+            style={
+              notch
+                ? {
+                    paddingLeft: compactIsland ? ISLAND_SIDE_COMPACT : ISLAND_SIDE,
+                    paddingRight: compactIsland ? ISLAND_SIDE_COMPACT : ISLAND_SIDE,
+                    transition: 'padding 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+                  }
+                : undefined
+            }
+            onPan={notch ? pullIsland : undefined}
+            onPanEnd={notch ? releaseIsland : undefined}
           >
-            <p className="mb-1 text-[0.625rem] font-semibold uppercase tracking-[0.14em]" style={{ color: skin.muted }}>
-              {tx(isFr).navigationMode.arrivalTime}
-            </p>
-            <p className="text-[1.75rem] font-black leading-none tabular-nums text-white">
-              {arriveLabel}
-            </p>
+          <motion.div
+            layout
+            className={`pointer-events-auto overflow-hidden ${notch ? 'gl-always-dark' : 'rounded-[28px] border'}`}
+            style={
+              notch
+                ? {
+                    backgroundColor: '#000000',
+                    borderRadius: cutout.radius,
+                    boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
+                  }
+                : {
+                    backgroundColor: bp.surface,
+                    borderColor: banner.accent ?? bp.cardBorder,
+                    borderWidth: banner.accent ? 3 : 1,
+                    boxShadow: isLight ? '0 20px 50px rgba(148,163,184,0.28)' : '0 12px 32px rgba(0,0,0,0.5)',
+                  }
+            }
+            initial={notch ? { clipPath: islandShut } : false}
+            animate={notch ? { clipPath: islandClosing ? islandShut : `inset(0px 0px 0px 0px round ${cutout.radius}px)` } : undefined}
+            transition={notch ? ISLAND_SPRING : { type: 'spring', stiffness: 320, damping: 32 }}
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={`${phase}-${index}-${preparing ? 'p' : ''}`}
+                layout={notch}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+                className={notch ? (compactIsland ? 'px-4' : 'px-5') : 'px-6 py-5'}
+                style={notch ? { paddingTop: Math.max(12, safeTop - cutout.top + ISLAND_GAP) } : undefined}
+              >
+                {compactIsland ? (
+                  <div className="flex items-center gap-3">
+                    <motion.span layoutId="island-leading" transition={ISLAND_SPRING} className="flex flex-shrink-0">
+                      {banner.leading}
+                    </motion.span>
+                    <motion.p
+                      layoutId="island-title"
+                      {...islandText(ISLAND_TITLE_PX, true)}
+                      className="min-w-0 flex-1 font-semibold leading-[1.15] text-white"
+                    >
+                      <ScrollingText text={banner.title} />
+                    </motion.p>
+                    {banner.value && (
+                      <motion.span
+                        layoutId="island-value"
+                        {...islandText(ISLAND_VALUE_PX, true)}
+                        className="flex flex-shrink-0 items-center gap-1.5 font-semibold tabular-nums text-white"
+                      >
+                        {banner.live && <LiveIcon label={t.live} size={14} />}
+                        {banner.value}
+                      </motion.span>
+                    )}
+                  </div>
+                ) : notch ? (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <motion.span layoutId="island-leading" transition={ISLAND_SPRING} className="flex flex-shrink-0">
+                          {banner.leading}
+                        </motion.span>
+                        {banner.label && (
+                          <motion.span {...islandFade()} className="min-w-0 flex-1 text-[0.9375rem] font-medium" style={{ color: bp.soft }}>
+                            <ScrollingText text={banner.label} />
+                          </motion.span>
+                        )}
+                      </div>
+                      {banner.value && (
+                        <motion.span
+                          layoutId="island-value"
+                          {...islandText(ISLAND_VALUE_PX, false)}
+                          className="flex flex-shrink-0 items-center gap-1.5 font-semibold tabular-nums text-white"
+                        >
+                          {banner.live && <LiveIcon label={t.live} size={16} />}
+                          {banner.value}
+                        </motion.span>
+                      )}
+                    </div>
+                    {banner.big ? (
+                      <motion.p
+                        layoutId="island-title"
+                        layout="position"
+                        transition={ISLAND_SPRING}
+                        className="mt-3 line-clamp-2 text-[1.875rem] font-semibold leading-[1.15] text-white"
+                      >
+                        {banner.title}
+                      </motion.p>
+                    ) : (
+                      <motion.p
+                        layoutId="island-title"
+                        {...islandText(ISLAND_TITLE_PX, false)}
+                        className="mt-3 font-semibold leading-[1.15] text-white"
+                      >
+                        <ScrollingText text={banner.title} />
+                      </motion.p>
+                    )}
+                    {banner.subtitle && (
+                      <motion.p {...islandFade(0.04)} className="pt-1 text-[1.0625rem] font-medium" style={{ color: bp.soft }}>
+                        <ScrollingText text={banner.subtitle} />
+                      </motion.p>
+                    )}
+                    {banner.footer && (
+                      <motion.p {...islandFade(0.08)} className="mt-4 rounded-[22px] bg-white/[0.1] px-4 py-3 text-[1.0625rem] font-medium text-white">
+                        {banner.footer}
+                      </motion.p>
+                    )}
+                  </>
+                ) : banner.big ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      {banner.leading}
+                      <span className="text-[1.0625rem]" style={{ color: bp.soft }}>
+                        {banner.label}
+                      </span>
+                    </div>
+                    <h2 className="mt-4 line-clamp-2" style={{ ...HEADLINE, color: bp.ink }}>
+                      {banner.title}
+                    </h2>
+                    {banner.subtitle && (
+                      <p className="pt-2 text-[1.0625rem] leading-snug" style={{ color: bp.soft }}>
+                        {banner.subtitle}
+                      </p>
+                    )}
+                    {banner.footer && (
+                      <p className="mt-4 border-t pt-4 text-[1.0625rem]" style={{ borderColor: bp.rule, color: bp.ink }}>
+                        {banner.footer}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    {banner.leading}
+                    <div className="min-w-0 flex-1">
+                      {banner.label && (
+                        <p className="text-[0.9375rem]" style={{ color: bp.soft }}>
+                          <ScrollingText text={banner.label} />
+                        </p>
+                      )}
+                      <p className="text-[1.375rem] font-medium leading-[1.15]" style={{ color: bp.ink }}>
+                        <ScrollingText text={banner.title} />
+                      </p>
+                      {banner.subtitle && (
+                        <p className="pt-0.5 text-[1.0625rem]" style={{ color: bp.soft }}>
+                          <ScrollingText text={banner.subtitle} />
+                        </p>
+                      )}
+                    </div>
+                    {banner.value && (
+                      <span className="flex flex-shrink-0 items-center gap-1.5 text-[1.375rem] font-medium tabular-nums" style={{ color: bp.ink }}>
+                        {banner.live && <LiveIcon label={t.live} size={15} />}
+                        {banner.value}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+            {notch && (
+              <motion.div
+                aria-hidden="true"
+                style={{ ['--island-pad' as string]: `${compactIsland ? 12 : 20}px`, height: islandTail }}
+              />
+            )}
+            {notch ? (
+              <AnimatePresence initial={false}>
+                {showQuestions && (
+                  <motion.div
+                    key="island-questions"
+                    layout="position"
+                    className="overflow-hidden"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0, transition: { duration: 0.25, ease: [0.32, 0.72, 0, 1] } }}
+                    transition={ISLAND_SPRING}
+                  >
+                    {questionsCard(phase === 'ride' ? 'vehicle' : 'stop')}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            ) : (
+              !banner.big &&
+              (phase === 'ride' || phase === 'wait') && <div>{questionsCard(phase === 'ride' ? 'vehicle' : 'stop')}</div>
+            )}
+          </motion.div>
           </motion.div>
 
-          <AnimatePresence initial={false}>
-          {travellersHelpedNow > 0 && (
-          <motion.button
-            type="button"
-            onClick={() => setIsHelpedSheetOpen(true)}
-            className="pointer-events-auto -mt-1 flex items-center gap-2 rounded-b-xl px-2.5 pb-1.5 pt-2 shadow-[0_8px_20px_rgba(0,0,0,0.18)]"
-            aria-label={tx(isFr).navigationMode.viewHelpedTravellers}
-            style={{ backgroundColor: skin.background, color: skin.ink }}
-            layout
-            initial={{ opacity: 0, height: 0, y: -8 }}
-            animate={{ opacity: 1, height: 'auto', y: 0 }}
-            exit={{ opacity: 0, height: 0, y: -8 }}
-            transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
-          >
-            <div className="flex h-6 items-center pl-1">
-              <AnimatePresence initial={false}>
-              {AVATARS.slice(0, Math.min(3, travellersHelpedNow)).map((avatar, index) => (
-                <motion.span
-                  key={avatar}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-white text-[0.6875rem]"
-                  style={{ marginLeft: index === 0 ? 0 : -8, zIndex: 3 - index }}
-                  aria-hidden="true"
-                  initial={{ opacity: 0, scale: 0.65 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.65 }}
-                  transition={{ duration: 0.28, ease: 'easeOut' }}
-                >
-                  {avatar}
-                </motion.span>
-              ))}
-              </AnimatePresence>
-            </div>
-            <span className="text-sm font-extrabold leading-none" style={{ color: skin.muted }}>
-              <AnimatedCount value={travellersHelpedNow} />
-            </span>
-          </motion.button>
-          )}
-          </AnimatePresence>
         </div>
-
-
-        <div className="absolute right-4 top-[max(1rem,var(--gl-safe-top))] z-30 flex flex-col gap-2.5">
-          <button
-            onClick={handleClose}
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
-            style={{ color: '#ffffff' }}
-            aria-label={tx(isFr).navigationMode.exitNavigation}
-          >
-            <XMarkIcon className="h-6 w-6" />
-          </button>
-
-        </div>
-
-        <div className="absolute right-4 top-[calc(max(1rem,var(--gl-safe-top))+3.5rem)] z-0 flex flex-col gap-2.5">
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-800 shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
-            aria-label={tx(isFr).navigationMode.navigationSettings}
-          >
-            <Cog6ToothIcon className="h-5 w-5" />
-          </button>
-
-          {itinerary.lineKeys?.length > 0 && (
-            <button
-              onClick={() => openExternal(PASS_SHOP_URL)}
-              className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-800 shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
-              aria-label={tx(isFr).navigationMode.myTicket}
-            >
-              <TicketIcon className="h-5 w-5" />
-            </button>
-          )}
-
-          <AnimatePresence initial={false}>
-            {hasStarted && !isFollowing && currentLocation && (
-            <motion.button
-              key="recenter-control"
-              initial={{ opacity: 0, scale: 0.7, y: -8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.7, y: -8 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              onClick={() => {
-                lastCameraLocationRef.current = null;
-                animateRecenterRef.current = true;
-                setIsFollowing(true);
-              }}
-              className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-800 shadow-[0_4px_16px_rgba(0,0,0,0.3)] active:scale-95"
-              aria-label={tx(isFr).navigationMode.recenter}
-            >
-              <PaperAirplaneIcon className="h-5 w-5 -rotate-45" />
-            </motion.button>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <motion.div
-          style={{ y: sheetY, height: sheetHeight }}
-          drag="y"
-          dragConstraints={{ top: sheetBounds.top, bottom: sheetBounds.bottom }}
-          dragElastic={0.02}
-          dragTransition={{ power: 0.22, timeConstant: 260 }}
-          className="absolute inset-x-0 top-[15%] flex touch-none flex-col"
-        >
-          <div
-            className="pointer-events-none h-24 flex-shrink-0"
-            style={{ background: `linear-gradient(to bottom, transparent, ${skin.background})` }}
-          />
-
-          <div className="absolute inset-x-3 top-3 z-20">
-            <div
-              className="rounded-2xl border px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.25)]"
-              style={{ borderColor: skin.rule, backgroundColor: skin.background }}
-            >
-              <p
-                className="text-[1.375rem] font-black leading-none tracking-tight"
-                style={{ color: skin.ink }}
-              >
-                {departureLabel
-                  ? tx(isFr).navigationMode.leaveAtDeparturelabel(departureLabel)
-                  : tx(isFr).navigationMode.leaveNow}
-              </p>
-              <div className="mt-1.5 flex items-baseline justify-between gap-3">
-                <p className="text-sm" style={{ color: skin.muted }}>
-                  {tx(isFr).navigationMode.arrivingAt}{' '}
-                  <span className="tabular font-semibold" style={{ color: skin.ink }}>
-                    {arriveLabel}
-                  </span>
-                </p>
-                <p className="tabular text-sm" style={{ color: skin.muted }}>
-                  {formatDurationLabel(itinerary.dur)}
-                </p>
-              </div>
-
-              <div className="mt-2.5 flex items-center gap-1">
-              {steps.map((item, i) => {
-                const done = i <= index;
-                if (item.kind === 'walk') {
-                  return (
-                    <span key={i} className="flex flex-shrink-0 items-center gap-0.5">
-                      {[0, 1].map((d) => (
-                        <span
-                          key={d}
-                          className="h-1.5 w-1.5 rounded-full"
-                          style={{ backgroundColor: skin.muted, opacity: 1 }}
-                        />
-                      ))}
-                    </span>
-                  );
-                }
-                if (item.kind === 'arrival') {
-                  return (
-                    <span
-                      key={i}
-                      className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
-                      style={{ backgroundColor: skin.muted, opacity: done ? 1 : 0.4 }}
-                    />
-                  );
-                }
-                return (
-                  <span
-                    key={i}
-                    className="h-2 flex-1 rounded-full"
-                    style={{ backgroundColor: stepColor(item), opacity: done ? 1 : 0.28 }}
-                  />
-                );
-              })}
-              </div>
-
-              <AnimatePresence initial={false}>
-                {step?.kind === 'transit' && step.lineShortName ? (
-                  <TripQuestions
-                    key={`vehicle-${step.lineShortName}`}
-                    subject="vehicle"
-                    targetId={step.lineShortName}
-                    boardingStop={step.fromName ?? null}
-                    boardingTime={
-                      (itinerary.allLegs as any)?.[index]?.startTime
-                        ? new Date((itinerary.allLegs as any)[index].startTime).toISOString()
-                        : null
-                    }
-                    journey={surveyJourney}
-                    language={language}
-                    onAnswered={() => {
-                      setAnswerCount((n) => n + 1);
-                      setTravellersHelpedNow((current) => current + 1);
-                    }}
-                  />
-                ) : (
-                  waitingStop && (
-                    <TripQuestions
-                      key={`stop-${waitingStop.id || waitingStop.name || 'waiting-stop'}`}
-                      subject="stop"
-                      targetId={waitingStop.id}
-                      targetName={waitingStop.name}
-                      lineId={waitingStop.lineId}
-                      language={language}
-                      onAnswered={() => {
-                        setAnswerCount((n) => n + 1);
-                        setTravellersHelpedNow((current) => current + 1);
-                      }}
-                    />
-                  )
-                )}
-              </AnimatePresence>
-
-            </div>
-
-          </div>
-
-          <div
-            ref={contentRef}
-            className="flex-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
-            style={{ background: skin.background }}
-          >
-            <div className="mt-4 space-y-0">
-              {steps.map((item, i) => {
-                const isCurrent = i === index;
-                const leg: any = itinerary.allLegs?.[i];
-                const ink = readableOn(stepColor(item));
-
-                if (item.kind === 'walk') {
-                  return (
-                    <div key={i} className="flex items-center gap-3 py-2 pl-3">
-                      <span className="flex w-7 flex-col items-center gap-1.5">
-                        {[0, 1, 2, 3, 4, 5].map((d) => (
-                          <span
-                            key={d}
-                            className="h-1.5 w-1.5 rounded-full"
-                            style={{ backgroundColor: skin.muted }}
-                          />
-                        ))}
-                      </span>
-                      <span
-                        className="flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-sm font-bold"
-                        style={{ backgroundColor: skin.chip, color: skin.ink }}
-                      >
-                        <FaWalking className="h-4 w-4" style={{ color: skin.muted }} />
-                        {item.durationMin} {item.durationMin > 1 ? 'minutes' : 'minute'}
-                      </span>
-                    </div>
-                  );
-                }
-                if (item.kind === 'arrival') {
-                  return (
-                    <div key={i} className="flex items-center gap-3 pl-7 pr-4 pt-2">
-                      <span className="flex w-7 justify-center">
-                        <FlagIcon className="h-5 w-5 text-emerald-400" />
-                      </span>
-                      <span className="truncate text-sm font-bold" style={{ color: skin.ink }}>
-                        {item.detail || item.instruction}
-                      </span>
-                    </div>
-                  );
-                }
-
-                const stopsBefore = Array.isArray(leg?.intermediateStops)
-                  ? leg.intermediateStops.length
-                  : 0;
-                const expanded = openLegs.has(i);
-
-                return (
-                  <div
-                    key={i}
-                    className="relative pt-5"
-                    style={{ opacity: i < index ? 0.55 : 1 }}
-                  >
-
-                    <span
-                      aria-hidden
-                      className="absolute bottom-0 left-4 right-4 rounded-2xl"
-                      style={{ backgroundColor: stepColor(item), top: '5.75rem' }}
-                    />
-                    {(
-                      <div
-                        onPointerDownCapture={(e) => {
-                          e.stopPropagation();
-                        }}
-                        onScroll={(e) => {
-                          const element = e.currentTarget;
-                          scrollingRef.current = true;
-                          window.clearTimeout(scrollSettleRef.current);
-                          scrollSettleRef.current = window.setTimeout(() => {
-                            scrollingRef.current = false;
-                            const at = Math.max(
-                              0,
-                              Math.round(element.scrollLeft / RUN_CARD_PITCH)
-                            );
-                            if (at !== selectedIndexFor(i, runsForLeg(i))) choose(i, at);
-                          }, 110);
-                        }}
-                        ref={(element) => {
-                          if (!element) return;
-                          if (scrollingRef.current) return;
-                          if (pickedRuns.has(i)) return;
-                          const target = selectedIndexFor(i, runsForLeg(i)) * RUN_CARD_PITCH;
-                          if (Math.abs(element.scrollLeft - target) > 2) {
-                            element.scrollLeft = target;
-                          }
-                        }}
-                        className="relative z-10 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-3 pl-9 [scroll-padding-left:2.25rem] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                      >
-                        {(() => {
-                          const cards = runsForLeg(i);
-                          const selected = selectedIndexFor(i, cards);
-                          return cards.map((run, r) => {
-                          const mins = run.minutes;
-                          const empty = mins === null;
-                          const picked = !empty && r === selected;
-                          const asClock = !empty && mins! > 30;
-                          const clock = asClock
-                            ? formatClock(new Date(Date.now() + mins! * 60000).toISOString())
-                            : '';
-                          return (
-                            <button
-                              key={r}
-                              type="button"
-                              disabled={empty}
-                              onClick={(e) => {
-                                choose(i, r);
-                                e.currentTarget.scrollIntoView({
-                                  behavior: 'smooth',
-                                  inline: 'start',
-                                  block: 'nearest',
-                                });
-                              }}
-                              className="relative flex flex-shrink-0 snap-start flex-col items-center justify-center rounded-2xl shadow-[0_4px_14px_rgba(0,0,0,0.25)]"
-                              style={{
-                                width: RUN_CARD_WIDTH,
-                                height: 128,
-                                ...(picked
-                                  ? {
-                                      backgroundColor: skin.plate,
-                                      color: skin.plateInk(stepColor(item)),
-                                    }
-                                  : {
-                                      backgroundColor: shadeColor(stepColor(item), 0.22),
-                                      color: ink,
-                                      opacity: empty ? 0.45 : 1,
-                                    }),
-                              }}
-                            >
-                              {!empty && i === activeTransitIndex && confidence && (
-                                <span
-                                  className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full"
-                                  style={{
-                                    backgroundColor: CONFIDENCE_COLOR[confidence.level],
-                                    boxShadow: '0 0 0 2px rgba(0,0,0,0.18)',
-                                  }}
-                                  aria-label={confidenceLabel(confidence, isFr)}
-                                  title={confidenceLabel(confidence, isFr)}
-                                />
-                              )}
-                              <span
-                                className={`tabular font-black leading-none ${
-                                  asClock ? 'text-[1.875rem]' : 'text-[2.75rem]'
-                                }`}
-                              >
-                                {empty ? '–' : asClock ? clock : mins}
-                              </span>
-                              <span className="mt-1 text-xs opacity-80">
-                                {empty
-                                  ? ''
-                                  : asClock
-                                  ? tx(isFr).navigationMode.inMinsMin(mins)
-                                  : mins! > 1
-                                  ? 'minutes'
-                                  : 'minute'}
-                              </span>
-
-                              {!empty && run.level > 0 ? (
-                                <span
-                                  className="mt-2.5 flex items-center gap-1 rounded-lg px-2 py-1"
-                                  style={{
-                                    backgroundColor: picked
-                                      ? 'rgba(0,0,0,0.08)'
-                                      : 'rgba(255,255,255,0.15)',
-                                  }}
-                                >
-                                  {[0, 1, 2].map((p) => (
-                                    <UserIcon
-                                      key={p}
-                                      className="h-3.5 w-3.5"
-                                      style={{ opacity: p < run.level ? 1 : 0.25 }}
-                                    />
-                                  ))}
-                                </span>
-                              ) : !empty && i === activeTransitIndex && lineDelay ? (
-                                <span
-                                  className="mt-2.5 rounded-lg px-2 py-1 text-[0.625rem] font-black uppercase tracking-wide"
-                                  style={{
-                                    backgroundColor: picked
-                                      ? 'rgba(0,0,0,0.08)'
-                                      : 'rgba(255,255,255,0.15)',
-                                  }}
-                                >
-                                  {tx(isFr).navigationMode.live}
-                                </span>
-                              ) : (
-                                !empty && (
-                                  <span
-                                    className="mt-2.5 rounded-lg px-2 py-1 text-[0.625rem] font-black uppercase tracking-wide"
-                                    style={{
-                                      backgroundColor: picked
-                                        ? 'rgba(0,0,0,0.12)'
-                                        : 'rgba(255,255,255,0.15)',
-                                    }}
-                                  >
-                                    {tx(isFr).navigationMode.scheduled}
-                                  </span>
-                                )
-                              )}
-                            </button>
-                          );
-                          });
-                        })()}
-
-                        <span
-                          aria-hidden
-                          className="flex-shrink-0"
-                          style={{ width: `calc(100% - ${RUN_CARD_WIDTH}px - 2.25rem)` }}
-                        />
-                      </div>
-                    )}
-
-                    {i === activeTransitIndex && confidence && (
-                      <div className="relative z-10 -mt-1 mb-1 flex items-center gap-2 pl-9 pr-4">
-                        <span
-                          aria-hidden
-                          className="h-2 w-2 flex-shrink-0 rounded-full"
-                          style={{ backgroundColor: CONFIDENCE_COLOR[confidence.level] }}
-                        />
-                        <span className="truncate text-[0.6875rem] font-semibold" style={{ color: ink }}>
-                          {confidenceLabel(confidence, isFr)}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="relative mx-4 rounded-2xl px-3 pb-5" style={{ color: ink }}>
-
-                    {lineChips(i === activeTransitIndex)}
-
-                    <div className="flex items-center gap-3">
-                      <span className="flex w-7 justify-center">
-                        <TransportModeIcon mode={item.mode} className="h-6 w-6 opacity-80" />
-                      </span>
-                      <ArrowRightCircleIcon className="h-5 w-5 flex-shrink-0 opacity-80" />
-                      <span
-                        className="flex h-7 min-w-[1.75rem] flex-shrink-0 items-center justify-center rounded-lg px-2 text-sm font-black"
-                        style={{ backgroundColor: ink, color: stepColor(item) }}
-                      >
-                        {item.lineShortName}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-base font-black leading-tight">
-                        {item.headsign || item.instruction}
-                      </span>
-                      {isCurrent && (
-                        <span className="flex-shrink-0 rounded-full bg-black/20 px-2 py-1 text-[0.625rem] font-bold uppercase tracking-wide">
-                          {tx(isFr).navigationMode.onBoard}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="pt-2">
-                      <div className="flex gap-3">
-                        <motion.div
-                          className="flex flex-col items-center justify-between self-stretch overflow-hidden rounded-full bg-black/20 py-1.5"
-                          initial={false}
-                          animate={{ width: isCurrent ? 28 : 22 }}
-                          transition={{ type: 'spring', stiffness: 280, damping: 26 }}
-                        >
-                          <motion.span
-                            className="rounded-full bg-current"
-                            initial={false}
-                            animate={{ width: isCurrent ? 12 : 8, height: isCurrent ? 12 : 8 }}
-                            transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-                          />
-                          <motion.span
-                            className="rounded-full bg-current"
-                            initial={false}
-                            animate={{ width: isCurrent ? 12 : 8, height: isCurrent ? 12 : 8 }}
-                            transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-                          />
-                        </motion.div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-baseline justify-between gap-3">
-                            <span className="truncate text-sm font-semibold">{item.fromName}</span>
-                            <span className="tabular flex-shrink-0 text-sm font-bold">
-                              {shiftedClock(leg?.startTime, i)}
-                            </span>
-                          </div>
-
-                          {stopsBefore > 0 && (
-                            <>
-                              <span
-                                role="button"
-                                tabIndex={0}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const opening = !openLegs.has(i);
-                                  setOpenLegs((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(i)) next.delete(i);
-                                    else next.add(i);
-                                    return next;
-                                  });
-                                  void opening;
-                                }}
-                                className="my-4 flex items-center gap-1 text-xs opacity-80"
-                              >
-                                <ChevronDownIcon
-                                  className={`h-3.5 w-3.5 transition-transform ${
-                                    expanded ? 'rotate-180' : ''
-                                  }`}
-                                />
-                                {tx(isFr).navigationMode.stopsbeforeMoreStopValue(stopsBefore, stopsBefore > 1 ? 's' : '')}
-                              </span>
-                              <AnimatePresence initial={false}>
-                                {expanded && (
-                                  <motion.ul
-                                    className="overflow-hidden text-sm opacity-80"
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: 'auto', opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    transition={{
-                                      height: { type: 'spring', stiffness: 320, damping: 34 },
-                                      opacity: { duration: 0.18 },
-                                    }}
-                                  >
-                                    {leg.intermediateStops.map((stop: any, s: number) => (
-                                      <motion.li
-                                        key={s}
-                                        className="truncate pb-2.5"
-                                        initial={{ opacity: 0, x: -8 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: 0.06 + s * 0.03, duration: 0.2 }}
-                                      >
-                                        {stop?.name ?? ''}
-                                      </motion.li>
-                                    ))}
-                                  </motion.ul>
-                                )}
-                              </AnimatePresence>
-                            </>
-                          )}
-                          <div className={stopsBefore === 0 ? 'h-16' : 'h-8'} />
-
-                          <div className="flex items-baseline justify-between gap-3">
-                            <span className="truncate text-sm font-semibold">
-                              {leg?.to?.name ?? ''}
-                            </span>
-                            <span className="tabular flex-shrink-0 text-sm font-bold">
-                              {shiftedClock(leg?.endTime, i)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {i === activeTransitIndex && showDelay && (
-                        <span
-                          className="tabular mt-2.5 inline-block rounded-full bg-black/20 px-2 py-0.5 text-[0.6875rem] font-bold"
-                          title={
-                            tx(isFr).navigationMode.basedOnSamplesizeTraveller(lineDelay!.sampleSize)
-                          }
-                        >
-                          {delayMinutes > 0
-                            ? tx(isFr).navigationMode.delayminutesMinObserved(delayMinutes)
-                            : tx(isFr).navigationMode.absMinEarly(Math.abs(delayMinutes))}
-                        </span>
-                      )}
-                    </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </motion.div>
-
-        <MapSheet
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          isLight={theme !== 'dark'}
-          zIndex={10050}
-        >
-              <div className="flex-1 overflow-y-auto px-5 pb-6">
-                <h2 className="mb-4 text-lg font-black" style={{ color: skin.ink }}>
-                  {tx(isFr).navigationMode.navigationSettings}
-                </h2>
-                {index < steps.length - 1 && (
-                  <button
-                    onClick={() => {
-                      setIndex((i) => Math.min(i + 1, steps.length - 1));
-                      setIsSettingsOpen(false);
-                    }}
-                    className="mb-6 flex w-full items-center justify-between rounded-2xl px-4 py-3.5 text-left"
-                    style={{ backgroundColor: skin.chip, color: skin.ink }}
-                  >
-                    <span className="text-sm font-bold" style={{ color: skin.ink }}>
-                      {tx(isFr).navigationMode.skipToNextStep}
-                    </span>
-                    <span className="truncate pl-3 text-xs text-slate-400">
-                      {steps[index + 1]?.kind === 'transit'
-                        ? steps[index + 1]?.lineShortName
-                        : steps[index + 1]?.instruction}
-                    </span>
-                  </button>
-                )}
-
-                <button
-                  onClick={async () => {
-                    if (notifyOn) {
-                      setNotificationsEnabled(false);
-                      setNotifyOn(false);
-                      return;
-                    }
-                    const granted = await requestNotificationPermission();
-                    setNotificationsEnabled(granted);
-                    setNotifyOn(granted);
-                  }}
-                  className="mb-6 flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3.5 text-left"
-                    style={{ backgroundColor: skin.chip, color: skin.ink }}
-                >
-                  <span className="min-w-0">
-                    <span className="block text-sm font-bold" style={{ color: skin.ink }}>
-                      {tx(isFr).navigationMode.tripAlerts}
-                    </span>
-                    <span className="mt-0.5 block text-xs text-slate-400">
-                      {tx(isFr).navigationMode.leaveNowYourBus}
-                    </span>
-                  </span>
-                  <span
-                    className={`flex h-6 w-11 flex-shrink-0 items-center rounded-full px-0.5 transition-colors ${
-                      notifyOn ? 'bg-emerald-500' : 'bg-slate-600'
-                    }`}
-                  >
-                    <motion.span
-                      className="h-5 w-5 rounded-full bg-white"
-                      animate={{ x: notifyOn ? 20 : 0 }}
-                      transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-                    />
-                  </span>
-                </button>
-
-                {voiceSupported() && (
-                  <button
-                    onClick={() => {
-                      const next = !voiceOn;
-                      setVoiceEnabled(next);
-                      setVoiceOn(next);
-                      if (next) {
-                        speak(
-                          tx(isFr).navigationMode.directionsWillBeSpoken,
-                          language
-                        );
-                      }
-                    }}
-                    className="mb-6 flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3.5 text-left"
-                    style={{ backgroundColor: skin.chip, color: skin.ink }}
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-sm font-bold" style={{ color: skin.ink }}>
-                        {tx(isFr).navigationMode.spokenDirections}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-slate-400">
-                        {tx(isFr).navigationMode.takeTheC1Toward}
-                      </span>
-                    </span>
-                    <span
-                      className={`flex h-6 w-11 flex-shrink-0 items-center rounded-full px-0.5 transition-colors ${
-                        voiceOn ? 'bg-emerald-500' : 'bg-slate-600'
-                      }`}
-                    >
-                      <motion.span
-                        className="h-5 w-5 rounded-full bg-white"
-                        animate={{ x: voiceOn ? 20 : 0 }}
-                        transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-                      />
-                    </span>
-                  </button>
-                )}
-
-                <p className="signal-label mb-1 text-slate-500">
-                  {tx(isFr).navigationMode.walkingPriority}
-                </p>
-                <StepSlider
-                  count={WALK_PRIORITIES.length}
-                  value={walkPrefs.priorityIndex}
-                  emoji={WALK_PRIORITIES[walkPrefs.priorityIndex].emoji}
-                  color="#3b82f6"
-                  ariaLabel={tx(isFr).navigationMode.walkingPriority}
-                  onChange={(priorityIndex) => updateWalkPrefs({ ...walkPrefs, priorityIndex })}
-                />
-                <p className="mt-2 text-center text-sm font-bold" style={{ color: skin.ink }}>
-                  {WALK_PRIORITIES[walkPrefs.priorityIndex].label(isFr)}
-                </p>
-                <p className="mb-6 mt-0.5 text-center text-xs text-slate-400">
-                  {WALK_PRIORITIES[walkPrefs.priorityIndex].hint(isFr)}
-                </p>
-
-                <p className="signal-label mb-1 text-slate-500">
-                  {tx(isFr).navigationMode.walkingSpeed}
-                </p>
-                <StepSlider
-                  count={WALK_SPEEDS.length}
-                  value={walkPrefs.speedIndex}
-                  emoji={WALK_SPEEDS[walkPrefs.speedIndex].emoji}
-                  color="#22c55e"
-                  ariaLabel={tx(isFr).navigationMode.walkingSpeed}
-                  onChange={(speedIndex) => updateWalkPrefs({ ...walkPrefs, speedIndex })}
-                />
-                <p className="mt-2 text-center text-sm font-bold text-white">
-                  {WALK_SPEEDS[walkPrefs.speedIndex].label(isFr)}
-                </p>
-                <p className="tabular mb-4 mt-0.5 text-center text-xs text-slate-400">
-                  {WALK_SPEEDS[walkPrefs.speedIndex].kmh.toLocaleString('fr-FR', {
-                    minimumFractionDigits: 1,
-                  })}{' '}
-                  km/h
-                </p>
-
-                <p className="pb-2 text-center text-[0.6875rem] leading-snug text-slate-500">
-                  {tx(isFr).navigationMode.theseSettingsStayOn}
-                </p>
-              </div>
-        </MapSheet>
-
-        <MapSheet
-          isOpen={isHelpedSheetOpen}
-          onClose={() => setIsHelpedSheetOpen(false)}
-          isLight={theme !== 'dark'}
-          zIndex={10050}
-        >
-          <div className="flex flex-1 flex-col items-center px-5 pb-8 pt-5 text-center" style={{ fontFamily: "Inter, 'Helvetica Neue', sans-serif" }}>
-            <div className="relative mt-3 h-44 w-72" aria-hidden="true">
-              {AVATARS.slice(0, Math.min(6, travellersHelpedNow)).map((avatar, index, faces) => {
-                const angle = faces.length === 1 ? -90 : -155 + (130 * index) / (faces.length - 1);
-                const radians = (angle * Math.PI) / 180;
-                const x = Math.cos(radians) * 104;
-                const y = Math.sin(radians) * 78;
-                return (
-                  <motion.span
-                    key={`${avatar}-${index}`}
-                    className="absolute left-1/2 top-[78%] flex h-12 w-12 items-center justify-center rounded-full border-4 border-white bg-white text-xl shadow-[0_5px_18px_rgba(0,0,0,0.22)]"
-                    initial={{ opacity: 0, scale: 0.65, x: x * 0.7, y: y * 0.7 }}
-                    animate={{ opacity: 1, scale: 1, x, y: [y, y - 5, y] }}
-                    transition={{
-                      opacity: { duration: 0.35, delay: index * 0.06 },
-                      scale: { duration: 0.35, delay: index * 0.06 },
-                      x: { duration: 0.35, delay: index * 0.06 },
-                      y: { duration: 2.4 + index * 0.16, repeat: Infinity, ease: 'easeInOut', delay: index * 0.08 },
-                    }}
-                  >
-                    {avatar}
-                  </motion.span>
-                );
-              })}
-            </div>
-
-            <motion.p
-              className="tabular-nums text-[3.5rem] font-black leading-none"
-              style={{ color: skin.ink }}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <AnimatedCount value={travellersHelpedNow} />
-            </motion.p>
-            <p className="mt-5 max-w-sm text-[0.9375rem] leading-relaxed" style={{ color: skin.muted }}>
-              {tx(isFr).navigationMode.theseAreTheTravellers}
-            </p>
-          </div>
-        </MapSheet>
-
-        <AnimatePresence>
-          {false && isExitDialogOpen && (
-            <motion.div
-              className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/60 px-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsExitDialogOpen(false)}
-            >
-              <motion.div
-                className="w-full max-w-sm rounded-[2rem] border border-white/10 bg-slate-950 p-5 text-white shadow-[0_30px_100px_rgba(0,0,0,0.45)]"
-                initial={{ y: 18, scale: 0.98 }}
-                animate={{ y: 0, scale: 1 }}
-                exit={{ y: 18, scale: 0.98 }}
-                transition={{ duration: 0.2 }}
-                onClick={e => e.stopPropagation()}
-              >
-                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-white/40">
-                  {tx(isFr).navigationMode.tripInProgress}
-                </p>
-                <h3 className="mt-2 text-[1.375rem] font-black leading-tight">
-                  {tx(isFr).navigationMode.doYouWantTo}
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-white/65">
-                  {tx(isFr).navigationMode.guidanceWillStopAnd}
-                </p>
-                <div className="mt-5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsExitDialogOpen(false);
-                      handleClose();
-                    }}
-                    className="w-full rounded-2xl bg-red-500 px-4 py-3 text-sm font-black text-white shadow-[0_10px_30px_rgba(239,68,68,0.28)]"
-                  >
-                    {tx(isFr).navigationMode.endTrip}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsExitDialogOpen(false)}
-                  className="mt-3 w-full text-center text-xs font-semibold text-white/45"
-                >
-                  {tx(isFr).navigationMode.cancel}
-                </button>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </motion.div>
 
-      <AnimatePresence>
-        {showCompact && (
-          <motion.div
-            className="fixed inset-x-3 z-[1105] pointer-events-none"
-            style={{
-              bottom: 'calc(max(env(safe-area-inset-bottom), 0.75rem) + 4.75rem)',
-              fontFamily: "Inter, 'Helvetica Neue', sans-serif",
+      <AnimatePresence initial={false}>
+        {hasStarted && !isFollowing && currentLocation && sheetSnap !== GUIDANCE_SNAP.full && (
+          <motion.button
+            key="recenter-control"
+            type="button"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            onClick={() => {
+              lastCameraLocationRef.current = null;
+              animateRecenterRef.current = true;
+              setIsFollowing(true);
             }}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 16 }}
-            transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+            className="fixed right-4 z-[10005] flex h-12 w-12 cursor-pointer items-center justify-center rounded-full border-2 border-gray-700 bg-slate-900/85 shadow-lg transition-colors hover:bg-slate-900"
+            style={{
+              bottom: sheetSnap === GUIDANCE_SNAP.collapsed ? COLLAPSED_SHEET_PX + 4 : Math.round(window.innerHeight * 0.52) + 4,
+            }}
+            aria-label={t.recenter}
           >
-            <button
-              type="button"
-              onClick={onRestore}
-              className="pointer-events-auto w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-4 text-left text-white shadow-[0_18px_50px_rgba(0,0,0,0.28)]"
-              aria-label={tx(isFr).navigationMode.reopenNavigation}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-white/45">
-                    {tx(isFr).navigationMode.navigationMinimized}
-                  </p>
-                  <h3 className="mt-1 truncate text-[1.125rem] font-black leading-tight">
-                    {compactTitle}
-                  </h3>
-                  <p className="mt-1 line-clamp-2 text-sm leading-snug text-white/72">
-                    {compactSubtitle}
-                  </p>
-                </div>
-                <span className="rounded-full bg-white/8 px-3 py-1 text-[0.6875rem] font-bold text-white/80">
-                  {tx(isFr).navigationMode.tapToReopen}
-                </span>
-              </div>
-
-              <div className="mt-4 rounded-2xl bg-slate-900 px-3 py-3">
-                <div className="mb-2 flex items-center justify-between text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-white/45">
-                  <span>{tx(isFr).navigationMode.nextActions}</span>
-                  <span className="tabular-nums">
-                    {tx(isFr).navigationMode.stepMinLength(Math.min(index + 1, steps.length), steps.length)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {steps.slice(index, Math.min(steps.length, index + 5)).map((miniStep, miniIndex) => {
-                    const absoluteIndex = index + miniIndex;
-                    const active = absoluteIndex === index;
-                    const label =
-                      miniStep.kind === 'transit'
-                        ? (miniStep.lineShortName ?? 'Transit')
-                        : miniStep.kind === 'walk'
-                        ? (tx(isFr).navigationMode.walk2)
-                        : miniStep.kind === 'arrival'
-                        ? (tx(isFr).navigationMode.arrival)
-                        : miniStep.instruction;
-                    const time =
-                      miniStep.kind === 'transit'
-                        ? shiftedClock((itinerary.allLegs as any[])?.[absoluteIndex]?.startTime, absoluteIndex)
-                        : '';
-                    return (
-                      <div
-                        key={`${absoluteIndex}-${label}`}
-                        className={`flex flex-shrink-0 items-center gap-2 rounded-2xl px-3 py-2 ${
-                          active ? 'bg-white text-slate-950' : 'bg-white/8 text-white/82'
-                        }`}
-                      >
-                        <span
-                          className={`h-2.5 w-2.5 rounded-full ${
-                            active ? 'bg-emerald-500' : 'bg-white/35'
-                          }`}
-                        />
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-bold">{label}</div>
-                          <div className="text-[0.6875rem] text-white/55">
-                            {time || compactActionLabel || (tx(isFr).navigationMode.upcoming)}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </button>
-          </motion.div>
+            <MapPinIcon className="h-5 w-5 text-white" />
+          </motion.button>
         )}
       </AnimatePresence>
-    </AnimatePresence>
+
+      <GuidanceSheet
+        ref={sheetRef}
+        isLight={isLight}
+        zIndex={10010}
+        header={sheetHeader}
+        onOpenEnd={() => sheetRef.current?.snapTo(phase === 'walk' ? GUIDANCE_SNAP.collapsed : GUIDANCE_SNAP.middle)}
+        onSnap={setSheetSnap}
+      >
+        <div className="px-6 pb-14" onPointerDown={markSheetTouched}>
+          {phaseContent && <div className="border-t pb-1" style={{ borderColor: palette.rule }}>{phaseContent}</div>}
+
+          <div className="border-t" style={{ borderColor: palette.rule }}>
+            <OptionRow palette={palette} last title={t.navigationSettings} onClick={() => openOverlay('settings')} />
+          </div>
+        </div>
+      </GuidanceSheet>
+
+      <GuidancePopup
+        open={isShareOpen}
+        onClose={() => {
+          setIsShareOpen(false);
+          setShareNotice(null);
+        }}
+        palette={palette}
+        icon={<ArrowUpOnSquareIcon className="h-12 w-12" />}
+        title={t.shareTrip}
+        stepKey={shareToken ? 'link' : 'name'}
+        stepDirection={shareStepDirection}
+      >
+        <p className="pt-3 text-[1.0625rem] leading-snug" style={{ color: palette.soft }}>
+          {t.shareExplain}
+        </p>
+
+        {!isShareAvailable ? (
+          <p className="pt-3 text-[1.0625rem] leading-snug" style={{ color: palette.soft }}>
+            {t.shareUnavailable}
+          </p>
+        ) : shareToken ? (
+          <div className="flex h-[15rem] flex-col justify-end">
+            {copyButton(() => void copyLink(shareToken))}
+            <button
+              type="button"
+              onClick={stopSharing}
+              className="mt-2 block w-full rounded-2xl py-4 text-center text-[1.0625rem] font-semibold text-red-500"
+            >
+              {t.stopSharing}
+            </button>
+          </div>
+        ) : (
+          <div className="flex h-[15rem] flex-col">
+            <input
+              id="gl-share-name"
+              value={shareName}
+              maxLength={24}
+              onChange={(event) => setShareName(event.target.value)}
+              placeholder={t.yourFirstName}
+              aria-label={t.yourFirstName}
+              className="mt-6 w-full rounded-2xl px-4 py-4 text-[1.0625rem] outline-none"
+              style={{ backgroundColor: palette.box, color: palette.ink }}
+            />
+            <p className="pt-2 text-[0.9375rem] leading-snug" style={{ color: palette.soft }}>
+              {t.nameFallbackHint(fallbackName)}
+            </p>
+            <button
+              type="button"
+              onClick={startShare}
+              className="mt-auto block w-full rounded-2xl py-4 text-center text-[1.0625rem] font-semibold transition active:scale-[0.98]"
+              style={primaryButton}
+            >
+              {t.continueLabel}
+            </button>
+          </div>
+        )}
+
+        {shareNotice && (
+          <p className="mt-3 break-all text-center text-[0.9375rem]" style={{ color: palette.soft }}>
+            {shareNotice}
+          </p>
+        )}
+      </GuidancePopup>
+
+      <GuidancePopup
+        open={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        palette={palette}
+        icon={<Cog6ToothIcon className="h-12 w-12" />}
+        title={t.navigationSettings}
+      >
+        <div className="mt-5 border-t" style={{ borderColor: palette.rule }}>
+          <OptionRow
+            palette={palette}
+            title={t.tripAlerts}
+            trailing={<Toggle on={notifyOn} />}
+            onClick={async () => {
+              if (notifyOn) {
+                setNotificationsEnabled(false);
+                setNotifyOn(false);
+                return;
+              }
+              const granted = await requestNotificationPermission();
+              setNotificationsEnabled(granted);
+              setNotifyOn(granted);
+            }}
+          />
+          {voiceSupported() && (
+            <OptionRow
+              palette={palette}
+              title={t.spokenDirections}
+              trailing={<Toggle on={voiceOn} />}
+              onClick={() => {
+                const next = !voiceOn;
+                setVoiceEnabled(next);
+                setVoiceOn(next);
+                if (next) speak(t.directionsWillBeSpoken, language);
+              }}
+            />
+          )}
+          {legs.some((leg) => leg?.mode && leg.mode !== 'WALK') && (
+            <OptionRow palette={palette} title={t.buyTicket} onClick={() => openExternal(PASS_SHOP_URL)} />
+          )}
+          <OptionRow
+            palette={palette}
+            last
+            title={t.skipToNextStep}
+            onClick={() => {
+              setIndex((i) => Math.min(i + 1, steps.length - 1));
+              setIsSettingsOpen(false);
+            }}
+          />
+        </div>
+
+        <p className="pt-6 text-[1.0625rem]" style={{ color: palette.ink }}>
+          {t.walkingPriority}
+        </p>
+        <StepSlider
+          count={WALK_PRIORITIES.length}
+          value={walkPrefs.priorityIndex}
+          emoji={WALK_PRIORITIES[walkPrefs.priorityIndex].emoji}
+          color="#3b82f6"
+          ariaLabel={t.walkingPriority}
+          onChange={(priorityIndex) => updateWalkPrefs({ ...walkPrefs, priorityIndex })}
+        />
+        <p className="pt-1 text-[0.9375rem]" style={{ color: palette.soft }}>
+          {WALK_PRIORITIES[walkPrefs.priorityIndex].label(isFr)}
+        </p>
+
+        <p className="pt-6 text-[1.0625rem]" style={{ color: palette.ink }}>
+          {t.walkingSpeed}
+        </p>
+        <StepSlider
+          count={WALK_SPEEDS.length}
+          value={walkPrefs.speedIndex}
+          emoji={WALK_SPEEDS[walkPrefs.speedIndex].emoji}
+          color="#22c55e"
+          ariaLabel={t.walkingSpeed}
+          onChange={(speedIndex) => updateWalkPrefs({ ...walkPrefs, speedIndex })}
+        />
+        <p className="pt-1 text-[0.9375rem] tabular-nums" style={{ color: palette.soft }}>
+          {WALK_SPEEDS[walkPrefs.speedIndex].label(isFr)} ·{' '}
+          {WALK_SPEEDS[walkPrefs.speedIndex].kmh.toLocaleString(isFr ? 'fr-FR' : 'en-GB', { minimumFractionDigits: 1 })} km/h
+        </p>
+
+      </GuidancePopup>
+    </MotionConfig>
   );
-}
-
-function AnimatedCount({ value }: { value: number }) {
-  const [shown, setShown] = useState(0);
-  const previousRef = useRef(0);
-
-  useEffect(() => {
-    const start = previousRef.current;
-    const startedAt = performance.now();
-    let frame = 0;
-    const tick = (now: number) => {
-      const progress = Math.min((now - startedAt) / 480, 1);
-      setShown(Math.round(start + (value - start) * (1 - Math.pow(1 - progress, 3))));
-      if (progress < 1) frame = requestAnimationFrame(tick);
-      else previousRef.current = value;
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [value]);
-
-  return <span className="tabular-nums">{shown}</span>;
 }

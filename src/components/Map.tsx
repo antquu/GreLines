@@ -6,6 +6,7 @@ import { tx } from '../i18n';
 ﻿import { useRef, forwardRef, useImperativeHandle, useCallback, useState, useMemo, useEffect, memo } from 'react';
 import type { ForwardedRef } from 'react';
 import MapLibreMap, { Marker, Source, Layer } from 'react-map-gl/maplibre';
+import { LiveFollowMarker } from './LiveFollowMarker';
 import { FaWheelchair } from 'react-icons/fa';
 import { useAccessibleStops } from '../hooks/useAccessibleStops';
 import { detectDeviceTier, mapPixelRatio } from '../utils/deviceTier';
@@ -88,6 +89,14 @@ interface MapProps {
   focusedShared?: { operator: SharedOperator; points: SharedVehiclePoint[] } | null;
 
   highlightedVehicleId?: string | null;
+
+  stopsOpacity?: number;
+
+  routeOpacity?: number;
+
+  showRouteIntermediates?: boolean;
+
+  liveMarker?: { lat: number; lon: number; avatar: string; color: string } | null;
 }
 
 const MAX_LABEL_LINE_BADGES = 3;
@@ -413,7 +422,7 @@ const animateFeatureCollectionProgress = (
 };
 
 const MapComponentBase = (
-  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, disruptedLineIds, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, onUserPan, onMoveSettled, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null }: MapProps,
+  { stops, selectedStop, currentLocation, onStopClick, selectedAddress, alwaysLabelledStopIds = null, disruptedLineIds, routeStart, routeEnd, routeLine, routeStops = null, routeLineBadges = null, carpoolLines = [], lineGeometries = [], visibleStopPoints, onCenterChange, onUserPan, onMoveSettled, pickMode, onMapClick, onLongPress, isDarkMode = false, sharedMobility = EMPTY_SHARED_MOBILITY, onSharedSelect, focusedShared = null, highlightedVehicleId = null, stopsOpacity = 1, routeOpacity = 1, showRouteIntermediates = false, liveMarker = null }: MapProps,
   ref: ForwardedRef<MapRef>
 ) => {
   const { settings: perf } = usePerfSettings();
@@ -1320,7 +1329,7 @@ const MapComponentBase = (
   }, [refreshSharedLabels, mapState.bounds, visibleShared]);
 
   const labelledStops = useMemo(() => {
-    if (focusedShared) return [];
+    if (focusedShared || stopsOpacity === 0) return [];
 
     const pinned = alwaysLabelledStopIds?.length
       ? mapStops.filter(stop => alwaysLabelledStopIds.includes(stop.id))
@@ -1335,7 +1344,7 @@ const MapComponentBase = (
       if (hovered && !pinned.some(entry => entry.id === hovered.id)) return [...pinned, hovered];
     }
     return pinned;
-  }, [focusedShared, showStopLabels, visibleStops, mapStops, alwaysLabelledStopIds, hoveredStopId, hoverLabelVisible]);
+  }, [focusedShared, stopsOpacity, showStopLabels, visibleStops, mapStops, alwaysLabelledStopIds, hoveredStopId, hoverLabelVisible]);
 
   return (
     <div ref={wrapperRef} className={`w-full h-full ${pickMode ? 'cursor-crosshair' : ''}`}>
@@ -1395,6 +1404,7 @@ const MapComponentBase = (
             id={STOPS_HIT_LAYER_ID}
             type="circle"
             beforeId={ROAD_LABELS_LAYER_ID}
+            layout={{ visibility: stopsOpacity === 0 ? 'none' : 'visible' }}
             paint={{
               'circle-radius': STOP_HIT_RADIUS_PX * (accessibilityMode ? 1.3 : 1),
               'circle-color': '#000000',
@@ -1431,6 +1441,8 @@ const MapComponentBase = (
                 ['!=', ['get', 'lineColor'], ''], 3,
                 2,
               ] as any,
+              'circle-opacity': stopsOpacity,
+              'circle-stroke-opacity': stopsOpacity,
             }}
           />
         </Source>
@@ -1551,7 +1563,7 @@ const MapComponentBase = (
                 'line-color': '#94a3b8',
                 'line-width': 4,
                 'line-dasharray': [3, 3],
-                'line-opacity': 0.6,
+                'line-opacity': 0.6 * routeOpacity,
               }}
             />
             <Layer
@@ -1563,7 +1575,7 @@ const MapComponentBase = (
               paint={{
                 'line-color': ['get', 'color'],
                 'line-width': 10,
-                'line-opacity': 0.3,
+                'line-opacity': 0.3 * routeOpacity,
               }}
             />
             <Layer
@@ -1575,7 +1587,7 @@ const MapComponentBase = (
               paint={{
                 'line-color': ['get', 'color'],
                 'line-width': 5,
-                'line-opacity': 0.95,
+                'line-opacity': 0.95 * routeOpacity,
               }}
             />
           </Source>
@@ -1583,6 +1595,21 @@ const MapComponentBase = (
 
         {routeStops && routeStops.features.length > 0 && (
           <Source id="route-stops" type="geojson" data={routeStops}>
+            {showRouteIntermediates && (
+              <Layer
+                id="route-stops-intermediate"
+                type="circle"
+                filter={['==', ['get', 'kind'], 'stop']}
+                paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 14, 4, 17, 5.5] as any,
+                  'circle-color': isDarkMode ? darkInk : '#ffffff',
+                  'circle-stroke-color': ['get', 'color'] as any,
+                  'circle-stroke-width': 2,
+                  'circle-opacity': routeDrawProgress * routeOpacity,
+                  'circle-stroke-opacity': routeDrawProgress * routeOpacity,
+                }}
+              />
+            )}
             <Layer
               id="route-stops-transfer"
               type="circle"
@@ -1592,8 +1619,8 @@ const MapComponentBase = (
                 'circle-color': isDarkMode ? darkInk : '#ffffff',
                 'circle-stroke-color': ['get', 'color'] as any,
                 'circle-stroke-width': 3,
-                'circle-opacity': routeDrawProgress,
-                'circle-stroke-opacity': routeDrawProgress,
+                'circle-opacity': routeDrawProgress * routeOpacity,
+                'circle-stroke-opacity': routeDrawProgress * routeOpacity,
               }}
             />
             <Layer
@@ -1605,8 +1632,8 @@ const MapComponentBase = (
                 'circle-color': isDarkMode ? '#e2e8f0' : '#ffffff',
                 'circle-stroke-color': isDarkMode ? '#e2e8f0' : '#0f172a',
                 'circle-stroke-width': 3.5,
-                'circle-opacity': routeDrawProgress,
-                'circle-stroke-opacity': routeDrawProgress,
+                'circle-opacity': routeDrawProgress * routeOpacity,
+                'circle-stroke-opacity': routeDrawProgress * routeOpacity,
               }}
             />
           </Source>
@@ -1622,7 +1649,8 @@ const MapComponentBase = (
             <div
               style={{
                 filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))',
-                opacity: routeDrawProgress,
+                opacity: routeDrawProgress * routeOpacity,
+                transition: 'opacity 0.4s ease',
                 pointerEvents: 'none',
               }}
             >
@@ -1664,6 +1692,10 @@ const MapComponentBase = (
               title={`${tx(!(appLanguage() === 'en')).map.destination} : ${routeEnd.label}`}
             />
           </Marker>
+        )}
+
+        {liveMarker && (
+          <LiveFollowMarker lat={liveMarker.lat} lon={liveMarker.lon} avatar={liveMarker.avatar} color={liveMarker.color} opacity={routeOpacity} />
         )}
 
         {stopsLayerReady && sharedMobility.citiz.length > 0 && (

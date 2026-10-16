@@ -177,3 +177,26 @@
   html:not(.dark) .grelines-footer-bar .text-white {
     color: var(--gl-text);
   }
+
+  html:not(.dark) .gl-always-dark .text-white,
+  html:not(.dark) .gl-always-dark [class*="text-slate-100"],
+  html:not(.dark) .gl-always-dark [class*="text-slate-200"] {
+    color: #ffffff;
+  }
+
+  html:not(.dark) .gl-always-dark [class*="text-slate-300"] {
+    color: #cbd5e1;
+  }
+
+  html:not(.dark) .gl-always-dark [class*="text-slate-400"],
+  html:not(.dark) .gl-always-dark [class*="text-slate-500"] {
+    color: #94a3b8;
+  }
+
+  html:not(.dark) .gl-always-dark [class*="bg-slate-800"] {
+    background-color: #1e293b;
+  }
+
+  html:not(.dark) .gl-always-dark [class*="active:bg-slate-700"]:active {
+    background-color: #334155;
+  }

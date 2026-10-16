@@ -1,4 +1,5 @@
 import { ChevronLeftIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
+import { useSwipeBack } from '../hooks/useSwipeBack';
 import type { OuraNotification } from '../services/ouraCard';
 import { formatNotificationDay } from '../utils/notificationDay';
 import { openExternal } from '../utils/openExternal';
@@ -17,9 +18,11 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
   const isFr = language === 'fr';
   const isLight = theme === 'light';
   const isOpen = notification !== null;
+  const { screenRef, dim, swipeHandlers } = useSwipeBack({ isOpen, onBack: onClose, disabled: isDialog });
 
   return (
     <>
+    {!isDialog && dim('z-[10005]')}
     {isDialog && (
       <div
         className={`fixed inset-0 z-[10005] bg-black/60 transition-opacity duration-200 ${
@@ -39,8 +42,10 @@ export function NotificationDetail({ notification, language, theme = 'dark', onC
               isOpen ? 'translate-x-0' : 'translate-x-full'
             } ${isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-white'}`
       }
-      style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
+      ref={screenRef}
+      style={{ pointerEvents: isOpen ? 'auto' : 'none', touchAction: isDialog ? undefined : 'pan-y' }}
       aria-hidden={!isOpen}
+      {...swipeHandlers}
     >
       <div className="px-3" style={{ paddingTop: isDialog ? '0.75rem' : 'max(calc(var(--gl-safe-top) + 4px), 0.75rem)' }}>
         <button

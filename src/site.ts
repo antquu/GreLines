@@ -80,4 +80,4 @@ export const SITE_CENTER: { lat: number; lon: number } = CITY_SITE
 
 export const SITE_HAS_SNCF = CITY_SITE ? CITY_SITE.sncf : true;
 
-export const GUIDANCE_ENABLED = false;
+export const GUIDANCE_ENABLED = true;

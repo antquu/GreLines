@@ -10,8 +10,6 @@ export interface JourneyStopRef {
   id?: string;
 }
 
-const SNAP_DISTANCE_M = 90;
-
 const VARIANT_ENDPOINT_TOLERANCE_M = 220;
 
 const VARIANT_STOP_TOLERANCE_M = 260;
@@ -62,25 +60,6 @@ function extractVariants(geometry: LineGeometry): Coordinate[][] {
   return variants.filter(coords => coords.length >= 2);
 }
 
-interface NearestVertex {
-  index: number;
-  meters: number;
-}
-
-function nearestVertex(coords: Coordinate[], point: JourneyStopRef | null | undefined): NearestVertex | null {
-  if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return null;
-
-  let index = -1;
-  let meters = Infinity;
-  for (let i = 0; i < coords.length; i++) {
-    const distance = haversineMeters(point.lat, point.lon, coords[i][1], coords[i][0]);
-    if (distance < meters) {
-      meters = distance;
-      index = i;
-    }
-  }
-  return index >= 0 ? { index, meters } : null;
-}
 
 function toStopRef(raw: any): JourneyStopRef | null {
   const lat = typeof raw?.lat === 'number' ? raw.lat : typeof raw?.latitude === 'number' ? raw.latitude : null;
@@ -94,6 +73,161 @@ function toStopRef(raw: any): JourneyStopRef | null {
   };
 }
 
+const METERS_PER_DEG_LAT = 110540;
+const MISSED_STOP_PENALTY_M = 150;
+const DETOUR_RATIO = 2.5;
+
+interface MeasuredLine {
+  coords: Coordinate[];
+  along: number[];
+}
+
+interface Projection {
+  along: number;
+  error: number;
+}
+
+function measure(coords: Coordinate[]): MeasuredLine {
+  const along = [0];
+  for (let i = 1; i < coords.length; i++) {
+    along.push(along[i - 1] + haversineMeters(coords[i - 1][1], coords[i - 1][0], coords[i][1], coords[i][0]));
+  }
+  return { coords, along };
+}
+
+// every place where the line passes close to the stop, measured along the line
+function projectStop(line: MeasuredLine, stop: JourneyStopRef, tolerance: number): Projection[] {
+  const kx = Math.cos((stop.lat * Math.PI) / 180) * 111320;
+  const ky = METERS_PER_DEG_LAT;
+  const found: Projection[] = [];
+  let run: Projection | null = null;
+
+  for (let i = 1; i < line.coords.length; i++) {
+    const ax = (line.coords[i - 1][0] - stop.lon) * kx;
+    const ay = (line.coords[i - 1][1] - stop.lat) * ky;
+    const bx = (line.coords[i][0] - stop.lon) * kx;
+    const by = (line.coords[i][1] - stop.lat) * ky;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSq = dx * dx + dy * dy;
+    const t = lengthSq > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengthSq)) : 0;
+    const error = Math.hypot(ax + dx * t, ay + dy * t);
+
+    if (error <= tolerance) {
+      const along = line.along[i - 1] + (line.along[i] - line.along[i - 1]) * t;
+      if (!run || error < run.error) run = { along, error };
+    } else if (run) {
+      found.push(run);
+      run = null;
+    }
+  }
+  if (run) found.push(run);
+  return found;
+}
+
+function pointAt(line: MeasuredLine, along: number): Coordinate {
+  const { coords, along: cum } = line;
+  if (along <= 0) return coords[0];
+  for (let i = 1; i < coords.length; i++) {
+    if (cum[i] >= along) {
+      const span = cum[i] - cum[i - 1];
+      const t = span > 0 ? (along - cum[i - 1]) / span : 0;
+      return [coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * t, coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * t];
+    }
+  }
+  return coords[coords.length - 1];
+}
+
+function sliceLine(line: MeasuredLine, from: number, to: number): Coordinate[] {
+  const result: Coordinate[] = [pointAt(line, from)];
+  for (let i = 0; i < line.coords.length; i++) {
+    if (line.along[i] > from && line.along[i] < to) result.push(line.coords[i]);
+  }
+  result.push(pointAt(line, to));
+  return result;
+}
+
+// follow the stops in riding order along one shape variant
+function matchVariant(
+  line: MeasuredLine,
+  boarding: JourneyStopRef,
+  alighting: JourneyStopRef,
+  intermediates: JourneyStopRef[]
+): { coords: Coordinate[]; score: number } | null {
+  const stops = [boarding, ...intermediates, alighting];
+  const options = stops.map((stop, i) =>
+    projectStop(line, stop, i === 0 || i === stops.length - 1 ? VARIANT_ENDPOINT_TOLERANCE_M : VARIANT_STOP_TOLERANCE_M)
+  );
+  if (options[0].length === 0 || options[options.length - 1].length === 0) return null;
+
+  let layer = options[0].map(option => ({ along: option.along, cost: option.error, start: option.along }));
+  let missed = 0;
+
+  for (let i = 1; i < stops.length; i++) {
+    const last = i === stops.length - 1;
+    const next: typeof layer = [];
+    for (const option of options[i]) {
+      let best: (typeof layer)[number] | null = null;
+      for (const previous of layer) {
+        if (previous.along > option.along + 5) continue;
+        if (!best || previous.cost < best.cost) best = previous;
+      }
+      if (best) next.push({ along: option.along, cost: best.cost + option.error, start: best.start });
+    }
+    if (next.length === 0) {
+      if (last) return null;
+      missed += 1;
+      continue;
+    }
+    layer = next;
+  }
+
+  let end: (typeof layer)[number] | null = null;
+  for (const candidate of layer) {
+    if (candidate.along - candidate.start < 20) continue;
+    if (!end || candidate.cost < end.cost) end = candidate;
+  }
+  if (!end) return null;
+
+  const coords = sliceLine(line, end.start, end.along);
+  const straight = haversineMeters(boarding.lat, boarding.lon, alighting.lat, alighting.lon);
+  const ridden = end.along - end.start;
+  const detour = straight > 0 ? Math.max(0, ridden / straight - DETOUR_RATIO) * 100 : 0;
+  const score = (end.cost + missed * MISSED_STOP_PENALTY_M) / stops.length + detour;
+  return { coords, score };
+}
+
+const GOOD_DENSITY_PER_KM = 15;
+const GOOD_STOP_GAP_M = 40;
+
+interface TraceQuality {
+  density: number;
+  stopGap: number;
+}
+
+function traceQuality(coords: Coordinate[], stops: JourneyStopRef[]): TraceQuality {
+  const line = measure(coords);
+  const km = line.along[line.along.length - 1] / 1000;
+  let stopGap = 0;
+  for (const stop of stops) {
+    const nearest = projectStop(line, stop, Infinity);
+    const gap = nearest.length > 0 ? Math.min(...nearest.map(option => option.error)) : Infinity;
+    stopGap = Math.max(stopGap, gap);
+  }
+  return { density: km > 0 ? coords.length / km : 0, stopGap };
+}
+
+// keep the planner trace when it already follows the streets, else the line shape
+function pickTrace(planned: Coordinate[], shape: Coordinate[] | null, stops: JourneyStopRef[]): Coordinate[] | null {
+  if (!shape || shape.length < 2) return null;
+  if (planned.length < 2) return shape;
+  const plan = traceQuality(planned, stops);
+  if (plan.density >= GOOD_DENSITY_PER_KM && plan.stopGap <= GOOD_STOP_GAP_M) return null;
+  const ref = traceQuality(shape, stops);
+  if (ref.stopGap > Math.max(GOOD_STOP_GAP_M * 1.5, plan.stopGap)) return null;
+  return ref.density > plan.density ? shape : null;
+}
+
 function cutReferenceSegment(
   variants: Coordinate[][],
   boarding: JourneyStopRef,
@@ -103,49 +237,13 @@ function cutReferenceSegment(
   let best: { coords: Coordinate[]; score: number } | null = null;
 
   for (const variant of variants) {
-    const from = nearestVertex(variant, boarding);
-    const to = nearestVertex(variant, alighting);
-    if (!from || !to) continue;
-    if (from.meters > VARIANT_ENDPOINT_TOLERANCE_M || to.meters > VARIANT_ENDPOINT_TOLERANCE_M) continue;
-    if (from.index === to.index) continue;
-
-    const start = Math.min(from.index, to.index);
-    const end = Math.max(from.index, to.index);
-    const segment = variant.slice(start, end + 1);
-    if (segment.length < 2) continue;
-    if (from.index > to.index) segment.reverse();
-
-    let stopPenalty = 0;
-    let rejected = false;
-    for (const stop of intermediates) {
-      const nearest = nearestVertex(segment, stop);
-      if (!nearest || nearest.meters > VARIANT_STOP_TOLERANCE_M) {
-        rejected = true;
-        break;
-      }
-      stopPenalty += nearest.meters;
+    for (const coords of [variant, [...variant].reverse()]) {
+      const match = matchVariant(measure(coords), boarding, alighting, intermediates);
+      if (match && match.coords.length >= 2 && (!best || match.score < best.score)) best = match;
     }
-    if (rejected) continue;
-
-    const score =
-      from.meters + to.meters + (intermediates.length > 0 ? stopPenalty / intermediates.length : 0);
-    if (!best || score < best.score) best = { coords: segment, score };
   }
 
   return best?.coords ?? null;
-}
-
-function magnetize(coords: Coordinate[], stops: JourneyStopRef[]): Coordinate[] {
-  if (coords.length < 2) return coords;
-  const result = coords.slice();
-
-  for (const stop of stops) {
-    const nearest = nearestVertex(result, stop);
-    if (nearest && nearest.meters <= SNAP_DISTANCE_M) {
-      result[nearest.index] = [stop.lon, stop.lat];
-    }
-  }
-  return result;
 }
 
 export interface JourneyLegGeometry {
@@ -240,8 +338,12 @@ export function buildJourneyGeometry({
     if (!freeform && boarding && alighting) {
       const reference = referenceGeometries?.get(lineKey);
       if (reference) {
-        const segment = cutReferenceSegment(extractVariants(reference), boarding, alighting, intermediates);
-        if (segment && segment.length >= 2) {
+        const segment = pickTrace(
+          otpCoords,
+          cutReferenceSegment(extractVariants(reference), boarding, alighting, intermediates),
+          [boarding, ...intermediates, alighting],
+        );
+        if (segment) {
           coordinates = segment;
           precise = true;
         }
@@ -250,8 +352,8 @@ export function buildJourneyGeometry({
 
     if (coordinates.length < 2) return;
 
-    if (!freeform) {
-      coordinates = magnetize(coordinates, [...intermediates, ...(boarding ? [boarding] : []), ...(alighting ? [alighting] : [])]);
+    if (!freeform && !precise) {
+      coordinates = coordinates.slice();
       if (boarding) coordinates[0] = [boarding.lon, boarding.lat];
       if (alighting) coordinates[coordinates.length - 1] = [alighting.lon, alighting.lat];
     }

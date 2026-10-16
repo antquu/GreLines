@@ -12,6 +12,8 @@ import { join } from 'node:path'
 
 
 
+const CITY_IDS = ['nancy', 'lyon', 'saint-etienne', 'clermont'];
+
 const SITE_FILES: Record<string, string> = {
   'robots.txt': 'text/plain; charset=utf-8',
   'sitemap.xml': 'application/xml; charset=utf-8',
@@ -23,7 +25,7 @@ function siteHtml(): Plugin {
   return {
     name: 'grelines-site-html',
     configResolved(config) {
-      site = ['nancy', 'lyon', 'saint-etienne', 'clermont'].includes(config.env.VITE_SITE) ? config.env.VITE_SITE : 'grenoble';
+      site = CITY_IDS.includes(config.env.VITE_SITE) ? config.env.VITE_SITE : 'grenoble';
     },
     transformIndexHtml: {
       order: 'pre',
@@ -84,7 +86,10 @@ function serverlessFunctions(): Plugin {
 }
 
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // vite --mode nancy builds the nancy site
+  if (CITY_IDS.includes(mode) && !process.env.VITE_SITE) process.env.VITE_SITE = mode;
+  return {
   plugins: [react(), serverlessFunctions(), siteHtml()],
   build: {
     manifest: 'asset-manifest.json',
@@ -116,4 +121,5 @@ export default defineConfig({
       }
     }
   }
+}
 })
