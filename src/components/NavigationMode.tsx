@@ -1,5 +1,6 @@
 import { CITY_SITE, SITE_CENTER } from '../site';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, MotionConfig, animate, useMotionTemplate, useMotionValue, type PanInfo } from 'framer-motion';
 import MapLibreMap, { Marker, Source, Layer } from 'react-map-gl/maplibre';
 import type { MapRef } from 'react-map-gl/maplibre';
@@ -287,6 +288,7 @@ const NOTCH_DEBUG_KEY = 'greLines_debugNotch';
 const ISLAND_SIDE = 10;
 const NOTCH_MIN_SAFE_TOP = 40;
 const ISLAND_GAP = 12;
+const ISLAND_SHEET_GAP = 76;
 const ISLAND_SIDE_COMPACT = 30;
 const ISLAND_SWIPE_PX = 24;
 const ISLAND_SWIPE_SPEED = 300;
@@ -773,6 +775,14 @@ export function NavigationMode({
   const [questionsHiddenFor, setQuestionsHiddenFor] = useState<string | null>(null);
   const [islandMorph, setIslandMorph] = useState(false);
   const [islandClosing, setIslandClosing] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || safeTop < NOTCH_MIN_SAFE_TOP) return;
+    const metas = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
+    const previous = metas.map(meta => meta.content);
+    for (const meta of metas) meta.content = '#000000';
+    return () => metas.forEach((meta, i) => { meta.content = previous[i]; });
+  }, [isOpen, safeTop]);
   const islandMorphTimerRef = useRef(0);
   const islandPull = useMotionValue(0);
   const islandTail = useMotionTemplate`max(4px, calc(var(--island-pad) + ${islandPull}px))`;
@@ -2068,7 +2078,8 @@ export function NavigationMode({
     </Card>
   );
 
-  const compactIsland = notch && islandCompact && !banner.big;
+  const sheetFull = sheetSnap === GUIDANCE_SNAP.full;
+  const compactIsland = notch && ((islandCompact && !banner.big) || sheetFull);
   const islandShut = `inset(0px calc(50% - ${cutout.width / 2}px) calc(100% - ${cutout.height}px) calc(50% - ${cutout.width / 2}px) round ${cutout.height / 2}px)`;
   const showQuestions = !banner.big && !compactIsland && questionsHiddenFor !== questionsKey && (phase === 'ride' || phase === 'wait');
 
@@ -2083,12 +2094,16 @@ export function NavigationMode({
     const down = info.offset.y > ISLAND_SWIPE_PX || info.velocity.y > ISLAND_SWIPE_SPEED;
     const next = up ? true : down ? false : islandCompact;
     if (next === islandCompact) return;
-    setIslandMorph(true);
-    window.clearTimeout(islandMorphTimerRef.current);
-    islandMorphTimerRef.current = window.setTimeout(() => setIslandMorph(false), ISLAND_MORPH_MS);
+    morphIsland();
     setIslandCompact(next);
     if (next && showQuestions) setQuestionsHiddenFor(questionsKey);
   };
+
+  function morphIsland() {
+    setIslandMorph(true);
+    window.clearTimeout(islandMorphTimerRef.current);
+    islandMorphTimerRef.current = window.setTimeout(() => setIslandMorph(false), ISLAND_MORPH_MS);
+  }
 
   const islandFade = (delay = 0) =>
     islandMorph
@@ -2255,144 +2270,9 @@ export function NavigationMode({
     ? { backgroundColor: '#000000', color: '#ffffff' }
     : { backgroundColor: '#ffffff', color: '#000000' };
 
-  return (
-    <MotionConfig reducedMotion="user">
-      <motion.div
-        className="fixed inset-0 z-[10001] overflow-hidden"
-        style={{ backgroundColor: isLight ? '#e5e7eb' : '#0a1420' }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-      >
-        <div className="absolute inset-0">
-          <MapLibreMap
-            ref={mapRef}
-            initialViewState={{ longitude: fullPath[0]?.[0] ?? (CITY_SITE ? SITE_CENTER.lon : 5.74892), latitude: fullPath[0]?.[1] ?? (CITY_SITE ? SITE_CENTER.lat : 45.18501), zoom: 15 }}
-            mapStyle={theme === 'dark' ? DARK_NAV_MAP_STYLE_URL : LIGHT_NAV_MAP_STYLE_URL}
-            style={{ width: '100%', height: '100%' }}
-            attributionControl={false}
-            onDragStart={() => {
-              setIsFollowing(false);
-              if (sheetSnap !== GUIDANCE_SNAP.collapsed) sheetRef.current?.snapTo(GUIDANCE_SNAP.collapsed);
-            }}
-            onRotateStart={() => setIsFollowing(false)}
-            onZoomStart={(event: { originalEvent?: unknown }) => {
-              if (event?.originalEvent) setIsFollowing(false);
-            }}
-          >
-            {futureRouteGeoJSON.features.length > 0 && (
-              <Source id="nav-future-routes" type="geojson" data={futureRouteGeoJSON}>
-                <Layer
-                  id="nav-future-routes-casing"
-                  type="line"
-                  paint={{ 'line-color': ['get', 'color'], 'line-width': 13, 'line-opacity': ['case', ['get', 'past'], 0.08, 0.18] as any }}
-                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                />
-                <Layer
-                  id="nav-future-routes-layer"
-                  type="line"
-                  paint={{ 'line-color': ['get', 'color'], 'line-width': 6, 'line-opacity': ['case', ['get', 'past'], 0.3, 0.6] as any }}
-                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                />
-              </Source>
-            )}
-
-            {futureStopsGeoJSON.features.length > 0 && (
-              <Source id="nav-future-stops" type="geojson" data={futureStopsGeoJSON}>
-                <Layer
-                  id="nav-future-stops-layer"
-                  type="circle"
-                  paint={{
-                    'circle-radius': ['case', ['get', 'edge'], 6.5, 4] as any,
-                    'circle-color': isLight ? '#ffffff' : '#0a0a0a',
-                    'circle-stroke-color': ['get', 'color'],
-                    'circle-stroke-width': ['case', ['get', 'edge'], 3.5, 2.5] as any,
-                  }}
-                />
-              </Source>
-            )}
-
-            {endpointsGeoJSON.features.length > 0 && (
-              <Source id="nav-endpoints" type="geojson" data={endpointsGeoJSON}>
-                <Layer
-                  id="nav-endpoints-layer"
-                  type="circle"
-                  paint={{
-                    'circle-radius': 8,
-                    'circle-color': isLight ? '#ffffff' : '#e2e8f0',
-                    'circle-stroke-color': isLight ? '#0f172a' : '#0a0a0a',
-                    'circle-stroke-width': 4,
-                  }}
-                />
-              </Source>
-            )}
-
-            {step.path.length > 0 && (
-              <Source id="nav-step-route" type="geojson" data={stepGeoJSON}>
-                <Layer
-                  id="nav-step-route-layer"
-                  type="line"
-                  paint={{
-                    'line-color': step.kind === 'walk' ? (isLight ? '#0f172a' : '#ffffff') : stepColor(step),
-                    'line-width': step.kind === 'walk' ? 5 : 8,
-                    'line-opacity': 0.95,
-                    'line-dasharray': step.kind === 'walk' ? [0.1, 1.8] : [1, 0],
-                  }}
-                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                />
-              </Source>
-            )}
-
-            {step.path.length > 1 && step.kind === 'walk' && phase !== 'wait' && navLineOf(nextStep) && (
-              <Marker longitude={step.path[step.path.length - 1][0]} latitude={step.path[step.path.length - 1][1]}>
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 18 }}
-                  className="block"
-                  style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }}
-                >
-                  <LinePlate line={navLineOf(nextStep)!} size="sm" />
-                </motion.span>
-              </Marker>
-            )}
-
-            {snappedLocation && (
-              <GlidingMarker target={snappedLocation}>
-                <AnimatePresence initial={false} mode="wait">
-                  {phase === 'ride' && transitLine ? (
-                    <motion.span
-                      key="vehicle-sprite"
-                      initial={{ opacity: 0, scale: 0.72 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.72 }}
-                      transition={{ duration: 0.24, ease: 'easeOut' }}
-                      className="block"
-                      style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }}
-                    >
-                      <LinePlate line={transitLine} size="sm" />
-                    </motion.span>
-                  ) : (
-                    <motion.div
-                      key="walking-sprite"
-                      initial={{ opacity: 0, scale: 0.72 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.72 }}
-                      transition={{ duration: 0.24, ease: 'easeOut' }}
-                      className="relative flex items-center justify-center"
-                    >
-                      <span className="absolute h-8 w-8 animate-ping rounded-full bg-blue-500/30" />
-                      <span className="relative h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-lg" />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </GlidingMarker>
-            )}
-          </MapLibreMap>
-        </div>
-
+  const bannerNode = (
         <div
-          className={`pointer-events-none absolute inset-x-0 top-0 z-20 ${notch ? '' : 'px-2 pt-[max(0.5rem,var(--gl-safe-top))]'}`}
+          className={`pointer-events-none inset-x-0 top-0 ${notch ? 'fixed z-[10020]' : 'absolute z-20 px-2 pt-[max(0.5rem,var(--gl-safe-top))]'}`}
           style={notch ? { paddingTop: cutout.top } : undefined}
         >
           <motion.div
@@ -2597,6 +2477,145 @@ export function NavigationMode({
           </motion.div>
 
         </div>
+  );
+
+  return (
+    <MotionConfig reducedMotion="user">
+      <motion.div
+        className="fixed inset-0 z-[10001] overflow-hidden"
+        style={{ backgroundColor: isLight ? '#e5e7eb' : '#0a1420' }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+      >
+        <div className="absolute inset-0">
+          <MapLibreMap
+            ref={mapRef}
+            initialViewState={{ longitude: fullPath[0]?.[0] ?? (CITY_SITE ? SITE_CENTER.lon : 5.74892), latitude: fullPath[0]?.[1] ?? (CITY_SITE ? SITE_CENTER.lat : 45.18501), zoom: 15 }}
+            mapStyle={theme === 'dark' ? DARK_NAV_MAP_STYLE_URL : LIGHT_NAV_MAP_STYLE_URL}
+            style={{ width: '100%', height: '100%' }}
+            attributionControl={false}
+            onDragStart={() => {
+              setIsFollowing(false);
+              if (sheetSnap !== GUIDANCE_SNAP.collapsed) sheetRef.current?.snapTo(GUIDANCE_SNAP.collapsed);
+            }}
+            onRotateStart={() => setIsFollowing(false)}
+            onZoomStart={(event: { originalEvent?: unknown }) => {
+              if (event?.originalEvent) setIsFollowing(false);
+            }}
+          >
+            {futureRouteGeoJSON.features.length > 0 && (
+              <Source id="nav-future-routes" type="geojson" data={futureRouteGeoJSON}>
+                <Layer
+                  id="nav-future-routes-casing"
+                  type="line"
+                  paint={{ 'line-color': ['get', 'color'], 'line-width': 13, 'line-opacity': ['case', ['get', 'past'], 0.08, 0.18] as any }}
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                />
+                <Layer
+                  id="nav-future-routes-layer"
+                  type="line"
+                  paint={{ 'line-color': ['get', 'color'], 'line-width': 6, 'line-opacity': ['case', ['get', 'past'], 0.3, 0.6] as any }}
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                />
+              </Source>
+            )}
+
+            {futureStopsGeoJSON.features.length > 0 && (
+              <Source id="nav-future-stops" type="geojson" data={futureStopsGeoJSON}>
+                <Layer
+                  id="nav-future-stops-layer"
+                  type="circle"
+                  paint={{
+                    'circle-radius': ['case', ['get', 'edge'], 6.5, 4] as any,
+                    'circle-color': isLight ? '#ffffff' : '#0a0a0a',
+                    'circle-stroke-color': ['get', 'color'],
+                    'circle-stroke-width': ['case', ['get', 'edge'], 3.5, 2.5] as any,
+                  }}
+                />
+              </Source>
+            )}
+
+            {endpointsGeoJSON.features.length > 0 && (
+              <Source id="nav-endpoints" type="geojson" data={endpointsGeoJSON}>
+                <Layer
+                  id="nav-endpoints-layer"
+                  type="circle"
+                  paint={{
+                    'circle-radius': 8,
+                    'circle-color': isLight ? '#ffffff' : '#e2e8f0',
+                    'circle-stroke-color': isLight ? '#0f172a' : '#0a0a0a',
+                    'circle-stroke-width': 4,
+                  }}
+                />
+              </Source>
+            )}
+
+            {step.path.length > 0 && (
+              <Source id="nav-step-route" type="geojson" data={stepGeoJSON}>
+                <Layer
+                  id="nav-step-route-layer"
+                  type="line"
+                  paint={{
+                    'line-color': step.kind === 'walk' ? (isLight ? '#0f172a' : '#ffffff') : stepColor(step),
+                    'line-width': step.kind === 'walk' ? 5 : 8,
+                    'line-opacity': 0.95,
+                    'line-dasharray': step.kind === 'walk' ? [0.1, 1.8] : [1, 0],
+                  }}
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                />
+              </Source>
+            )}
+
+            {step.path.length > 1 && step.kind === 'walk' && phase !== 'wait' && navLineOf(nextStep) && (
+              <Marker longitude={step.path[step.path.length - 1][0]} latitude={step.path[step.path.length - 1][1]}>
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+                  className="block"
+                  style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }}
+                >
+                  <LinePlate line={navLineOf(nextStep)!} size="sm" />
+                </motion.span>
+              </Marker>
+            )}
+
+            {snappedLocation && (
+              <GlidingMarker target={snappedLocation}>
+                <AnimatePresence initial={false} mode="wait">
+                  {phase === 'ride' && transitLine ? (
+                    <motion.span
+                      key="vehicle-sprite"
+                      initial={{ opacity: 0, scale: 0.72 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.72 }}
+                      transition={{ duration: 0.24, ease: 'easeOut' }}
+                      className="block"
+                      style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }}
+                    >
+                      <LinePlate line={transitLine} size="sm" />
+                    </motion.span>
+                  ) : (
+                    <motion.div
+                      key="walking-sprite"
+                      initial={{ opacity: 0, scale: 0.72 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.72 }}
+                      transition={{ duration: 0.24, ease: 'easeOut' }}
+                      className="relative flex items-center justify-center"
+                    >
+                      <span className="absolute h-8 w-8 animate-ping rounded-full bg-blue-500/30" />
+                      <span className="relative h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-lg" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </GlidingMarker>
+            )}
+          </MapLibreMap>
+        </div>
+
+        {notch ? createPortal(bannerNode, document.body) : bannerNode}
       </motion.div>
 
       <AnimatePresence initial={false}>
@@ -2630,7 +2649,11 @@ export function NavigationMode({
         zIndex={10010}
         header={sheetHeader}
         onOpenEnd={() => sheetRef.current?.snapTo(phase === 'walk' ? GUIDANCE_SNAP.collapsed : GUIDANCE_SNAP.middle)}
-        onSnap={setSheetSnap}
+        onSnap={index => {
+          if (notch && (index === GUIDANCE_SNAP.full) !== (sheetSnap === GUIDANCE_SNAP.full)) morphIsland();
+          setSheetSnap(index);
+        }}
+        fullHeight={notch ? Math.max(320, Math.round(window.innerHeight - safeTop - ISLAND_SHEET_GAP)) : undefined}
       >
         <div className="px-6 pb-14" onPointerDown={markSheetTouched}>
           {phaseContent && <div className="border-t pb-1" style={{ borderColor: palette.rule }}>{phaseContent}</div>}

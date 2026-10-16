@@ -35,9 +35,10 @@ export const GuidanceSheet = forwardRef<
     children: ReactNode;
     onOpenEnd?: () => void;
     onSnap?: (index: number) => void;
+    fullHeight?: number;
   }
->(function GuidanceSheet({ isLight, zIndex, header, children, onOpenEnd, onSnap }, ref) {
-  const snapPoints = useMemo(() => [0, COLLAPSED_SHEET_PX, 0.52, 1], []);
+>(function GuidanceSheet({ isLight, zIndex, header, children, onOpenEnd, onSnap, fullHeight }, ref) {
+  const snapPoints = useMemo(() => [0, COLLAPSED_SHEET_PX, 0.52, fullHeight ?? 1], [fullHeight]);
   return (
     <Sheet
       ref={ref}
@@ -59,7 +60,10 @@ export const GuidanceSheet = forwardRef<
           {header}
         </Sheet.Header>
         <SmoothSheetContent>
-          <MapSheetBody>{children}</MapSheetBody>
+          <MapSheetBody>
+            {children}
+            <MapSheetBottomSpacer />
+          </MapSheetBody>
         </SmoothSheetContent>
       </MapSheetShell>
     </Sheet>

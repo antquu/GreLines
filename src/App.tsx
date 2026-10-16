@@ -3835,6 +3835,7 @@ function App() {
         isMobile={isMobile}
         language={language}
         onOpenItinerary={selectedAddress ? () => openRouteToAddress(selectedAddress) : undefined}
+        theme={effectiveTheme}
       />
       </DeferredPanel>
 
