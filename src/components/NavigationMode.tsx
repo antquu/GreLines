@@ -199,7 +199,6 @@ const FOLLOW_LOOK_AHEAD_METERS = 30;
 
 const FOLLOW_RESUME_MS = 8000;
 
-const SHEET_TOUCH_GRACE_MS = 20000;
 
 const SHARE_PUSH_MS = 1000;
 
@@ -289,6 +288,8 @@ const ISLAND_SIDE = 10;
 const NOTCH_MIN_SAFE_TOP = 40;
 const ISLAND_GAP = 12;
 const ISLAND_SHEET_GAP = 76;
+const SHEET_TOUCH_GRACE_MS = 20000;
+const SHEET_TOP_OFFSET = 34;
 const ISLAND_SIDE_COMPACT = 30;
 const ISLAND_SWIPE_PX = 24;
 const ISLAND_SWIPE_SPEED = 300;
@@ -1518,9 +1519,7 @@ export function NavigationMode({
     }
 
     if (Date.now() - sheetTouchedRef.current < SHEET_TOUCH_GRACE_MS) return;
-    const target =
-      phase === 'walk' || preparing ? GUIDANCE_SNAP.collapsed : GUIDANCE_SNAP.middle;
-    sheetRef.current?.snapTo(target);
+    sheetRef.current?.snapTo(phase === 'walk' || preparing ? GUIDANCE_SNAP.collapsed : GUIDANCE_SNAP.middle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, phase, preparing]);
 
@@ -2212,6 +2211,14 @@ export function NavigationMode({
 
   const sheetHeader = (
     <div className="px-6 pb-4 pt-2" onPointerDown={markSheetTouched}>
+    {notch && (
+      <motion.div
+        aria-hidden="true"
+        initial={false}
+        animate={{ height: sheetSnap === GUIDANCE_SNAP.full ? ISLAND_SHEET_GAP - SHEET_TOP_OFFSET : 0 }}
+        transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+      />
+    )}
     <div className="flex items-center gap-3">
       <div className="min-w-0 flex-1">
         <p role="heading" aria-level={2} className="truncate text-[1.625rem] font-medium leading-[1.15]" style={{ color: palette.ink }}>
@@ -2653,7 +2660,6 @@ export function NavigationMode({
           if (notch && (index === GUIDANCE_SNAP.full) !== (sheetSnap === GUIDANCE_SNAP.full)) morphIsland();
           setSheetSnap(index);
         }}
-        fullHeight={notch ? Math.max(320, Math.round(window.innerHeight - safeTop - ISLAND_SHEET_GAP)) : undefined}
       >
         <div className="px-6 pb-14" onPointerDown={markSheetTouched}>
           {phaseContent && <div className="border-t pb-1" style={{ borderColor: palette.rule }}>{phaseContent}</div>}

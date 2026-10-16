@@ -223,20 +223,18 @@ export function SmoothSheetContent({
   children,
   style,
   locked = false,
-  scrollWhenExpanded = false,
 }: {
   children: React.ReactNode;
   style?: React.ComponentProps<typeof Sheet.Content>['style'];
   locked?: boolean;
-  scrollWhenExpanded?: boolean;
 }) {
   const { currentSnap, snapPoints } = Sheet.useContext();
   const expanded = locked || currentSnap === undefined || currentSnap >= snapPoints.length - 1;
   return (
     <Sheet.Content
       disableScroll={!expanded}
-      disableDrag={state => locked || (expanded && (scrollWhenExpanded || (state.scrollPosition !== undefined && state.scrollPosition !== 'top')))}
-      scrollStyle={expanded ? (scrollWhenExpanded ? { touchAction: 'pan-y' } : undefined) : { touchAction: 'pan-x' }}
+      disableDrag={state => locked || (expanded && state.scrollPosition !== undefined && state.scrollPosition !== 'top')}
+      scrollStyle={expanded ? undefined : { touchAction: 'pan-x' }}
       style={style}
     >
       {children}

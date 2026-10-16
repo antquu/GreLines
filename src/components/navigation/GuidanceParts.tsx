@@ -35,10 +35,9 @@ export const GuidanceSheet = forwardRef<
     children: ReactNode;
     onOpenEnd?: () => void;
     onSnap?: (index: number) => void;
-    fullHeight?: number;
   }
->(function GuidanceSheet({ isLight, zIndex, header, children, onOpenEnd, onSnap, fullHeight }, ref) {
-  const snapPoints = useMemo(() => [0, COLLAPSED_SHEET_PX, 0.52, fullHeight ?? 1], [fullHeight]);
+>(function GuidanceSheet({ isLight, zIndex, header, children, onOpenEnd, onSnap }, ref) {
+  const snapPoints = useMemo(() => [0, COLLAPSED_SHEET_PX, 0.6, 1], []);
   return (
     <Sheet
       ref={ref}
@@ -52,14 +51,14 @@ export const GuidanceSheet = forwardRef<
       onSnap={onSnap}
       style={{ zIndex }}
     >
-      <MapSheetShell isLight={isLight} bottomInset={0} collapsedPadding={SHEET_PADDING} zIndex={zIndex} floatingCollapsed solid>
+      <MapSheetShell isLight={isLight} bottomInset={0} collapsedPadding={SHEET_PADDING} zIndex={zIndex} solid>
         <Sheet.Header>
           <div className="flex justify-center pb-1 pt-2">
             <div className={`h-1.5 w-16 rounded-full ${isLight ? 'bg-slate-300' : 'bg-white/30'}`} />
           </div>
           {header}
         </Sheet.Header>
-        <SmoothSheetContent scrollWhenExpanded>
+        <SmoothSheetContent>
           <MapSheetBody>
             {children}
             <MapSheetBottomSpacer />
