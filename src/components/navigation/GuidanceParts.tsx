@@ -59,7 +59,7 @@ export const GuidanceSheet = forwardRef<
           </div>
           {header}
         </Sheet.Header>
-        <SmoothSheetContent>
+        <SmoothSheetContent scrollWhenExpanded>
           <MapSheetBody>
             {children}
             <MapSheetBottomSpacer />
