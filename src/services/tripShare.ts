@@ -68,8 +68,96 @@ export interface ShareSegment {
 interface StoredShare {
   token: string;
   ownerKey?: string;
+  signKey?: JsonWebKey;
+  publicKey?: string;
   trip: string;
   expiresAt: number;
+}
+
+interface SignedMessage {
+  m: string;
+  s: string;
+}
+
+interface SignedBody {
+  e: 'pos' | 'end';
+  at: number;
+  p: Partial<SharePayload>;
+}
+
+const SIGN_ALGO = { name: 'ECDSA', namedCurve: 'P-256' } as const;
+const SIGN_HASH = { name: 'ECDSA', hash: 'SHA-256' } as const;
+
+function subtle(): SubtleCrypto | null {
+  return typeof crypto !== 'undefined' && crypto.subtle ? crypto.subtle : null;
+}
+
+function toBase64(buffer: ArrayBuffer): string {
+  let text = '';
+  for (const byte of new Uint8Array(buffer)) text += String.fromCharCode(byte);
+  return btoa(text);
+}
+
+function fromBase64(value: string): Uint8Array<ArrayBuffer> {
+  const text = atob(value);
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+  return bytes;
+}
+
+interface ShareSigner {
+  publicKey: string;
+  sign: (body: SignedBody) => Promise<SignedMessage>;
+}
+
+// sign live positions so a follower can tell them from forged ones
+async function makeSigner(keys: StoredShareKeys): Promise<{ signer: ShareSigner; keys: StoredShareKeys } | null> {
+  const api = subtle();
+  if (!api) return null;
+  try {
+    let privateKey: CryptoKey;
+    let publicKey = keys.publicKey;
+    let signKey = keys.signKey;
+    if (signKey && publicKey) {
+      privateKey = await api.importKey('jwk', signKey, SIGN_ALGO, false, ['sign']);
+    } else {
+      const pair = await api.generateKey(SIGN_ALGO, true, ['sign', 'verify']);
+      privateKey = pair.privateKey;
+      signKey = await api.exportKey('jwk', pair.privateKey);
+      const exported = await api.exportKey('jwk', pair.publicKey);
+      publicKey = JSON.stringify({ kty: exported.kty, crv: exported.crv, x: exported.x, y: exported.y });
+    }
+    const signer: ShareSigner = {
+      publicKey,
+      sign: async body => {
+        const m = JSON.stringify(body);
+        const signature = await api.sign(SIGN_HASH, privateKey, new TextEncoder().encode(m));
+        return { m, s: toBase64(signature) };
+      },
+    };
+    return { signer, keys: { ...keys, signKey, publicKey } };
+  } catch {
+    return null;
+  }
+}
+
+async function makeVerifier(publicKey: string): Promise<((message: SignedMessage) => Promise<SignedBody | null>) | null> {
+  const api = subtle();
+  if (!api) return null;
+  try {
+    const key = await api.importKey('jwk', JSON.parse(publicKey) as JsonWebKey, SIGN_ALGO, false, ['verify']);
+    return async message => {
+      if (typeof message?.m !== 'string' || typeof message?.s !== 'string') return null;
+      try {
+        const valid = await api.verify(SIGN_HASH, key, fromBase64(message.s), new TextEncoder().encode(message.m));
+        return valid ? (JSON.parse(message.m) as SignedBody) : null;
+      } catch {
+        return null;
+      }
+    };
+  } catch {
+    return null;
+  }
 }
 
 const STORAGE_KEY = 'greLines_tripShare_v1';
@@ -170,6 +258,8 @@ export function saveShareName(name: string): void {
 export interface StoredShareKeys {
   token: string;
   ownerKey: string;
+  signKey?: JsonWebKey;
+  publicKey?: string;
 }
 
 export function loadStoredShare(trip: string): StoredShareKeys | null {
@@ -178,7 +268,7 @@ export function loadStoredShare(trip: string): StoredShareKeys | null {
     if (!raw) return null;
     const stored = JSON.parse(raw) as StoredShare;
     if (stored.trip !== trip || Date.now() > stored.expiresAt || !stored.ownerKey) return null;
-    return { token: stored.token, ownerKey: stored.ownerKey };
+    return { token: stored.token, ownerKey: stored.ownerKey, signKey: stored.signKey, publicKey: stored.publicKey };
   } catch {
     return null;
   }
@@ -219,6 +309,19 @@ export function openShareSender(trip: string, existing?: StoredShareKeys | null)
   let savedAt = 0;
   let closed = false;
   let pushes = 0;
+  let signer: ShareSigner | null = null;
+  const signing = makeSigner(keys).then(result => {
+    if (!result) return;
+    signer = result.signer;
+    storeShare(result.keys, trip);
+  });
+
+  const broadcast = (event: 'pos' | 'end', body: Partial<SharePayload>) => {
+    void signing.then(async () => {
+      const payload = signer ? await signer.sign({ e: event, at: Date.now(), p: body }) : body;
+      void channel.send({ type: 'broadcast', event, payload });
+    });
+  };
 
   const push = (full = false) => {
     if (!ready || !last) return;
@@ -226,7 +329,7 @@ export function openShareSender(trip: string, existing?: StoredShareKeys | null)
     claimSending(token);
     const body = full || pushes % FULL_EVERY === 0 ? last : { ...last, legs: undefined, path: [] };
     pushes += 1;
-    void channel.send({ type: 'broadcast', event: 'pos', payload: body });
+    broadcast('pos', body);
   };
 
   const persist = () => {
@@ -236,9 +339,16 @@ export function openShareSender(trip: string, existing?: StoredShareKeys | null)
     savedAt = at;
     const fn = saved ? 'trip_share_update' : 'trip_share_start';
     saved = true;
-    void client.rpc(fn, { p_token: token, p_owner_key: ownerKey, p_payload: last }).then(({ error }) => {
-      if (error && fn === 'trip_share_start') saved = false;
-    });
+    const payload = last;
+    void signing.then(() =>
+      client
+        .rpc(fn, fn === 'trip_share_start'
+          ? { p_token: token, p_owner_key: ownerKey, p_payload: payload, p_public_key: signer?.publicKey ?? null }
+          : { p_token: token, p_owner_key: ownerKey, p_payload: payload })
+        .then(({ error }) => {
+          if (error && fn === 'trip_share_start') saved = false;
+        }),
+    );
   };
 
   channel
@@ -260,7 +370,7 @@ export function openShareSender(trip: string, existing?: StoredShareKeys | null)
       closed = true;
       forgetShare();
       void client.rpc('trip_share_end', { p_token: token, p_owner_key: ownerKey });
-      if (ready) void channel.send({ type: 'broadcast', event: 'end', payload: last ?? {} });
+      if (ready) broadcast('end', last ?? {});
       window.setTimeout(() => void client.removeChannel(channel), 800);
     },
     close: () => {
@@ -272,7 +382,7 @@ export function openShareSender(trip: string, existing?: StoredShareKeys | null)
 }
 
 export type ShareLookup =
-  | { state: 'found'; payload: SharePayload | null }
+  | { state: 'found'; payload: SharePayload | null; key: string | null }
   | { state: 'unknown' }
   | { state: 'unchecked' };
 
@@ -282,7 +392,8 @@ export async function fetchShare(token: string): Promise<ShareLookup> {
   const { data, error } = await supabase.rpc('trip_share_get', { p_token: token });
   if (error) return { state: 'unchecked' };
   if (!data) return { state: 'unknown' };
-  return { state: 'found', payload: ((data as { payload?: SharePayload | null }).payload ?? null) };
+  const found = data as { payload?: SharePayload | null; key?: string | null };
+  return { state: 'found', payload: found.payload ?? null, key: found.key ?? null };
 }
 
 export function watchShare(
@@ -310,9 +421,31 @@ export function watchShare(
     if (ready) void channel.send({ type: 'broadcast', event: 'hello', payload: {} });
   };
 
+  let lastAt = 0;
+  const verifier = fetchShare(token).then(result =>
+    result.state === 'found' && result.key ? makeVerifier(result.key).then(check => check ?? 'reject' as const) : null,
+  );
+
+  const receive = (event: 'pos' | 'end', raw: unknown) => {
+    void verifier.then(async check => {
+      let body: Partial<SharePayload> | null = null;
+      if (check === 'reject') return;
+      if (check) {
+        const signed = await check(raw as SignedMessage);
+        if (!signed || signed.e !== event || signed.at < lastAt) return;
+        lastAt = signed.at;
+        body = signed.p;
+      } else {
+        body = (raw ?? {}) as Partial<SharePayload>;
+      }
+      if (event === 'pos') handlers.onUpdate(merge(body as SharePayload));
+      else handlers.onEnd(body);
+    });
+  };
+
   channel
-    .on('broadcast', { event: 'pos' }, message => handlers.onUpdate(merge(message.payload as SharePayload)))
-    .on('broadcast', { event: 'end' }, message => handlers.onEnd((message.payload ?? {}) as Partial<SharePayload>))
+    .on('broadcast', { event: 'pos' }, message => receive('pos', message.payload))
+    .on('broadcast', { event: 'end' }, message => receive('end', message.payload))
     .subscribe(status => {
       if (status !== 'SUBSCRIBED') return;
       ready = true;

@@ -1,3 +1,11 @@
+do $$
+begin
+  if to_regclass('public.request_hits') is not null then
+    raise exception 'this base already runs 18-security-2026-10.sql: running this older file again would reopen access';
+  end if;
+end;
+$$;
+
 -- GreLines — cartes OURA.
 --
 -- Idempotent : peut être ré-exécuté tel quel dans l'éditeur SQL Supabase.
@@ -19,7 +27,7 @@
 -- rien casser.
 
 -- NB : les politiques « anon_all » ci-dessous sont retirées par
--- `oura-lockdown.sql`, à exécuter après ce fichier. Depuis, aucune table
+-- `05-oura-lockdown.sql`, à exécuter après ce fichier. Depuis, aucune table
 -- `oura_*` ne se lit ni ne s'écrit directement avec la clé publique.
 
 -- ---------------------------------------------------------------------------

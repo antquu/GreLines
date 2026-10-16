@@ -389,7 +389,7 @@ c'est une carte arrondie aux couleurs du thème.
 Un trajet se partage maintenant en direct. Le lien `/share/…` s'ouvre dans
 n'importe quel navigateur : la personne voit la position, la timeline et l'heure
 d'arrivée, mises à jour chaque seconde. Le lien s'arrête à l'arrivée. Il faut
-avoir exécuté `supabase/trip-shares.sql` pour qu'il fonctionne.
+avoir exécuté `supabase/17-trip-shares.sql` pour qu'il fonctionne.
 
 Les tracés ont été repris. L'ancien calcul tirait la ligne vers chaque arrêt, ce
 qui faisait des pics. Le tracé suit désormais les arrêts dans l'ordre, et on

@@ -81,6 +81,7 @@ function serverlessFunctions(): Plugin {
       serve('/api/where', '/api/where.js', []);
       serve('/api/pdf', '/api/pdf.js', []);
       serve('/api/sncf', '/api/sncf.js', ['SNCF_API_KEY']);
+      serve('/api/oura-card', '/api/oura-card.js', ['SUPABASE_URL', 'VITE_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
     },
   };
 }

@@ -596,7 +596,6 @@ export const fr = {
     upcoming: 'À venir',
     closeSettings: 'Fermer',
     continueLabel: 'Continuer',
-    debugRandomTrip: 'Commencer un trajet aléatoire',
     shareKeepsRunning: 'Vous pouvez fermer cette fenêtre, le partage continue jusqu’à votre arrivée.',
     showFullTrip: 'Voir tout le trajet',
     hideFullTrip: 'Masquer le trajet',

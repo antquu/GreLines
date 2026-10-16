@@ -598,7 +598,6 @@ export const en: Messages = {
     upcoming: 'Upcoming',
     closeSettings: 'Close',
     continueLabel: 'Continue',
-    debugRandomTrip: 'Start a random trip',
     shareKeepsRunning: 'You can close this window, sharing keeps going until you arrive.',
     showFullTrip: 'See the whole trip',
     hideFullTrip: 'Hide the trip',

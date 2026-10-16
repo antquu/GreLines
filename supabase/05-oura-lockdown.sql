@@ -1,3 +1,11 @@
+do $$
+begin
+  if to_regclass('public.request_hits') is not null then
+    raise exception 'this base already runs 18-security-2026-10.sql: running this older file again would reopen access';
+  end if;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Fermeture des tables OùRA : plus rien ne se lit ni ne s'écrit directement.
 --
@@ -22,7 +30,7 @@
 --   * `crm_oura_*`  : GreLines Management, clé = compte `crm_users`, comme
 --                     les fonctions `crm_blog_*`.
 --
--- À exécuter APRÈS : oura-cards.sql, accounts.sql, account-trips.sql, blog.sql
+-- À exécuter APRÈS : 01-oura-cards.sql, 02-accounts.sql, 03-account-trips.sql, 04-blog.sql
 -- (pour crm_users) et data-requests.sql du portail data (pour
 -- data_deletion_requests).
 -- ---------------------------------------------------------------------------

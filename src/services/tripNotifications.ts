@@ -97,6 +97,8 @@ export async function notifyTripMoment(moment: TripMoment, language: 'fr' | 'en'
   };
 
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  // only alert when the app is in the background
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
 
   try {
     const registration = await navigator.serviceWorker?.getRegistration();

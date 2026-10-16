@@ -340,32 +340,40 @@ VITE_CREDITS=[]`,
           id: 'preparer-la-base',
           icon: 'database',
           title: 'Préparer la base',
-          note: 'Dix fichiers SQL à passer une fois, dans l’éditeur de votre projet.',
+          note: 'Dix-huit fichiers SQL à passer une fois, dans l’ordre de leur numéro.',
           body: [
             {
               kind: 'p',
-              text: "Le dossier `supabase/` contient le schéma, découpé par sujet. Chaque fichier crée ses tables, ses index et ses règles d'accès, et se relance sans dommage : tout y est écrit en `create ... if not exists`.",
+              text: "Le dossier `supabase/` contient le schéma, un fichier par sujet, numérotés dans l'ordre où les passer. Le schéma de l'administration (`grelines-management/supabase/schema.sql`) passe avant le premier. Une fois le fichier 18 passé, les fichiers plus anciens refusent de se relancer : les rejouer rouvrirait des accès fermés depuis.",
             },
             {
               kind: 'code',
               lang: 'txt',
               file: 'supabase/',
-              text: `accounts.sql          les comptes et leurs porteurs
-account-trips.sql     les trajets rattachés à un compte
-oura-cards.sql        les cartes photographiées
-blog.sql              les communiqués de la salle de presse
-campaigns.sql         les affiches et le compte des scans
-crowd-signals.sql     l'affluence signalée à bord
-live-timing.sql       les corrections de passages
-stop-surveys.sql      les avis sur les arrêts
-trip-surveys.sql      les avis sur les trajets
-translations.sql      les textes traduits`,
+              text: `01-oura-cards.sql          les cartes OùRA et leurs porteurs
+02-accounts.sql            les comptes
+03-account-trips.sql       les trajets rattachés à un compte
+04-blog.sql                les communiqués de la salle de presse
+05-oura-lockdown.sql       la fermeture des tables OùRA
+06-campaigns.sql           les affiches et le compte des scans
+07-live-timing.sql         les corrections de passages
+08-stop-surveys.sql        les avis sur les arrêts
+09-translations.sql        les textes traduits
+10-trip-surveys.sql        les avis sur les trajets
+11-popup-targeting.sql     le ciblage des popups
+12-security-hardening.sql  les sessions de l'administration
+13-api-keys.sql            les clés de l'API publique
+14-oura-terms.sql          l'acceptation des conditions OùRA
+15-mtag-popups.sql         l'import des annonces M réso
+16-crowd-signals.sql       l'affluence signalée à bord
+17-trip-shares.sql         le partage de trajet en direct
+18-security-2026-10.sql    les limites et les accès réservés au serveur`,
             },
             {
               kind: 'steps',
               items: [
                 "Ouvrez l'éditeur SQL de votre projet Supabase.",
-                'Collez le contenu de chaque fichier, un par un, et exécutez.',
+                'Collez le contenu de chaque fichier, dans l’ordre des numéros, et exécutez.',
                 "Vérifiez que la sécurité au niveau des lignes est bien active sur chaque table créée : c'est elle qui fait que la clé publique ne donne pas plus que ce qu'elle doit.",
               ],
             },
@@ -1444,32 +1452,40 @@ VITE_CREDITS=[]`,
           id: 'preparer-la-base',
           icon: 'database',
           title: 'Preparing the database',
-          note: 'Ten SQL files to run once, in your project’s editor.',
+          note: 'Eighteen SQL files to run once, in the order of their number.',
           body: [
             {
               kind: 'p',
-              text: 'The `supabase/` folder holds the schema, split by subject. Each file creates its tables, indexes and access rules, and can be run again safely: everything is written as `create ... if not exists`.',
+              text: "The `supabase/` folder holds the schema, one file per subject, numbered in the order to run them. The admin schema (`grelines-management/supabase/schema.sql`) goes before the first one. Once file 18 has run, the older files refuse to run again: replaying them would reopen access that has since been closed.",
             },
             {
               kind: 'code',
               lang: 'txt',
               file: 'supabase/',
-              text: `accounts.sql          accounts and their holders
-account-trips.sql     trips attached to an account
-oura-cards.sql        photographed cards
-blog.sql              newsroom announcements
-campaigns.sql         posters and scan counts
-crowd-signals.sql     crowding reported on board
-live-timing.sql       departure corrections
-stop-surveys.sql      reviews of stops
-trip-surveys.sql      reviews of journeys
-translations.sql      translated strings`,
+              text: `01-oura-cards.sql          OùRA cards and their holders
+02-accounts.sql            accounts
+03-account-trips.sql       trips attached to an account
+04-blog.sql                newsroom announcements
+05-oura-lockdown.sql       closing the OùRA tables
+06-campaigns.sql           posters and scan counts
+07-live-timing.sql         departure corrections
+08-stop-surveys.sql        reviews of stops
+09-translations.sql        translated strings
+10-trip-surveys.sql        reviews of journeys
+11-popup-targeting.sql     popup targeting
+12-security-hardening.sql  admin sessions
+13-api-keys.sql            public API keys
+14-oura-terms.sql          OùRA terms acceptance
+15-mtag-popups.sql         M réso announcements import
+16-crowd-signals.sql       crowding reported on board
+17-trip-shares.sql         live trip sharing
+18-security-2026-10.sql    limits and server-only access`,
             },
             {
               kind: 'steps',
               items: [
                 'Open the SQL editor of your Supabase project.',
-                'Paste the contents of each file, one at a time, and run it.',
+                'Paste the contents of each file, in number order, and run it.',
                 'Check that row level security is enabled on every table created: that is what keeps the public key from giving more than it should.',
               ],
             },

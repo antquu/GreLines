@@ -289,6 +289,19 @@ export interface SaveCardInput {
   photoPath?: string;
 }
 
+async function cardServer(body: Record<string, unknown>): Promise<boolean> {
+  try {
+    const response = await fetch('/api/oura-card', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function saveOuraCard(input: SaveCardInput): Promise<OuraCard | null> {
   if (!supabase) return null;
   const { lookup } = input;
@@ -304,31 +317,20 @@ export async function saveOuraCard(input: SaveCardInput): Promise<OuraCard | nul
     photoPath = path;
   }
 
-  const contract = currentContract(lookup.contracts);
-  const { data, error } = await supabase
-    .rpc('oura_holder_save', {
-      p_code: lookup.code,
-      p_first_name: input.firstName?.trim() || null,
-      p_last_name: input.lastName?.trim() || null,
-      p_birth_date: lookup.birthDate || null,
-      p_expires_at: lookup.expiresAt || null,
-      p_contract_label: contract?.label || null,
-      p_contract_starting_at: contract?.startingAt || null,
-      p_contract_ending_at: contract?.endingAt || null,
-      p_network_label: contract?.networkLabel || null,
-      p_photo_path: photoPath || null,
-      p_is_expired: lookup.isExpired,
-      p_is_blacklisted: lookup.isBlackListed,
-      p_is_locked: lookup.isLocked,
-      p_is_invalid: lookup.isInvalid,
-    })
-    .maybeSingle();
-  if (error || !data) return null;
+  const saved = await cardServer({
+    action: 'save',
+    code: lookup.code,
+    firstName: input.firstName?.trim() || null,
+    lastName: input.lastName?.trim() || null,
+    photoPath: photoPath || null,
+    deviceId,
+  });
+  if (!saved) return null;
 
-  await supabase.rpc('oura_card_link', { p_device: deviceId, p_code: lookup.code });
-  rememberLocalCode(lookup.code);
-
-  return toCard(data as CardRow);
+  const card = await findKnownCard(lookup.code);
+  if (!card) return null;
+  rememberLocalCode(card.cardCode);
+  return card;
 }
 
 export const OURA_TERMS_VERSION = '2026-10-02';
@@ -378,7 +380,12 @@ export async function transferCard(
         photoPath: previous?.photoPath,
       });
   if (!saved) return null;
-  await supabase.rpc('oura_holder_disable', { p_code: normalizeCardCode(fromCode) });
+  await cardServer({
+    action: 'transfer',
+    fromCode: normalizeCardCode(fromCode),
+    toCode: saved.cardCode,
+    deviceId: getDeviceId(),
+  });
   return saved;
 }
 
@@ -427,31 +434,14 @@ export async function verifyCards(cards: OuraCard[]): Promise<OuraCard[]> {
       || refreshed.isBlacklisted !== card.isBlacklisted
       || refreshed.isLocked !== card.isLocked
       || refreshed.isInvalid !== card.isInvalid;
-    if (changed) void persistVerification(refreshed, found);
+    if (changed) void persistVerification(refreshed);
 
     return refreshed;
   }));
 }
 
-async function persistVerification(card: OuraCard, found: OuraCardLookup): Promise<void> {
-  if (!supabase) return;
-  const contract = currentContract(found.contracts);
-  await supabase.rpc('oura_holder_save', {
-    p_code: card.cardCode,
-    p_first_name: card.firstName || null,
-    p_last_name: card.lastName || null,
-    p_birth_date: found.birthDate || card.birthDate || null,
-    p_expires_at: found.expiresAt || null,
-    p_contract_label: contract?.label || null,
-    p_contract_starting_at: contract?.startingAt || null,
-    p_contract_ending_at: contract?.endingAt || null,
-    p_network_label: contract?.networkLabel || null,
-    p_photo_path: null,
-    p_is_expired: found.isExpired,
-    p_is_blacklisted: found.isBlackListed,
-    p_is_locked: found.isLocked,
-    p_is_invalid: found.isInvalid,
-  });
+async function persistVerification(card: OuraCard): Promise<void> {
+  await cardServer({ action: 'refresh', code: card.cardCode });
 }
 
 const CHANGE_POLL_MS = 20_000;

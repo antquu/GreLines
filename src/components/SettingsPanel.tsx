@@ -30,7 +30,6 @@ import { setSimulatedOffline } from '../services/networkSimulation';
 import { MobileNotificationPrompt } from './MobileNotificationPrompt';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 import { resetAllCaches } from '../utils/resetCaches';
-import { emitDevCommand } from '../utils/devCommands';
 import {
   NETWORK_TILES,
   OPERATOR_TILES,
@@ -583,21 +582,6 @@ export function SettingsPanel({
         </>
       )}
 
-      {(
-        <Group>
-          <button
-            type="button"
-            onClick={() => {
-              handleClose();
-              emitDevCommand('nav.random', ['1']);
-            }}
-            className="flex w-full items-center justify-between rounded-2xl px-4 py-3 transition hover:bg-slate-700/40"
-          >
-            <span className="text-[0.9375rem] font-medium text-blue-400">{tx(isFrench).navigationMode.debugRandomTrip}</span>
-            <ChevronRightIcon className="h-4 w-4 text-slate-500" />
-          </button>
-        </Group>
-      )}
     </>
   );
 

@@ -1,7 +1,7 @@
 -- GreLines : acceptation des conditions d'utilisation de la carte OURA.
 --
 -- Idempotent : peut être ré-exécuté tel quel dans l'éditeur SQL Supabase.
--- À exécuter après oura-cards.sql et oura-lockdown.sql.
+-- À exécuter après 01-oura-cards.sql et 05-oura-lockdown.sql.
 --
 -- La première fois qu'une carte jamais enregistrée est ajoutée, l'application
 -- fait accepter des conditions d'utilisation. On garde la trace de cet accord :

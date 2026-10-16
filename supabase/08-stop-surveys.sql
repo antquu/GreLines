@@ -1,3 +1,11 @@
+do $$
+begin
+  if to_regclass('public.request_hits') is not null then
+    raise exception 'this base already runs 18-security-2026-10.sql: running this older file again would reopen access';
+  end if;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Avis sur les arrêts.
 --
