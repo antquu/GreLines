@@ -228,6 +228,7 @@ export function SmoothSheetContent({
   style?: React.ComponentProps<typeof Sheet.Content>['style'];
   locked?: boolean;
 }) {
+  // the library forces pan-down on the scroller when it sits at the top, which blocks scrolling on recent iOS
   const { currentSnap, snapPoints } = Sheet.useContext();
   const expanded = locked || currentSnap === undefined || currentSnap >= snapPoints.length - 1;
   return (
@@ -235,6 +236,7 @@ export function SmoothSheetContent({
       disableScroll={!expanded}
       disableDrag={state => locked || (expanded && state.scrollPosition !== undefined && state.scrollPosition !== 'top')}
       scrollStyle={expanded ? undefined : { touchAction: 'pan-x' }}
+      scrollClassName={locked ? 'gl-native-scroll' : undefined}
       style={style}
     >
       {children}

@@ -288,7 +288,6 @@ const ISLAND_SIDE = 10;
 const NOTCH_MIN_SAFE_TOP = 40;
 const ISLAND_GAP = 12;
 const ISLAND_SHEET_GAP = 76;
-const SHEET_TOUCH_GRACE_MS = 20000;
 const SHEET_TOP_OFFSET = 34;
 const ISLAND_SIDE_COMPACT = 30;
 const ISLAND_SWIPE_PX = 24;
@@ -769,7 +768,6 @@ export function NavigationMode({
   const palette = navPalette(isLight);
   const mapRef = useRef<MapRef>(null);
   const sheetRef = useRef<SheetRef>(null);
-  const sheetTouchedRef = useRef(0);
   const safeTop = useSafeAreaTop();
   const cutout = useMemo(() => cutoutFor(safeTop), [safeTop]);
   const [islandCompact, setIslandCompact] = useState(false);
@@ -1518,8 +1516,6 @@ export function NavigationMode({
       if (ride?.stops[0]?.name) speak(`${t.nextStop}, ${ride.stops[0].name}. ${t.prepareToGetOff}.`, language);
     }
 
-    if (Date.now() - sheetTouchedRef.current < SHEET_TOUCH_GRACE_MS) return;
-    sheetRef.current?.snapTo(phase === 'walk' || preparing ? GUIDANCE_SNAP.collapsed : GUIDANCE_SNAP.middle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, phase, preparing]);
 
@@ -2018,10 +2014,6 @@ export function NavigationMode({
     };
   });
 
-  const markSheetTouched = () => {
-    sheetTouchedRef.current = Date.now();
-  };
-
   const delayMinutes = lineDelay ? Math.round(lineDelay.seconds / 60) : 0;
   const delayText =
     lineDelay && delayMinutes !== 0
@@ -2210,7 +2202,7 @@ export function NavigationMode({
     .join(' · ');
 
   const sheetHeader = (
-    <div className="px-6 pb-4 pt-2" onPointerDown={markSheetTouched}>
+    <div className="px-6 pb-4 pt-2">
     {notch && (
       <motion.div
         aria-hidden="true"
@@ -2655,13 +2647,13 @@ export function NavigationMode({
         isLight={isLight}
         zIndex={10010}
         header={sheetHeader}
-        onOpenEnd={() => sheetRef.current?.snapTo(phase === 'walk' ? GUIDANCE_SNAP.collapsed : GUIDANCE_SNAP.middle)}
+        onOpenEnd={() => sheetRef.current?.snapTo(GUIDANCE_SNAP.middle)}
         onSnap={index => {
           if (notch && (index === GUIDANCE_SNAP.full) !== (sheetSnap === GUIDANCE_SNAP.full)) morphIsland();
           setSheetSnap(index);
         }}
       >
-        <div className="px-6 pb-14" onPointerDown={markSheetTouched}>
+        <div className="px-6 pb-14">
           {phaseContent && <div className="border-t pb-1" style={{ borderColor: palette.rule }}>{phaseContent}</div>}
 
           <div className="border-t" style={{ borderColor: palette.rule }}>
