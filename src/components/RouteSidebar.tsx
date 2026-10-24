@@ -863,8 +863,14 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     onLocationSelected?.(location, 'to');
   };
 
+  const autoFromDoneRef = useRef(false);
   useEffect(() => {
-    if (!isOpen || !isMobile || !currentLocation) return;
+    if (!isOpen) {
+      autoFromDoneRef.current = false;
+      return;
+    }
+    if (autoFromDoneRef.current || !isMobile || !currentLocation) return;
+    autoFromDoneRef.current = true;
     if (fromSelection || routeFrom || fromQuery) return;
     handleSelectFrom(currentPositionLocation(currentLocation));
     // eslint-disable-next-line react-hooks/exhaustive-deps

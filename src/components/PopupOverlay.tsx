@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { usePopupPresence } from '../utils/popupPresence';
 import { XMarkIcon, MegaphoneIcon, ExclamationTriangleIcon, ChevronLeftIcon, CheckCircleIcon } from '@heroicons/react/24/solid';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -298,6 +299,8 @@ export function PopupOverlay({ popups, language, theme = 'dark', trafficFor = no
     const next = popups.find((p) => !optedOut.has(p.id));
     setVisiblePopup(next ?? null);
   }, [popups]);
+
+  usePopupPresence('cms-popup', Boolean(visiblePopup) && closedId !== visiblePopup?.id);
 
   if (!visiblePopup) return null;
 

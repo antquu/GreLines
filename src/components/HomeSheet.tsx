@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAnyPopupShown } from '../utils/popupPresence';
 import { motion, useMotionTemplate } from 'framer-motion';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
 import {
@@ -111,6 +112,7 @@ interface HomeSheetProps {
   navCompact?: boolean;
   onOpenItinerary: () => void;
   onSnapChange?: (snapIdx: number) => void;
+  holdAutoOpen?: boolean;
   onSheetProgress?: (progress: number) => void;
   onHomeProgress?: (progress: number) => void;
   lowerOnMapPanSignal?: number;
@@ -173,6 +175,7 @@ export const HomeSheet = ({
   navCompact = false,
   onOpenItinerary,
   onSnapChange,
+  holdAutoOpen = false,
   onSheetProgress,
   onHomeProgress,
   lowerOnMapPanSignal,
@@ -237,11 +240,12 @@ export const HomeSheet = ({
   const [snapIdx, setSnapIdx] = useState<number>(1);
   const snapIdxRef = useRef(snapIdx);
   snapIdxRef.current = snapIdx;
+  const popupShown = useAnyPopupShown() || holdAutoOpen;
   const openOnceNearbyReady = useCallback(() => {
-    if (nearbyAutoOpened || locked || !isOpen) return;
+    if (nearbyAutoOpened || locked || !isOpen || popupShown) return;
     nearbyAutoOpened = true;
     if (snapIdxRef.current <= 1) sheetRef.current?.snapTo(HOME_MID_SNAP);
-  }, [locked, isOpen]);
+  }, [locked, isOpen, popupShown]);
 
   const outsideServedArea = Boolean(nearbyOrigin) && !originSettling && nearby.length === 0 && stops.length > 0;
   useEffect(() => {

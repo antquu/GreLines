@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRightIcon, MapPinIcon } from '@heroicons/react/24/solid';
+import { ChevronRightIcon } from '@heroicons/react/24/solid';
+import { FaWalking } from 'react-icons/fa';
 import type { Departure, Line, Stop, StopDetail } from '../types';
 import type { StopWithDistance } from '../utils/geo';
 import { getStopDetail } from '../services/api';
@@ -59,11 +60,14 @@ const formatDistance = (meters: number, language: 'fr' | 'en') => {
   return tx(language === 'fr').nearbyDepartures.distanceKm(km);
 };
 
-function formatMinutes(minutes: number[], language: 'fr' | 'en'): string {
-  const now = tx(language === 'fr').nearbyDepartures.due;
-  if (minutes[0] <= 0 && minutes.length === 1) return now;
-  const parts = minutes.map(value => (value <= 0 ? now : String(value)));
-  return `${parts.join(', ')} min`;
+function formatFirst(minutes: number, language: 'fr' | 'en'): string {
+  return minutes <= 0 ? tx(language === 'fr').nearbyDepartures.due : `${minutes} min`;
+}
+
+// drop the "City, " prefix the network puts in front of stop names
+function displayName(stop: Stop): string {
+  const comma = stop.name.indexOf(', ');
+  return comma > 0 && comma < stop.name.length - 2 ? stop.name.slice(comma + 2) : stop.name;
 }
 
 function LoadingWheel({ isLight }: { isLight: boolean }) {
@@ -129,10 +133,9 @@ export function NearbyDepartures({
     if (ready) onReady?.();
   }, [ready, onReady]);
 
-  const cardClass = isLight
-    ? 'bg-white border border-slate-200 shadow-[0_12px_30px_rgba(148,163,184,0.16)]'
-    : 'bg-black border border-white/[0.06]';
-  const strong = isLight ? { color: '#0f172a' } : undefined;
+  const ink = isLight ? '#0f172a' : '#ffffff';
+  const muted = isLight ? '#64748b' : '#94a3b8';
+  const rule = isLight ? '#e2e8f0' : 'rgba(255,255,255,0.08)';
 
   if (pending || !ready) {
     return (
@@ -143,8 +146,8 @@ export function NearbyDepartures({
   }
 
   return (
-    <div className="space-y-3">
-      {nearby.map(({ stop, meters }) => {
+    <div>
+      {nearby.map(({ stop, meters }, index) => {
         const detail = details[stop.id];
         const groups = detail ? groupDepartures(detail) : [];
         const shownLines = new Set(groups.map(group => group.line.id));
@@ -154,47 +157,50 @@ export function NearbyDepartures({
             key={stop.id}
             type="button"
             onClick={() => onStopClick(stop)}
-            className={`block w-full overflow-hidden rounded-[28px] px-5 pb-5 pt-5 text-left transition active:scale-[0.99] ${cardClass}`}
+            className={`block w-full px-1 text-left transition active:opacity-70 ${index > 0 ? 'mt-3 border-t pt-5' : ''}`}
+            style={{ borderColor: rule }}
           >
-            <div className="mb-3 flex items-start gap-3">
-              <span className="min-w-0 flex-1">
-                <span className={`block text-[0.9375rem] font-semibold leading-snug ${titleClass}`} style={strong}>
-                  {stop.name}
-                </span>
-                <span className={`mt-0.5 flex items-center gap-1 text-sm ${mutedClass}`}>
-                  <MapPinIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="truncate">
-                    {formatDistance(meters, language)}
-                    {stop.city ? ` · ${stop.city}` : ''}
-                  </span>
-                </span>
+            <div className="flex items-center gap-3 pb-2">
+              <span className={`min-w-0 flex-1 truncate text-[1.0625rem] font-semibold leading-snug ${titleClass}`} style={{ color: ink }}>
+                {displayName(stop)}
               </span>
-              <ChevronRightIcon className={`mt-1 h-4 w-4 flex-shrink-0 ${mutedClass}`} />
+              <span className={`flex flex-shrink-0 items-center gap-1.5 text-[0.875rem] tabular-nums ${mutedClass}`} style={{ color: muted }}>
+                <FaWalking size={12} aria-hidden="true" />
+                {formatDistance(meters, language)}
+              </span>
+              <ChevronRightIcon className="h-4 w-4 flex-shrink-0" style={{ color: muted }} />
             </div>
 
             {detail === undefined ? (
-              <div className="space-y-3 pt-1">
-                {[0, 1].map(index => (
-                  <div key={index} className={`h-7 animate-pulse rounded-lg ${isLight ? 'bg-slate-100' : 'bg-white/[0.06]'}`} />
+              <div className="space-y-3 py-2">
+                {[0, 1].map(item => (
+                  <div key={item} className={`h-6 animate-pulse rounded-lg ${isLight ? 'bg-slate-100' : 'bg-white/[0.06]'}`} />
                 ))}
               </div>
             ) : groups.length === 0 ? (
-              <p className={`pt-1 text-sm ${mutedClass}`}>
+              <p className="py-2 text-[0.9375rem]" style={{ color: muted }}>
                 {tx(language === 'fr').nearbyDepartures.noUpcomingDepartures}
               </p>
             ) : (
-              <div className="space-y-3 pt-1">
-                {groups.map(group => (
-                  <div key={group.key} className="flex items-center gap-3">
+              <div>
+                {groups.map((group, row) => (
+                  <div
+                    key={group.key}
+                    className={`flex items-center gap-3 py-2.5 ${row > 0 ? 'border-t' : ''}`}
+                    style={{ borderColor: rule }}
+                  >
                     <LineBadge line={group.line} size="sm" />
-                    <span className={`line-clamp-2 min-w-0 flex-1 text-sm leading-snug ${titleClass}`} style={strong}>
+                    <span className="min-w-0 flex-1 truncate text-[0.9375rem] leading-snug" style={{ color: ink }}>
                       {group.destination}
                     </span>
-                    <span className={`flex flex-shrink-0 items-center gap-1.5 text-sm font-bold tabular-nums ${titleClass}`} style={strong}>
+                    <span className="flex flex-shrink-0 items-center gap-1.5 text-[0.9375rem] tabular-nums">
                       {group.realtime && (
                         <RealtimeWifi size={13} className="text-green-400" label={tx(language === 'fr').nearbyDepartures.live} />
                       )}
-                      {formatMinutes(group.minutes, language)}
+                      <span className="font-semibold" style={{ color: ink }}>{formatFirst(group.minutes[0], language)}</span>
+                      {group.minutes.length > 1 && (
+                        <span style={{ color: muted }}>{formatFirst(group.minutes[1], language)}</span>
+                      )}
                     </span>
                   </div>
                 ))}
@@ -202,7 +208,7 @@ export function NearbyDepartures({
             )}
 
             {quietLines.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5 pt-2">
                 {quietLines.map(line => (
                   <LineBadge key={line.id} line={line} size="xs" />
                 ))}

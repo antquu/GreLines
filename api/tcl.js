@@ -230,7 +230,33 @@ async function buildAlerts(authorization) {
       debut: String(value.debut || ''),
       fin: String(value.fin || ''),
     }))
-    .filter(alert => alert.ligne && (!alert.fin || new Date(alert.fin.replace(' ', 'T')).getTime() > now));
+    .filter(alert => alert.ligne && (!alert.fin || !(parisTime(alert.fin) <= now)));
+}
+
+const PARIS_PARTS = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Europe/Paris',
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+
+function parisOffsetMs(instant) {
+  const parts = Object.fromEntries(PARIS_PARTS.formatToParts(new Date(instant)).map(part => [part.type, part.value]));
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  return asUtc - instant;
+}
+
+// grand lyon writes paris wall-clock times without a zone, while the server runs in utc
+function parisTime(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(value ?? '').trim());
+  if (!match) return NaN;
+  const wall = Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +(match[6] ?? 0));
+  const first = wall - parisOffsetMs(wall);
+  return wall - parisOffsetMs(first);
 }
 
 async function buildDepartures(authorization, stopIds) {
@@ -255,8 +281,8 @@ async function buildDepartures(authorization, stopIds) {
     const destination = String(row.direction ?? '').trim();
     if (!line) continue;
 
-    const stamp = String(row.heurepassage ?? '').replace(' ', 'T');
-    const time = Date.parse(stamp);
+    const stamp = String(row.heurepassage ?? '');
+    const time = parisTime(stamp);
     if (!Number.isFinite(time)) continue;
 
     const minutes = Math.round((time - now) / 60000);

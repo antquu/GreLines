@@ -1037,7 +1037,7 @@ translations`,
             { kind: 'code', lang: 'txt', text: 'GET /v1/disruptions?network=SEM&line=C1' },
             {
               kind: 'p',
-              text: "source vaut operator pour un avis publié par le réseau, grelines pour une annonce Infotrafic écrite par l'équipe GreLines.",
+              text: "source vaut operator pour un avis publié par le réseau, grelines pour une annonce Infotrafic écrite par l'équipe GreLines. start et end sont en heure universelle (le Z final), comme les horaires des passages.",
             },
             { kind: 'code', lang: 'json', text: `{
   "count": 1,
@@ -1047,8 +1047,8 @@ translations`,
       "source": "operator",
       "title": "Travaux Pont de La Monta, Saint-Égrève",
       "message": "La ligne 60 est déviée entre Collège Barnave et Bellevue.",
-      "start": "2026-09-28T05:00:00",
-      "end": "2026-10-04T03:00:00",
+      "start": "2026-09-28T03:00:00.000Z",
+      "end": "2026-10-04T01:00:00.000Z",
       "lines": [{ "id": "SEM:60", "code": "60", "name": "…", "color": "#…" }]
     }
   ]
@@ -2144,7 +2144,7 @@ translations`,
             { kind: 'code', lang: 'txt', text: 'GET /v1/disruptions?network=SEM&line=C1' },
             {
               kind: 'p',
-              text: "source is operator for a notice published by the network, grelines for a traffic announcement written by the GreLines team.",
+              text: "source is operator for a notice published by the network, grelines for a traffic announcement written by the GreLines team. start and end are in UTC (the trailing Z), like departure times.",
             },
             { kind: 'code', lang: 'json', text: `{
   "count": 1,
@@ -2154,8 +2154,8 @@ translations`,
       "source": "operator",
       "title": "Travaux Pont de La Monta, Saint-Égrève",
       "message": "La ligne 60 est déviée entre Collège Barnave et Bellevue.",
-      "start": "2026-09-28T05:00:00",
-      "end": "2026-10-04T03:00:00",
+      "start": "2026-09-28T03:00:00.000Z",
+      "end": "2026-10-04T01:00:00.000Z",
       "lines": [{ "id": "SEM:60", "code": "60", "name": "…", "color": "#…" }]
     }
   ]

@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { usePopupPresence } from '../utils/popupPresence';
 import { MapPinIcon } from '@heroicons/react/24/solid';
 import { useEffect, useState } from 'react';
 import { CITY_SITE, CITY_SITES, SITE_CENTER } from '../site';
@@ -57,10 +58,11 @@ export function CityAreaPrompt({
     return () => { alive = false; };
   }, [stayed]);
 
-  if (!CITY_SITE || stayed) return null;
-
   const known = position ?? ipArea;
-  const open = forced || (known !== null && !isInsideArea(known));
+  const open = Boolean(CITY_SITE) && !stayed && (forced || (known !== null && !isInsideArea(known)));
+  usePopupPresence('city-area', open);
+
+  if (!CITY_SITE || stayed) return null;
 
   const isFr = language === 'fr';
   const isLight = theme === 'light';

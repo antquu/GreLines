@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { usePopupPresence } from '../utils/popupPresence';
 import { MapPinIcon } from '@heroicons/react/24/solid';
 import { useEffect, useRef, useState } from 'react';
 import { IS_CITY_SITE } from '../site';
@@ -52,9 +53,10 @@ export function UnservedAreaPrompt({
     });
   }, []);
 
-  if (IS_CITY_SITE) return null;
-
   const open = forced || (!dismissed && settled !== null && !isServed(settled));
+  usePopupPresence('unserved-area', !IS_CITY_SITE && open);
+
+  if (IS_CITY_SITE) return null;
 
   const isFr = language === 'fr';
   const isLight = theme === 'light';

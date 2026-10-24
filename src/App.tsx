@@ -2674,10 +2674,8 @@ function App() {
             clearNavigationSession();
             stopNavSimulation();
             setIsNavigationOpen(false);
-            if (!isRouteSidebarOpen) {
-              setSelectedRouteItinerary(null);
-              setRouteItineraryOptions([]);
-            }
+            resetRoutePlanner();
+            setRouteItineraryOptions([]);
           }}
           language={language}
           stops={stops}
@@ -2731,7 +2729,12 @@ function App() {
               }).then(() => loadAccount().then(setAccount));
             }
             clearNavigationSession();
-            window.setTimeout(() => setIsNavigationOpen(false), 700);
+            window.setTimeout(() => {
+              setIsNavigationOpen(false);
+              resetRoutePlanner();
+              setRouteItineraryOptions([]);
+              setSnapHomeToMiniSignal(value => value + 1);
+            }, 700);
           }}
           isMobile={isMobile}
           theme={effectiveTheme}
@@ -3439,7 +3442,8 @@ function App() {
             setHasUserClosedHome(true);
           }}
           onSheetProgress={(p) => sheetProgress.set(p)}
-          onSnapChange={setHomeSnap}
+          onSnapChange={followToken ? setHomeSnap : undefined}
+          holdAutoOpen={isInstallSheetOpen || isMobileNotificationPromptOpen || isOnboardingOpen || tripAward !== null}
           onHomeProgress={(p) => homeSheetProgress.set(p)}
           lowerOnMapPanSignal={mapPanSignal}
           snapToMiniSignal={snapHomeToMiniSignal}
