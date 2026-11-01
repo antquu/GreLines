@@ -57,10 +57,10 @@ for (const file of readdirSync(SOURCE)) {
   if (!file.endsWith('.svg')) continue;
   const converted = convert(readFileSync(join(SOURCE, file), 'utf8'));
   if (!converted) {
-    console.warn(`  ignoré (structure inattendue) : ${file}`);
+    console.warn(`  skipped (unexpected structure): ${file}`);
     continue;
   }
   writeFileSync(join(TARGET, file), converted);
   done += 1;
 }
-console.log(`${done} logotypes écrits dans public/assets/homepage/svg/mono/`);
+console.log(`${done} logos written to public/assets/homepage/svg/mono/`);

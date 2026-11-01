@@ -22,4 +22,4 @@ const counts = filesOf(SOURCE)
 
 const total = counts.reduce((sum, entry) => sum + entry.count, 0);
 for (const entry of counts) console.log(`${String(entry.count).padStart(5)}  ${entry.path}`);
-console.log(`\n${total} traductions encore écrites dans ${counts.length} fichiers (à déplacer vers src/i18n).`);
+console.log(`\n${total} strings still written in ${counts.length} files (to move to src/i18n).`);

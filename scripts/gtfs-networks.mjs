@@ -44,7 +44,7 @@ async function buildNetwork(config, today) {
   const files = await downloadGtfs(config.gtfs, [
     'agency.txt', 'routes.txt', 'trips.txt', 'calendar.txt', 'calendar_dates.txt', 'stops.txt', 'stop_times.txt', 'shapes.txt',
   ]);
-  if (!files['stops.txt'] || !files['stop_times.txt']) throw new Error('GTFS incomplet');
+  if (!files['stops.txt'] || !files['stop_times.txt']) throw new Error('incomplete GTFS');
 
   const agencies = [];
   eachRow(files['agency.txt'], (row, col) => { if (row[col.agency_name]) agencies.push(row[col.agency_name]); });
@@ -285,7 +285,7 @@ async function buildNetwork(config, today) {
   return {
     agencies,
     contacts,
-    summary: `${network.lines.length} lignes, ${network.stops.length} arrêts (${network.accessible.length} accessibles), fiches ${(total / 1e6).toFixed(1)} Mo`,
+    summary: `${network.lines.length} lines, ${network.stops.length} stops (${network.accessible.length} accessible), timetables ${(total / 1e6).toFixed(1)} MB`,
   };
 }
 
@@ -305,7 +305,7 @@ async function main() {
       index[config.code] = { agencies, contacts, generatedFor: today };
       console.log(`${config.code.padEnd(11)} ${summary}`);
     } catch (error) {
-      console.warn(`${config.code.padEnd(11)} non généré : ${error.message}`);
+      console.warn(`${config.code.padEnd(11)} not generated: ${error.message}`);
     }
   }
 
@@ -313,5 +313,5 @@ async function main() {
 }
 
 main().catch(error => {
-  console.warn(`Réseaux GTFS non générés : ${error.message}`);
+  console.warn(`GTFS networks not generated: ${error.message}`);
 });

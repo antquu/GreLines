@@ -5,7 +5,7 @@ import { buildFiches, downloadGtfs, eachRow, parisToday, readAgencyContacts, wri
 import { SITE, SITE_NETWORK } from './lib/site.mjs';
 
 if (SITE_NETWORK && SITE_NETWORK !== 'TCL') {
-  console.log(`tcl-timetables : site ${SITE}, rien à générer.`);
+  console.log(`tcl-timetables: site ${SITE}, nothing to generate.`);
   process.exit(0);
 }
 
@@ -32,7 +32,7 @@ async function main() {
 
   const { fiches } = buildFiches(files, { today, codeOf: routeId => routeCode.get(routeId) });
   const total = writeFiches(TARGET, fiches);
-  console.log(`Fiches TCL : ${fiches.size} lignes, ${(total / 1e6).toFixed(1)} Mo, à partir du ${today}.`);
+  console.log(`TCL timetables: ${fiches.size} lines, ${(total / 1e6).toFixed(1)} MB, from ${today}.`);
 
   const yes = [];
   const no = [];
@@ -42,9 +42,9 @@ async function main() {
     else if (value === '2') no.push(row[col.stop_id]);
   });
   writeFileSync(ACCESSIBILITY, JSON.stringify({ generatedFor: today, yes, no }));
-  console.log(`Accessibilité TCL : ${yes.length} quais accessibles, ${no.length} non accessibles.`);
+  console.log(`TCL accessibility: ${yes.length} accessible platforms, ${no.length} not accessible.`);
 }
 
 main().catch(error => {
-  console.warn(`Fiches TCL non générées : ${error.message}`);
+  console.warn(`TCL timetables not generated: ${error.message}`);
 });

@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { isOffline } from '../services/offlineSchedule';
 import { ArrowRightIcon, ArrowUpRightIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { tx } from '../i18n';
 import { IS_CITY_SITE } from '../site';
@@ -6,12 +7,21 @@ import { ROOM_LIGHT } from './notFound/macModel';
 
 const STATUS_URL = 'https://status.grelines.fr';
 
-const MacTerminal = lazy(() => import('./notFound/MacTerminal'));
+// without a connection the 3d room cannot load, the links show instead
+function MacUnavailable({ onFail }: { language: 'fr' | 'en'; onFail: () => void }) {
+  useEffect(onFail, [onFail]);
+  return <></>;
+}
+
+const MacTerminal = lazy(() => import('./notFound/MacTerminal').catch(() => ({ default: MacUnavailable })));
 const DESKTOP = '(min-width: 768px)';
 
-export function NotFoundPage({ language, homeHref }: { language: 'fr' | 'en'; homeHref: string }) {
+// siteUrl is empty on the site itself, and the main site address on an unknown subdomain
+export function NotFoundPage({ language, siteUrl }: { language: 'fr' | 'en'; siteUrl: string }) {
   const text = tx(language === 'fr').notFoundPage;
   const [desktop, setDesktop] = useState(() => window.matchMedia(DESKTOP).matches);
+  const [macFailed, setMacFailed] = useState(() => isOffline());
+  const showMac = desktop && !macFailed;
 
   useEffect(() => {
     const query = window.matchMedia(DESKTOP);
@@ -21,14 +31,14 @@ export function NotFoundPage({ language, homeHref }: { language: 'fr' | 'en'; ho
   }, []);
 
   useEffect(() => {
-    if (!desktop) return;
+    if (!showMac) return;
     // never leave the text hidden if the 3d room fails to start
     const timer = window.setTimeout(() => {
       const root = document.documentElement;
       if (!root.style.getPropertyValue(ROOM_LIGHT)) root.style.setProperty(ROOM_LIGHT, '1');
     }, 8000);
     return () => window.clearTimeout(timer);
-  }, [desktop]);
+  }, [showMac]);
 
   useEffect(() => {
     document.title = `${text.pageNotFound} · GreLines`;
@@ -43,27 +53,29 @@ export function NotFoundPage({ language, homeHref }: { language: 'fr' | 'en'; ho
     return () => robots.remove();
   }, [text.pageNotFound]);
 
+  const onMacFail = useCallback(() => setMacFailed(true), []);
+
   type Link = { key: keyof typeof text.links; href: string; external: boolean };
   const links: Link[] = [
-    { key: 'app', href: '/app', external: false },
+    { key: 'app', href: `${siteUrl}/app`, external: false },
     ...(IS_CITY_SITE
       ? []
       : ([
-          { key: 'traffic', href: '/trafic', external: false },
-          { key: 'docs', href: `/${language}/docs`, external: false },
-          { key: 'news', href: `/${language}/newsroom`, external: false },
-          { key: 'solutions', href: `/${language}/solutions`, external: false },
+          { key: 'traffic', href: `${siteUrl}/trafic`, external: false },
+          { key: 'docs', href: `${siteUrl}/${language}/docs`, external: false },
+          { key: 'news', href: `${siteUrl}/${language}/newsroom`, external: false },
+          { key: 'solutions', href: `${siteUrl}/${language}/solutions`, external: false },
         ] satisfies Link[])),
     { key: 'status', href: STATUS_URL, external: true },
   ];
 
   return (
     <main
-      style={{ backgroundColor: desktop ? '#000000' : '#0b0b0b' }}
+      style={{ backgroundColor: showMac ? '#000000' : '#0b0b0b' }}
       className="fixed inset-0 overflow-y-auto overflow-x-hidden"
     >
       <div className="relative isolate mx-auto grid min-h-full max-w-[1232px] items-center gap-16 px-6 pb-[calc(env(safe-area-inset-bottom)+48px)] pt-[calc(var(--gl-safe-top)+72px)] md:grid-cols-2 md:gap-24 md:px-10 md:py-16">
-        <div style={desktop ? { opacity: `var(${ROOM_LIGHT}, 0)` } : undefined}>
+        <div style={showMac ? { opacity: `var(${ROOM_LIGHT}, 0)` } : undefined}>
           <p
             aria-hidden="true"
             className="select-none text-[7.5rem] font-medium leading-[0.85] tracking-[-0.04em] md:text-[11rem]"
@@ -80,7 +92,7 @@ export function NotFoundPage({ language, homeHref }: { language: 'fr' | 'en'; ho
           </p>
 
           <a
-            href={homeHref}
+            href={`${siteUrl}/`}
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
             className="mt-8 inline-flex items-center gap-1.5 rounded-full py-3 pl-5 pr-4 text-[0.9375rem] font-medium transition hover:opacity-90 active:scale-[0.98]"
           >
@@ -89,10 +101,10 @@ export function NotFoundPage({ language, homeHref }: { language: 'fr' | 'en'; ho
           </a>
         </div>
 
-        {desktop ? (
+        {showMac ? (
           <div>
             <Suspense fallback={<div className="h-[600px]" />}>
-              <MacTerminal language={language} />
+              <MacTerminal language={language} onFail={onMacFail} />
             </Suspense>
           </div>
         ) : (

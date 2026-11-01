@@ -7,7 +7,7 @@ import './light-theme.css'
 import { PerfSettingsProvider } from './hooks/usePerfSettings.tsx'
 import { ScreenErrorBoundary, ScreenMaintenance } from './screen/ScreenMaintenance'
 import { IS_CITY_SITE } from './site'
-import { installNetworkSimulation } from './services/networkSimulation'
+import { installNetworkSimulation, isSimulatedOffline } from './services/networkSimulation'
 import { preloadBadgeImages } from './utils/badgeImages'
 import { loadMacModel } from './components/notFound/macModel'
 import { Analytics } from '@vercel/analytics/react'
@@ -65,7 +65,30 @@ if (followRoute) {
 
 const LANDING_LANG_KEY = 'greLines_landingLang';
 
-if (solutionRoute) {
+// any other *.grelines.fr reaches the grenoble project through the wildcard domain
+const host = window.location.hostname;
+const UNKNOWN_HOST = !IS_CITY_SITE && host.endsWith('.grelines.fr') && host !== 'www.grelines.fr';
+
+function renderNotFound(siteUrl: string) {
+  window.clearTimeout(badgePreload)
+  if (navigator.onLine && !isSimulatedOffline() && window.matchMedia('(min-width: 768px)').matches) {
+    void loadMacModel().catch(() => {})
+    void import('./components/notFound/MacTerminal')
+  }
+  void import('./components/NotFoundPage').then(({ NotFoundPage }) => {
+    root.render(
+      <StrictMode>
+        <NotFoundPage language={deviceLang()} siteUrl={siteUrl} />
+        <Analytics />
+        <SpeedInsights />
+      </StrictMode>,
+    )
+  })
+}
+
+if (UNKNOWN_HOST) {
+  renderNotFound('https://www.grelines.fr')
+} else if (solutionRoute) {
   void import('./landing/SolutionPage').then(({ SolutionPage }) => {
     root.render(
       <StrictMode>
@@ -172,20 +195,7 @@ if (solutionRoute) {
     })
     .catch(() => root.render(<ScreenMaintenance reloadWhenReachable />))
 } else if (!/^\/(?:index\.html|app(?:\/.*)?|fr\/?|en\/?)?$/.test(window.location.pathname)) {
-  window.clearTimeout(badgePreload)
-  if (window.matchMedia('(min-width: 768px)').matches) {
-    void loadMacModel().catch(() => {})
-    void import('./components/notFound/MacTerminal')
-  }
-  void import('./components/NotFoundPage').then(({ NotFoundPage }) => {
-    root.render(
-      <StrictMode>
-        <NotFoundPage language={deviceLang()} homeHref="/" />
-        <Analytics />
-        <SpeedInsights />
-      </StrictMode>,
-    )
-  })
+  renderNotFound('')
 } else {
   void import('./App.tsx').then(({ default: App }) => {
     root.render(

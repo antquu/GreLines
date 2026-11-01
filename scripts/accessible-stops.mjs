@@ -16,7 +16,7 @@ function readFromZip(buffer, wanted) {
       break;
     }
   }
-  if (end < 0) throw new Error('archive illisible : fin de répertoire introuvable');
+  if (end < 0) throw new Error('unreadable archive: end of central directory not found');
 
   const count = buffer.readUInt16LE(end + 10);
   let offset = buffer.readUInt32LE(end + 16);
@@ -42,7 +42,7 @@ function readFromZip(buffer, wanted) {
     offset += 46 + nameLength + extraLength + commentLength;
   }
 
-  throw new Error(`${wanted} absent de l'archive`);
+  throw new Error(`${wanted} missing from the archive`);
 }
 
 
@@ -86,7 +86,7 @@ function parseCsv(text) {
 async function collect(feed) {
   const response = await fetch(ENDPOINT(feed), { headers: { Origin: 'https://grelines.fr' } });
   if (!response.ok) {
-    console.warn(`  ${feed} : ${response.status}, jeu ignoré`);
+    console.warn(`  ${feed}: ${response.status}, feed skipped`);
     return [];
   }
   const buffer = Buffer.from(await response.arrayBuffer());
@@ -121,20 +121,20 @@ async function collect(feed) {
   }
 
   const list = [...accessible];
-  console.log(`  ${feed} : ${stations} arrêts accessibles, ${list.length} identifiants`);
+  console.log(`  ${feed}: ${stations} accessible stops, ${list.length} ids`);
   return list;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
 const target = join(here, '..', 'public', 'accessible-stops.json');
 
-console.log('Lecture des jeux GTFS…');
+console.log('Reading GTFS feeds…');
 const all = [];
 for (const feed of FEEDS) {
   try {
     all.push(...(await collect(feed)));
   } catch (error) {
-    console.warn(`  ${feed} : ${error.message}, jeu ignoré`);
+    console.warn(`  ${feed}: ${error.message}, feed skipped`);
   }
 }
 
@@ -144,4 +144,4 @@ writeFileSync(
   `${JSON.stringify({ generatedAt: new Date().toISOString().slice(0, 10), stops: all })}\n`,
   'utf8',
 );
-console.log(`${all.length} identifiants écrits dans public/accessible-stops.json`);
+console.log(`${all.length} ids written to public/accessible-stops.json`);

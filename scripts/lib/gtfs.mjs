@@ -6,7 +6,7 @@ export const WINDOW_DAYS = 21;
 
 export async function downloadGtfs(url, wanted) {
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`GTFS : HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`GTFS: HTTP ${response.status}`);
   const zip = new Uint8Array(await response.arrayBuffer());
   const names = new Set(wanted);
   return unzipSync(zip, { filter: file => names.has(file.name) });

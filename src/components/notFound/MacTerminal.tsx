@@ -72,7 +72,7 @@ function buildBulb() {
 
 // the whole page is a dark room: the mac stands on the floor under a bulb
 // hanging from the top of the screen, lined up with the anchor element
-export default function MacTerminal({ language }: { language: 'fr' | 'en' }) {
+export default function MacTerminal({ language, onFail }: { language: 'fr' | 'en'; onFail: () => void }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<HTMLDivElement>(null);
 
@@ -101,7 +101,15 @@ export default function MacTerminal({ language }: { language: 'fr' | 'en' }) {
       repaint();
     }, 530);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch {
+      window.clearInterval(blinkTimer);
+      terminal.dispose();
+      onFail();
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor('#000000');
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -174,7 +182,7 @@ export default function MacTerminal({ language }: { language: 'fr' | 'en' }) {
       renderer.compile(scene, camera);
       lightsOnAt = performance.now();
     }).catch(() => {
-      lightsOnAt = performance.now();
+      if (!disposed) onFail();
     });
 
     const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 300);
@@ -287,7 +295,7 @@ export default function MacTerminal({ language }: { language: 'fr' | 'en' }) {
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [language]);
+  }, [language, onFail]);
 
   return (
     <>

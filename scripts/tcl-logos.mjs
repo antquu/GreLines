@@ -83,4 +83,4 @@ const whole = readdirSync(SOURCE)
 mkdirSync(dirname(TARGET), { recursive: true });
 writeFileSync(TARGET, JSON.stringify({ tabs, tabWidths, whole, lines }, null, 0) + '\n');
 
-console.log(`${Object.keys(lines).length} logos découpés, ${whole.length} laissés entiers : ${whole.join(', ')}`);
+console.log(`${Object.keys(lines).length} logos split, ${whole.length} kept whole: ${whole.join(', ')}`);
