@@ -1,4 +1,4 @@
-export type SiteId = 'grenoble' | 'nancy' | 'lyon' | 'saint-etienne' | 'clermont';
+export type SiteId = 'grenoble' | 'nancy' | 'lyon' | 'saint-etienne' | 'clermont' | 'negreville';
 
 export interface CitySite {
   id: Exclude<SiteId, 'grenoble'>;
@@ -9,7 +9,9 @@ export interface CitySite {
   center: [number, number];
   areaRadiusMeters: number;
   sncf: boolean;
-  logo: { light: string; dark: string; width: number };
+  logo?: { light: string; dark: string; width: number };
+  // reachable only through its own domain, never listed on the other sites
+  hidden?: boolean;
 }
 
 export const CITY_SITES: Record<CitySite['id'], CitySite> = {
@@ -56,6 +58,17 @@ export const CITY_SITES: Record<CitySite['id'], CitySite> = {
     areaRadiusMeters: 30_000,
     sncf: true,
     logo: { light: '/assets/t2c-logo.svg', dark: '/assets/t2c-logo.svg', width: 72 },
+  },
+  negreville: {
+    id: 'negreville',
+    name: 'Négreville',
+    host: 'negreville.grelines.fr',
+    network: 'CAPCOT',
+    networkLabel: 'Cap Cotentin',
+    center: [49.4918, -1.5489],
+    areaRadiusMeters: 40_000,
+    sncf: true,
+    hidden: true,
   },
 };
 

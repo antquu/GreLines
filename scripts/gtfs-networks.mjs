@@ -10,7 +10,7 @@ const TARGET = join(ROOT, 'public/data/networks');
 const ALL_NETWORKS = JSON.parse(readFileSync(join(ROOT, 'src/data/gtfsNetworks.json'), 'utf8'));
 const NETWORKS = SITE_NETWORK
   ? ALL_NETWORKS.filter(network => network.code === SITE_NETWORK)
-  : ALL_NETWORKS;
+  : ALL_NETWORKS.filter(network => !network.hidden);
 
 const MERGE_RADIUS_M = 250;
 

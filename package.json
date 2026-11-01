@@ -1,7 +1,7 @@
 {
   "name": "grelines",
   "private": true,
-  "version": "3.22.0",
+  "version": "3.27.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "dev:lyon": "vite --mode lyon --port 5191 --strictPort",
     "dev:saint-etienne": "vite --mode saint-etienne --port 5192 --strictPort",
     "dev:clermont": "vite --mode clermont --port 5193 --strictPort",
+    "dev:negreville": "vite --mode negreville --port 5194 --strictPort",
     "prebuild": "node scripts/tcl-timetables.mjs && node scripts/gtfs-networks.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
@@ -25,6 +26,7 @@
     "@fontsource-variable/geist-mono": "^5.3.0",
     "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.48.1",
+    "@types/three": "^0.187.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "axios": "^1.13.6",
@@ -38,7 +40,8 @@
     "react-icons": "^5.6.0",
     "react-map-gl": "^8.1.0",
     "react-modal-sheet": "^5.6.0",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

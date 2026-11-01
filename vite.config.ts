@@ -12,7 +12,7 @@ import { join } from 'node:path'
 
 
 
-const CITY_IDS = ['nancy', 'lyon', 'saint-etienne', 'clermont'];
+const CITY_IDS = ['nancy', 'lyon', 'saint-etienne', 'clermont', 'negreville'];
 
 const SITE_FILES: Record<string, string> = {
   'robots.txt': 'text/plain; charset=utf-8',

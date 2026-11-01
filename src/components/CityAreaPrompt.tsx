@@ -12,7 +12,7 @@ const STAY_KEY = `greLines_${CITY_SITE?.id ?? 'city'}StayOutside`;
 const GRELINES_URL = 'https://grelines.fr/app';
 
 function otherCities(): string {
-  const names = ['Grenoble', ...Object.values(CITY_SITES).filter(site => site.id !== CITY_SITE?.id).map(site => site.name), 'Annecy'];
+  const names = ['Grenoble', ...Object.values(CITY_SITES).filter(site => site.id !== CITY_SITE?.id && !site.hidden).map(site => site.name), 'Annecy'];
   return names.join(', ');
 }
 

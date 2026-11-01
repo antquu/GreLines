@@ -1,5 +1,17 @@
 [
   {
+    "code": "CAPCOT",
+    "label": "Cap Cotentin — Négreville",
+    "city": "Négreville",
+    "center": [
+      49.4918,
+      -1.5489
+    ],
+    "gtfs": "https://www.data.gouv.fr/api/1/datasets/r/2e97c9b3-a59f-42dd-9b9e-a232fa771f21",
+    "tripUpdates": "https://www.data.gouv.fr/api/1/datasets/r/c94af528-293f-406f-a96f-bf847bcb252a",
+    "hidden": true
+  },
+  {
     "code": "STAN",
     "label": "Stan — Nancy",
     "city": "Nancy",

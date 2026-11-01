@@ -688,6 +688,20 @@ export const en: Messages = {
   notificationDay: {
     locale: 'en-GB',
   },
+  notFoundPage: {
+    pageNotFound: 'Page not found',
+    thisPageDoesNot: 'This page does not exist or has moved. Try one of the links, or head back home.',
+    homePage: 'Back to home',
+    usefulLinks: 'Helpful links',
+    links: {
+      app: ['GreLines', 'Timetables and journeys.'],
+      traffic: ['Traffic info', 'Current disruptions.'],
+      docs: ['Documentation', 'How it all works.'],
+      news: ['Newsroom', 'Latest announcements.'],
+      solutions: ['Solutions', 'For transit networks.'],
+      status: ['Service status', 'Is everything up?'],
+    },
+  },
   notificationDetail: {
     back: 'Back',
     thisMessageComesFrom: 'This message comes from the network or from your wallet. GreLines neither reviewed nor altered it.',

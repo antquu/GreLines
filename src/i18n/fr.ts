@@ -686,6 +686,20 @@ export const fr = {
   notificationDay: {
     locale: 'fr-FR',
   },
+  notFoundPage: {
+    pageNotFound: 'Page introuvable',
+    thisPageDoesNot: 'Cette page n’existe pas ou a changé d’adresse. Essayez un des liens, ou revenez à l’accueil.',
+    homePage: 'Page d’accueil',
+    usefulLinks: 'Liens utiles',
+    links: {
+      app: ['GreLines', 'Horaires et itinéraires.'],
+      traffic: ['Info trafic', 'Les perturbations en cours.'],
+      docs: ['Documentation', 'Comment tout fonctionne.'],
+      news: ['Newsroom', 'Les dernières nouveautés.'],
+      solutions: ['Solutions', 'Pour les réseaux de transport.'],
+      status: ['État du service', 'Tout fonctionne ?'],
+    },
+  },
   notificationDetail: {
     back: 'Retour',
     thisMessageComesFrom: 'Ce message vient du réseau ou de votre portefeuille. GreLines ne l\'a ni relu ni modifié.',

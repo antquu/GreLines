@@ -9,6 +9,7 @@ import { ScreenErrorBoundary, ScreenMaintenance } from './screen/ScreenMaintenan
 import { IS_CITY_SITE } from './site'
 import { installNetworkSimulation } from './services/networkSimulation'
 import { preloadBadgeImages } from './utils/badgeImages'
+import { loadMacModel } from './components/notFound/macModel'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 
@@ -23,7 +24,8 @@ console.log(`_
 )
 
 installNetworkSimulation()
-preloadBadgeImages()
+// deferred so the 404 page can cancel it
+const badgePreload = window.setTimeout(preloadBadgeImages, 0)
 
 const root = createRoot(document.getElementById('root')!)
 
@@ -169,6 +171,21 @@ if (solutionRoute) {
       )
     })
     .catch(() => root.render(<ScreenMaintenance reloadWhenReachable />))
+} else if (!/^\/(?:index\.html|app(?:\/.*)?|fr\/?|en\/?)?$/.test(window.location.pathname)) {
+  window.clearTimeout(badgePreload)
+  if (window.matchMedia('(min-width: 768px)').matches) {
+    void loadMacModel().catch(() => {})
+    void import('./components/notFound/MacTerminal')
+  }
+  void import('./components/NotFoundPage').then(({ NotFoundPage }) => {
+    root.render(
+      <StrictMode>
+        <NotFoundPage language={deviceLang()} homeHref="/" />
+        <Analytics />
+        <SpeedInsights />
+      </StrictMode>,
+    )
+  })
 } else {
   void import('./App.tsx').then(({ default: App }) => {
     root.render(

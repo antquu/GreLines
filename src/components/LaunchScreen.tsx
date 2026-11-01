@@ -112,7 +112,7 @@ export function LaunchScreen({
           style={{ transform: 'translateY(-2.5%)' }}
           draggable={false}
         />
-        {CITY_SITE && (
+        {CITY_SITE?.logo && (
           <img
             src={light ? CITY_SITE.logo.light : CITY_SITE.logo.dark}
             alt={CITY_SITE.networkLabel}
