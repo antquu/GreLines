@@ -322,7 +322,7 @@ function cached(key, ttlMs, produce) {
 const MEMORY_TTL = {
   catalog: 60 * 60 * 1000,
   shape: 24 * 60 * 60 * 1000,
-  departures: 15 * 1000,
+  departures: 25 * 1000,
   alerts: 5 * 60 * 1000,
 };
 
@@ -386,7 +386,7 @@ export default async function handler(request, response) {
           () => buildDepartures(credentialsHeader, stops),
         );
         sendJson(response, 200, departures, {
-          'Cache-Control': 'public, s-maxage=20, stale-while-revalidate=40',
+          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
         });
         return;
       }
