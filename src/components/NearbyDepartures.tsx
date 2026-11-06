@@ -61,7 +61,10 @@ const formatDistance = (meters: number, language: 'fr' | 'en') => {
 };
 
 function formatFirst(minutes: number, language: 'fr' | 'en'): string {
-  return minutes <= 0 ? tx(language === 'fr').nearbyDepartures.due : `${minutes} min`;
+  if (minutes <= 0) return tx(language === 'fr').nearbyDepartures.due;
+  if (minutes <= 30) return `${minutes} min`;
+  // past 30 minutes show the clock time
+  return new Date(Date.now() + minutes * 60_000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
 // drop the "City, " prefix the network puts in front of stop names

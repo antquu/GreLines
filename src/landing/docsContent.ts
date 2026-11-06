@@ -83,7 +83,7 @@ const FR: DocsCopy = {
           id: 'ce-quest-grelines',
           icon: 'book',
           title: "Ce qu'est GreLines",
-          note: 'Onze réseaux de Grenoble et de sa région, réunis dans une application gratuite, sans compte et sans publicité.',
+          note: '27 réseaux réunis dans une application gratuite, sans compte et sans publicité.',
           body: [
             {
               kind: 'p',
@@ -1118,7 +1118,7 @@ translations`,
           id: 'reseaux-desservis',
           icon: 'network',
           title: 'Réseaux desservis',
-          note: "Onze réseaux, de la métropole au Grésivaudan, jusqu'à Lyon.",
+          note: "27 réseaux, de Grenoble à Lyon, Nancy et Clermont-Ferrand.",
           body: [
             {
               kind: 'list',
@@ -1200,7 +1200,7 @@ const EN: DocsCopy = {
           id: 'ce-quest-grelines',
           icon: 'book',
           title: 'What GreLines is',
-          note: 'Eleven networks around Grenoble in one free app, with no account and no ads.',
+          note: '27 networks in one free app, with no account and no ads.',
           body: [
             {
               kind: 'p',
@@ -2225,7 +2225,7 @@ translations`,
           id: 'reseaux-desservis',
           icon: 'network',
           title: 'Networks served',
-          note: 'Eleven networks, from the metropolitan area to the Grésivaudan, all the way to Lyon.',
+          note: '27 networks, from Grenoble to Lyon, Nancy and Clermont-Ferrand.',
           body: [
             {
               kind: 'list',

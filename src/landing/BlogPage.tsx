@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import './landing.css';
-import { LandingHeader } from './LandingHeader';
+import { OpenAppLink, SiteHeader } from './SiteHeader';
 import { LandingFooter } from './LandingFooter';
 import {
   listPosts,
@@ -123,10 +123,14 @@ function Shell({ lang, children }: { lang: Lang; children: React.ReactNode }) {
     try { localStorage.setItem(THEME_KEY, next); } catch { }
   };
 
+  const openLabel = lang === 'fr' ? 'Ouvrir GreLines' : 'Open GreLines';
+
   return (
     <div className="landing" data-theme={theme}>
       <div className="landing-surface">
-        <LandingHeader lang={lang} theme={theme} />
+        <SiteHeader theme={theme} wordmark={<a href={`/${lang}/newsroom`} className="docs-wordmark">Newsroom</a>}>
+          <OpenAppLink label={openLabel} />
+        </SiteHeader>
         {children}
         <LandingFooter lang={lang} theme={theme} choice={choice} onChoose={chooseTheme} />
       </div>

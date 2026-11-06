@@ -41,18 +41,10 @@ function deviceLang(): 'fr' | 'en' {
   return 'fr';
 }
 
-const landingLang = (IS_CITY_SITE ? undefined : /^\/(fr|en)\/?$/.exec(window.location.pathname)?.[1]) as
-  | 'fr'
-  | 'en'
-  | undefined;
-
 const legalRoute = /^\/(fr|en)\/legals\/([a-z-]+)\/?$/.exec(window.location.pathname);
 
 const blogRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/(?:newsroom|blog)\/?$/.exec(window.location.pathname);
 const docsRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/docs(?:\/([a-z0-9-]+))?(?:\/([a-z0-9-]+))?\/?$/.exec(
-  window.location.pathname,
-);
-const solutionRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/solutions(?:\/([a-z0-9-]+))?\/?$/.exec(
   window.location.pathname,
 );
 const postRoute = IS_CITY_SITE ? null : /^\/(fr|en)\/(?:newsroom|blog)\/([A-Za-z0-9-]+)\/?$/.exec(window.location.pathname);
@@ -62,8 +54,6 @@ if (followRoute) {
   try { localStorage.setItem('greLines_followToken', JSON.stringify({ token: followRoute[2], at: Date.now() })) } catch { }
   window.history.replaceState(window.history.state, '', '/app');
 }
-
-const LANDING_LANG_KEY = 'greLines_landingLang';
 
 // any other *.grelines.fr reaches the grenoble project through the wildcard domain
 const host = window.location.hostname;
@@ -88,16 +78,6 @@ function renderNotFound(siteUrl: string) {
 
 if (UNKNOWN_HOST) {
   renderNotFound('https://www.grelines.fr')
-} else if (solutionRoute) {
-  void import('./landing/SolutionPage').then(({ SolutionPage }) => {
-    root.render(
-      <StrictMode>
-        <SolutionPage lang={solutionRoute[1] as 'fr' | 'en'} slug={solutionRoute[2]} />
-        <Analytics />
-        <SpeedInsights />
-      </StrictMode>,
-    );
-  });
 } else if (docsRoute) {
   void import('./landing/DocsPage').then(({ DocsPage }) => {
     root.render(
@@ -146,24 +126,6 @@ if (UNKNOWN_HOST) {
       );
     },
   );
-} else if (landingLang) {
-  let chosen: string | null = null;
-  try { chosen = localStorage.getItem(LANDING_LANG_KEY); } catch { }
-
-  const wanted = deviceLang();
-  if (!chosen && wanted !== landingLang) {
-    window.location.replace(`/${wanted}${window.location.search}${window.location.hash}`);
-  }
-
-  void import('./landing/LandingApp').then(({ LandingApp }) => {
-    root.render(
-      <StrictMode>
-        <LandingApp lang={landingLang} />
-        <Analytics />
-        <SpeedInsights />
-      </StrictMode>,
-    )
-  })
 } else if (!IS_CITY_SITE && /^\/(?:trafic|traffic)\/?$/.test(window.location.pathname)) {
   void import('./traffic/TrafficPage').then(({ TrafficPage }) => {
     root.render(

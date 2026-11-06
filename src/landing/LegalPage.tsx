@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import './landing.css';
 import { LEGAL, LEGAL_ORDER, type LegalSlug } from './legalContent';
-import { LandingHeader } from './LandingHeader';
+import { OpenAppLink, SiteHeader } from './SiteHeader';
 import { LandingFooter } from './LandingFooter';
 
 type Lang = 'fr' | 'en';
@@ -60,10 +60,17 @@ export function LegalPage({ lang, slug }: { lang: Lang; slug: LegalSlug }) {
     [lang, slug],
   );
 
+  const openLabel = isFr ? 'Ouvrir GreLines' : 'Open GreLines';
+
   return (
     <div className="landing" data-theme={theme}>
       <div className="landing-surface">
-        <LandingHeader lang={lang} theme={theme} />
+        <SiteHeader
+          theme={theme}
+          wordmark={<a href={`/${lang}/docs`} className="docs-wordmark">{isFr ? 'Mentions légales' : 'Legal'}</a>}
+        >
+          <OpenAppLink label={openLabel} />
+        </SiteHeader>
 
         <main className="mx-auto max-w-6xl px-6 pb-24 pt-16">
           <div className="flex flex-col items-center pb-14 text-center">
