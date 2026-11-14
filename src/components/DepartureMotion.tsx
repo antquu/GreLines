@@ -3,7 +3,7 @@ import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react';
 
 export type ExitMode = 'swipe' | 'fade';
 
-type Track = { gen: number; minutes: number; count: number; motion: GroupMotion };
+type Track = { gen: number; minutes: number; count: number; at: number; motion: GroupMotion };
 
 export interface GroupMotion {
   renderKey: string;
@@ -28,6 +28,8 @@ export function useGroupMotion(
     order.current = [...order.current.filter(entry => entry !== key), key];
   };
 
+  // eslint-disable-next-line react-hooks/purity
+  const now = Date.now();
   const result = new Map<string, GroupMotion>();
   const seen = new Set<string>();
   for (const group of groups) {
@@ -47,11 +49,15 @@ export function useGroupMotion(
       if (passed) {
         gen += 1;
         moveToEnd(group.key);
-      } else if (group.minutes > previous.minutes) change = 'later';
-      else if (group.minutes < previous.minutes - 1) change = 'earlier';
+      } else {
+        // the countdown also drops while the app sleeps, only a bigger drop is a real gain
+        const expected = previous.minutes - Math.round((now - previous.at) / 60_000);
+        if (group.minutes > previous.minutes) change = 'later';
+        else if (group.minutes < expected - 1) change = 'earlier';
+      }
     }
     const motion = { renderKey: `${group.key}#${gen}`, change, rank: 0 };
-    tracks.current.set(group.key, { gen, minutes: group.minutes, count: group.count, motion });
+    tracks.current.set(group.key, { gen, minutes: group.minutes, count: group.count, at: now, motion });
     result.set(group.key, motion);
   }
   for (const key of [...tracks.current.keys()]) {

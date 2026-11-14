@@ -391,6 +391,7 @@ export const en: Messages = {
     locale: 'en-GB',
   },
   journeyDetail: {
+    stopAt: 'Stop',
     yourJourney: 'Your journey',
     formatdurationlabelArriveArr: (formatDurationLabel, arr) => `${formatDurationLabel}, arrive ${arr}`,
     leaveAtDep: (dep) => `Leave at ${dep}`,
@@ -537,7 +538,23 @@ export const en: Messages = {
     continueOnGrelinesFr: 'Continue on grelines.fr',
     stayOnSite: city => `Stay on GreLines ${city}`,
   },
+  maintenance: {
+    unavailable: 'GreLines is currently unavailable for technical reasons. Please try again in a few minutes.',
+    technicalIssue: 'Technical issue',
+    bannerDefault: 'GreLines is having a technical issue.',
+    moreDetails: 'More details',
+    serviceStatus: 'Service status',
+    since: (when: string) => `Since ${when}`,
+    statuses: {
+      investigating: 'Investigating',
+      identified: 'Cause identified',
+      monitoring: 'Monitoring',
+    },
+  },
   navigationMode: {
+    rerouting: 'Working out a new route',
+    rerouted: 'New route',
+    reroutedVoice: 'Route updated.',
     countReports: (count, fresh) => `${count} report${count > 1 ? 's' : ''}${fresh ? ' just in' : ''}`,
     announcedRunSometimesMissing: 'announced run sometimes missing',
     packedVehicle: 'packed vehicle',
@@ -860,6 +877,11 @@ export const en: Messages = {
     cardLinkedToThe: 'Card linked to the account',
   },
   routeSidebar: {
+    addStop: 'Add a stop',
+    stopNumber: (position: number) => `Stop ${position}`,
+    searchAStop: 'Search for a stop',
+    removeStop: 'Remove',
+    moveStop: 'Move',
     routePlanner: 'Route planner',
     from: 'From',
     to: 'To',

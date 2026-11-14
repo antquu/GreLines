@@ -114,26 +114,47 @@ export function JourneyDetail({
         {legs.map((leg, index) => {
           const mode = String(leg.mode ?? '').toUpperCase();
           const minutes = Math.round(Number(leg.duration ?? 0) / 60);
+          const viaNode = leg.viaStop ? (
+            <div key={`via-${index}`} className="my-6 flex items-center gap-5">
+              <span className="flex w-6 flex-shrink-0 justify-center">
+                <span className={`h-3.5 w-3.5 rounded-[4px] ${isLight ? 'bg-slate-900' : 'bg-white'}`} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className={`block text-[0.9375rem] ${muted}`}>
+                  {tx(fr).journeyDetail.stopAt} · {clock(leg.startTime)}
+                </span>
+                <span className={`block text-[1.3125rem] font-bold leading-tight ${ink}`}>
+                  {stopName(leg.viaStop)}
+                </span>
+              </span>
+            </div>
+          ) : null;
 
           if (mode === 'WALK') {
-            if (minutes < 1) return null;
+            if (minutes < 1) return viaNode;
             return (
-              <div key={`walk-${index}`} className={`my-5 flex items-center gap-3 rounded-2xl px-4 py-4 ${boxClass}`}>
-                <FaWalking size={20} className={ink} />
-                <span className={`text-[1.0625rem] font-semibold ${ink}`}>
-                  {tx(fr).journeyDetail.walkFormatminutescompact(formatMinutesCompact(minutes))}
-                </span>
+              <div key={`walk-${index}`}>
+                {viaNode}
+                <div className={`my-5 flex items-center gap-3 rounded-2xl px-4 py-4 ${boxClass}`}>
+                  <FaWalking size={20} className={ink} />
+                  <span className={`text-[1.0625rem] font-semibold ${ink}`}>
+                    {tx(fr).journeyDetail.walkFormatminutescompact(formatMinutesCompact(minutes))}
+                  </span>
+                </div>
               </div>
             );
           }
 
           if (BIKE_MODES.has(mode)) {
             return (
-              <div key={`bike-${index}`} className={`my-5 flex items-center gap-3 rounded-2xl px-4 py-4 ${boxClass}`}>
-                <MdDirectionsBike size={22} className={ink} />
-                <span className={`text-[1.0625rem] font-semibold ${ink}`}>
-                  {tx(fr).journeyDetail.byBikeFormatminutescompact(formatMinutesCompact(minutes))}
-                </span>
+              <div key={`bike-${index}`}>
+                {viaNode}
+                <div className={`my-5 flex items-center gap-3 rounded-2xl px-4 py-4 ${boxClass}`}>
+                  <MdDirectionsBike size={22} className={ink} />
+                  <span className={`text-[1.0625rem] font-semibold ${ink}`}>
+                    {tx(fr).journeyDetail.byBikeFormatminutescompact(formatMinutesCompact(minutes))}
+                  </span>
+                </div>
               </div>
             );
           }
@@ -159,7 +180,9 @@ export function JourneyDetail({
           const alerts = alertKey ? trafficInfo?.get(alertKey) ?? null : null;
 
           return (
-            <div key={`transit-${index}`} className={`flex gap-5 ${followsTransit(index) ? 'mt-8' : ''}`}>
+            <div key={`transit-${index}`}>
+            {viaNode}
+            <div className={`flex gap-5 ${followsTransit(index) ? 'mt-8' : ''}`}>
               <div className="flex w-6 flex-shrink-0 flex-col items-center">
                 <span
                   className="h-6 w-6 flex-shrink-0 rounded-full border-[3px]"
@@ -262,6 +285,7 @@ export function JourneyDetail({
                   </p>
                 </div>
               </div>
+            </div>
             </div>
           );
         })}

@@ -26,6 +26,10 @@ import { getCrowdConfidence, type CrowdConfidence } from '../services/crowdSigna
 import { useWakeLock } from '../hooks/useWakeLock';
 import { loadOccupancy, getOccupancyAt, occupancyLevel } from '../services/stopOccupancy';
 import { loadNavigationStep, saveNavigationStep } from '../services/navigationSession';
+import { planViaItineraries } from '../services/viaJourney';
+import { currentPositionLocation } from '../utils/geo';
+import { usePerfSettings } from '../hooks/usePerfSettings';
+import { hapticTap } from '../utils/haptics';
 import { getTimetable } from '../services/timetable';
 import {
   notificationsEnabled,
@@ -47,6 +51,8 @@ import {
   WALK_PRIORITIES,
   loadWalkPreferences,
   saveWalkPreferences,
+  walkReluctance,
+  walkSpeedMs,
   type WalkPreferences,
 } from '../services/walkPreferences';
 import { EMPTY_LIVE, joinLiveLine, normalizeLiveStop, type LiveLine, type LiveSnapshot } from '../services/livePresence';
@@ -188,6 +194,13 @@ const STOP_ARRIVAL_M = 4;
 const STOP_STILL_MPS = 0.7;
 
 const WAIT_RADIUS_M = 30;
+
+const OFF_ROUTE_WALK_M = 50;
+const OFF_ROUTE_RIDE_M = 150;
+const OFF_ROUTE_HOLD_MS = 8000;
+const OFF_ROUTE_FAR_RATIO = 2.5;
+const REROUTE_COOLDOWN_MS = 30000;
+const REROUTE_NOTE_MS = 6000;
 
 const WALK_COLOR = '#94a3b8';
 const ARRIVAL_COLOR = '#22c55e';
@@ -754,6 +767,7 @@ export function NavigationMode({
   lineLookup,
   currentLocation,
   legPaths,
+  onItinerarySelected,
   onBoardVehicle,
   onArrived,
   refreshIntervalMs = 30000,
@@ -879,6 +893,8 @@ export function NavigationMode({
       boardedTransitKeyRef.current = null;
       atStopRef.current = null;
     }
+    offRouteRef.current = null;
+    onRouteSeenRef.current = false;
     setIsShareOpen(false);
     setShareNotice(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -901,6 +917,14 @@ export function NavigationMode({
   useGlideTiming(snappedLocation, glideRef);
 
   const lastFixRef = useRef<{ lat: number; lon: number; at: number } | null>(null);
+  const { settings: perf } = usePerfSettings();
+  const [rerouteNote, setRerouteNote] = useState<string | null>(null);
+  const offRouteRef = useRef<{ since: number; previous: [number, number]; away: number } | null>(null);
+  const onRouteSeenRef = useRef(false);
+  const rerouteBusyRef = useRef(false);
+  const lastRerouteRef = useRef(0);
+  const rerouteNoteTimerRef = useRef(0);
+  const openRef = useRef(isOpen);
   const [speedMps, setSpeedMps] = useState(0);
 
   useEffect(() => {
@@ -967,6 +991,106 @@ export function NavigationMode({
 
     if (best !== index && (currentDistance - bestDistance > 30 || steps[best]?.kind !== 'walk' || best === index + 1)) setIndex(best);
   }, [isOpen, hasStarted, currentLocation?.lat, currentLocation?.lon, speedMps, steps, index]);
+
+  useEffect(() => {
+    openRef.current = isOpen;
+    if (!isOpen) setRerouteNote(null);
+  }, [isOpen]);
+
+  useEffect(() => () => window.clearTimeout(rerouteNoteTimerRef.current), []);
+
+  useEffect(() => {
+    if (!isOpen || !hasStarted || !currentLocation || !onItinerarySelected) return;
+    const current = steps[index];
+    if (!current || current.kind === 'arrival') {
+      offRouteRef.current = null;
+      return;
+    }
+
+    const here: [number, number] = [currentLocation.lon, currentLocation.lat];
+    let nearest: [number, number] | null = null;
+    let distance = Infinity;
+    for (let i = index; i < steps.length; i += 1) {
+      const snapped = snapToPath(steps[i].path, here, Infinity);
+      if (!snapped) continue;
+      const metres = coordinateDistance(snapped, here);
+      if (metres < distance) {
+        distance = metres;
+        nearest = snapped;
+      }
+    }
+    if (!nearest) return;
+
+    const limit = current.kind === 'transit' ? OFF_ROUTE_RIDE_M : OFF_ROUTE_WALK_M;
+    if (distance <= limit) {
+      onRouteSeenRef.current = true;
+      offRouteRef.current = null;
+      return;
+    }
+    if (!onRouteSeenRef.current) return;
+
+    const at = Date.now();
+    const state = offRouteRef.current;
+    if (!state) {
+      offRouteRef.current = { since: at, previous: here, away: 0 };
+      return;
+    }
+    if (coordinateDistance(state.previous, here) >= 3) {
+      const travel = bearingBetween(state.previous, here);
+      const backToRoute = bearingBetween(here, nearest);
+      state.away = angleGap(travel, backToRoute) > 90 ? state.away + 1 : 0;
+      state.previous = here;
+    }
+
+    const leaving = state.away >= 2 || distance > limit * OFF_ROUTE_FAR_RATIO;
+    if (!leaving || at - state.since < OFF_ROUTE_HOLD_MS) return;
+    if (rerouteBusyRef.current || at - lastRerouteRef.current < REROUTE_COOLDOWN_MS) return;
+
+    const allLegs = itinerary.allLegs ?? [];
+    const lastLeg = allLegs[allLegs.length - 1];
+    const lastPoint = itinerary.routePath?.[itinerary.routePath.length - 1];
+    const endLat = Number(lastLeg?.to?.lat ?? lastPoint?.[1]);
+    const endLon = Number(lastLeg?.to?.lon ?? lastPoint?.[0]);
+    if (!Number.isFinite(endLat) || !Number.isFinite(endLon)) return;
+
+    rerouteBusyRef.current = true;
+    lastRerouteRef.current = at;
+    window.clearTimeout(rerouteNoteTimerRef.current);
+    setRerouteNote(t.rerouting);
+
+    const remainingStops = (itinerary.viaStops ?? []).filter(via => via.legIndex > index);
+    const points = [
+      currentPositionLocation(currentLocation),
+      ...remainingStops,
+      { label: itinerary.arrName, lat: endLat, lon: endLon },
+    ];
+
+    planViaItineraries(points, {
+      departNow: true,
+      walkSpeed: walkSpeedMs(walkPrefs),
+      walkReluctance: walkReluctance(walkPrefs),
+      wheelchair: perf.pmrRouting,
+    })
+      .then(found => {
+        const next = found[0];
+        if (!next || !openRef.current) {
+          setRerouteNote(null);
+          return;
+        }
+        offRouteRef.current = null;
+        onRouteSeenRef.current = false;
+        onItinerarySelected({ ...next, depName: itinerary.depName });
+        hapticTap();
+        speak(t.reroutedVoice, language);
+        setRerouteNote(t.rerouted);
+        rerouteNoteTimerRef.current = window.setTimeout(() => setRerouteNote(null), REROUTE_NOTE_MS);
+      })
+      .catch(() => setRerouteNote(null))
+      .finally(() => {
+        rerouteBusyRef.current = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, hasStarted, currentLocation?.lat, currentLocation?.lon, steps, index]);
 
   useEffect(() => {
     if (!isOpen || !hasStarted || isFollowing) return;
@@ -1921,6 +2045,11 @@ export function NavigationMode({
   );
 
   const banner: BannerContent = (() => {
+    const content = baseBanner();
+    return rerouteNote && phase !== 'arrived' ? { ...content, label: rerouteNote } : content;
+  })();
+
+  function baseBanner(): BannerContent {
     if (phase === 'arrived') {
       return {
         leading: <EndpointDot palette={palette} size={28} />,
@@ -1966,7 +2095,7 @@ export function NavigationMode({
           : undefined,
       value: walkRemaining !== null ? t.metres(roundMetres(walkRemaining)) : t.minutes(step?.durationMin ?? 0),
     };
-  })();
+  }
 
   const tripSteps: ShareTimelineStep[] = steps.map((item, i) => {
     const leg: any = legs[i];

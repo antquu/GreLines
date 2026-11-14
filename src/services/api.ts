@@ -114,6 +114,7 @@ export interface RouteItinerary {
   uber?: UberJourneyInfo;
   taxi?: TaxiJourneyInfo;
   bikeTransit?: boolean;
+  viaStops?: Array<{ label: string; lat: number; lon: number; legIndex: number }>;
 }
 
 function decodePolyline(encoded: string): Array<[number, number]> {

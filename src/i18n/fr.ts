@@ -389,6 +389,7 @@ export const fr = {
     locale: 'fr-FR',
   },
   journeyDetail: {
+    stopAt: 'Étape',
     yourJourney: 'Votre trajet',
     formatdurationlabelArriveArr: (formatDurationLabel: string, arr: string) => `${formatDurationLabel}, arrivée à ${arr}`,
     leaveAtDep: (dep: string) => `Partir à ${dep}`,
@@ -535,7 +536,23 @@ export const fr = {
     continueOnGrelinesFr: 'Continuer sur grelines.fr',
     stayOnSite: (city: string) => `Rester sur GreLines ${city}`,
   },
+  maintenance: {
+    unavailable: 'GreLines est momentanément indisponible pour une raison technique. Réessayez dans quelques minutes.',
+    technicalIssue: 'Problème technique',
+    bannerDefault: 'Un problème technique est en cours sur GreLines.',
+    moreDetails: 'Plus de détails',
+    serviceStatus: 'État du service',
+    since: (when: string) => `Depuis le ${when}`,
+    statuses: {
+      investigating: 'Analyse en cours',
+      identified: 'Cause identifiée',
+      monitoring: 'Sous surveillance',
+    },
+  },
   navigationMode: {
+    rerouting: 'Recalcul du trajet en cours',
+    rerouted: 'Nouvel itinéraire',
+    reroutedVoice: 'Itinéraire recalculé.',
     countReports: (count: number, fresh: boolean) => `${count} avis${fresh ? ' récents' : ''}`,
     announcedRunSometimesMissing: 'passage annoncé parfois absent',
     packedVehicle: 'véhicule bondé',
@@ -858,6 +875,11 @@ export const fr = {
     cardLinkedToThe: 'Carte liée au compte',
   },
   routeSidebar: {
+    addStop: 'Ajouter une étape',
+    stopNumber: (position: number) => `Étape ${position}`,
+    searchAStop: 'Chercher une étape',
+    removeStop: 'Retirer',
+    moveStop: 'Déplacer',
     routePlanner: 'Itinéraire',
     from: 'Départ',
     to: 'Arrivée',

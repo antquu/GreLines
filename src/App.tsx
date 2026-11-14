@@ -2684,7 +2684,10 @@ function App() {
           legPaths={navigationLegPaths}
           refreshIntervalMs={parseRefreshInterval(refreshInterval)}
           itineraryOptions={routeItineraryOptions}
-          onItinerarySelected={setSelectedRouteItinerary}
+          onItinerarySelected={itinerary => {
+            setSelectedRouteItinerary(itinerary);
+            if (isMobile) saveNavigationSession(itinerary);
+          }}
           onArrived={(contributions) => {
             const award = awardTrip(contributions);
             setTripAward(award);

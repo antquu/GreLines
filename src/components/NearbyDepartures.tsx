@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { ChevronRightIcon } from '@heroicons/react/24/solid';
 import { FaWalking } from 'react-icons/fa';
 import type { Departure, Line, Stop, StopDetail } from '../types';
-import type { StopWithDistance } from '../utils/geo';
+import { haversineMeters, type StopWithDistance } from '../utils/geo';
 import { getStopDetail } from '../services/api';
 import { getTclStopDetail, isTclId } from '../services/tclNetwork';
 import { getGtfsStopDetail } from '../services/gtfsNetwork';
@@ -16,6 +17,7 @@ const GROUPS_PER_STOP = 4;
 const TIMES_PER_GROUP = 2;
 
 const LOAD_TIMEOUT_MS = 8000;
+const SWAP_MARGIN_M = 10;
 
 function loadDetail(stopId: string): Promise<StopDetail | null> {
   const request = isTclId(stopId) ? getTclStopDetail(stopId) : isGtfsNetworkId(stopId) ? getGtfsStopDetail(stopId) : getStopDetail(stopId);
@@ -98,7 +100,9 @@ export function NearbyDepartures({
   onStopClick,
   onReady,
   pending = false,
+  position = null,
 }: {
+  position?: { lat: number; lon: number } | null;
   nearby: StopWithDistance<Stop>[];
   active: boolean;
   language: 'fr' | 'en';
@@ -131,6 +135,29 @@ export function NearbyDepartures({
     };
   }, [active, idsKey]);
 
+  const orderRef = useRef<string[]>([]);
+  const ordered = useMemo(() => {
+    const live = new Map(nearby.map(entry => [
+      entry.stop.id,
+      position
+        ? { stop: entry.stop, meters: haversineMeters(position.lat, position.lon, entry.stop.lat, entry.stop.lon) }
+        : entry,
+    ]));
+    const kept = orderRef.current.filter(id => live.has(id));
+    const order = kept.length > 0
+      ? [...kept, ...nearby.map(entry => entry.stop.id).filter(id => !kept.includes(id))]
+      : [...live.values()].sort((a, b) => a.meters - b.meters).map(entry => entry.stop.id);
+    // a stop only overtakes its neighbour once it is clearly closer
+    for (let i = 1; i < order.length; i += 1) {
+      for (let j = i; j > 0 && live.get(order[j])!.meters + SWAP_MARGIN_M < live.get(order[j - 1])!.meters; j -= 1) {
+        [order[j - 1], order[j]] = [order[j], order[j - 1]];
+      }
+    }
+    orderRef.current = order;
+    return order.map(id => live.get(id)!);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nearby, position?.lat, position?.lon]);
+
   const ready = ids.length > 0 && ids.some(id => details[id] !== undefined);
   useEffect(() => {
     if (ready) onReady?.();
@@ -150,17 +177,19 @@ export function NearbyDepartures({
 
   return (
     <div>
-      {nearby.map(({ stop, meters }, index) => {
+      {ordered.map(({ stop, meters }, index) => {
         const detail = details[stop.id];
         const groups = detail ? groupDepartures(detail) : [];
         const shownLines = new Set(groups.map(group => group.line.id));
         const quietLines = (detail?.lines ?? []).filter(line => !shownLines.has(line.id)).slice(0, 10);
         return (
-          <button
+          <motion.button
             key={stop.id}
+            layout="position"
+            transition={{ layout: { type: 'spring', stiffness: 420, damping: 38 } }}
             type="button"
             onClick={() => onStopClick(stop)}
-            className={`block w-full px-1 text-left transition active:opacity-70 ${index > 0 ? 'mt-3 border-t pt-5' : ''}`}
+            className={`block w-full px-1 text-left active:opacity-70 ${index > 0 ? 'mt-3 border-t pt-5' : ''}`}
             style={{ borderColor: rule }}
           >
             <div className="flex items-center gap-3 pb-2">
@@ -217,7 +246,7 @@ export function NearbyDepartures({
                 ))}
               </div>
             )}
-          </button>
+          </motion.button>
         );
       })}
     </div>

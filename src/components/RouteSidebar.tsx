@@ -4,7 +4,7 @@ import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
 import { isOffline } from '../services/offlineSchedule';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
+import { PlusIcon, XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
 import { PlaceIcon } from './PlaceIcon';
 import { TbBusStop } from 'react-icons/tb';
 import { JourneyDetail } from './JourneyDetail';
@@ -15,7 +15,9 @@ import { PlacesCarousel } from './PlacesCarousel';
 import { SearchResultsList } from './SearchResultsList';
 import { journeyLabelFor } from '../utils/journeyLabels';
 import { searchAddresses } from '../services/geocoding';
-import { planItineraries, type RouteItinerary, type RouteLocation } from '../services/api';
+import type { RouteItinerary, RouteLocation } from '../services/api';
+import { planViaItineraries } from '../services/viaJourney';
+import { RouteStopsList } from './RouteStopsList';
 import { loadWalkPreferences, saveWalkPreferences, walkSpeedMs, WALK_SPEEDS, WALK_PRIORITIES } from '../services/walkPreferences';
 import { usePerfSettings } from '../hooks/usePerfSettings';
 import { FaWheelchair } from 'react-icons/fa';
@@ -141,6 +143,8 @@ const getText = (language: 'fr' | 'en') => {
   };
 };
 
+const MAX_VIA_STOPS = 3;
+
 const formatDateInput = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -250,6 +254,10 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   const [toSuggestions, setToSuggestions] = useState<RouteLocation[]>([]);
   const [fromSelection, setFromSelection] = useState<RouteLocation | null>(null);
   const [toSelection, setToSelection] = useState<RouteLocation | null>(null);
+  const [viaStops, setViaStops] = useState<RouteLocation[]>([]);
+  const [viaAdding, setViaAdding] = useState(false);
+  const [viaQuery, setViaQuery] = useState('');
+  const [viaSuggestions, setViaSuggestions] = useState<RouteLocation[]>([]);
   const [routeResults, setRouteResults] = useState<RouteItinerary[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [bikeResults, setBikeResults] = useState<RouteItinerary[]>([]);
@@ -748,6 +756,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
 
   const debouncedFromQuery = useDebouncedValue(fromQuery, 250);
   const debouncedToQuery = useDebouncedValue(toQuery, 250);
+  const debouncedViaQuery = useDebouncedValue(viaQuery, 250);
 
   const buildStopSuggestions = (query: string) => {
     const trimmed = query.trim().toLowerCase();
@@ -839,6 +848,42 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     };
   }, [debouncedToQuery, stops]);
 
+  useEffect(() => {
+    if (!viaAdding || !debouncedViaQuery.trim()) {
+      setViaSuggestions([]);
+      return;
+    }
+
+    const stopsList = buildStopSuggestions(debouncedViaQuery);
+    if (stopsList.length >= 4) {
+      setViaSuggestions(stopsList);
+      return;
+    }
+
+    let active = true;
+    searchAddresses(debouncedViaQuery, { limit: 4 })
+      .then(results => {
+        if (!active) return;
+        const addressLocations = results.map(addr => ({
+          id: addr.id,
+          label: addr.label,
+          lat: addr.lat,
+          lon: addr.lon,
+          kind: 'address' as const,
+          raw: addr,
+        }));
+        setViaSuggestions([...stopsList, ...addressLocations].slice(0, 8));
+      })
+      .catch(() => {
+        if (!active) return;
+        setViaSuggestions(stopsList);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedViaQuery, viaAdding, stops]);
+
   const handleFromQueryChange = (value: string) => {
     setFromQuery(value);
     if (fromSelection && fromSelection.label !== value) setFromSelection(null);
@@ -877,6 +922,46 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   }, [isOpen, isMobile, currentLocation?.lat, currentLocation?.lon]);
 
   const canSearch = !!fromSelection && !!toSelection;
+  const viaKey = viaStops.map(stop => `${stop.kind}:${stop.id}`).join(',');
+
+  const closeViaSearch = () => {
+    setViaAdding(false);
+    setViaQuery('');
+    setViaSuggestions([]);
+  };
+
+  const handleSelectVia = (location: RouteLocation) => {
+    setViaStops(current => [...current, location].slice(0, MAX_VIA_STOPS));
+    closeViaSearch();
+    _onItinerarySelected?.(null);
+    clearAllResults();
+  };
+
+  const applyStopOrder = (next: RouteLocation[]) => {
+    if (next.length < 2) return;
+    const nextFrom = next[0];
+    const nextTo = next[next.length - 1];
+    setViaStops(next.slice(1, -1));
+    if (nextFrom.id !== fromSelection?.id) {
+      setFromSelection(nextFrom);
+      setFromQuery(nextFrom.label);
+      onLocationSelected?.(nextFrom, 'from');
+    }
+    if (nextTo.id !== toSelection?.id) {
+      setToSelection(nextTo);
+      setToQuery(nextTo.label);
+      onLocationSelected?.(nextTo, 'to');
+    }
+    _onItinerarySelected?.(null);
+    clearAllResults();
+  };
+
+  const removeStopAt = (index: number) => {
+    if (!fromSelection || !toSelection) return;
+    const points = [fromSelection, ...viaStops, toSelection];
+    if (points.length <= 2) return;
+    applyStopOrder(points.filter((_, position) => position !== index));
+  };
 
   const handleSearch = useCallback(async (options: { silent?: boolean } = {}) => {
     if (isOffline()) return;
@@ -901,8 +986,17 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
       _onItinerarySelected?.(null);
     }
 
+    const points = [fromSelection, ...viaStops, toSelection];
+    const planOptions = {
+      arriveBy: scheduleMode === 'arrive',
+      date: queryDate,
+      time: queryTime,
+      departNow: scheduleIsNow && scheduleMode !== 'arrive',
+      wheelchair: wheelchairRouting,
+    };
+
     const sharedToken = ++sharedRequestRef.current;
-    if (scheduleMode !== 'arrive') {
+    if (scheduleMode !== 'arrive' && viaStops.length === 0) {
       const [hours, minutes] = parseTimeParts(queryTime);
       const departAt = parseDateInput(queryDate);
       departAt.setHours(hours, minutes, 0, 0);
@@ -927,39 +1021,12 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     }
 
     try {
-      const itineraries = await planItineraries({
-        fromLatitude: fromSelection.lat,
-        fromLongitude: fromSelection.lon,
-        toLatitude: toSelection.lat,
-        toLongitude: toSelection.lon,
-        fromName: fromSelection.label,
-        toName: toSelection.label,
-        arriveBy: scheduleMode === 'arrive',
-        date: queryDate,
-        time: queryTime,
-        departNow: scheduleIsNow && scheduleMode !== 'arrive',
-        walkReluctance,
-        walkSpeed,
-        wheelchair: wheelchairRouting,
-      });
+      const itineraries = await planViaItineraries(points, { ...planOptions, walkReluctance, walkSpeed });
       setRouteResults(itineraries);
       onItinerariesUpdated?.(itineraries);
 
       const bikeToken = ++bikeRequestRef.current;
-      void planItineraries({
-        fromLatitude: fromSelection.lat,
-        fromLongitude: fromSelection.lon,
-        toLatitude: toSelection.lat,
-        toLongitude: toSelection.lon,
-        fromName: fromSelection.label,
-        toName: toSelection.label,
-        arriveBy: scheduleMode === 'arrive',
-        date: queryDate,
-        time: queryTime,
-        departNow: scheduleIsNow && scheduleMode !== 'arrive',
-        mode: 'BICYCLE,TRANSIT',
-        wheelchair: wheelchairRouting,
-      })
+      void planViaItineraries(points, { ...planOptions, mode: 'BICYCLE,TRANSIT' })
         .then(found => {
           if (bikeRequestRef.current === bikeToken) setBikeResults(found);
         })
@@ -995,6 +1062,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     canSearch,
     fromSelection,
     toSelection,
+    viaStops,
     scheduleIsNow,
     scheduleDate,
     scheduleTime,
@@ -1285,6 +1353,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     const searchKey = [
       fromSelection.id,
       toSelection.id,
+      viaKey,
       scheduleMode,
       scheduleDate,
       scheduleTime,
@@ -1302,6 +1371,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     _selectedItinerary,
     fromSelection?.id,
     toSelection?.id,
+    viaKey,
     scheduleMode,
     scheduleDate,
     scheduleTime,
@@ -1324,7 +1394,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     }, 60_000);
     return () => window.clearInterval(refresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, fromSelection?.id, toSelection?.id, routeResults.length]);
+  }, [isOpen, fromSelection?.id, toSelection?.id, viaKey, routeResults.length]);
 
   const operatorResults = useMemo(
     (): RouteItinerary[] => [
@@ -1364,6 +1434,10 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     setToSuggestions([]);
     setFromSelection(null);
     setToSelection(null);
+    setViaStops([]);
+    setViaAdding(false);
+    setViaQuery('');
+    setViaSuggestions([]);
     clearAllResults();
     setRouteError(null);
     setRouteLoading(false);
@@ -1611,15 +1685,59 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     );
   };
 
-  const activeQuery = !toSelection && toQuery.trim()
-    ? toQuery.trim()
-    : !fromSelection && fromQuery.trim()
-      ? fromQuery.trim()
-      : '';
+  const viaSearching = viaAdding && viaQuery.trim().length > 0;
+  const activeQuery = viaSearching
+    ? viaQuery.trim()
+    : !toSelection && toQuery.trim()
+      ? toQuery.trim()
+      : !fromSelection && fromQuery.trim()
+        ? fromQuery.trim()
+        : '';
   const isSearching = isMobile && activeQuery.length > 0;
   const showOfflineResults = offline && !!fromSelection && !!toSelection;
-  const activeSuggestions = !toSelection && toQuery.trim() ? toSuggestions : fromSuggestions;
-  const selectActive = !toSelection && toQuery.trim() ? handleSelectTo : handleSelectFrom;
+  const activeSuggestions = viaSearching ? viaSuggestions : !toSelection && toQuery.trim() ? toSuggestions : fromSuggestions;
+  const selectActive = viaSearching ? handleSelectVia : !toSelection && toQuery.trim() ? handleSelectTo : handleSelectFrom;
+
+  const stopsListMode = Boolean(fromSelection && toSelection) && (viaStops.length > 0 || viaAdding);
+  const canAddStop = Boolean(fromSelection && toSelection) && !viaAdding && viaStops.length < MAX_VIA_STOPS && !isPicker;
+  const panelIsLight = isMobile && isLight;
+
+  const stopsListNode = (suggestions?: React.ReactNode) =>
+    fromSelection && toSelection ? (
+      <RouteStopsList
+        points={[fromSelection, ...viaStops, toSelection]}
+        isLight={panelIsLight}
+        compact={!isMobile}
+        adding={viaAdding}
+        query={viaQuery}
+        onQueryChange={setViaQuery}
+        onCancelAdd={closeViaSearch}
+        onReorder={applyStopOrder}
+        onRemove={removeStopAt}
+        labels={{
+          from: text.from,
+          to: text.to,
+          stop: position => tx(isFr).routeSidebar.stopNumber(position),
+          searchStop: tx(isFr).routeSidebar.searchAStop,
+          remove: tx(isFr).routeSidebar.removeStop,
+          move: tx(isFr).routeSidebar.moveStop,
+          cancel: text.cancel,
+        }}
+      >
+        {suggestions}
+      </RouteStopsList>
+    ) : null;
+
+  const addStopNode = canAddStop ? (
+    <button
+      type="button"
+      onClick={() => setViaAdding(true)}
+      className="mt-1 flex h-11 items-center gap-2 px-1 text-[0.95rem] font-semibold text-blue-500 transition active:scale-[0.98]"
+    >
+      <PlusIcon className="h-5 w-5" />
+      {tx(isFr).routeSidebar.addStop}
+    </button>
+  ) : null;
 
   const matchingLines = useMemo(() => {
     const query = activeQuery.toLowerCase();
@@ -1647,7 +1765,12 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
 
   const showDeparture = hasDestination;
 
-  const mobileSearchNode = (
+  const mobileSearchNode = stopsListMode ? (
+    <div>
+      {stopsListNode()}
+      {addStopNode}
+    </div>
+  ) : (
     <div>
       <div
         className={`grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
@@ -1715,6 +1838,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           </span>
         )}
       </div>
+      {addStopNode}
     </div>
   );
 
@@ -1777,6 +1901,11 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         {isMobile ? (
           <div className="gl-stagger relative z-40">
             {mobileSearchNode}
+          </div>
+        ) : stopsListMode ? (
+          <div className="relative z-40">
+            {stopsListNode(renderLocationSuggestions(viaSuggestions, handleSelectVia))}
+            {addStopNode}
           </div>
         ) : (
         <>
@@ -1869,6 +1998,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             </div>
           )}
           {!toSelection && renderLocationSuggestions(toSuggestions, handleSelectTo)}
+          {addStopNode}
         </div>
         </>
         )}
@@ -1876,7 +2006,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         {isSearching && (
           <div className="-mx-4">
             <SearchResultsList
-              lines={matchingLines}
+              lines={viaSearching ? [] : matchingLines}
               stops={activeSuggestions.filter(suggestion => suggestion.kind === 'stop')}
               addresses={activeSuggestions.filter(suggestion => suggestion.kind === 'address')}
               language={language}
@@ -1985,7 +2115,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           </div>
         )}
 
-        <div className={`flex-col gap-2 ${offline || (isMobile && currentResults.length === 0) ? 'hidden' : 'flex'}`}>
+        <div className={`flex-col gap-2 ${offline || viaAdding || (isMobile && currentResults.length === 0) ? 'hidden' : 'flex'}`}>
           <div className={`relative flex ${isMobile ? 'scrollbar-hide -mx-4 gap-2 overflow-x-auto px-4' : 'items-center gap-2'}`}>
             <button
               type="button"
@@ -2098,7 +2228,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           </div>
         </div>
 
-        {!offline && isMobile && currentResults.length > 0 && (
+        {!offline && isMobile && !viaAdding && currentResults.length > 0 && (
           <div className="gl-stagger" style={{ animationDelay: '60ms' }}>
             <JourneyResults
               journeys={currentResults}
@@ -2112,7 +2242,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           </div>
         )}
 
-        {!offline && !isMobile && currentResults.length > 0 && (
+        {!offline && !isMobile && !viaAdding && currentResults.length > 0 && (
           <div className="pt-2">
             <JourneyResults
               journeys={currentResults}

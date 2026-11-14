@@ -5,6 +5,7 @@ import './index.css'
 
 import './light-theme.css'
 import { PerfSettingsProvider } from './hooks/usePerfSettings.tsx'
+import { MaintenanceGate } from './components/MaintenanceGate'
 import { ScreenErrorBoundary, ScreenMaintenance } from './screen/ScreenMaintenance'
 import { IS_CITY_SITE } from './site'
 import { installNetworkSimulation, isSimulatedOffline } from './services/networkSimulation'
@@ -163,7 +164,9 @@ if (UNKNOWN_HOST) {
     root.render(
       <StrictMode>
         <PerfSettingsProvider>
-          <App />
+          <MaintenanceGate>
+            <App />
+          </MaintenanceGate>
           <Analytics />
           <SpeedInsights />
         </PerfSettingsProvider>

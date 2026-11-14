@@ -6,7 +6,6 @@ import {
   ChevronRightIcon,
   CreditCardIcon,
   DocumentCheckIcon,
-  LockClosedIcon,
   PencilSquareIcon,
   UserCircleIcon,
   XMarkIcon,
@@ -194,15 +193,23 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
   const surface = isLight ? 'border-transparent bg-[rgba(0,0,0,0.05)]' : 'border-transparent bg-[rgba(255,255,255,0.06)]';
   const strong = isLight ? 'text-[#000000]' : 'text-[#ffffff]';
   const soft = isLight ? 'text-[#525252]' : 'text-[#a3a3a3]';
+  const rule = isLight ? 'border-[rgba(0,0,0,0.14)]' : 'border-[rgba(255,255,255,0.16)]';
   const field = isLight
-    ? 'border-transparent bg-[rgba(0,0,0,0.05)] text-[#000000]'
-    : 'border-transparent bg-[rgba(255,255,255,0.06)] text-[#ffffff]';
+    ? `rounded-none border-0 border-b bg-transparent px-0 text-[#000000] placeholder:text-[#b5b5b5] ${rule}`
+    : `rounded-none border-0 border-b bg-transparent px-0 text-[#ffffff] placeholder:text-[#4d4d4d] ${rule}`;
   const pageBg = isLight ? 'bg-[#ffffff]' : 'bg-[#0b0b0b]';
-  const focus = isLight ? 'focus:border-[#000000]' : 'focus:border-[rgba(255,255,255,0.6)]';
+  const focus = isLight ? 'focus:border-[#000000]' : 'focus:border-[#ffffff]';
   const pageIcon = `h-12 w-12 ${strong}`;
   const pageTitle = `pt-5 text-[1.625rem] font-medium leading-[1.15] ${strong}`;
   const pageBody = `pt-3 text-[1.0625rem] leading-snug ${soft}`;
-  const label = 'mb-1.5 block px-1 text-sm font-semibold text-slate-500';
+  const label = `block text-[0.9375rem] ${soft}`;
+  const codeInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || step !== 'manual') return;
+    const timer = window.setTimeout(() => codeInputRef.current?.focus({ preventScroll: true }), 320);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, step]);
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach(track => track.stop());
@@ -776,11 +783,12 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                   <CreditCardIcon className={pageIcon} aria-hidden="true" />
                   <p className={pageTitle}>{text.choiceTitle}</p>
                   <p className={`${pageBody} mb-7`}>{text.choiceBody}</p>
+                  <div className={`mt-7 border-t ${rule}`}>
                   {allowScan && (
                   <button
                     type="button"
                     onClick={() => { setError(null); setStep('scan'); }}
-                    className={`mb-3 flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left transition active:scale-[0.99] ${surface}`}
+                    className={`flex w-full items-center gap-4 border-b py-5 text-left transition active:opacity-60 ${rule}`}
                   >
                     <CameraIcon className={`h-6 w-6 flex-shrink-0 ${strong}`} />
                     <span className="min-w-0 flex-1">
@@ -793,7 +801,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                   <button
                     type="button"
                     onClick={() => { setError(null); setStep('manual'); }}
-                    className={`flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left transition active:scale-[0.99] ${surface}`}
+                    className={`flex w-full items-center gap-4 border-b py-5 text-left transition active:opacity-60 ${rule}`}
                   >
                     <PencilSquareIcon className={`h-6 w-6 flex-shrink-0 ${strong}`} />
                     <span className="min-w-0 flex-1">
@@ -802,6 +810,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                     </span>
                     <ChevronRightIcon className={`h-5 w-5 flex-shrink-0 ${soft}`} />
                   </button>
+                  </div>
                 </div>
 
                 <div className={`h-full w-1/5 ${step === 'scan' ? 'overflow-hidden' : 'overflow-y-auto px-6 pb-8 pt-2'}`}>
@@ -864,15 +873,16 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                     <>
                       <PencilSquareIcon className={pageIcon} aria-hidden="true" />
                       <p className={pageTitle}>{text.manualTitle}</p>
-                      <p className={`${pageBody} mb-7`}>{text.manualHint}</p>
-                      <label className={label}>{text.numberLabel}</label>
+                      <p className={`${pageBody} mb-9`}>{text.manualHint}</p>
                       <input
+                        ref={codeInputRef}
                         value={code}
                         onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 12))}
                         inputMode="numeric"
                         enterKeyHint="go"
                         placeholder="0000000000"
-                        className={`h-14 w-full rounded-2xl border px-4 text-base tabular outline-none ${focus} ${field}`}
+                        aria-label={text.numberLabel}
+                        className={`mt-9 h-16 w-full text-[2.125rem] font-medium tabular tracking-[0.03em] outline-none transition-colors ${focus} ${field}`}
                       />
                     </>
                   )}
@@ -890,7 +900,7 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                       ))}
                     </section>
                   ))}
-                  <label className={`mt-7 flex cursor-pointer items-start gap-3 rounded-2xl p-4 ${surface}`}>
+                  <label className={`mt-7 flex cursor-pointer items-start gap-3 border-t pt-5 ${rule}`}>
                     <input
                       type="checkbox"
                       checked={termsChecked}
@@ -976,28 +986,23 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                       )}
 
                       {!known && (
-                        <div className="mb-5">
-                          <label className={label}>
-                            {text.firstName} · {text.required}
-                          </label>
+                        <div className="mb-7">
+                          <label className={label}>{text.firstName}</label>
                           <input
                             value={firstName}
                             onChange={event => setFirstName(event.target.value)}
                             placeholder={text.firstName}
-                            className={`h-14 w-full rounded-2xl border px-4 text-base outline-none ${focus} ${field}`}
+                            className={`h-14 w-full text-[1.625rem] font-medium outline-none transition-colors ${focus} ${field}`}
                           />
                         </div>
                       )}
-                      <div className="mb-5">
-                        <label className={label}>
-                          {text.lastName} · {text.required}
-                        </label>
+                      <div className="mb-8">
+                        <label className={label}>{text.lastName}</label>
                         <input
                           value={lastName}
                           onChange={event => setLastName(event.target.value.toUpperCase())}
                           placeholder={text.lastName}
-                          style={{ textTransform: 'uppercase' }}
-                          className={`h-14 w-full rounded-2xl border px-4 text-base outline-none ${focus} ${field}`}
+                          className={`h-14 w-full text-[1.625rem] font-medium uppercase outline-none transition-colors placeholder:normal-case ${focus} ${field}`}
                         />
                       </div>
 
@@ -1013,28 +1018,15 @@ export function AddCardSheet({ isOpen, language, theme = 'dark', onClose, onSave
                             ]
                           : []),
                       ].map(row => (
-                        <div key={row.key} className="mb-5">
-                          <label className={label}>{row.key}</label>
-                          <div className="relative">
-                            <input
-                              value={row.value}
-                              readOnly
-                              disabled
-                              tabIndex={-1}
-                              className={`h-14 w-full cursor-not-allowed rounded-2xl border pl-4 pr-11 text-base ${
-                                row.tabular ? 'tabular' : ''
-                              } ${
-                                isLight
-                                  ? 'border-slate-200 bg-slate-100 text-slate-500'
-                                  : 'border-slate-800 bg-slate-900/60 text-slate-400'
-                              }`}
-                            />
-                            <LockClosedIcon className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                          </div>
+                        <div key={row.key} className={`flex items-baseline justify-between gap-4 border-b py-4 ${rule}`}>
+                          <span className={`flex-shrink-0 text-[0.9375rem] ${soft}`}>{row.key}</span>
+                          <span className={`min-w-0 truncate text-[1.0625rem] font-medium ${strong} ${row.tabular ? 'tabular' : ''}`}>
+                            {row.value}
+                          </span>
                         </div>
                       ))}
 
-                      <p className="px-1 text-sm leading-relaxed text-slate-500">{text.fromNetworkHint}</p>
+                      <p className={`pt-4 text-[0.9375rem] leading-snug ${soft}`}>{text.fromNetworkHint}</p>
                     </>
                   )}
                 </div>

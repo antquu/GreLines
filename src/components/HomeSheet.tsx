@@ -453,6 +453,7 @@ export const HomeSheet = ({
                 ) : (
                   <NearbyDepartures
                     nearby={nearby}
+                    position={currentLocation}
                     active={isOpen && !locked}
                     language={language}
                     isLight={isLight}
