@@ -66,6 +66,8 @@ import { AddJourneyDialog, type PendingJourney } from './components/AddJourneyDi
 import { LinesExplorerSheet } from './components/LinesExplorerSheet';
 import { ClockSignal } from './components/ClockSignal';
 import { PopupOverlay } from './components/PopupOverlay';
+import { MaintenancePill, MaintenancePopup } from './components/MaintenanceGate';
+import { useMaintenanceBanner } from './services/maintenance';
 import { DeferredPanel } from './components/DeferredPanel';
 import { DevOverlay } from './components/DevOverlay';
 import {
@@ -165,7 +167,7 @@ import { haversineMeters, findClosestStops, formatCoordinates, currentPositionLo
 import { clearNavigationSession, loadNavigationSession, saveNavigationSession } from './services/navigationSession';
 import { setSavedPlace, type SavedPlaceKind } from './services/savedPlaces';
 
-export type MapPickTarget = 'from' | 'to' | SavedPlaceKind;
+export type MapPickTarget = 'from' | 'to' | 'via' | SavedPlaceKind;
 
 const SHARED_CITY_RADIUS_METERS = 12_000;
 
@@ -1227,6 +1229,7 @@ function App() {
 
   const mapRef = useRef<MapRef>(null);
   const [mapPickTarget, setMapPickTarget] = useState<MapPickTarget | null>(null);
+  const [viaPick, setViaPick] = useState<{ location: RouteLocation; nonce: number } | null>(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
@@ -2178,6 +2181,7 @@ function App() {
   const text = translations[language];
 
   const hidePageControls = false;
+  const maintenanceBanner = useMaintenanceBanner();
   const [hasBooted, setHasBooted] = useState(false);
   const isLoadingOverlayVisible = !hasBooted && (isLoading || firstFavoriteLoading);
   useEffect(() => {
@@ -2447,6 +2451,8 @@ function App() {
             setRouteFrom(location);
           } else if (mapPickTarget === 'to') {
             setRouteTo(location);
+          } else if (mapPickTarget === 'via') {
+            setViaPick({ location, nonce: Date.now() });
           } else {
             setSavedPlace(mapPickTarget, location);
           }
@@ -2518,6 +2524,8 @@ function App() {
           setRouteFrom(location);
         } else if (mapPickTarget === 'to') {
           setRouteTo(location);
+        } else if (mapPickTarget === 'via') {
+          setViaPick({ location, nonce: Date.now() });
         } else if (mapPickTarget) {
           setSavedPlace(mapPickTarget, location);
         }
@@ -2636,6 +2644,8 @@ function App() {
       <NetOverlay />
       <DepartureLabOverlay />
 
+
+      {isMobile && <MaintenancePopup isLight={effectiveTheme === 'light'} hold={isOnboardingOpen} />}
 
       {popupsReleased && !startedFromShare && (
         <PopupOverlay
@@ -2875,6 +2885,7 @@ function App() {
         lineLookup={allLinesLookup}
         trafficInfo={trafficInfo}
         pickMode={mapPickTarget}
+        viaPick={viaPick}
         recentPlaces={recentRoutePlaces}
         onRequestPickLocation={(field) => {
           setMapPickTarget(field);
@@ -3025,7 +3036,7 @@ function App() {
           )}
 
           {!hidePageControls && !isMobile && (
-            <div className="fixed top-4 left-4 z-50 flex items-start gap-2">
+            <div className={`fixed top-4 left-4 z-50 flex items-start gap-2 ${maintenanceBanner ? 'right-4 pointer-events-none [&>*]:pointer-events-auto' : ''}`}>
               <button onClick={() => setSettingsState('open')}
                 className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer bg-slate-900/85 hover:bg-slate-900 transition shadow-lg"
                 title={text.misc.settings}>
@@ -3428,6 +3439,10 @@ function App() {
                   </div>
                 </div>
               </div>
+              <MaintenancePill
+                leftInset={(timetableTarget !== null ? 768 : 0) || (isSidebarOpen || selectedLine !== null || selectedAddress !== null || sharedSelection !== null ? 384 : 0)}
+                rightInset={isRouteSidebarOpen || isJourneyPickerOpen ? 448 : 0}
+              />
             </div>
           )}
         </>

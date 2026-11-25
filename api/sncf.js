@@ -83,7 +83,29 @@ function lineKey(code, commercial, network) {
 
 const isCoach = physical => /autocar|bus|\bcar\b|coach/i.test(String(physical || ''));
 const stationName = name => String(name || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
-const uicOf = id => /(87\d{6})/.exec(String(id || ''))?.[1] ?? null;
+const UIC_PATTERN = /(?:^|\D)(87\d{6})(?!\d)/;
+const uicOf = id => UIC_PATTERN.exec(String(id || ''))?.[1] ?? null;
+const MIN_STATIONS = 500;
+const areaUics = new Map();
+const uicAreas = new Map();
+
+function uicOfObject(object) {
+  if (!object) return null;
+  for (const code of object.codes ?? []) {
+    if (!/uic/i.test(String(code.type || ''))) continue;
+    const found = uicOf(code.value);
+    if (found) return found;
+  }
+  const known = areaUics.get(object.id) ?? areaUics.get(object.stop_area?.id);
+  if (known) return known;
+  return uicOf(object.id) ?? uicOfObject(object.stop_area);
+}
+
+function rememberArea(uic, areaId) {
+  if (!uic || !areaId) return;
+  areaUics.set(areaId, uic);
+  if (!uicAreas.has(uic)) uicAreas.set(uic, areaId);
+}
 
 async function allPages(path, field, key) {
   const first = await navitia(`${path}&count=${PAGE_SIZE}&start_page=0`, key);
@@ -127,7 +149,8 @@ async function buildCatalog(key) {
 
   const stations = [];
   for (const area of areas) {
-    const uic = uicOf(area.id);
+    const uic = uicOfObject(area);
+    rememberArea(uic, area.id);
     const name = stationName(area.name);
     const lat = Number(area.coord?.lat);
     const lon = Number(area.coord?.lon);
@@ -167,6 +190,7 @@ async function buildCatalog(key) {
     merged.add(station.uic);
   }
   const kept = stations.filter(station => !merged.has(station.uic)).map(({ rail, ...station }) => station);
+  if (kept.length < MIN_STATIONS) throw new Error('SNCF catalog incomplete');
 
   const servedBy = new Map();
   for (const station of kept) {
@@ -194,12 +218,36 @@ async function buildCatalog(key) {
   };
 }
 
-async function departures(uic, key) {
+async function areaIdsOf(uic, key) {
+  const ids = [];
+  if (!uicAreas.has(uic)) {
+    await cached('catalog-v2', CATALOG_TTL_MS, () => buildCatalog(key)).catch(() => null);
+  }
+  if (uicAreas.has(uic)) ids.push(uicAreas.get(uic));
+  ids.push(`stop_area:SNCF:${uic}`);
+  return [...new Set(ids)];
+}
+
+async function departuresAt(areaId, key) {
   const from = navitiaDate(Date.now() - 10 * 60_000);
-  const data = await navitia(
-    `/stop_areas/stop_area:SNCF:${uic}/departures?from_datetime=${from}&duration=14400&count=80&data_freshness=realtime&depth=1`,
+  return navitia(
+    `/stop_areas/${encodeURIComponent(areaId)}/departures?from_datetime=${from}&duration=14400&count=80&data_freshness=realtime&depth=1`,
     key,
   );
+}
+
+async function departures(uic, key) {
+  let data = null;
+  let failure = null;
+  for (const areaId of await areaIdsOf(uic, key)) {
+    try {
+      data = await departuresAt(areaId, key);
+      break;
+    } catch (error) {
+      failure = error;
+    }
+  }
+  if (!data) throw failure ?? new Error('SNCF stop unknown');
   const alerts = new Map((data?.disruptions ?? []).map(disruption => [disruption.id, {
     effect: String(disruption.severity?.effect || ''),
     text: String(disruption.messages?.[0]?.text || disruption.cause || '').trim(),
@@ -418,16 +466,17 @@ function mergeSequence(order, stops) {
 }
 
 async function buildFiche(lineId, key) {
+  await cached('catalog-v2', CATALOG_TTL_MS, () => buildCatalog(key)).catch(() => null);
   const lines = await navitiaLinesOf(lineId, key);
   const firstDay = parisToday();
   const groups = new Map();
   for (const line of lines.slice(0, 3)) {
-    const journeys = await allPages(`/lines/${encodeURIComponent(line.id)}/vehicle_journeys?depth=1`, 'vehicle_journeys', key).catch(() => []);
+    const journeys = await allPages(`/lines/${encodeURIComponent(line.id)}/vehicle_journeys?depth=2`, 'vehicle_journeys', key).catch(() => []);
     for (const journey of journeys) {
       const mask = daysMask(journey, firstDay);
       if (!mask) continue;
       const calls = (journey.stop_times ?? [])
-        .map(time => ({ uic: uicOf(time.stop_point?.id), name: stationName(time.stop_point?.name), at: minutesOf(time.departure_time ?? time.arrival_time) }))
+        .map(time => ({ uic: uicOfObject(time.stop_point), name: stationName(time.stop_point?.name), at: minutesOf(time.departure_time ?? time.arrival_time) }))
         .filter(call => call.uic && call.at !== null);
       if (calls.length < 2) continue;
       for (let index = 1; index < calls.length; index += 1) {

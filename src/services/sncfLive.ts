@@ -63,7 +63,7 @@ export async function withSncfLive(departures: Departure[], stationIds: string[]
   const uics = [...new Set(stationIds.map(stationUicOf).filter((uic): uic is string => Boolean(uic)))];
   if (uics.length === 0 || !departures.some(dep => dep.type === 'RAIL')) return departures;
   const lists = await Promise.all(uics.map(getSncfDepartures));
-  const entries = lists.flatMap(list => list ?? []);
+  const entries = lists.flatMap(list => list ?? []).filter(entry => entry.live);
   if (entries.length === 0) return departures;
 
   const now = Date.now();
@@ -78,8 +78,8 @@ export async function withSncfLive(departures: Departure[], stationIds: string[]
       ...dep,
       at: match.real,
       departureTime: Math.max(0, Math.round((match.real - now) / 60_000)),
-      realtime: match.live || dep.realtime,
-      theoretical: match.live ? false : dep.theoretical,
+      realtime: true,
+      theoretical: false,
     };
   });
 }
@@ -106,8 +106,8 @@ export async function applySncfToItineraries<T extends RawItinerary>(itineraries
   const uics = [...new Set(trainLegs.map(leg => stationUicOf(leg.from?.stopId)!))];
   const byStation = new Map<string, SncfDeparture[]>();
   await Promise.all(uics.map(async uic => {
-    const list = await getSncfDepartures(uic);
-    if (list) byStation.set(uic, list);
+    const list = (await getSncfDepartures(uic))?.filter(entry => entry.live);
+    if (list?.length) byStation.set(uic, list);
   }));
   if (byStation.size === 0) return itineraries;
 
@@ -125,7 +125,7 @@ export async function applySncfToItineraries<T extends RawItinerary>(itineraries
       const shift = match.real - leg.startTime;
       leg.startTime = match.real;
       if (typeof leg.endTime === 'number') leg.endTime += shift;
-      leg.realTime = leg.realTime || match.live;
+      leg.realTime = true;
       leg.departureDelay = Math.round(delay / 1000);
       const isLastTransit = !itinerary.legs.slice(index + 1).some(next => next.mode && next.mode !== 'WALK' && next.mode !== 'BICYCLE');
       if (isLastTransit && shift !== 0) {

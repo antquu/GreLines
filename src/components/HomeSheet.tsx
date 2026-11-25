@@ -387,7 +387,7 @@ export const HomeSheet = ({
       onClose={onClose}
       snapPoints={homeSnapPoints(mapSheetSnapPoints({ bottomInset: safeBottom, noHandle: locked, compact: navCompact }))}
       initialSnap={1}
-      onOpenEnd={() => sheetRef.current?.snapTo(Math.max(1, snapIdxRef.current))}
+      onOpenEnd={() => sheetRef.current?.snapTo(locked ? 1 : Math.max(1, snapIdxRef.current))}
       disableDrag={locked || searchOpen}
       disableDismiss
       onSnap={handleSnapChange}

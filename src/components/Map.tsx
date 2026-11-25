@@ -77,7 +77,7 @@ interface MapProps {
   onCenterChange?: (lat: number, lon: number) => void;
   onUserPan?: () => void;
   onMoveSettled?: (lat: number, lon: number) => void;
-  pickMode?: 'from' | 'to' | 'home' | 'work' | null;
+  pickMode?: 'from' | 'to' | 'via' | 'home' | 'work' | null;
   onMapClick?: (lat: number, lon: number) => void;
   onLongPress?: (lat: number, lon: number) => void;
   isDarkMode?: boolean;

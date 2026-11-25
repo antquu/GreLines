@@ -3,7 +3,7 @@ import { useSwipeBack } from '../hooks/useSwipeBack';
 import { useIsOffline, useReconnectCount } from '../hooks/useIsOffline';
 import { isOffline } from '../services/offlineSchedule';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { PlusIcon, XMarkIcon, MapPinIcon, ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ArrowsUpDownIcon, ViewfinderCircleIcon, HomeIcon, BriefcaseIcon, PlayIcon, MagnifyingGlassIcon, ClockIcon, ArrowDownIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
 import { PlaceIcon } from './PlaceIcon';
 import { TbBusStop } from 'react-icons/tb';
@@ -57,8 +57,9 @@ interface RouteSidebarProps {
   onRouteReset?: () => void;
   lineLookup?: Map<string, AllLinesLine> | null;
   trafficInfo?: Map<string, TrafficDetail[]>;
-  pickMode?: 'from' | 'to' | SavedPlaceKind | null;
-  onRequestPickLocation?: (field: 'from' | 'to' | SavedPlaceKind) => void;
+  pickMode?: 'from' | 'to' | 'via' | SavedPlaceKind | null;
+  onRequestPickLocation?: (field: 'from' | 'to' | 'via' | SavedPlaceKind) => void;
+  viaPick?: { location: RouteLocation; nonce: number } | null;
   onCancelPickLocation?: () => void;
   recentPlaces?: RouteLocation[];
   isMobile: boolean;
@@ -144,6 +145,12 @@ const getText = (language: 'fr' | 'en') => {
 };
 
 const MAX_VIA_STOPS = 3;
+const SWAP_FADE = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+  transition: { duration: 0.16, ease: 'easeOut' },
+} as const;
 
 const formatDateInput = (date: Date) => {
   const y = date.getFullYear();
@@ -227,7 +234,7 @@ function SectionRule({ label, isLight }: { label: string; isLight: boolean }) {
   );
 }
 
-export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, onItinerariesUpdated, onStartNavigation, onOpenLine, lineLookup, trafficInfo, pickMode, onRequestPickLocation, onCancelPickLocation, recentPlaces = [], sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute, theme, currentLocation, variant = 'planner', onPickJourney }: RouteSidebarProps) => {
+export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, routeFrom, routeTo, onLocationSelected, onLocationCleared, selectedItinerary, onItinerarySelected, onItinerariesUpdated, onStartNavigation, onOpenLine, lineLookup, trafficInfo, pickMode, onRequestPickLocation, onCancelPickLocation, viaPick, recentPlaces = [], sharedRouteExpired, sharedRouteTarget, onPlanNewSharedRoute, theme, currentLocation, variant = 'planner', onPickJourney }: RouteSidebarProps) => {
   const text = getText(language);
   const isLight = theme === 'light';
   const offline = useIsOffline();
@@ -936,6 +943,20 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
     _onItinerarySelected?.(null);
     clearAllResults();
   };
+
+  const viaPickNonce = viaPick?.nonce;
+  useEffect(() => {
+    if (viaPick) handleSelectVia(viaPick.location);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viaPickNonce]);
+
+  const reorderVias = (next: RouteLocation[]) => {
+    setViaStops(next);
+    _onItinerarySelected?.(null);
+    clearAllResults();
+  };
+
+  const removeViaAt = (index: number) => reorderVias(viaStops.filter((_, position) => position !== index));
 
   const applyStopOrder = (next: RouteLocation[]) => {
     if (next.length < 2) return;
@@ -1699,7 +1720,18 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   const selectActive = viaSearching ? handleSelectVia : !toSelection && toQuery.trim() ? handleSelectTo : handleSelectFrom;
 
   const stopsListMode = Boolean(fromSelection && toSelection) && (viaStops.length > 0 || viaAdding);
-  const canAddStop = Boolean(fromSelection && toSelection) && !viaAdding && viaStops.length < MAX_VIA_STOPS && !isPicker;
+  const canAddStop = (isMobile ? Boolean(fromSelection && toSelection) : true) && !viaAdding && viaStops.length < MAX_VIA_STOPS && !isPicker;
+  const viaListOnly = !isMobile && !stopsListMode && (viaStops.length > 0 || viaAdding);
+  const stopsLabels = {
+    from: text.from,
+    to: text.to,
+    stop: (position: number) => tx(isFr).routeSidebar.stopNumber(position),
+    searchStop: tx(isFr).routeSidebar.searchAStop,
+    remove: tx(isFr).routeSidebar.removeStop,
+    move: tx(isFr).routeSidebar.moveStop,
+    cancel: text.cancel,
+    pickOnMap: text.chooseOnMap,
+  };
   const panelIsLight = isMobile && isLight;
 
   const stopsListNode = (suggestions?: React.ReactNode) =>
@@ -1709,24 +1741,40 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         isLight={panelIsLight}
         compact={!isMobile}
         adding={viaAdding}
+        picking={pickMode === 'via'}
         query={viaQuery}
         onQueryChange={setViaQuery}
         onCancelAdd={closeViaSearch}
+        onPickOnMap={onRequestPickLocation ? () => onRequestPickLocation('via') : undefined}
         onReorder={applyStopOrder}
         onRemove={removeStopAt}
-        labels={{
-          from: text.from,
-          to: text.to,
-          stop: position => tx(isFr).routeSidebar.stopNumber(position),
-          searchStop: tx(isFr).routeSidebar.searchAStop,
-          remove: tx(isFr).routeSidebar.removeStop,
-          move: tx(isFr).routeSidebar.moveStop,
-          cancel: text.cancel,
-        }}
+        labels={stopsLabels}
       >
         {suggestions}
       </RouteStopsList>
     ) : null;
+
+  const viaOnlyNode = viaListOnly ? (
+    <div className="relative z-30">
+      <RouteStopsList
+        points={viaStops}
+        middleOnly
+        isLight={isLight}
+        compact
+        adding={viaAdding}
+        picking={pickMode === 'via'}
+        query={viaQuery}
+        onQueryChange={setViaQuery}
+        onCancelAdd={closeViaSearch}
+        onPickOnMap={onRequestPickLocation ? () => onRequestPickLocation('via') : undefined}
+        onReorder={reorderVias}
+        onRemove={removeViaAt}
+        labels={stopsLabels}
+      >
+        {renderLocationSuggestions(viaSuggestions, handleSelectVia)}
+      </RouteStopsList>
+    </div>
+  ) : null;
 
   const addStopNode = canAddStop ? (
     <button
@@ -1949,6 +1997,8 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
           {!fromSelection && renderLocationSuggestions(fromSuggestions, handleSelectFrom)}
         </div>
 
+        {viaOnlyNode}
+
         <div className="relative">
           <div className="mb-2 flex items-center justify-between gap-3">
             <label className={`block text-xs uppercase tracking-[0.18em] text-slate-500 ${isMobile ? 'sr-only' : ''}`}>{text.to}</label>
@@ -2003,8 +2053,9 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
         </>
         )}
 
-        {isSearching && (
-          <div className="-mx-4">
+        <AnimatePresence mode="wait" initial={false}>
+        {isSearching ? (
+          <motion.div key="search" {...SWAP_FADE} className="-mx-4">
             <SearchResultsList
               lines={viaSearching ? [] : matchingLines}
               stops={activeSuggestions.filter(suggestion => suggestion.kind === 'stop')}
@@ -2015,11 +2066,9 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
               onSelectLocation={selectActive}
               onSelectLine={onOpenLine}
             />
-          </div>
-        )}
-
-        {isMobile && !isSearching && currentResults.length === 0 && !showOfflineResults && (
-          <>
+          </motion.div>
+        ) : isMobile && currentResults.length === 0 && !showOfflineResults ? (
+          <motion.div key="home" {...SWAP_FADE} className="space-y-4">
             <div className="gl-stagger relative z-0 space-y-2" style={{ animationDelay: '40ms' }}>
               {renderMobileActionRow('map', MapPinIcon, text.chooseOnMap, undefined, () => onRequestPickLocation?.('to'))}
               {(['home', 'work'] as const).map(kind => {
@@ -2088,8 +2137,9 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                 ))}
               </div>
             )}
-          </>
-        )}
+          </motion.div>
+        ) : null}
+        </AnimatePresence>
 
         {pickMode && (
           <div className={`rounded-2xl border px-4 py-3 text-sm text-center ${
@@ -2285,6 +2335,17 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   );
 
   const creditNode = null;
+  const pickActive = Boolean(pickMode) && !isPicker;
+  const [pickFade, setPickFade] = useState(false);
+  useEffect(() => {
+    if (pickActive) {
+      setPickFade(true);
+      return;
+    }
+    // keep the fade while the panel comes back after a map pick
+    const timer = window.setTimeout(() => setPickFade(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [pickActive]);
   const { screenRef: pickerRef, dim: pickerDim, swipeHandlers: pickerSwipe } = useSwipeBack({
     isOpen: isOpen && isPicker,
     onBack: onClose,
@@ -2292,7 +2353,7 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
   });
 
   if (isMobile) {
-    const isPicking = Boolean(pickMode) && !isPicker;
+    const isPicking = pickActive;
     const isPanelVisible = isOpen && (isPicker || !isPicking);
     const showPickerBar = isPicker && currentResults.length > 0;
 
@@ -2460,6 +2521,8 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
                 : 'translate-x-full'
               : isPanelVisible
               ? 'translate-y-0 scale-100 opacity-100'
+              : isPicking
+              ? 'translate-y-0 opacity-0'
               : 'translate-y-full scale-100'
           } ${isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-white'}`}
           style={{
@@ -2468,6 +2531,8 @@ export const RouteSidebar = ({ isOpen, onClose, stops, language, isMobile, route
             transform: dragY > 0 && !isPicker ? `translateY(${dragY}px)` : undefined,
             transition: dragY > 0 && !isPicker
               ? 'none'
+              : isPicking || pickFade
+              ? 'opacity 260ms ease-out'
               : 'transform 320ms cubic-bezier(0.32,0.72,0,1), opacity 160ms linear 160ms',
           }}
           aria-hidden={!isPanelVisible}
