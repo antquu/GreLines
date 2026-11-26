@@ -17,7 +17,6 @@ function openDb(): Promise<IDBDatabase | null> {
       resolve(null);
       return;
     }
-    // give up on indexeddb when it hangs on first launch of the ios home screen app
     const timer = window.setTimeout(() => {
       dbPromise = null;
       resolve(null);

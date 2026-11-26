@@ -20,7 +20,6 @@ export function useAutoScroll<T extends HTMLElement>(options?: {
   const holdTop = options?.holdTopMs ?? HOLD_TOP_MS;
   const holdBottom = options?.holdBottomMs ?? HOLD_BOTTOM_MS;
   const speed = options?.speed ?? SPEED_PX_PER_SEC;
-  // the scrolled element may only appear later (after loading), so restart when it does
   const enabled = options?.enabled ?? true;
 
   useEffect(() => {

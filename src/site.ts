@@ -10,7 +10,6 @@ export interface CitySite {
   areaRadiusMeters: number;
   sncf: boolean;
   logo?: { light: string; dark: string; width: number };
-  // reachable only through its own domain, never listed on the other sites
   hidden?: boolean;
 }
 
@@ -80,7 +79,6 @@ export const SITE: SiteId = siteOf(import.meta.env.VITE_SITE);
 
 export const IS_NANCY = SITE === 'nancy';
 
-// nancy, lyon, saint-etienne, clermont: one network, no tag/oura/vitrine
 export const IS_CITY_SITE = SITE !== 'grenoble';
 
 export const CITY_SITE: CitySite | null = SITE === 'grenoble' ? null : CITY_SITES[SITE];

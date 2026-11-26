@@ -15,7 +15,6 @@ const BULB_FORWARD = 2.4;
 const BULB_COLOR = '#ffd6a0';
 const FOV = 30;
 
-// [seconds, light level] steps of the bulb coming on, then the screen powers up
 const FLICKER: [number, number][] = [
   [0, 0], [0.25, 0.7], [0.31, 0], [0.5, 0.35], [0.56, 0.1], [0.62, 0.9], [0.68, 0],
   [1.05, 0.5], [1.12, 0.2], [1.2, 1],
@@ -70,8 +69,6 @@ function buildBulb() {
   return { bulb, halo, glass };
 }
 
-// the whole page is a dark room: the mac stands on the floor under a bulb
-// hanging from the top of the screen, lined up with the anchor element
 export default function MacTerminal({ language, onFail }: { language: 'fr' | 'en'; onFail: () => void }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<HTMLDivElement>(null);
@@ -154,7 +151,6 @@ export default function MacTerminal({ language, onFail }: { language: 'fr' | 'en
     const screenGlow = new THREE.PointLight('#b8ffc0', 0.8, 3.5, 2);
     scene.add(spot, spot.target, glow, screenGlow);
 
-    // the room stays dark while the model loads, then the bulb flickers on
     let lightsOnAt = 0;
     let disposed = false;
     void loadMacModel().then(buffer => new GLTFLoader().parseAsync(buffer, '')).then(gltf => {

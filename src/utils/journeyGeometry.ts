@@ -95,7 +95,6 @@ function measure(coords: Coordinate[]): MeasuredLine {
   return { coords, along };
 }
 
-// every place where the line passes close to the stop, measured along the line
 function projectStop(line: MeasuredLine, stop: JourneyStopRef, tolerance: number): Projection[] {
   const kx = Math.cos((stop.lat * Math.PI) / 180) * 111320;
   const ky = METERS_PER_DEG_LAT;
@@ -217,7 +216,6 @@ function traceQuality(coords: Coordinate[], stops: JourneyStopRef[]): TraceQuali
   return { density: km > 0 ? coords.length / km : 0, stopGap };
 }
 
-// keep the planner trace when it already follows the streets, else the line shape
 function pickTrace(planned: Coordinate[], shape: Coordinate[] | null, stops: JourneyStopRef[]): Coordinate[] | null {
   if (!shape || shape.length < 2) return null;
   if (planned.length < 2) return shape;

@@ -67,7 +67,6 @@ function currentContract(contracts) {
   return [...contracts].sort((a, b) => new Date(b.endingAt ?? 0).getTime() - new Date(a.endingAt ?? 0).getTime())[0];
 }
 
-// ask the network itself, so a browser cannot invent a card or its status
 async function lookupCard(code) {
   const mediaId = `${NETWORK_PREFIX}-${code}`;
   const media = await fetch(`${AIRWEB_ENDPOINT}/${mediaId}`, { signal: AbortSignal.timeout(8000) })
@@ -167,7 +166,6 @@ export default async function handler(request, response) {
         return send(response, 200, { ok: true });
       }
 
-      // only a device that already holds the card may rename it or change its photo
       const known = await holderExists(db, code);
       const owner = !known || (await isLinked(db, deviceId, code));
       const photoPath = text(body.photoPath, 200);

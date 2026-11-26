@@ -158,7 +158,6 @@ export interface ScreenPlace {
   city?: string;
 }
 
-// the stop name rides along in the link, so the screen can find its stop again if an id ever changes
 export function buildScreenUrl(stopId: string, layout: ScreenLayout, place?: ScreenPlace | null): string {
   const params = new URLSearchParams();
   if (layout === 'rows') params.set('vue', ROWS_QUERY_VALUE);

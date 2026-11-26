@@ -50,7 +50,6 @@ export function useGroupMotion(
         gen += 1;
         moveToEnd(group.key);
       } else {
-        // the countdown also drops while the app sleeps, only a bigger drop is a real gain
         const expected = previous.minutes - Math.round((now - previous.at) / 60_000);
         if (group.minutes > previous.minutes) change = 'later';
         else if (group.minutes < expected - 1) change = 'earlier';

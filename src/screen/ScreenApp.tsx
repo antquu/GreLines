@@ -44,7 +44,6 @@ export function ScreenApp() {
     setPlace(chosenPlace);
   }, []);
 
-  // the stop id changed in a newer version: keep the screen on the same stop
   const handleMoved = useCallback((stop: Stop) => {
     window.history.replaceState(null, '', buildScreenUrl(stop.id, layout, place ?? { name: stop.name, city: stop.city }));
     setStopId(stop.id);

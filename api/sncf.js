@@ -1,7 +1,8 @@
 const NAVITIA = 'https://api.sncf.com/v1/coverage/sncf';
 const TTL_MS = 30_000;
 const CATALOG_TTL_MS = 12 * 60 * 60 * 1000;
-const HOME_NETWORK = 'regionaura';
+const CATALOG_KEY = 'catalog-v3';
+const HOME_NETWORK = 'terauvergnerhonealpes';
 const PAGE_SIZE = 1000;
 const TRACE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TRANSITOUS = 'https://api.transitous.org/api/v5/plan';
@@ -64,9 +65,13 @@ async function mapLimit(items, limit, task) {
 
 const slug = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-function brandOf(commercial) {
-  if (/ouigo/i.test(commercial)) return 'OUIGO';
-  if (/tgv|lyria|inoui/i.test(commercial)) return 'TGV';
+const HIGH_SPEED_NETWORKS = /^(atlantique|est|nord|sudest|lyria|eurostar|thalys|tgvitalie|franceespagne|alleo)$/;
+
+function brandOf(commercial, network) {
+  const scope = slug(network);
+  if (/ouigo/i.test(commercial) || scope === 'ouigo') return 'OUIGO';
+  if (/^ter/.test(scope) || /autocar|bus|tram|metro|rer|transilien/i.test(slug(commercial))) return null;
+  if (/tgv|lyria|inoui/i.test(commercial) || HIGH_SPEED_NETWORKS.test(scope)) return 'TGV';
   if (/intercit/i.test(commercial)) return 'IC';
   return null;
 }
@@ -74,7 +79,7 @@ function brandOf(commercial) {
 const BRAND_NAMES = { TGV: 'TGV INOUI', OUIGO: 'OUIGO', IC: 'Intercités', TER: 'TER' };
 
 function lineKey(code, commercial, network) {
-  const brand = brandOf(commercial);
+  const brand = brandOf(commercial, network);
   if (brand) return brand;
   if (!code) return 'TER';
   const scope = slug(network);
@@ -87,24 +92,43 @@ const UIC_PATTERN = /(?:^|\D)(87\d{6})(?!\d)/;
 const uicOf = id => UIC_PATTERN.exec(String(id || ''))?.[1] ?? null;
 const MIN_STATIONS = 500;
 const areaUics = new Map();
+const pointUics = new Map();
 const uicAreas = new Map();
 
-function uicOfObject(object) {
-  if (!object) return null;
-  for (const code of object.codes ?? []) {
+function uicOfCodes(object) {
+  for (const code of object?.codes ?? []) {
     if (!/uic/i.test(String(code.type || ''))) continue;
     const found = uicOf(code.value);
     if (found) return found;
   }
-  const known = areaUics.get(object.id) ?? areaUics.get(object.stop_area?.id);
-  if (known) return known;
-  return uicOf(object.id) ?? uicOfObject(object.stop_area);
+  return null;
+}
+
+function uicOfObject(object) {
+  if (!object) return null;
+  return uicOfCodes(object)
+    ?? pointUics.get(object.id)
+    ?? areaUics.get(object.id)
+    ?? areaUics.get(object.stop_area?.id)
+    ?? uicOf(object.id)
+    ?? uicOfCodes(object.stop_area);
 }
 
 function rememberArea(uic, areaId) {
   if (!uic || !areaId) return;
-  areaUics.set(areaId, uic);
-  if (!uicAreas.has(uic)) uicAreas.set(uic, areaId);
+  if (!areaUics.has(areaId)) areaUics.set(areaId, uic);
+  const known = uicAreas.get(uic) ?? [];
+  if (!known.includes(areaId)) uicAreas.set(uic, [...known, areaId]);
+}
+
+async function loadStopCodes(key) {
+  const points = await allPages('/stop_points?depth=1', 'stop_points', key);
+  for (const point of points) {
+    const uic = uicOfCodes(point) ?? uicOf(point.id);
+    if (!uic) continue;
+    pointUics.set(point.id, uic);
+    rememberArea(uic, point.stop_area?.id);
+  }
 }
 
 async function allPages(path, field, key) {
@@ -119,7 +143,10 @@ async function allPages(path, field, key) {
 const isExtraService = line => /additional service/i.test(line?.commercial_mode?.name ?? '');
 
 async function buildCatalog(key) {
-  const areas = await allPages('/stop_areas?depth=3', 'stop_areas', key);
+  const [areas] = await Promise.all([
+    allPages('/stop_areas?depth=3', 'stop_areas', key),
+    loadStopCodes(key),
+  ]);
 
   const lines = new Map();
   const keyOfLine = line => {
@@ -148,6 +175,7 @@ async function buildCatalog(key) {
   };
 
   const stations = [];
+  const byUic = new Map();
   for (const area of areas) {
     const uic = uicOfObject(area);
     rememberArea(uic, area.id);
@@ -160,7 +188,14 @@ async function buildCatalog(key) {
     if (served.length === 0) continue;
     const links = [...new Set(usable.map(trainLinkOf).filter(index => index !== null))];
     const rail = (area.physical_modes ?? []).some(mode => !isCoach(mode.name) && !/bike|car$/i.test(mode.id ?? ''));
-    stations.push({
+    const twin = byUic.get(uic);
+    if (twin) {
+      twin.rail = twin.rail || rail;
+      for (const id of served) if (!twin.lines.includes(id)) twin.lines.push(id);
+      for (const link of links) if (!twin.links.includes(link)) twin.links.push(link);
+      continue;
+    }
+    const station = {
       rail,
       uic,
       name,
@@ -169,7 +204,9 @@ async function buildCatalog(key) {
       lon: Math.round(lon * 1e5) / 1e5,
       lines: served,
       links,
-    });
+    };
+    byUic.set(uic, station);
+    stations.push(station);
   }
 
   const railStations = stations.filter(station => station.rail);
@@ -219,13 +256,14 @@ async function buildCatalog(key) {
 }
 
 async function areaIdsOf(uic, key) {
-  const ids = [];
   if (!uicAreas.has(uic)) {
-    await cached('catalog-v2', CATALOG_TTL_MS, () => buildCatalog(key)).catch(() => null);
+    await cached(CATALOG_KEY, CATALOG_TTL_MS, () => buildCatalog(key)).catch(() => null);
   }
-  if (uicAreas.has(uic)) ids.push(uicAreas.get(uic));
-  ids.push(`stop_area:SNCF:${uic}`);
-  return [...new Set(ids)];
+  if (!uicAreas.has(uic)) {
+    const data = await navitia(`/stop_points?depth=1&count=10&filter=${encodeURIComponent(`stop_point.has_code(UIC,${uic})`)}`, key).catch(() => null);
+    for (const point of data?.stop_points ?? []) rememberArea(uic, point.stop_area?.id);
+  }
+  return uicAreas.get(uic) ?? [];
 }
 
 async function departuresAt(areaId, key) {
@@ -237,17 +275,15 @@ async function departuresAt(areaId, key) {
 }
 
 async function departures(uic, key) {
-  let data = null;
-  let failure = null;
-  for (const areaId of await areaIdsOf(uic, key)) {
-    try {
-      data = await departuresAt(areaId, key);
-      break;
-    } catch (error) {
-      failure = error;
-    }
-  }
-  if (!data) throw failure ?? new Error('SNCF stop unknown');
+  const areaIds = await areaIdsOf(uic, key);
+  if (areaIds.length === 0) throw new Error('SNCF stop unknown');
+  const answers = await Promise.all(areaIds.slice(0, 4).map(areaId => departuresAt(areaId, key).catch(() => null)));
+  const found = answers.filter(Boolean);
+  if (found.length === 0) throw new Error('SNCF departures unavailable');
+  const data = {
+    disruptions: found.flatMap(answer => answer.disruptions ?? []),
+    departures: found.flatMap(answer => answer.departures ?? []),
+  };
   const alerts = new Map((data?.disruptions ?? []).map(disruption => [disruption.id, {
     effect: String(disruption.severity?.effect || ''),
     text: String(disruption.messages?.[0]?.text || disruption.cause || '').trim(),
@@ -466,7 +502,7 @@ function mergeSequence(order, stops) {
 }
 
 async function buildFiche(lineId, key) {
-  await cached('catalog-v2', CATALOG_TTL_MS, () => buildCatalog(key)).catch(() => null);
+  await cached(CATALOG_KEY, CATALOG_TTL_MS, () => buildCatalog(key)).catch(() => null);
   const lines = await navitiaLinesOf(lineId, key);
   const firstDay = parisToday();
   const groups = new Map();
@@ -526,7 +562,7 @@ export default async function handler(request, response) {
 
   try {
     if (resource === 'reseau') {
-      const payload = await cached('catalog-v2', CATALOG_TTL_MS, () => buildCatalog(key));
+      const payload = await cached(CATALOG_KEY, CATALOG_TTL_MS, () => buildCatalog(key));
       sendJson(response, 200, payload, { 'Cache-Control': 'public, s-maxage=43200, stale-while-revalidate=86400' });
       return;
     }

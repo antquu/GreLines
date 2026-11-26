@@ -23,6 +23,7 @@ export interface StatusIncident {
 export interface MaintenanceState {
   config: MaintenanceConfig;
   incident: StatusIncident | null;
+  simulated?: boolean;
 }
 
 export const MAINTENANCE_KEY = 'maintenance';
@@ -46,7 +47,6 @@ async function getMaintenance(): Promise<MaintenanceConfig | null> {
   if (!isSupabaseConfigured || !supabase) return OFF;
   try {
     const { data, error } = await supabase.from('site_config').select('value').eq('key', MAINTENANCE_KEY).maybeSingle();
-    // a failed read keeps the last known state, the site never locks by accident
     if (error) return null;
     return parseMaintenance(data?.value);
   } catch {
@@ -87,12 +87,42 @@ async function getOpenIncident(): Promise<StatusIncident | null | undefined> {
 }
 
 let state: MaintenanceState | null = null;
+let simulation: { mode: MaintenanceMode; startedAt: string } | null = null;
+let view: MaintenanceState | null = null;
 const listeners = new Set<() => void>();
+
+function refreshView() {
+  if (!simulation) {
+    view = state;
+    return;
+  }
+  const base = state ?? { config: OFF, incident: null };
+  view = {
+    config: { ...base.config, mode: simulation.mode, startedAt: simulation.startedAt },
+    incident: base.incident,
+    simulated: true,
+  };
+}
+
+export function simulateMaintenance(mode: MaintenanceMode | null) {
+  simulation = mode && mode !== 'off' ? { mode, startedAt: new Date().toISOString() } : null;
+  refreshView();
+  listeners.forEach(listener => listener());
+}
+
+export function simulatedMaintenance(): MaintenanceMode | null {
+  return simulation?.mode ?? null;
+}
+
+export function currentIncident(): StatusIncident | null {
+  return state?.incident ?? null;
+}
 let stopWatching: (() => void) | null = null;
 let channelSeq = 0;
 
 function emit(next: MaintenanceState) {
   state = next;
+  refreshView();
   listeners.forEach(listener => listener());
 }
 
@@ -140,7 +170,7 @@ function subscribe(listener: () => void) {
 }
 
 export function useMaintenance(): MaintenanceState | null {
-  return useSyncExternalStore(subscribe, () => state, () => null);
+  return useSyncExternalStore(subscribe, () => view, () => null);
 }
 
 export function useMaintenanceBanner() {

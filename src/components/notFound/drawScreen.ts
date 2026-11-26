@@ -33,7 +33,6 @@ export function drawScreen(canvas: HTMLCanvasElement, terminal: CmdTerminal, bli
       ctx.shadowBlur = 6;
       ctx.fillStyle = INK;
     }
-    // draw char by char so box lines stay on the grid whatever the font
     [...line.text].forEach((char, column) => {
       if (char !== ' ') ctx.fillText(char, PAD_X + column * cellWidth, y + lineHeight / 2);
     });

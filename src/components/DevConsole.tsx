@@ -13,6 +13,7 @@ import { DEFAULT_NETWORK_CODES, NETWORKS } from '../services/api';
 import { clearRequestLog, getRequestLog, installRequestLog } from '../services/requestLog';
 import { isImageLoadingForced, setImageLoadingForced } from '../utils/forcedImageLoading';
 import { armLocationPick, resetFakeLocation } from '../utils/devLocation';
+import { currentIncident, simulateMaintenance, simulatedMaintenance, type MaintenanceMode } from '../services/maintenance';
 
 installRequestLog();
 
@@ -452,6 +453,26 @@ const COMMANDS: ConsoleCommand[] = [
       `Service worker: ${navigator.serviceWorker?.controller ? 'active' : 'none'}`,
       `Language: ${navigator.language}`,
     ],
+  },
+  {
+    name: 'maintenance',
+    usage: '[banner|lock|off]',
+    description: 'Show the maintenance banner and popup, or the blocked site, with the open incident from status.grelines.fr',
+    complete: done => (done.length === 0 ? [{ value: 'banner' }, { value: 'lock' }, { value: 'off' }] : []),
+    run: args => {
+      const mode = (args[0] ?? '').toLowerCase();
+      if (!['banner', 'lock', 'off'].includes(mode)) {
+        return `maintenance: ${simulatedMaintenance() ?? 'off'}. Use banner, lock or off.`;
+      }
+      simulateMaintenance(mode as MaintenanceMode);
+      if (mode === 'off') return 'maintenance: off';
+      const incident = currentIncident();
+      return [
+        `maintenance: ${mode}`,
+        incident ? `incident from status.grelines.fr: ${incident.title} (${incident.status})` : 'no open incident on status.grelines.fr, no incident card',
+        mode === 'lock' ? 'type maintenance off to give the site back' : '',
+      ].filter(Boolean);
+    },
   },
   { name: 'app.reload', description: 'Reload the app', run: () => { window.location.reload(); } },
 ];

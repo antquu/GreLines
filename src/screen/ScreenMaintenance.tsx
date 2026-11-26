@@ -2,7 +2,6 @@ import { Component, useEffect, type ReactNode } from 'react';
 
 const RECOVERY_CHECK_MS = 60_000;
 
-// reload only once the site answers again, so a broken screen never loops while offline
 function useReloadWhenReachable(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;

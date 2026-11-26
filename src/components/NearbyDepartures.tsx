@@ -69,7 +69,6 @@ function formatFirst(minutes: number, language: 'fr' | 'en'): string {
   return new Date(Date.now() + minutes * 60_000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
-// drop the "City, " prefix the network puts in front of stop names
 function displayName(stop: Stop): string {
   const comma = stop.name.indexOf(', ');
   return comma > 0 && comma < stop.name.length - 2 ? stop.name.slice(comma + 2) : stop.name;

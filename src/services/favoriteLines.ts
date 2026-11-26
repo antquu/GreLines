@@ -73,6 +73,20 @@ export function setFavoriteLineAndNotify(line: AllLinesLine): void {
   notify();
 }
 
+export function renameFavoriteLines(rename: (lineId: string) => string | null): void {
+  const all = read();
+  let changed = false;
+  const next = all.map(favorite => {
+    const lineId = rename(favorite.lineId);
+    if (!lineId || lineId === favorite.lineId || all.some(other => other.lineId === lineId)) return favorite;
+    changed = true;
+    return { ...favorite, lineId };
+  });
+  if (!changed) return;
+  write(next);
+  notify();
+}
+
 export function removeFavoriteLineAndNotify(lineId: string): void {
   removeFavoriteLine(lineId);
   notify();

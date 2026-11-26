@@ -250,7 +250,6 @@ function parisOffsetMs(instant) {
   return asUtc - instant;
 }
 
-// grand lyon writes paris wall-clock times without a zone, while the server runs in utc
 function parisTime(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(value ?? '').trim());
   if (!match) return NaN;
@@ -430,7 +429,6 @@ export default async function handler(request, response) {
     return;
   }
 
-  // health check for the status page: asks the feed but never sends its megabytes back
   if (url.searchParams.has('sante') && feed && ALLOWED_FEEDS.has(feed)) {
     const health = await cached(`sante:${feed}`, 50_000, async () => {
       try {

@@ -110,7 +110,6 @@ interface ShareSigner {
   sign: (body: SignedBody) => Promise<SignedMessage>;
 }
 
-// sign live positions so a follower can tell them from forged ones
 async function makeSigner(keys: StoredShareKeys): Promise<{ signer: ShareSigner; keys: StoredShareKeys } | null> {
   const api = subtle();
   if (!api) return null;

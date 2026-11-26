@@ -27,7 +27,6 @@ export async function loadScreenStops(): Promise<Stop[]> {
 const plain = (value: string | undefined) =>
   (value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
-// find a stop by name when its id no longer exists, preferring the same network
 export async function findScreenStopByName(oldId: string, place: { name: string; city?: string }): Promise<Stop | null> {
   const stops = await loadScreenStops();
   const network = oldId.split(':')[0].toUpperCase();

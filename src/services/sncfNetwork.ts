@@ -4,6 +4,7 @@ import { idbGet, idbSet } from './persistentCache';
 import { rerLine } from '../utils/rer';
 import { appLanguage } from '../utils/appLanguage';
 import { tx } from '../i18n';
+import { renameFavoriteLines } from './favoriteLines';
 
 export interface SncfLineEntry {
   id: string;
@@ -45,7 +46,7 @@ interface SncfPassage {
   alert?: { effect: string; text: string; end: number | null } | null;
 }
 
-const STORAGE_KEY = 'greLines_sncfCatalog_v4';
+const STORAGE_KEY = 'greLines_sncfCatalog_v5';
 const TRACE_KEY = 'sncfTrace_v2_';
 const CATALOG_TTL_MS = 12 * 60 * 60 * 1000;
 const PASSAGES_TTL_MS = 30_000;
@@ -58,6 +59,27 @@ const uicOfStop = (id: string) => /(87\d{6})/.exec(id)?.[1] ?? null;
 
 let catalog: Promise<SncfCatalog | null> | null = null;
 const lineColors = new Map<string, string>();
+
+const scopeWords = (scope: string) => scope.replace(/^(region|ter)/, '');
+
+function keepFavoriteLines(data: SncfCatalog | null) {
+  if (!data?.lines?.length) return;
+  const known = new Set(data.lines.map(entry => entry.id));
+  renameFavoriteLines(lineId => {
+    if (!lineId.startsWith(SNCF_PREFIX)) return null;
+    const key = lineId.slice(SNCF_PREFIX.length);
+    if (known.has(key)) return null;
+    const [code, scope = ''] = key.split('.');
+    const sameCode = data.lines.filter(entry => entry.id.split('.')[0] === code);
+    if (sameCode.length === 0) return null;
+    const wanted = scopeWords(scope);
+    const match = sameCode.find(entry => {
+      const other = scopeWords(entry.id.split('.')[1] ?? '');
+      return wanted && other && (other.includes(wanted) || wanted.includes(other));
+    }) ?? (sameCode.length === 1 ? sameCode[0] : null);
+    return match ? sncfLineId(match.id) : null;
+  });
+}
 
 function rememberColors(data: SncfCatalog | null) {
   for (const entry of data?.lines ?? []) if (entry.color) lineColors.set(entry.id, entry.color);
@@ -95,6 +117,7 @@ export function loadSncfCatalog(): Promise<SncfCatalog | null> {
       .then(response => (response.ok ? (response.json() as Promise<SncfCatalog>) : null))
       .then(fresh => {
         rememberColors(fresh);
+        keepFavoriteLines(fresh);
         if (fresh?.stations) {
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
@@ -305,7 +328,6 @@ const traceMemory = new Map<string, Segments>();
 const traceInflight = new Map<string, Promise<Segments | null>>();
 const traceListeners = new Set<() => void>();
 
-// called when a slow trace finally arrives, so the map can redraw it
 export function onSncfTraceReady(listener: () => void): () => void {
   traceListeners.add(listener);
   return () => { traceListeners.delete(listener); };
@@ -330,7 +352,6 @@ function fetchTrace(code: string): Promise<Segments | null> {
   return promise;
 }
 
-// straight lines linking each station to its nearest one on the line, drawn while the real trace loads
 async function stationTrace(code: string): Promise<Segments> {
   const data = await loadSncfCatalog();
   const points = (data?.stations ?? [])

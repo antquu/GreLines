@@ -56,7 +56,6 @@ if (followRoute) {
   window.history.replaceState(window.history.state, '', '/app');
 }
 
-// any other *.grelines.fr reaches the grenoble project through the wildcard domain
 const host = window.location.hostname;
 const UNKNOWN_HOST = !IS_CITY_SITE && host.endsWith('.grelines.fr') && host !== 'www.grelines.fr';
 
@@ -138,7 +137,6 @@ if (UNKNOWN_HOST) {
     )
   })
 } else if (window.location.pathname.startsWith('/app/screen')) {
-  // show the maintenance page when old code files are gone after a deploy
   window.addEventListener('vite:preloadError', event => {
     event.preventDefault()
     root.render(<ScreenMaintenance reloadWhenReachable />)

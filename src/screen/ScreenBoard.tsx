@@ -26,7 +26,6 @@ import {
 
 const REFRESH_MS = 30_000;
 
-// beyond this, shown minutes would be wrong: better show maintenance
 const STALE_MS = 3 * 60_000;
 
 const TRAIN_KINDS: Record<string, { label: string; color: string }> = {
@@ -297,7 +296,6 @@ export function ScreenBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopId]);
 
-  // while the first departures load, show the maintenance screen rather than a half-empty board
   if (status !== 'ready') return <ScreenMaintenance />;
 
   const groups = detail && !isStation ? groupDeparturesForScreen(detail) : [];

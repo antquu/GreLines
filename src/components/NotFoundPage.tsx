@@ -7,7 +7,6 @@ import { ROOM_LIGHT } from './notFound/macModel';
 
 const STATUS_URL = 'https://status.grelines.fr';
 
-// without a connection the 3d room cannot load, the links show instead
 function MacUnavailable({ onFail }: { language: 'fr' | 'en'; onFail: () => void }) {
   useEffect(onFail, [onFail]);
   return <></>;
@@ -16,7 +15,6 @@ function MacUnavailable({ onFail }: { language: 'fr' | 'en'; onFail: () => void 
 const MacTerminal = lazy(() => import('./notFound/MacTerminal').catch(() => ({ default: MacUnavailable })));
 const DESKTOP = '(min-width: 768px)';
 
-// siteUrl is empty on the site itself, and the main site address on an unknown subdomain
 export function NotFoundPage({ language, siteUrl }: { language: 'fr' | 'en'; siteUrl: string }) {
   const text = tx(language === 'fr').notFoundPage;
   const [desktop, setDesktop] = useState(() => window.matchMedia(DESKTOP).matches);

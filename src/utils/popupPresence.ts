@@ -14,7 +14,6 @@ function subscribe(listener: () => void) {
   };
 }
 
-// tell the app a popup is on screen, so sheets do not open on their own behind it
 export function usePopupPresence(id: string, visible: boolean) {
   useEffect(() => {
     if (!visible) return;

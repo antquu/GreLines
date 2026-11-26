@@ -33,7 +33,6 @@ function siteHtml(): Plugin {
         return site === 'grenoble' ? html : readFileSync(`site/${site}/index.html`, 'utf8');
       },
     },
-    // each city serves its own robots.txt, sitemap.xml and llms.txt instead of the grenoble ones in public/
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const file = (req.url ?? '').split('?')[0].slice(1);
